@@ -776,7 +776,7 @@ test("same-sha failed activation checks displaced schema before restoring bytes 
     };
     await deployVersion({ root, repoRoot, ref: sha, hooks: selected });
     const history = await readDeployHistory(root);
-    await assert.rejects(deployVersion({ root, repoRoot, ref: sha, hooks: selected }), /ROLLBACK_STORE_RESTORE_REQUIRED/);
+    await assert.rejects(deployVersion({ root, repoRoot, ref: sha, hooks: selected }), /ROLLBACK_STORE_NEWER_THAN_TARGET/);
     assert.equal(await readFile(join(root, sha, "dist", "v2", "cli.js"), "utf8"), "var SCHEMA_VERSION = 48;\n");
     const displaced = (await readdir(root)).find(name => name.startsWith(`.displaced.${sha}.`));
     assert.ok(displaced);

@@ -19,7 +19,6 @@ import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import {
   SCHEMA_VERSION,
-  SchemaVersionError,
   replayAudit,
 } from "../src/index.ts";
 import { harness, makeBee } from "./helpers.ts";
@@ -262,7 +261,7 @@ test("args.2: a v4-shaped store (spawn_failures, no args column) migrates additi
     try {
       const version = check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string };
       assert.equal(Number(version.value), SCHEMA_VERSION);
-      assert.equal(SCHEMA_VERSION, 58);
+      assert.equal(SCHEMA_VERSION, 59);
       const cols = (check.prepare("SELECT name FROM pragma_table_info('bees')").all() as Array<{ name: string }>).map((c) => c.name);
       assert.ok(cols.includes("args"));
       assert.ok(cols.includes("spawn_failures"));
@@ -271,12 +270,7 @@ test("args.2: a v4-shaped store (spawn_failures, no args column) migrates additi
     } finally {
       check.close();
     }
-    // re-open (now v5) is a no-op migration; then a NEWER stamp is refused
     h.open().close();
-    const bump = new DatabaseSync(h.path);
-    bump.prepare("UPDATE meta SET value = ? WHERE key = 'schema_version'").run(String(SCHEMA_VERSION + 1));
-    bump.close();
-    assert.throws(() => h.open(), (err: unknown) => err instanceof SchemaVersionError && err.kind === "schema_newer");
   } finally {
     h.cleanup();
   }

@@ -2136,6 +2136,7 @@ export interface DeployInfoResult {
   /** Additive (H7): the gateways registered through `gateway.register` and the installed skill tree. */
   gateways?: GatewayRow[];
   skills?: SkillTreeRow | null;
+  store?: { schemaVersion: number; minReaderSchema: number };
   daemonVersion: string;
   nodeVersion: string;
   pid: number;

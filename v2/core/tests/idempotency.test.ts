@@ -4,8 +4,7 @@
  *    ORIGINAL command at its current status (queued/running/settled) with
  *    `deduped: true`, never a second command;
  *  - keys survive close/reopen (boot replay);
- *  - schema v1 → v2 migration is explicit (additive column) and a NEWER store
- *    is refused with a typed SchemaVersionError;
+ *  - schema v1 → v2 migration is explicit (additive column);
  *  - the rpc_idempotency table records/answers RPC results with bounded
  *    retention (newest maxRpcIdempotencyRows kept).
  * Temp dirs only — never ~/.hive, never a live store.
@@ -17,7 +16,6 @@ import {
   CoreError,
   openCoreStore,
   SCHEMA_VERSION,
-  SchemaVersionError,
   replayAudit,
 } from "../src/index.ts";
 import { harness, makeBee } from "./helpers.ts";
@@ -184,19 +182,6 @@ test("idem.7: v1 store (no stamp, no column) migrates additively to v2 on open",
   h.cleanup();
 });
 
-test("idem.8: a NEWER store is refused with a typed schema_newer error (no silent downgrade)", () => {
-  const h = harness();
-  const store = h.open();
-  store.close();
-  const db = new DatabaseSync(h.path);
-  db.prepare("UPDATE meta SET value = ? WHERE key = 'schema_version'").run(String(SCHEMA_VERSION + 1));
-  db.close();
-  assert.throws(
-    () => h.open(),
-    (err: unknown) => err instanceof SchemaVersionError && err.kind === "schema_newer",
-  );
-  h.cleanup();
-});
 
 test("idem.9: rpc_idempotency records round-trip and retention evicts the oldest beyond the bound", () => {
   const h = harness();

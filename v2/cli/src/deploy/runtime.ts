@@ -1,7 +1,9 @@
 import { createHash, randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { readBuildIdentity } from "../../../core/src/release/buildIdentity.ts";
-import { recordedSocketPath, readLiveUpdateOwner } from "./updateOwnerClient.mjs";
+import { recordedSocketPath } from "./updateOwnerClient.mjs";
+import { DaemonDownError, RpcClient } from "../client.ts";
+import type { DeployInfoResult } from "../../../daemon/src/protocol.ts";
 import { resolveNodePin } from "../../../core/src/nodeRuntime.ts";
 /**
  * Versioned runtime deploys (reset WP0 — docs/design/specs/reset-00-deploy.md).
@@ -275,7 +277,7 @@ export async function currentDeployTarget(root: string): Promise<string | null> 
   } catch { return null; }
 }
 
-export type DeployRollbackCode = "ROLLBACK_CURRENT_IDENTITY_MISSING" | "ROLLBACK_PREVIOUS_INSTALL_MISSING" | "ROLLBACK_SCHEMA_UNKNOWN" | "ROLLBACK_STORE_RESTORE_REQUIRED" | "ROLLBACK_PREVIOUS_INSTALL_CONFLICT";
+export type DeployRollbackCode = "ROLLBACK_CURRENT_IDENTITY_MISSING" | "ROLLBACK_PREVIOUS_INSTALL_MISSING" | "ROLLBACK_SCHEMA_UNKNOWN" | "ROLLBACK_STORE_NEWER_THAN_TARGET" | "ROLLBACK_PREVIOUS_INSTALL_CONFLICT";
 
 export class DeployRollbackError extends Error {
   readonly code: DeployRollbackCode;
@@ -296,23 +298,40 @@ export async function assertRollbackStoreCompatible(root: string, installedDir: 
   if (versions.length !== 1 || !Number.isSafeInteger(versions[0])) {
     throw new DeployRollbackError("ROLLBACK_SCHEMA_UNKNOWN", `missing unambiguous store schema capability in ${installedDir}/dist/v2/cli.js; verify the matching runtime and store backup before rollback`);
   }
-  let stored: number;
+  let minReader: number;
   try {
-    const socket = recordedSocketPath(dataDir);
-    const response = existsSync(socket) ? await readLiveUpdateOwner(socket, dataDir) : { kind: "offline" as const };
-    if (response.kind === "live") stored = Number((response.owner as { schemaVersion?: unknown }).schemaVersion);
-    else {
-      const db = new DatabaseSync(store, { readOnly: true });
-      try { stored = Number(db.prepare("SELECT value FROM meta WHERE key='schema_version'").get()?.value); }
-      finally { db.close(); }
-    }
+    minReader = await storeMinReaderSchema(dataDir, store);
   } catch (error) {
     throw new DeployRollbackError("ROLLBACK_SCHEMA_UNKNOWN", `cannot read store schema at ${store}: ${error instanceof Error ? error.message : String(error)}`);
   }
-  if (!Number.isSafeInteger(stored) || stored < 1) throw new DeployRollbackError("ROLLBACK_SCHEMA_UNKNOWN", `missing valid schema_version in ${store}`);
-  if (stored > versions[0]! || stored === 29) {
-    throw new DeployRollbackError("ROLLBACK_STORE_RESTORE_REQUIRED", `store schema ${stored} cannot be opened by rollback build schema ${versions[0]}; restore the matching pre-deploy backup with hive v2 store restore --from <absolute receipt.json> --data-dir ${dataDir} before retrying rollback; if no compatible backup exists, select a compatible runtime instead (restore discards writes after that backup)`);
+  if (!Number.isSafeInteger(minReader) || minReader < 1) throw new DeployRollbackError("ROLLBACK_SCHEMA_UNKNOWN", `missing valid min_reader_schema or schema_version in ${store}`);
+  if (minReader > versions[0]!) {
+    throw new DeployRollbackError("ROLLBACK_STORE_NEWER_THAN_TARGET", `store at ${store} needs a reader at schema ${minReader} or later; rollback build ${installedDir} is schema ${versions[0]}. A contract migration has run, so this build is not a rollback target; roll forward to a build at schema ${minReader} or later`);
   }
+}
+
+async function storeMinReaderSchema(dataDir: string, store: string): Promise<number> {
+  const socket = recordedSocketPath(dataDir);
+  let client: RpcClient | null = null;
+  if (existsSync(socket)) {
+    try {
+      client = await RpcClient.connect(socket, 3000, undefined, { legacyProtocolVerbs: ["deployInfo"], caller: { dataDir, expectedInstanceId: null } });
+    } catch (error) {
+      if (!(error instanceof DaemonDownError && (error.reason === "ENOENT" || error.reason === "ECONNREFUSED"))) throw error;
+    }
+  }
+  if (client) {
+    try {
+      const info = await client.request<DeployInfoResult>("deployInfo");
+      if (resolve(info.storePath) !== resolve(store)) throw new Error(`daemon at ${socket} serves ${info.storePath}`);
+      return Number(info.store?.minReaderSchema);
+    } finally { client.close(); }
+  }
+  const db = new DatabaseSync(store, { readOnly: true });
+  try {
+    const read = db.prepare("SELECT value FROM meta WHERE key = ?");
+    return Number(read.get("min_reader_schema")?.value ?? read.get("schema_version")?.value);
+  } finally { db.close(); }
 }
 
 /**

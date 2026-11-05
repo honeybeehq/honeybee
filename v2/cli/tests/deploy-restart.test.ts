@@ -138,7 +138,7 @@ for (const scenario of ["after-start", "after-stop", "compatible"] as const) {
     await mkdir(join(root, "current", "dist", "v2"));
     await writeFile(join(root, "current", "dist", "v2", "cli.js"), "var SCHEMA_VERSION = 51;\n");
     const assertRollbackSafe = async () => {
-      if ((await readFile(marker, "utf8")) === "51") throw new DeployRollbackError("ROLLBACK_STORE_RESTORE_REQUIRED", "store51 cannot be opened by previous44");
+      if ((await readFile(marker, "utf8")) === "51") throw new DeployRollbackError("ROLLBACK_STORE_NEWER_THAN_TARGET", "store51 cannot be opened by previous44");
     };
     const context = { root, installedDir: join(root, "current"), sha: "a".repeat(40), log() {}, assertRollbackSafe,
       restorePrevious: async () => { await assertRollbackSafe(); return true; } };

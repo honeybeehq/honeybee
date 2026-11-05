@@ -222,7 +222,7 @@ import {
   TASK_TRANSITIONS,
 } from "./tasks.ts";
 import { deliveredSenderKind } from "./automation.ts";
-import { ACCOUNT_CREDENTIAL_ATTENTION_TABLE_SQL, QUESTIONS_TABLE_SQL, ACTIONS_TABLE_SQL, AUTH_INTERRUPTIONS_TABLE_SQL, ACCOUNT_ADMISSIONS_TABLE_SQL, ACCOUNT_CREDENTIAL_AUTHORITIES_TABLE_SQL, ACCOUNT_CREDENTIAL_AUTHORITIES_V27_COLUMNS, ACCOUNT_LIMITS_TABLE_SQL, ACCOUNTS_NATIVE_INDEX_SQL, BEES_ADDITIVE_COLUMNS, BEES_ACTIVE_MOVE_INDEX_SQL, BEES_ACTIVE_HANDOFF_INDEX_SQL, BEE_HANDOFFS_TABLE_SQL, TRANSCRIPT_SEGMENTS_TABLE_SQL, TRANSCRIPT_SEGMENT_OBJECTS_SQL, CHAMPIONS_SQL, GATEWAYS_SQL, BEE_RESUME_BUNDLES_SQL, MAILBOX_PENDING_METADATA_INDEX_SQL, BEE_MOVES_TABLE_SQL, CELLS_TABLE_SQL, CELLS_V22_COLUMNS, CELLS_ADDITIVE_COLUMNS, CELL_OPS_TABLE_SQL, FLAGS_ADDITIVE_COLUMNS, FLAGS_EXPIRY_INDEX_SQL, HANDLE_INDEX_SQL, IDEMPOTENCY_INDEX_SQL, MAILBOX_ADDITIVE_COLUMNS, MAIL_HISTORY_INDEX_SQL, MAIL_HISTORY_PROJECTION_SQL, RUNTIMES_ADDITIVE_COLUMNS, SCHEMA_SQL, SCHEMA_VERSION } from "./schema.ts";
+import { ACCOUNT_CREDENTIAL_ATTENTION_TABLE_SQL, QUESTIONS_TABLE_SQL, ACTIONS_TABLE_SQL, AUTH_INTERRUPTIONS_TABLE_SQL, ACCOUNT_ADMISSIONS_TABLE_SQL, ACCOUNT_CREDENTIAL_AUTHORITIES_TABLE_SQL, ACCOUNT_CREDENTIAL_AUTHORITIES_V27_COLUMNS, ACCOUNT_LIMITS_TABLE_SQL, ACCOUNTS_NATIVE_INDEX_SQL, BEES_ADDITIVE_COLUMNS, BEES_ACTIVE_MOVE_INDEX_SQL, BEES_ACTIVE_HANDOFF_INDEX_SQL, BEE_HANDOFFS_TABLE_SQL, TRANSCRIPT_SEGMENTS_TABLE_SQL, TRANSCRIPT_SEGMENT_OBJECTS_SQL, CHAMPIONS_SQL, GATEWAYS_SQL, BEE_RESUME_BUNDLES_SQL, MAILBOX_PENDING_METADATA_INDEX_SQL, BEE_MOVES_TABLE_SQL, CELLS_TABLE_SQL, CELLS_V22_COLUMNS, CELLS_ADDITIVE_COLUMNS, CELL_OPS_TABLE_SQL, FLAGS_ADDITIVE_COLUMNS, FLAGS_EXPIRY_INDEX_SQL, HANDLE_INDEX_SQL, IDEMPOTENCY_INDEX_SQL, MAILBOX_ADDITIVE_COLUMNS, MAIL_HISTORY_INDEX_SQL, MAIL_HISTORY_PROJECTION_SQL, RUNTIMES_ADDITIVE_COLUMNS, SCHEMA_SQL, SCHEMA_VERSION, MIN_READER_SCHEMA } from "./schema.ts";
 import { beeMoveReviveKey, beeMoveStopKey, beeMoveTransitionLegal, toBeeMoveView } from "./cellMove.ts";
 import {
   ACTION_DISPATCH_SENDER,
@@ -1806,11 +1806,7 @@ export class CoreStore {
       }
       this.db.exec("PRAGMA foreign_keys = ON");
       const hasMeta = this.db.prepare("SELECT 1 FROM sqlite_master WHERE name='meta' AND type='table'").get();
-      const version = hasMeta ? this.db.prepare("SELECT value FROM meta WHERE key='schema_version'").get()?.value : undefined;
-      const stored = version === undefined ? 1 : Number(version);
-      if (!Number.isSafeInteger(stored) || stored < 1) throw new SchemaVersionError("schema_migration_required", "Invalid stored schema_version");
-      if (stored > SCHEMA_VERSION) throw new SchemaVersionError("schema_newer", `core store at ${this.path} is schema v${stored}; this build speaks v${SCHEMA_VERSION} — refusing to open a newer store (downgrade). Update the daemon or roll the store back.`);
-      if (stored === 29) throw new SchemaVersionError("schema_newer", "core store is schema v29 from reverted build 7374447d; restore from backup before opening with this build.");
+      const stored = hasMeta ? this.readableStoredSchema().stored : 1;
       const existing = this.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' LIMIT 1").get();
       if (existing && path !== ":memory:" && stored < SCHEMA_VERSION) {
         const sourceBuild = hasMeta ? this.db.prepare("SELECT value FROM meta WHERE key='store_build_identity'").get()?.value : undefined;
@@ -1965,31 +1961,13 @@ export class CoreStore {
 
   /**
    * Schema-version discipline (spec 06 §6, mirrored by apiaryd): the store is
-   * stamped with SCHEMA_VERSION; a NEWER stamp is a downgrade and is refused
-   * with a typed error; an OLDER (or pre-stamp v1) store is migrated here by
+   * stamped with SCHEMA_VERSION; a store whose min_reader_schema is above it is
+   * refused with a typed error; an OLDER (or pre-stamp v1) store is migrated here by
    * explicit code — no silent bumps. Runs inside the open() transaction so
    * migration + stamp commit atomically.
    */
   private ensureSchemaVersion(): void {
-    const row = this.db
-      .prepare("SELECT value FROM meta WHERE key = 'schema_version'")
-      .get() as Row | undefined;
-    const stored = row === undefined ? 1 : Number(row.value); // pre-stamp stores are v1
-    if (stored > SCHEMA_VERSION) {
-      throw new SchemaVersionError(
-        "schema_newer",
-        `core store at ${this.path} is schema v${stored}; this build speaks v${SCHEMA_VERSION} — ` +
-          "refusing to open a newer store (downgrade). Update the daemon or roll the store back.",
-      );
-    }
-    // Schema 29 belonged to the reverted action-reminder build. Its stored
-    // origin vocabulary is incompatible; do not silently reinterpret its rows.
-    if (stored === 29) {
-      throw new SchemaVersionError(
-        "schema_newer",
-        "core store is schema v29 from reverted build 7374447d; restore from backup before opening with this build.",
-      );
-    }
+    const { stored, minReader } = this.readableStoredSchema();
     this.db.exec(HUMAN_OUTPUT_SQL);
     const ddl = String((this.db.prepare("SELECT sql FROM sqlite_master WHERE name = 'questions'").get() as Row).sql);
     if (!ddl.includes("'dismissed'")) {
@@ -2343,11 +2321,35 @@ export class CoreStore {
     if (stored < 40) this.redactRpcIdempotencyEnv();
     this.db.exec(ACCOUNT_CREDENTIAL_ATTENTION_TABLE_SQL);
     installRuntimeProcessIdentity(this.db);
-    this.db
-      .prepare(
-        "INSERT INTO meta(key, value) VALUES('schema_version', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-      )
-      .run(String(SCHEMA_VERSION));
+    const upsertMeta = this.db.prepare("INSERT INTO meta(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value");
+    if (stored < SCHEMA_VERSION) upsertMeta.run("schema_version", String(SCHEMA_VERSION));
+    if (minReader === null || minReader < MIN_READER_SCHEMA) upsertMeta.run("min_reader_schema", String(MIN_READER_SCHEMA));
+  }
+
+  private readableStoredSchema(): { stored: number; minReader: number | null } {
+    const read = (key: string): number | null => {
+      const value = (this.db.prepare("SELECT value FROM meta WHERE key = ?").get(key) as Row | undefined)?.value;
+      if (value === undefined) return null;
+      const parsed = Number(value);
+      if (!Number.isSafeInteger(parsed) || parsed < 1) throw new SchemaVersionError("schema_migration_required", `Invalid stored ${key}`);
+      return parsed;
+    };
+    const stored = read("schema_version") ?? 1;
+    const minReader = read("min_reader_schema");
+    const required = minReader ?? stored;
+    if (required > SCHEMA_VERSION) {
+      throw new SchemaVersionError(
+        "schema_newer",
+        `core store at ${this.path} is schema v${stored} and needs a reader at v${required} or later; this build is v${SCHEMA_VERSION} — ` +
+          "refusing to open it. Run a build at or above the store's min_reader_schema.",
+      );
+    }
+    return { stored, minReader };
+  }
+
+  schemaInfo(): { schemaVersion: number; minReaderSchema: number } {
+    const read = (key: string): number => Number((this.stmt("SELECT value FROM meta WHERE key = ?").get(key) as Row).value);
+    return { schemaVersion: read("schema_version"), minReaderSchema: read("min_reader_schema") };
   }
 
   private addMissingColumns(table: "bees" | "mailbox" | "cells", columns: ReadonlyArray<readonly [name: string, ddl: string]>): void {

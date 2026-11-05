@@ -6944,7 +6944,7 @@ export class HiveDaemon {
       pid: process.pid,
       startedAt: this.startedAt,
       instanceId: this.instanceId,
-      ...(this.store ? { nodeId: this.store.nodeId(), gateways: this.store.listGateways(), skills: this.store.skillTree() } : {}),
+      ...(this.store ? { nodeId: this.store.nodeId(), gateways: this.store.listGateways(), skills: this.store.skillTree(), store: this.store.schemaInfo() } : {}),
       dataDir: this.cfg.dataDir,
       socketPath: this.cfg.socketPath,
       storePath: this.cfg.storePath,

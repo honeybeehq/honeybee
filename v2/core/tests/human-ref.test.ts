@@ -149,23 +149,6 @@ test("human-ref: v28 migration reserves history and preserves account admissions
   } finally { store.close(); h.cleanup(); }
 });
 
-test("human-ref: reverted schema v29 refuses without changing stored state", () => {
-  const h = harness(); const store = h.open();
-  try {
-    const bee = store.createBee(input).bee;
-    store.close();
-    const db = new DatabaseSync(h.path);
-    db.exec("UPDATE meta SET value = '29' WHERE key = 'schema_version'");
-    const before = db.prepare("SELECT * FROM audit").all();
-    db.close();
-    assert.throws(() => h.open(), /schema v29.*7374447d.*restore from backup/);
-    const check = new DatabaseSync(h.path, { readOnly: true });
-    assert.equal((check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string }).value, "29");
-    assert.deepEqual(check.prepare("SELECT * FROM audit").all(), before);
-    assert.equal((check.prepare("SELECT id FROM bees").get() as { id: string }).id, bee.id);
-    check.close();
-  } finally { store.close(); h.cleanup(); }
-});
 
 test("human-ref: conflicting imported claims roll back enrollment and every backfill event", () => {
   const h = harness(); const store = h.open();

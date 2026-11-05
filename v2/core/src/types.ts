@@ -1848,7 +1848,7 @@ export class CommandProtocolError extends CoreError {}
 
 /**
  * The store file is stamped with a schema version this code cannot open:
- * `schema_newer` = downgrade (a newer daemon wrote it — refuse, never guess);
+ * `schema_newer` = the store's min_reader_schema is above this build (refuse, never guess);
  * `schema_migration_required` = an older version with no migration path in
  * this code (no silent bumps — migrations are explicit, spec 06 §6).
  */

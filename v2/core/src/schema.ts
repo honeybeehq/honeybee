@@ -6,10 +6,14 @@
 
 /**
  * Stamped into meta('schema_version') on open. Bump when the schema changes
- * shape. Open refuses a NEWER store (downgrade — typed SchemaVersionError,
- * same failure mode as apiaryd's interface store, spec 06 §6); an OLDER (or
- * pre-stamp v1) store is migrated by explicit code in the store constructor —
- * never silently.
+ * shape. An OLDER (or pre-stamp v1) store is migrated by explicit code in the
+ * store constructor — never silently. Open refuses a store whose
+ * meta('min_reader_schema') is above this build's SCHEMA_VERSION (typed
+ * SchemaVersionError); a newer store at or below it opens read-write and keeps
+ * its stamp. MIN_READER_SCHEMA stays put for an expand step (nullable columns,
+ * new tables) and is set to the new SCHEMA_VERSION by a contract step (a
+ * dropped or rewritten column or table, a widened CHECK, a new value in a
+ * closed vocabulary).
  *
  * History:
  *   v1 — WP1..WP6a shape (unstamped; stores without the meta key are v1).
@@ -169,8 +173,11 @@
  * `<storeRoot>/gateways/<name>.json` from these rows) and `skill_tree` (the one content-hashed skill
  * tree installed into every Honeybee-owned home); additive CREATE TABLE IF NOT EXISTS ×2.
  * v58 — H5 Champion bee kind: `bees.kind` (`agent` | `champion`; a Champion incarnation is born
- * `champion` by champion.start); additive; migration = ALTER TABLE ADD COLUMN. */
-export const SCHEMA_VERSION = 58;
+ * `champion` by champion.start); additive; migration = ALTER TABLE ADD COLUMN.
+ * v59 — D1 reader gate: meta('min_reader_schema'); no table changes; contract, since no earlier
+ * build reads the key. */
+export const SCHEMA_VERSION = 59;
+export const MIN_READER_SCHEMA = 59;
 
 export const QUESTIONS_TABLE_SQL = `
 CREATE TABLE IF NOT EXISTS questions (
