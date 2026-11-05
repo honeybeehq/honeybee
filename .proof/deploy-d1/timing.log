@@ -1,0 +1,5 @@
+store: 200 bees, 50000 mail rows, 74.6 MB; 40 open+close per series, two alternating rounds; schema 58 is today's main, 59 is this change
+before (schema 58 build on its own store): median 3.05 ms, p90 3.23 ms, min 2.93 ms
+after  (schema 59 build on its own store): median 3.06 ms, p90 3.17 ms, min 2.92 ms
+one-time: schema 59 build opens the schema 58 store (backup receipt + migration + both stamps): 511.01 ms
+then every later open of that migrated store: median 3.11 ms, p90 3.36 ms, min 3.01 ms

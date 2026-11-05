@@ -1,0 +1,616 @@
+diff --git a/v2/cli/src/deploy/runtime.ts b/v2/cli/src/deploy/runtime.ts
+index 545beb4b..a06908db 100644
+--- a/v2/cli/src/deploy/runtime.ts
++++ b/v2/cli/src/deploy/runtime.ts
+@@ -1,7 +1,9 @@
+ import { createHash, randomUUID } from "node:crypto";
+ import { DatabaseSync } from "node:sqlite";
+ import { readBuildIdentity } from "../../../core/src/release/buildIdentity.ts";
+-import { recordedSocketPath, readLiveUpdateOwner } from "./updateOwnerClient.mjs";
++import { recordedSocketPath } from "./updateOwnerClient.mjs";
++import { DaemonDownError, RpcClient } from "../client.ts";
++import type { DeployInfoResult } from "../../../daemon/src/protocol.ts";
+ import { resolveNodePin } from "../../../core/src/nodeRuntime.ts";
+ /**
+  * Versioned runtime deploys (reset WP0 — docs/design/specs/reset-00-deploy.md).
+@@ -275,7 +277,7 @@ export async function currentDeployTarget(root: string): Promise<string | null>
+   } catch { return null; }
+ }
+ 
+-export type DeployRollbackCode = "ROLLBACK_CURRENT_IDENTITY_MISSING" | "ROLLBACK_PREVIOUS_INSTALL_MISSING" | "ROLLBACK_SCHEMA_UNKNOWN" | "ROLLBACK_STORE_RESTORE_REQUIRED" | "ROLLBACK_PREVIOUS_INSTALL_CONFLICT";
++export type DeployRollbackCode = "ROLLBACK_CURRENT_IDENTITY_MISSING" | "ROLLBACK_PREVIOUS_INSTALL_MISSING" | "ROLLBACK_SCHEMA_UNKNOWN" | "ROLLBACK_STORE_NEWER_THAN_TARGET" | "ROLLBACK_PREVIOUS_INSTALL_CONFLICT";
+ 
+ export class DeployRollbackError extends Error {
+   readonly code: DeployRollbackCode;
+@@ -296,23 +298,40 @@ export async function assertRollbackStoreCompatible(root: string, installedDir:
+   if (versions.length !== 1 || !Number.isSafeInteger(versions[0])) {
+     throw new DeployRollbackError("ROLLBACK_SCHEMA_UNKNOWN", `missing unambiguous store schema capability in ${installedDir}/dist/v2/cli.js; verify the matching runtime and store backup before rollback`);
+   }
+-  let stored: number;
++  let minReader: number;
+   try {
+-    const socket = recordedSocketPath(dataDir);
+-    const response = existsSync(socket) ? await readLiveUpdateOwner(socket, dataDir) : { kind: "offline" as const };
+-    if (response.kind === "live") stored = Number((response.owner as { schemaVersion?: unknown }).schemaVersion);
+-    else {
+-      const db = new DatabaseSync(store, { readOnly: true });
+-      try { stored = Number(db.prepare("SELECT value FROM meta WHERE key='schema_version'").get()?.value); }
+-      finally { db.close(); }
+-    }
++    minReader = await storeMinReaderSchema(dataDir, store);
+   } catch (error) {
+     throw new DeployRollbackError("ROLLBACK_SCHEMA_UNKNOWN", `cannot read store schema at ${store}: ${error instanceof Error ? error.message : String(error)}`);
+   }
+-  if (!Number.isSafeInteger(stored) || stored < 1) throw new DeployRollbackError("ROLLBACK_SCHEMA_UNKNOWN", `missing valid schema_version in ${store}`);
+-  if (stored > versions[0]! || stored === 29) {
+-    throw new DeployRollbackError("ROLLBACK_STORE_RESTORE_REQUIRED", `store schema ${stored} cannot be opened by rollback build schema ${versions[0]}; restore the matching pre-deploy backup with hive v2 store restore --from <absolute receipt.json> --data-dir ${dataDir} before retrying rollback; if no compatible backup exists, select a compatible runtime instead (restore discards writes after that backup)`);
++  if (!Number.isSafeInteger(minReader) || minReader < 1) throw new DeployRollbackError("ROLLBACK_SCHEMA_UNKNOWN", `missing valid min_reader_schema or schema_version in ${store}`);
++  if (minReader > versions[0]!) {
++    throw new DeployRollbackError("ROLLBACK_STORE_NEWER_THAN_TARGET", `store at ${store} needs a reader at schema ${minReader} or later; rollback build ${installedDir} is schema ${versions[0]}. A contract migration has run, so this build is not a rollback target; roll forward to a build at schema ${minReader} or later`);
++  }
++}
++
++async function storeMinReaderSchema(dataDir: string, store: string): Promise<number> {
++  const socket = recordedSocketPath(dataDir);
++  let client: RpcClient | null = null;
++  if (existsSync(socket)) {
++    try {
++      client = await RpcClient.connect(socket, 3000, undefined, { legacyProtocolVerbs: ["deployInfo"], caller: { dataDir, expectedInstanceId: null } });
++    } catch (error) {
++      if (!(error instanceof DaemonDownError && (error.reason === "ENOENT" || error.reason === "ECONNREFUSED"))) throw error;
++    }
++  }
++  if (client) {
++    try {
++      const info = await client.request<DeployInfoResult>("deployInfo");
++      if (resolve(info.storePath) !== resolve(store)) throw new Error(`daemon at ${socket} serves ${info.storePath}`);
++      return Number(info.store?.minReaderSchema);
++    } finally { client.close(); }
+   }
++  const db = new DatabaseSync(store, { readOnly: true });
++  try {
++    const read = db.prepare("SELECT value FROM meta WHERE key = ?");
++    return Number(read.get("min_reader_schema")?.value ?? read.get("schema_version")?.value);
++  } finally { db.close(); }
+ }
+ 
+ /**
+diff --git a/v2/cli/tests/deploy-restart.test.ts b/v2/cli/tests/deploy-restart.test.ts
+index b189e70d..09dfb4cb 100644
+--- a/v2/cli/tests/deploy-restart.test.ts
++++ b/v2/cli/tests/deploy-restart.test.ts
+@@ -138,7 +138,7 @@ for (const scenario of ["after-start", "after-stop", "compatible"] as const) {
+     await mkdir(join(root, "current", "dist", "v2"));
+     await writeFile(join(root, "current", "dist", "v2", "cli.js"), "var SCHEMA_VERSION = 51;\n");
+     const assertRollbackSafe = async () => {
+-      if ((await readFile(marker, "utf8")) === "51") throw new DeployRollbackError("ROLLBACK_STORE_RESTORE_REQUIRED", "store51 cannot be opened by previous44");
++      if ((await readFile(marker, "utf8")) === "51") throw new DeployRollbackError("ROLLBACK_STORE_NEWER_THAN_TARGET", "store51 cannot be opened by previous44");
+     };
+     const context = { root, installedDir: join(root, "current"), sha: "a".repeat(40), log() {}, assertRollbackSafe,
+       restorePrevious: async () => { await assertRollbackSafe(); return true; } };
+diff --git a/v2/cli/tests/deploy-rollback.test.ts b/v2/cli/tests/deploy-rollback.test.ts
+index fd2298e4..4e217947 100644
+--- a/v2/cli/tests/deploy-rollback.test.ts
++++ b/v2/cli/tests/deploy-rollback.test.ts
+@@ -74,7 +74,7 @@ for (const schema of [44, 48]) test(`rollback checks store schema ${schema} befo
+     } });
+     if (schema === 44) { await operation; assert.equal(restarted, true); assert.equal(backedUp, true); }
+     else {
+-      await assert.rejects(operation, error => error instanceof DeployRollbackError && error.code === "ROLLBACK_STORE_RESTORE_REQUIRED" && /store restore --from/.test(error.message));
++      await assert.rejects(operation, error => error instanceof DeployRollbackError && error.code === "ROLLBACK_STORE_NEWER_THAN_TARGET");
+       assert.equal(restarted, false);
+       assert.equal(backedUp, false);
+       assert.equal(await readlink(join(f.root, "current")), f.external);
+@@ -113,17 +113,6 @@ test("schema capability is read across the split cli bundle chunks", async () =>
+   } finally { await rm(f.dir, { recursive: true, force: true }); }
+ });
+ 
+-test("schema 29 requires an explicit store restore even when the target schema is newer", async () => {
+-  const f = await fixture();
+-  try {
+-    await mkdir(join(f.dir, "v2"));
+-    const db = new DatabaseSync(join(f.dir, "v2", "core.sqlite3"));
+-    db.exec("CREATE TABLE meta(key TEXT PRIMARY KEY, value TEXT); INSERT INTO meta VALUES('schema_version','29')");
+-    db.close();
+-    await assert.rejects(assertRollbackStoreCompatible(f.root, join(f.root, previous)), error => error instanceof DeployRollbackError && error.code === "ROLLBACK_STORE_RESTORE_REQUIRED");
+-  } finally { await rm(f.dir, { recursive: true, force: true }); }
+-});
+-
+ test("rollback from an external current retains it for a second rollback back", async () => {
+   const f = await fixture();
+   try {
+diff --git a/v2/cli/tests/deploy-runtime.test.ts b/v2/cli/tests/deploy-runtime.test.ts
+index 3d3106c1..b6d26440 100644
+--- a/v2/cli/tests/deploy-runtime.test.ts
++++ b/v2/cli/tests/deploy-runtime.test.ts
+@@ -776,7 +776,7 @@ test("same-sha failed activation checks displaced schema before restoring bytes
+     };
+     await deployVersion({ root, repoRoot, ref: sha, hooks: selected });
+     const history = await readDeployHistory(root);
+-    await assert.rejects(deployVersion({ root, repoRoot, ref: sha, hooks: selected }), /ROLLBACK_STORE_RESTORE_REQUIRED/);
++    await assert.rejects(deployVersion({ root, repoRoot, ref: sha, hooks: selected }), /ROLLBACK_STORE_NEWER_THAN_TARGET/);
+     assert.equal(await readFile(join(root, sha, "dist", "v2", "cli.js"), "utf8"), "var SCHEMA_VERSION = 48;\n");
+     const displaced = (await readdir(root)).find(name => name.startsWith(`.displaced.${sha}.`));
+     assert.ok(displaced);
+diff --git a/v2/core/src/schema.ts b/v2/core/src/schema.ts
+index a589a425..37a3044c 100644
+--- a/v2/core/src/schema.ts
++++ b/v2/core/src/schema.ts
+@@ -6,10 +6,14 @@
+ 
+ /**
+  * Stamped into meta('schema_version') on open. Bump when the schema changes
+- * shape. Open refuses a NEWER store (downgrade — typed SchemaVersionError,
+- * same failure mode as apiaryd's interface store, spec 06 §6); an OLDER (or
+- * pre-stamp v1) store is migrated by explicit code in the store constructor —
+- * never silently.
++ * shape. An OLDER (or pre-stamp v1) store is migrated by explicit code in the
++ * store constructor — never silently. Open refuses a store whose
++ * meta('min_reader_schema') is above this build's SCHEMA_VERSION (typed
++ * SchemaVersionError); a newer store at or below it opens read-write and keeps
++ * its stamp. MIN_READER_SCHEMA stays put for an expand step (nullable columns,
++ * new tables) and is set to the new SCHEMA_VERSION by a contract step (a
++ * dropped or rewritten column or table, a widened CHECK, a new value in a
++ * closed vocabulary).
+  *
+  * History:
+  *   v1 — WP1..WP6a shape (unstamped; stores without the meta key are v1).
+@@ -169,8 +173,11 @@
+  * `<storeRoot>/gateways/<name>.json` from these rows) and `skill_tree` (the one content-hashed skill
+  * tree installed into every Honeybee-owned home); additive CREATE TABLE IF NOT EXISTS ×2.
+  * v58 — H5 Champion bee kind: `bees.kind` (`agent` | `champion`; a Champion incarnation is born
+- * `champion` by champion.start); additive; migration = ALTER TABLE ADD COLUMN. */
+-export const SCHEMA_VERSION = 58;
++ * `champion` by champion.start); additive; migration = ALTER TABLE ADD COLUMN.
++ * v59 — D1 reader gate: meta('min_reader_schema'); no table changes; contract, since no earlier
++ * build reads the key. */
++export const SCHEMA_VERSION = 59;
++export const MIN_READER_SCHEMA = 59;
+ 
+ export const QUESTIONS_TABLE_SQL = `
+ CREATE TABLE IF NOT EXISTS questions (
+diff --git a/v2/core/src/store.ts b/v2/core/src/store.ts
+index 0773f408..9cabc287 100644
+--- a/v2/core/src/store.ts
++++ b/v2/core/src/store.ts
+@@ -222,7 +222,7 @@ import {
+   TASK_TRANSITIONS,
+ } from "./tasks.ts";
+ import { deliveredSenderKind } from "./automation.ts";
+-import { ACCOUNT_CREDENTIAL_ATTENTION_TABLE_SQL, QUESTIONS_TABLE_SQL, ACTIONS_TABLE_SQL, AUTH_INTERRUPTIONS_TABLE_SQL, ACCOUNT_ADMISSIONS_TABLE_SQL, ACCOUNT_CREDENTIAL_AUTHORITIES_TABLE_SQL, ACCOUNT_CREDENTIAL_AUTHORITIES_V27_COLUMNS, ACCOUNT_LIMITS_TABLE_SQL, ACCOUNTS_NATIVE_INDEX_SQL, BEES_ADDITIVE_COLUMNS, BEES_ACTIVE_MOVE_INDEX_SQL, BEES_ACTIVE_HANDOFF_INDEX_SQL, BEE_HANDOFFS_TABLE_SQL, TRANSCRIPT_SEGMENTS_TABLE_SQL, TRANSCRIPT_SEGMENT_OBJECTS_SQL, CHAMPIONS_SQL, GATEWAYS_SQL, BEE_RESUME_BUNDLES_SQL, MAILBOX_PENDING_METADATA_INDEX_SQL, BEE_MOVES_TABLE_SQL, CELLS_TABLE_SQL, CELLS_V22_COLUMNS, CELLS_ADDITIVE_COLUMNS, CELL_OPS_TABLE_SQL, FLAGS_ADDITIVE_COLUMNS, FLAGS_EXPIRY_INDEX_SQL, HANDLE_INDEX_SQL, IDEMPOTENCY_INDEX_SQL, MAILBOX_ADDITIVE_COLUMNS, MAIL_HISTORY_INDEX_SQL, MAIL_HISTORY_PROJECTION_SQL, RUNTIMES_ADDITIVE_COLUMNS, SCHEMA_SQL, SCHEMA_VERSION } from "./schema.ts";
++import { ACCOUNT_CREDENTIAL_ATTENTION_TABLE_SQL, QUESTIONS_TABLE_SQL, ACTIONS_TABLE_SQL, AUTH_INTERRUPTIONS_TABLE_SQL, ACCOUNT_ADMISSIONS_TABLE_SQL, ACCOUNT_CREDENTIAL_AUTHORITIES_TABLE_SQL, ACCOUNT_CREDENTIAL_AUTHORITIES_V27_COLUMNS, ACCOUNT_LIMITS_TABLE_SQL, ACCOUNTS_NATIVE_INDEX_SQL, BEES_ADDITIVE_COLUMNS, BEES_ACTIVE_MOVE_INDEX_SQL, BEES_ACTIVE_HANDOFF_INDEX_SQL, BEE_HANDOFFS_TABLE_SQL, TRANSCRIPT_SEGMENTS_TABLE_SQL, TRANSCRIPT_SEGMENT_OBJECTS_SQL, CHAMPIONS_SQL, GATEWAYS_SQL, BEE_RESUME_BUNDLES_SQL, MAILBOX_PENDING_METADATA_INDEX_SQL, BEE_MOVES_TABLE_SQL, CELLS_TABLE_SQL, CELLS_V22_COLUMNS, CELLS_ADDITIVE_COLUMNS, CELL_OPS_TABLE_SQL, FLAGS_ADDITIVE_COLUMNS, FLAGS_EXPIRY_INDEX_SQL, HANDLE_INDEX_SQL, IDEMPOTENCY_INDEX_SQL, MAILBOX_ADDITIVE_COLUMNS, MAIL_HISTORY_INDEX_SQL, MAIL_HISTORY_PROJECTION_SQL, RUNTIMES_ADDITIVE_COLUMNS, SCHEMA_SQL, SCHEMA_VERSION, MIN_READER_SCHEMA } from "./schema.ts";
+ import { beeMoveReviveKey, beeMoveStopKey, beeMoveTransitionLegal, toBeeMoveView } from "./cellMove.ts";
+ import {
+   ACTION_DISPATCH_SENDER,
+@@ -1806,11 +1806,7 @@ export class CoreStore {
+       }
+       this.db.exec("PRAGMA foreign_keys = ON");
+       const hasMeta = this.db.prepare("SELECT 1 FROM sqlite_master WHERE name='meta' AND type='table'").get();
+-      const version = hasMeta ? this.db.prepare("SELECT value FROM meta WHERE key='schema_version'").get()?.value : undefined;
+-      const stored = version === undefined ? 1 : Number(version);
+-      if (!Number.isSafeInteger(stored) || stored < 1) throw new SchemaVersionError("schema_migration_required", "Invalid stored schema_version");
+-      if (stored > SCHEMA_VERSION) throw new SchemaVersionError("schema_newer", `core store at ${this.path} is schema v${stored}; this build speaks v${SCHEMA_VERSION} — refusing to open a newer store (downgrade). Update the daemon or roll the store back.`);
+-      if (stored === 29) throw new SchemaVersionError("schema_newer", "core store is schema v29 from reverted build 7374447d; restore from backup before opening with this build.");
++      const stored = hasMeta ? this.readableStoredSchema().stored : 1;
+       const existing = this.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' LIMIT 1").get();
+       if (existing && path !== ":memory:" && stored < SCHEMA_VERSION) {
+         const sourceBuild = hasMeta ? this.db.prepare("SELECT value FROM meta WHERE key='store_build_identity'").get()?.value : undefined;
+@@ -1965,31 +1961,13 @@ export class CoreStore {
+ 
+   /**
+    * Schema-version discipline (spec 06 §6, mirrored by apiaryd): the store is
+-   * stamped with SCHEMA_VERSION; a NEWER stamp is a downgrade and is refused
+-   * with a typed error; an OLDER (or pre-stamp v1) store is migrated here by
++   * stamped with SCHEMA_VERSION; a store whose min_reader_schema is above it is
++   * refused with a typed error; an OLDER (or pre-stamp v1) store is migrated here by
+    * explicit code — no silent bumps. Runs inside the open() transaction so
+    * migration + stamp commit atomically.
+    */
+   private ensureSchemaVersion(): void {
+-    const row = this.db
+-      .prepare("SELECT value FROM meta WHERE key = 'schema_version'")
+-      .get() as Row | undefined;
+-    const stored = row === undefined ? 1 : Number(row.value); // pre-stamp stores are v1
+-    if (stored > SCHEMA_VERSION) {
+-      throw new SchemaVersionError(
+-        "schema_newer",
+-        `core store at ${this.path} is schema v${stored}; this build speaks v${SCHEMA_VERSION} — ` +
+-          "refusing to open a newer store (downgrade). Update the daemon or roll the store back.",
+-      );
+-    }
+-    // Schema 29 belonged to the reverted action-reminder build. Its stored
+-    // origin vocabulary is incompatible; do not silently reinterpret its rows.
+-    if (stored === 29) {
+-      throw new SchemaVersionError(
+-        "schema_newer",
+-        "core store is schema v29 from reverted build 7374447d; restore from backup before opening with this build.",
+-      );
+-    }
++    const { stored, minReader } = this.readableStoredSchema();
+     this.db.exec(HUMAN_OUTPUT_SQL);
+     const ddl = String((this.db.prepare("SELECT sql FROM sqlite_master WHERE name = 'questions'").get() as Row).sql);
+     if (!ddl.includes("'dismissed'")) {
+@@ -2343,11 +2321,35 @@ export class CoreStore {
+     if (stored < 40) this.redactRpcIdempotencyEnv();
+     this.db.exec(ACCOUNT_CREDENTIAL_ATTENTION_TABLE_SQL);
+     installRuntimeProcessIdentity(this.db);
+-    this.db
+-      .prepare(
+-        "INSERT INTO meta(key, value) VALUES('schema_version', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+-      )
+-      .run(String(SCHEMA_VERSION));
++    const upsertMeta = this.db.prepare("INSERT INTO meta(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value");
++    if (stored < SCHEMA_VERSION) upsertMeta.run("schema_version", String(SCHEMA_VERSION));
++    if (minReader === null || minReader < MIN_READER_SCHEMA) upsertMeta.run("min_reader_schema", String(MIN_READER_SCHEMA));
++  }
++
++  private readableStoredSchema(): { stored: number; minReader: number | null } {
++    const read = (key: string): number | null => {
++      const value = (this.db.prepare("SELECT value FROM meta WHERE key = ?").get(key) as Row | undefined)?.value;
++      if (value === undefined) return null;
++      const parsed = Number(value);
++      if (!Number.isSafeInteger(parsed) || parsed < 1) throw new SchemaVersionError("schema_migration_required", `Invalid stored ${key}`);
++      return parsed;
++    };
++    const stored = read("schema_version") ?? 1;
++    const minReader = read("min_reader_schema");
++    const required = minReader ?? stored;
++    if (required > SCHEMA_VERSION) {
++      throw new SchemaVersionError(
++        "schema_newer",
++        `core store at ${this.path} is schema v${stored} and needs a reader at v${required} or later; this build is v${SCHEMA_VERSION} — ` +
++          "refusing to open it. Run a build at or above the store's min_reader_schema.",
++      );
++    }
++    return { stored, minReader };
++  }
++
++  schemaInfo(): { schemaVersion: number; minReaderSchema: number } {
++    const read = (key: string): number => Number((this.stmt("SELECT value FROM meta WHERE key = ?").get(key) as Row).value);
++    return { schemaVersion: read("schema_version"), minReaderSchema: read("min_reader_schema") };
+   }
+ 
+   private addMissingColumns(table: "bees" | "mailbox" | "cells", columns: ReadonlyArray<readonly [name: string, ddl: string]>): void {
+diff --git a/v2/core/src/types.ts b/v2/core/src/types.ts
+index 72bfbe32..6e9d4beb 100644
+--- a/v2/core/src/types.ts
++++ b/v2/core/src/types.ts
+@@ -1848,7 +1848,7 @@ export class CommandProtocolError extends CoreError {}
+ 
+ /**
+  * The store file is stamped with a schema version this code cannot open:
+- * `schema_newer` = downgrade (a newer daemon wrote it — refuse, never guess);
++ * `schema_newer` = the store's min_reader_schema is above this build (refuse, never guess);
+  * `schema_migration_required` = an older version with no migration path in
+  * this code (no silent bumps — migrations are explicit, spec 06 §6).
+  */
+diff --git a/v2/core/tests/accounts.test.ts b/v2/core/tests/accounts.test.ts
+index 4dda3b07..1c51d6f5 100644
+--- a/v2/core/tests/accounts.test.ts
++++ b/v2/core/tests/accounts.test.ts
+@@ -540,7 +540,7 @@ test("v7.migration: a v6 store opens as v7 — bees.account added, accounts/acco
+     try {
+       const version = check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string };
+       assert.equal(Number(version.value), SCHEMA_VERSION);
+-      assert.equal(SCHEMA_VERSION, 58);
++      assert.equal(SCHEMA_VERSION, 59);
+       const cols = (check.prepare("SELECT name FROM pragma_table_info('bees')").all() as Array<{ name: string }>).map((c) => c.name);
+       assert.ok(cols.includes("account"));
+       const tables = (check.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as Array<{ name: string }>).map((t) => t.name);
+diff --git a/v2/core/tests/actions.test.ts b/v2/core/tests/actions.test.ts
+index 79020e14..60c5c797 100644
+--- a/v2/core/tests/actions.test.ts
++++ b/v2/core/tests/actions.test.ts
+@@ -406,7 +406,7 @@ test("actions.8: audit replay reproduces the action tables; the store reopens at
+   const h = harness();
+   try {
+     let store = h.open();
+-    assert.equal(SCHEMA_VERSION, 58);
++    assert.equal(SCHEMA_VERSION, 59);
+     const bee = liveBee(store);
+     const { actions } = shipSequence(store, bee.id);
+     const { messageId } = store.dispatchAgentAction(actions[0]!.id);
+diff --git a/v2/core/tests/apiary-swap.test.ts b/v2/core/tests/apiary-swap.test.ts
+index fd8d152b..eacd7024 100644
+--- a/v2/core/tests/apiary-swap.test.ts
++++ b/v2/core/tests/apiary-swap.test.ts
+@@ -100,12 +100,3 @@ async function seed(root: string) {
+   const store = openCoreStore(join(root, "v2", "core.sqlite3"), { ephemeral: true });
+   try { return store.acquireApiarySwap(acquire(root)); } finally { store.close(); }
+ }
+-test("apiary schema: current version remains unchanged and newer storage refuses", async () => {
+-  await world(async root => {
+-    await seed(root);
+-    const db = new DatabaseSync(join(root, "v2", "core.sqlite3"));
+-    assert.equal(db.prepare("SELECT value FROM meta WHERE key='schema_version'").get()?.value, "58");
+-    db.exec("UPDATE meta SET value='999' WHERE key='schema_version'"); db.close();
+-    assert.throws(() => openCoreStore(join(root, "v2", "core.sqlite3"), { ephemeral: true }), /newer store/);
+-  });
+-});
+diff --git a/v2/core/tests/auth-interruption.test.ts b/v2/core/tests/auth-interruption.test.ts
+index 06131f53..5fc0ada3 100644
+--- a/v2/core/tests/auth-interruption.test.ts
++++ b/v2/core/tests/auth-interruption.test.ts
+@@ -189,7 +189,7 @@ test("auth interruption: a v32 store gains the table and the auth.resume mail or
+     raw.close();
+ 
+     store = h.open();
+-    assert.equal(SCHEMA_VERSION, 58);
++    assert.equal(SCHEMA_VERSION, 59);
+     const row = interrupt(store, bee.id);
+     store.restoreAuthInterruption(row.id, { revision: "rev-2", by: "credentials_restored" });
+     store.resumeAuthInterruption(row.id, AUTH_CONTINUE_BODY);
+diff --git a/v2/core/tests/bee-args.test.ts b/v2/core/tests/bee-args.test.ts
+index 7cbb9db7..d9d94f6f 100644
+--- a/v2/core/tests/bee-args.test.ts
++++ b/v2/core/tests/bee-args.test.ts
+@@ -19,7 +19,6 @@ import assert from "node:assert/strict";
+ import { DatabaseSync } from "node:sqlite";
+ import {
+   SCHEMA_VERSION,
+-  SchemaVersionError,
+   replayAudit,
+ } from "../src/index.ts";
+ import { harness, makeBee } from "./helpers.ts";
+@@ -262,7 +261,7 @@ test("args.2: a v4-shaped store (spawn_failures, no args column) migrates additi
+     try {
+       const version = check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string };
+       assert.equal(Number(version.value), SCHEMA_VERSION);
+-      assert.equal(SCHEMA_VERSION, 58);
++      assert.equal(SCHEMA_VERSION, 59);
+       const cols = (check.prepare("SELECT name FROM pragma_table_info('bees')").all() as Array<{ name: string }>).map((c) => c.name);
+       assert.ok(cols.includes("args"));
+       assert.ok(cols.includes("spawn_failures"));
+@@ -271,12 +270,7 @@ test("args.2: a v4-shaped store (spawn_failures, no args column) migrates additi
+     } finally {
+       check.close();
+     }
+-    // re-open (now v5) is a no-op migration; then a NEWER stamp is refused
+     h.open().close();
+-    const bump = new DatabaseSync(h.path);
+-    bump.prepare("UPDATE meta SET value = ? WHERE key = 'schema_version'").run(String(SCHEMA_VERSION + 1));
+-    bump.close();
+-    assert.throws(() => h.open(), (err: unknown) => err instanceof SchemaVersionError && err.kind === "schema_newer");
+   } finally {
+     h.cleanup();
+   }
+diff --git a/v2/core/tests/cell-move.test.ts b/v2/core/tests/cell-move.test.ts
+index e2224d0c..24d1c505 100644
+--- a/v2/core/tests/cell-move.test.ts
++++ b/v2/core/tests/cell-move.test.ts
+@@ -336,7 +336,7 @@ test(`cell-move.schema v${previousVersion} store migrates to v22`, () => {
+     try {
+       const version = check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string };
+       assert.equal(Number(version.value), SCHEMA_VERSION);
+-      assert.equal(SCHEMA_VERSION, 58);
++      assert.equal(SCHEMA_VERSION, 59);
+       const cols = (check.prepare("SELECT name FROM pragma_table_info('bees')").all() as Array<{ name: string }>).map((c) => c.name);
+       assert.ok(cols.includes("placement_version"));
+       assert.ok(cols.includes("active_move_id"));
+diff --git a/v2/core/tests/cell-retention.test.ts b/v2/core/tests/cell-retention.test.ts
+index e6a14633..3d15e730 100644
+--- a/v2/core/tests/cell-retention.test.ts
++++ b/v2/core/tests/cell-retention.test.ts
+@@ -139,7 +139,7 @@ test("cell-retention.schema: a v30 store's cells table is rebuilt with the evict
+     const check = new DatabaseSync(h.path, { readOnly: true });
+     try {
+       assert.equal(Number((check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string }).value), SCHEMA_VERSION);
+-      assert.equal(SCHEMA_VERSION, 58);
++      assert.equal(SCHEMA_VERSION, 59);
+       assert.equal(check.prepare("SELECT name FROM sqlite_master WHERE name = 'cells_v30'").get(), undefined, "scratch table dropped");
+       const cols = (check.prepare("SELECT name FROM pragma_table_info('cells')").all() as Array<{ name: string }>).map((c) => c.name);
+       assert.ok(cols.includes("evicted_at") && cols.includes("evicted_head"));
+diff --git a/v2/core/tests/effect-resolve.test.ts b/v2/core/tests/effect-resolve.test.ts
+index 06e87522..ce25a054 100644
+--- a/v2/core/tests/effect-resolve.test.ts
++++ b/v2/core/tests/effect-resolve.test.ts
+@@ -90,7 +90,7 @@ test("effect additive tables preserve schema45 and retained legacy positives boo
+     assert.throws(() => store.resolveEffect("legacy-absent", "spawn"), error("rpc_effect_history_unknown"));
+   } finally { store.close(); }
+   const inspect = new DatabaseSync(h.path, { readOnly: true });
+-  try { assert.equal(inspect.prepare("SELECT value FROM meta WHERE key='schema_version'").get()?.value, "58"); }
++  try { assert.equal(inspect.prepare("SELECT value FROM meta WHERE key='schema_version'").get()?.value, "59"); }
+   finally { inspect.close(); h.cleanup(); }
+ });
+ 
+diff --git a/v2/core/tests/external-parent.test.ts b/v2/core/tests/external-parent.test.ts
+index 165d721e..032f006b 100644
+--- a/v2/core/tests/external-parent.test.ts
++++ b/v2/core/tests/external-parent.test.ts
+@@ -193,7 +193,7 @@ test("a v20 store migrates existing parent edges to local lineage at the current
+         value: string;
+       };
+       assert.equal(Number(version.value), SCHEMA_VERSION);
+-      assert.equal(SCHEMA_VERSION, 58);
++      assert.equal(SCHEMA_VERSION, 59);
+       const column = migrated.prepare(
+         "SELECT name FROM pragma_table_info('bees') WHERE name = 'parent_external'",
+       ).get() as { name: string } | undefined;
+diff --git a/v2/core/tests/handles.test.ts b/v2/core/tests/handles.test.ts
+index d08f6893..c03fc687 100644
+--- a/v2/core/tests/handles.test.ts
++++ b/v2/core/tests/handles.test.ts
+@@ -96,7 +96,7 @@ test("handles.4: v9-shaped store backfills on open — an old pretty id becomes
+     try {
+       const version = check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string };
+       assert.equal(Number(version.value), SCHEMA_VERSION);
+-      assert.equal(SCHEMA_VERSION, 58);
++      assert.equal(SCHEMA_VERSION, 59);
+       const idx = check.prepare("SELECT name FROM sqlite_master WHERE type='index' AND name='bees_handle'").get();
+       assert.ok(idx, "unique handle index exists");
+     } finally {
+diff --git a/v2/core/tests/human-ref.test.ts b/v2/core/tests/human-ref.test.ts
+index 8803278e..dd271bf9 100644
+--- a/v2/core/tests/human-ref.test.ts
++++ b/v2/core/tests/human-ref.test.ts
+@@ -149,23 +149,6 @@ test("human-ref: v28 migration reserves history and preserves account admissions
+   } finally { store.close(); h.cleanup(); }
+ });
+ 
+-test("human-ref: reverted schema v29 refuses without changing stored state", () => {
+-  const h = harness(); const store = h.open();
+-  try {
+-    const bee = store.createBee(input).bee;
+-    store.close();
+-    const db = new DatabaseSync(h.path);
+-    db.exec("UPDATE meta SET value = '29' WHERE key = 'schema_version'");
+-    const before = db.prepare("SELECT * FROM audit").all();
+-    db.close();
+-    assert.throws(() => h.open(), /schema v29.*7374447d.*restore from backup/);
+-    const check = new DatabaseSync(h.path, { readOnly: true });
+-    assert.equal((check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string }).value, "29");
+-    assert.deepEqual(check.prepare("SELECT * FROM audit").all(), before);
+-    assert.equal((check.prepare("SELECT id FROM bees").get() as { id: string }).id, bee.id);
+-    check.close();
+-  } finally { store.close(); h.cleanup(); }
+-});
+ 
+ test("human-ref: conflicting imported claims roll back enrollment and every backfill event", () => {
+   const h = harness(); const store = h.open();
+diff --git a/v2/core/tests/idempotency.test.ts b/v2/core/tests/idempotency.test.ts
+index a7cbc9ad..dd24de1c 100644
+--- a/v2/core/tests/idempotency.test.ts
++++ b/v2/core/tests/idempotency.test.ts
+@@ -4,8 +4,7 @@
+  *    ORIGINAL command at its current status (queued/running/settled) with
+  *    `deduped: true`, never a second command;
+  *  - keys survive close/reopen (boot replay);
+- *  - schema v1 → v2 migration is explicit (additive column) and a NEWER store
+- *    is refused with a typed SchemaVersionError;
++ *  - schema v1 → v2 migration is explicit (additive column);
+  *  - the rpc_idempotency table records/answers RPC results with bounded
+  *    retention (newest maxRpcIdempotencyRows kept).
+  * Temp dirs only — never ~/.hive, never a live store.
+@@ -17,7 +16,6 @@ import {
+   CoreError,
+   openCoreStore,
+   SCHEMA_VERSION,
+-  SchemaVersionError,
+   replayAudit,
+ } from "../src/index.ts";
+ import { harness, makeBee } from "./helpers.ts";
+@@ -184,19 +182,6 @@ test("idem.7: v1 store (no stamp, no column) migrates additively to v2 on open",
+   h.cleanup();
+ });
+ 
+-test("idem.8: a NEWER store is refused with a typed schema_newer error (no silent downgrade)", () => {
+-  const h = harness();
+-  const store = h.open();
+-  store.close();
+-  const db = new DatabaseSync(h.path);
+-  db.prepare("UPDATE meta SET value = ? WHERE key = 'schema_version'").run(String(SCHEMA_VERSION + 1));
+-  db.close();
+-  assert.throws(
+-    () => h.open(),
+-    (err: unknown) => err instanceof SchemaVersionError && err.kind === "schema_newer",
+-  );
+-  h.cleanup();
+-});
+ 
+ test("idem.9: rpc_idempotency records round-trip and retention evicts the oldest beyond the bound", () => {
+   const h = harness();
+diff --git a/v2/core/tests/phone-origin.test.ts b/v2/core/tests/phone-origin.test.ts
+index e178d67d..c9e6cbe9 100644
+--- a/v2/core/tests/phone-origin.test.ts
++++ b/v2/core/tests/phone-origin.test.ts
+@@ -38,7 +38,7 @@ test("phone data, shadow, history, audit replay and key bindings survive reopen
+       store.recordRpcResult("k", "send", sent.wakeCommand?.id ?? null, { commandId: sent.wakeCommand?.id ?? null, unarchived: sent.unarchived, messageId: sent.message.id });
+       return sent.message;
+     });
+-    assert.equal(SCHEMA_VERSION, 58);
++    assert.equal(SCHEMA_VERSION, 59);
+     assert.equal(message.body, renderPhoneInput(body));
+     assert.equal(message.phoneInput?.originalContent, body);
+     assert.equal(message.phoneInput?.envelope.contentDigest, phoneDigest(body));
+diff --git a/v2/core/tests/preflip-verbs.test.ts b/v2/core/tests/preflip-verbs.test.ts
+index 7d3a70d6..fd0324bb 100644
+--- a/v2/core/tests/preflip-verbs.test.ts
++++ b/v2/core/tests/preflip-verbs.test.ts
+@@ -322,7 +322,7 @@ test("v6.migration: a v5 store opens as v6 — parent_id/forked_from/fork_seed a
+     try {
+       const version = check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string };
+       assert.equal(Number(version.value), SCHEMA_VERSION);
+-      assert.equal(SCHEMA_VERSION, 58);
++      assert.equal(SCHEMA_VERSION, 59);
+       const cols = (check.prepare("SELECT name FROM pragma_table_info('bees')").all() as Array<{ name: string }>).map((c) => c.name);
+       for (const c of ["parent_id", "parent_external", "forked_from", "fork_seed", "args", "spawn_failures"]) assert.ok(cols.includes(c), c);
+       const tables = (check.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as Array<{ name: string }>).map((t) => t.name);
+diff --git a/v2/core/tests/question-dismiss.test.ts b/v2/core/tests/question-dismiss.test.ts
+index 46343a63..0d179aab 100644
+--- a/v2/core/tests/question-dismiss.test.ts
++++ b/v2/core/tests/question-dismiss.test.ts
+@@ -102,7 +102,7 @@ test("schema46 migration without a status CHECK gains dismissal columns additive
+     store = h.open(); assert.equal(store.dismissQuestionWithKey(q.id, "additive").question.status, "dismissed"); store.close();
+     const after = new DatabaseSync(h.path);
+     assert.equal(after.prepare("SELECT rootpage FROM sqlite_master WHERE name='questions'").get()!.rootpage, rootPage);
+-    assert.equal(String(after.prepare("SELECT value FROM meta WHERE key='schema_version'").get()!.value), "58"); after.close();
++    assert.equal(String(after.prepare("SELECT value FROM meta WHERE key='schema_version'").get()!.value), "59"); after.close();
+     store = h.open(); assert.equal(store.getQuestion(q.id)!.status, "dismissed");
+   } finally {store.close(); h.cleanup();}
+ });
+diff --git a/v2/core/tests/question-withdraw.test.ts b/v2/core/tests/question-withdraw.test.ts
+index e90ce65b..e4f7d589 100644
+--- a/v2/core/tests/question-withdraw.test.ts
++++ b/v2/core/tests/question-withdraw.test.ts
+@@ -84,8 +84,8 @@ test("schema 44 legacy questions migrate additively without extra-table refusal"
+     assert.deepEqual(replayAudit(store.auditRows()), store.dumpState());
+     store.close();
+     const check = new DatabaseSync(f.path);
+-    assert.equal(SCHEMA_VERSION, 58);
+-    assert.equal(check.prepare("SELECT value FROM meta WHERE key='schema_version'").get()!.value, "58");
++    assert.equal(SCHEMA_VERSION, 59);
++    assert.equal(check.prepare("SELECT value FROM meta WHERE key='schema_version'").get()!.value, "59");
+     assert.equal(check.prepare("PRAGMA integrity_check").get()!.integrity_check, "ok");
+     assert.deepEqual(check.prepare("PRAGMA foreign_key_check").all(), []);
+     assert.equal(check.prepare("SELECT count(*) AS n FROM question_withdraw_receipts").get()!.n, 1);
+diff --git a/v2/core/tests/runtime-process-identity.test.ts b/v2/core/tests/runtime-process-identity.test.ts
+index 3aa1503b..954a5278 100644
+--- a/v2/core/tests/runtime-process-identity.test.ts
++++ b/v2/core/tests/runtime-process-identity.test.ts
+@@ -25,7 +25,7 @@ test("runtime identity migration is additive, once-only and ignores malformed co
+     (store as unknown as {db: DatabaseSync}).db.prepare("UPDATE runtimes SET process_identity=NULL WHERE bee_id=?").run(bee.id);
+     store.close();
+     const db = new DatabaseSync(h.path);
+-    assert.equal(db.prepare("SELECT value FROM meta WHERE key='schema_version'").get()!.value, "58");
++    assert.equal(db.prepare("SELECT value FROM meta WHERE key='schema_version'").get()!.value, "59");
+     assert.equal(db.prepare("SELECT value FROM meta WHERE key='runtime_process_identity_schema'").get()!.value, "1");
+     installRuntimeProcessIdentity(db); installRuntimeProcessIdentity(db);
+     assert.equal(db.prepare("PRAGMA table_info(runtimes)").all().filter(r => r.name === "process_identity").length, 1);
+diff --git a/v2/core/tests/urgency.test.ts b/v2/core/tests/urgency.test.ts
+index bb6130b0..b9942487 100644
+--- a/v2/core/tests/urgency.test.ts
++++ b/v2/core/tests/urgency.test.ts
+@@ -157,7 +157,7 @@ test("urgency.5: v8 migration — a v7 store opens as v8: mailbox.urgency added,
+   try {
+     const version = check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string };
+     assert.equal(Number(version.value), SCHEMA_VERSION);
+-    assert.equal(SCHEMA_VERSION, 58);
++    assert.equal(SCHEMA_VERSION, 59);
+     const cols = (check.prepare("SELECT name FROM pragma_table_info('mailbox')").all() as Array<{ name: string }>).map((c) => c.name);
+     assert.ok(cols.includes("urgency"));
+     assert.ok(cols.includes("priority"));
+diff --git a/v2/daemon/src/daemon.ts b/v2/daemon/src/daemon.ts
+index ee125ab6..b80c2476 100644
+--- a/v2/daemon/src/daemon.ts
++++ b/v2/daemon/src/daemon.ts
+@@ -6944,7 +6944,7 @@ export class HiveDaemon {
+       pid: process.pid,
+       startedAt: this.startedAt,
+       instanceId: this.instanceId,
+-      ...(this.store ? { nodeId: this.store.nodeId(), gateways: this.store.listGateways(), skills: this.store.skillTree() } : {}),
++      ...(this.store ? { nodeId: this.store.nodeId(), gateways: this.store.listGateways(), skills: this.store.skillTree(), store: this.store.schemaInfo() } : {}),
+       dataDir: this.cfg.dataDir,
+       socketPath: this.cfg.socketPath,
+       storePath: this.cfg.storePath,
+diff --git a/v2/daemon/src/protocol.ts b/v2/daemon/src/protocol.ts
+index 5ddfc7c8..c0689ffd 100644
+--- a/v2/daemon/src/protocol.ts
++++ b/v2/daemon/src/protocol.ts
+@@ -2136,6 +2136,7 @@ export interface DeployInfoResult {
+   /** Additive (H7): the gateways registered through `gateway.register` and the installed skill tree. */
+   gateways?: GatewayRow[];
+   skills?: SkillTreeRow | null;
++  store?: { schemaVersion: number; minReaderSchema: number };
+   daemonVersion: string;
+   nodeVersion: string;
+   pid: number;

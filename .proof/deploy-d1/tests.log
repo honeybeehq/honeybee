@@ -1,0 +1,28 @@
+targeted existing tests, run under scripts/with-fixture-warden.mjs with every HIVE_* unset, on f1d696c9
+
+== tests-core
+node --test --test-isolation=none "v2/core/tests/*.test.ts"
+ℹ tests 726
+ℹ pass 726
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ duration_ms 43923.185504
+
+== tests-deploy
+node --test v2/cli/tests/deploy-rollback.test.ts v2/cli/tests/deploy-runtime.test.ts v2/cli/tests/deploy-restart.test.ts v2/daemon/tests/update-owner.test.ts v2/core/tests/release-settle.test.ts
+ℹ tests 84
+ℹ pass 84
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ duration_ms 5489.054187
+
+== tests-daemon
+node --test v2/daemon/tests/{integration,bee-args,human-ref,effect-resolve,config,restart}.test.ts v2/cli/tests/{store-backup,build-identity}.test.ts
+ℹ tests 56
+ℹ pass 56
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ duration_ms 16147.394802

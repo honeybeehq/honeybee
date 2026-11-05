@@ -1,0 +1,42 @@
+diff --git a/v2/core/src/schema.ts b/v2/core/src/schema.ts
+index 37a3044c..a5a596ac 100644
+--- a/v2/core/src/schema.ts
++++ b/v2/core/src/schema.ts
+@@ -176,7 +176,7 @@
+  * `champion` by champion.start); additive; migration = ALTER TABLE ADD COLUMN.
+  * v59 — D1 reader gate: meta('min_reader_schema'); no table changes; contract, since no earlier
+  * build reads the key. */
+-export const SCHEMA_VERSION = 59;
++export const SCHEMA_VERSION = 60;
+ export const MIN_READER_SCHEMA = 59;
+ 
+ export const QUESTIONS_TABLE_SQL = `
+@@ -900,6 +900,7 @@ CREATE TABLE IF NOT EXISTS cell_ops (
+  */
+ export const BEES_ADDITIVE_COLUMNS: ReadonlyArray<readonly [name: string, ddl: string]> = [
+   ["auth_control_fence", "auth_control_fence INTEGER NOT NULL DEFAULT 0"],
++  ["d1_expand_note", "d1_expand_note TEXT"],
+   ["provider_session_id", "provider_session_id TEXT"],
+   ["env", "env TEXT NOT NULL DEFAULT '{}'"],
+   ["imported_from", "imported_from TEXT"],
+diff --git a/v2/core/src/store.ts b/v2/core/src/store.ts
+index 9cabc287..75bb9692 100644
+--- a/v2/core/src/store.ts
++++ b/v2/core/src/store.ts
+@@ -2321,6 +2321,7 @@ export class CoreStore {
+     if (stored < 40) this.redactRpcIdempotencyEnv();
+     this.db.exec(ACCOUNT_CREDENTIAL_ATTENTION_TABLE_SQL);
+     installRuntimeProcessIdentity(this.db);
++    this.db.exec("CREATE TABLE IF NOT EXISTS d1_expand_log(id INTEGER PRIMARY KEY AUTOINCREMENT, bee_id TEXT NOT NULL, note TEXT NOT NULL)");
+     const upsertMeta = this.db.prepare("INSERT INTO meta(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value");
+     if (stored < SCHEMA_VERSION) upsertMeta.run("schema_version", String(SCHEMA_VERSION));
+     if (minReader === null || minReader < MIN_READER_SCHEMA) upsertMeta.run("min_reader_schema", String(MIN_READER_SCHEMA));
+@@ -3018,6 +3019,8 @@ export class CoreStore {
+           input.kind ?? "agent",
+         );
+       if (input.phoneOperation) this.stmt("INSERT INTO phone_spawn_origins(bee_id, origin_json) VALUES(?, ?)").run(id, JSON.stringify(this.makePhoneOrigin(input.phoneOperation.origin, null, input.phoneOperation.key, id)));
++      this.db.prepare("UPDATE bees SET d1_expand_note = ? WHERE id = ?").run("written by schema 60", id);
++      this.db.prepare("INSERT INTO d1_expand_log(bee_id, note) VALUES(?, ?)").run(id, "created by schema 60");
+       const bee = this.mustGetBee(id);
+       this.audit("bee.created", id, { bee, ...(input.spawnProvenance ? { spawnProvenance: input.spawnProvenance } : {}) });
+       // v23: segment 0 — the spawn harness owns the session log from generation 1.

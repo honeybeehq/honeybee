@@ -1,0 +1,130 @@
+host trmd-metal-3, node v24.21.0, 2026-11-05T18:09:47Z
+scratch only: data dirs under $RUN (in this Cell's .cache), sockets under $SB (a private /tmp dir), HOME=$SB/home, every HIVE_* of the caller unset, provider URLs at 127.0.0.1:9; daemons are started as 'node dist/cli.js daemon run' and stopped by their own pid
+build base (today's main, schema 58): source 6000b31328eb, bundle says var SCHEMA_VERSION = 58; 
+build n (this change, schema 59): source f1d696c9fc06, bundle says var SCHEMA_VERSION = 59; var MIN_READER_SCHEMA = 59; 
+build n1 (scratch expand step, schema 60 (min reader 59)): source f1d696c9fc06 + expand.patch, bundle says var SCHEMA_VERSION = 60; var MIN_READER_SCHEMA = 59; 
+build contract (scratch contract step, schema 61 (min reader 61)): source f1d696c9fc06 + expand.patch, bundle says var SCHEMA_VERSION = 61; var MIN_READER_SCHEMA = 61; 
+
+### BEFORE 1. today's main (58) creates a store, runs a bee, delivers
+daemon [base: today's main, schema 58] pid 3087744 listening after 310 ms
+alpha: message 1 delivered=True generation=1
+daemon [base] pid 3087744 stopped by its own pid; runner hosts still alive: 1
+store: schema_version=58 min_reader_schema=(absent)
+
+### BEFORE 2. the next build (59, this change) opens it, migrates, delivers
+daemon [n: this change, schema 59] pid 3087844 listening after 320 ms
+alpha: message 2 delivered=True generation=1
+daemon [n] pid 3087844 stopped by its own pid; runner hosts still alive: 1
+store: schema_version=59 min_reader_schema=59; migration backup receipts: 1
+
+### BEFORE 3. today's main (58) is asked to open that store again: refused, and its rollback check says restore a backup
+daemon [base: today's main, schema 58] did not start, exit code 1, output:
+    hived scheduling: foreground (nice 0, io none)
+    hive: core store at $RUN/before/v2/core.sqlite3 is schema v59; this build speaks v58 — refusing to open a newer store (downgrade). Update the daemon or roll the store back.
+PASS 58 on a 59 store: refused
+the refusal 58 raises when it opens the store: SchemaVersionError kind=schema_newer
+rollback check by 58's own code, target 58: refused, code ROLLBACK_STORE_RESTORE_REQUIRED: deploy: ROLLBACK_STORE_RESTORE_REQUIRED: store schema 59 cannot be opened by rollback build schema 58; restore the matching pre-deploy backup with hive v2 store restore --from <absolute receipt.json> --data-dir $RUN/before/v2 before retrying rollback; if no compatible backup exists,
+daemon [n: this change, schema 59] pid 3087993 listening after 288 ms
+daemon [n] pid 3087993 stopped by its own pid; runner hosts still alive: 0
+
+### AFTER 1. this change (59) creates a store, runs a bee, delivers
+daemon [n: this change, schema 59] pid 3088044 listening after 318 ms
+alpha: message 1 delivered=True generation=1
+deploy-info store: {"schemaVersion": 59, "minReaderSchema": 59}
+daemon [n] pid 3088044 stopped by its own pid; runner hosts still alive: 1
+store: schema_version=59 min_reader_schema=59
+
+### AFTER 2. an expand build (60, min reader 59) opens it, migrates, writes a bee and mail, and leaves mail pending on a bee that is mid-turn
+daemon [n1: scratch expand step, schema 60 (min reader 59)] pid 3088156 listening after 317 ms
+    boot adopted=1 stopped=0 requeued=0 reaped=0 wakes=0
+PASS deploy-info store under 60: {"schemaVersion": 60, "minReaderSchema": 59}
+beta (created by 60): message 2 delivered=True generation=1
+    bee alpha  runtime=running generation=1
+    bee beta   runtime=running generation=1
+    mail 1 next  delivered gen=1  m1 written by 59
+    mail 3 next  delivered gen=1  @wait-file:$RUN/after/release-alpha
+    mail 4 idle  PENDING   gen=None  m4 queued under 60 while alpha is mid-turn
+    mail 2 next  delivered gen=1  m2 written by 60
+    mail 5 next  delivered gen=1  @wait-file:$RUN/after/release-beta
+    mail 6 idle  PENDING   gen=None  m6 queued under 60 while beta is mid-turn
+PASS pending mail on alpha under 60: 1
+PASS pending mail on beta under 60: 1
+daemon [n1] pid 3088156 stopped by its own pid; runner hosts still alive: 2
+store: schema_version=60 min_reader_schema=59; migration backup receipts: 1
+PASS store after the expand build: schema_version=60 min_reader_schema=59
+
+### AFTER 3. rollback check on the stopped store (schema 60, min reader 59)
+target 59 (this change): allowed
+target 58 (today's main): refused, code ROLLBACK_STORE_NEWER_THAN_TARGET: deploy: ROLLBACK_STORE_NEWER_THAN_TARGET: store at $RUN/after/v2/core.sqlite3 needs a reader at schema 59 or later; rollback build $REPO/.cache/d1/base is schema 58. A contract migration has run, so this build is not a rollback target; roll forward to a build at schema 59 or later
+PASS rollback to 59 from a 60 expand store: allowed
+
+### AFTER 4. the rollback: the 59 build opens the 60 store read-write, adopts the bees the 60 daemon left running, and delivers
+daemon [n: this change, schema 59] pid 3088412 listening after 312 ms
+PASS 59 on a 60 expand store: up
+    boot adopted=2 stopped=0 requeued=0 reaped=0 wakes=0
+PASS deploy-info store under 59: {"schemaVersion": 60, "minReaderSchema": 59}
+    bee alpha  runtime=running generation=1
+    bee beta   runtime=running generation=1
+PASS mail still pending on alpha before its turn ends: 1
+    mail 1 next  delivered gen=1  m1 written by 59
+    mail 3 next  delivered gen=1  @wait-file:$RUN/after/release-alpha
+    mail 4 idle  delivered gen=1  m4 queued under 60 while alpha is mid-turn
+    mail 2 next  delivered gen=1  m2 written by 60
+    mail 5 next  delivered gen=1  @wait-file:$RUN/after/release-beta
+    mail 6 idle  delivered gen=1  m6 queued under 60 while beta is mid-turn
+PASS pending mail on alpha after the 59 daemon delivered: 0
+PASS pending mail on beta after the 59 daemon delivered: 0
+alpha, new mail under 59: message 7 delivered=True generation=1
+beta, new mail under 59: message 8 delivered=True generation=1
+gamma (created by 59 on the 60 store): message 9 delivered=True generation=1
+rollback check with the daemon live, target 59: allowed
+rollback check with the daemon live, target 58: refused, code ROLLBACK_STORE_NEWER_THAN_TARGET: deploy: ROLLBACK_STORE_NEWER_THAN_TARGET: store at $RUN/after/v2/core.sqlite3 needs a reader at schema 59 or later; rollback build $REPO/.cache/d1/base is schema 58. A contract migration has run, so this build is not a rollback target; roll forward to a build at schema 59 or later
+daemon [n] pid 3088412 stopped by its own pid; runner hosts still alive: 3
+PASS store after the 59 build wrote to it: schema_version=60 min_reader_schema=59
+bees and the column only schema 60 knows:
+    alpha | NULL
+    beta | written by schema 60
+    gamma | NULL
+rows in the table only schema 60 knows:
+    beta | created by schema 60
+
+### AFTER 5. roll forward: the 60 build opens the store again, no second migration, everything 59 wrote is there
+daemon [n1: scratch expand step, schema 60 (min reader 59)] pid 3088681 listening after 292 ms
+    boot adopted=3 stopped=0 requeued=0 reaped=0 wakes=0
+PASS backup receipts unchanged (no re-migration): 1
+    bee gamma  runtime=idle generation=1
+    bee alpha  runtime=idle generation=1
+    bee beta   runtime=idle generation=1
+gamma under 60: message 10 delivered=True generation=1
+daemon [n1] pid 3088681 stopped by its own pid; runner hosts still alive: 3
+
+### AFTER 6. a contract build (61, min reader 61) opens the store and raises the reader floor
+daemon [contract: scratch contract step, schema 61 (min reader 61)] pid 3088761 listening after 335 ms
+delta (created by 61): message 11 delivered=True generation=1
+PASS deploy-info store under 61: {"schemaVersion": 61, "minReaderSchema": 61}
+daemon [contract] pid 3088761 stopped by its own pid; runner hosts still alive: 4
+PASS store after the contract build: schema_version=61 min_reader_schema=61
+
+### AFTER 7. after the contract step the older builds are refused, typed, and the store is untouched
+daemon [n: this change, schema 59] did not start, exit code 1, output:
+    hived scheduling: foreground (nice 0, io none)
+    hive: core store at $RUN/after/v2/core.sqlite3 is schema v61 and needs a reader at v61 or later; this build is v59 — refusing to open it. Run a build at or above the store's min_reader_schema.
+PASS 59 on a contract-61 store: refused
+daemon [n1: scratch expand step, schema 60 (min reader 59)] did not start, exit code 1, output:
+    hived scheduling: foreground (nice 0, io none)
+    hive: core store at $RUN/after/v2/core.sqlite3 is schema v61 and needs a reader at v61 or later; this build is v60 — refusing to open it. Run a build at or above the store's min_reader_schema.
+PASS 60 on a contract-61 store: refused
+PASS the refusal 59 raises when it opens the store: SchemaVersionError kind=schema_newer
+PASS store file unchanged by the refused opens: 0f10c68ac67c0d64
+rollback check, target 59: refused, code ROLLBACK_STORE_NEWER_THAN_TARGET: deploy: ROLLBACK_STORE_NEWER_THAN_TARGET: store at $RUN/after/v2/core.sqlite3 needs a reader at schema 61 or later; rollback build $REPO is schema 59. A contract migration has run, so this build is not a rollback target; roll forward to a build at schema 61 or later
+rollback check, target 60: refused, code ROLLBACK_STORE_NEWER_THAN_TARGET: deploy: ROLLBACK_STORE_NEWER_THAN_TARGET: store at $RUN/after/v2/core.sqlite3 needs a reader at schema 61 or later; rollback build $REPO/.cache/d1/n1 is schema 60. A contract migration has run, so this build is not a rollback target; roll forward to a build at schema 61 or later
+rollback check, target 61: allowed
+PASS rollback to 59 past a contract step is refused typed
+PASS rollback to the contract build itself: allowed
+
+### cleanup: one last daemon reaps the scratch bees, then nothing of this run is left running
+daemon [contract: scratch contract step, schema 61 (min reader 61)] pid 3089060 listening after 319 ms
+daemon [contract] pid 3089060 stopped by its own pid; runner hosts still alive: 0
+PASS scratch processes left: 0
+
+RESULT: all checks passed
