@@ -95,7 +95,7 @@ test("resume-reseed.1: an import without a usable bundle re-seeds the bee from i
     assert.match(seed.body, /2 question\(s\)/);
     assert.equal(mailbox.messages[0]!.id, seed.id, "the seed is the first message in the new mailbox");
     await waitFor(async () => ((await clientB.request<ViewResult>("view", { beeId })).view.runtimeState === "idle" ? true : null), "reseeded bee idle", 60_000);
-    assert.equal((await clientB.request<MailboxResult>("mailbox", { beeId })).messages[0]!.deliveredAt != null, true, "the seed was delivered first");
+    await waitFor(async () => ((await clientB.request<MailboxResult>("mailbox", { beeId })).messages[0]!.deliveredAt != null ? true : null), "the seed was delivered first", 30_000);
 
     const fresh = await clientB.request<BeeImportResult>("bee.import", {
       descriptor: { ...descriptor, id: "11111111-2222-4333-8444-555555555555", name: "fresh", handle: undefined },

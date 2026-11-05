@@ -10,7 +10,8 @@ import { probeNativeNode, resolveNodePin, nativeNodeEnv, nodePinEnv, nodePinFile
 // never reach the code in this file's hook implementations.
 import { execFile, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { cp, lstat, mkdir, open, readFile, readlink, realpath, rename, rm, writeFile } from "node:fs/promises";
+import { cp, lstat, mkdir, mkdtemp, open, readFile, readlink, realpath, rename, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { delimiter, dirname, isAbsolute, join } from "node:path";
 import { promisify } from "node:util";
 import {
@@ -37,6 +38,8 @@ import type { CliIo } from "../main.ts";
 
 import { collectBuildProvenance } from "../../../core/src/release/buildIdentityProducer.ts";
 import { hostGitEnv } from "../../../core/src/hostGit.ts";
+import { HARNESS_HOME_ENV } from "../../../core/src/accountRecipes.ts";
+import { socketPathFits } from "../../../core/src/socketPath.ts";
 import { prepareRuntimeTarget, validateRuntimeBuildTarget } from "../../../core/src/release/runtimeTarget.ts";
 import { waitForDeployReadiness, type DeployProcessIdentity } from "./readiness.ts";
 import { inspectProcess } from "./updateOwnerClient.mjs";
@@ -168,18 +171,26 @@ export async function cmdDeploy(parsed: Parsed, io: CliIo): Promise<void> {
   return deployRun(parsed, io);
 }
 
-/**
- * The test steps of a deploy gate never reach the login Keychain: the
- * Keychain bridge is switched off and a refusing `security` stands first on
- * PATH, so even a test child spawned with a fully replaced environment that
- * keeps PATH cannot run the real binary by name.
- */
-async function keychainFreeGateEnv(workDir: string): Promise<NodeJS.ProcessEnv> {
+const HARNESS_HOME_VARIABLES = new Set(Object.values(HARNESS_HOME_ENV));
+const RUNNER_HOST_SOCKET_SAMPLE = join("hc-XXXXXX", "s", `hb-rh-${"0".repeat(16)}`, "stdin.sock");
+
+function keepsGateTestVariable(key: string): boolean {
+  if (key.startsWith("HIVE_")) return key.startsWith("HIVE_TEST_");
+  return !HARNESS_HOME_VARIABLES.has(key);
+}
+
+async function gateTestEnv(workDir: string): Promise<{ env: NodeJS.ProcessEnv; dispose: () => Promise<void> }> {
   const bin = join(workDir, "gate-bin");
   await mkdir(bin, { recursive: true });
   await writeFile(join(bin, "security"), "#!/bin/sh\necho 'deploy gate: a test tried to run security; refused' >&2\nexit 1\n", { mode: 0o755 });
-  const env = hostGitEnv();
-  return { ...env, HIVE_NO_KEYCHAIN: "1", PATH: `${bin}${delimiter}${env.PATH ?? ""}` };
+  const base = hostGitEnv();
+  const env: NodeJS.ProcessEnv = {};
+  for (const [key, value] of Object.entries(base)) if (keepsGateTestVariable(key)) env[key] = value;
+  env.HIVE_NO_KEYCHAIN = "1";
+  env.PATH = `${bin}${delimiter}${base.PATH ?? ""}`;
+  const temp = socketPathFits(join(tmpdir(), RUNNER_HOST_SOCKET_SAMPLE)) ? null : await realpath(await mkdtemp(join("/tmp", "hive-gate-")));
+  if (temp !== null) env.TMPDIR = temp;
+  return { env, dispose: async () => { if (temp !== null) await rm(temp, { recursive: true, force: true }); } };
 }
 
 /** Stream a build/restart step; the child's output is the progress report. */
@@ -216,17 +227,19 @@ export async function buildDeployArtifact(
 
   // git archive removes .git; capture facts for the exported revision, not the working tree.
   await writeFile(join(checkout, ".build-provenance.json"), JSON.stringify(collectBuildProvenance(repoRoot, sha)));
-  const gateEnv = await keychainFreeGateEnv(workDir);
-  await runStep("npm", ["ci"], checkout, log, gateEnv);
-  await runStep("npm", ["run", "check"], checkout, log, gateEnv);
-  await runStep("npm", ["run", "build"], checkout, log, gateEnv);
-  if (skipTests === true) {
-    log("deploy: WARNING test gate skipped (--skip-tests) — this artifact is not release-grade");
-  } else {
-    for (const script of release ? ["v2:test", "v2:daemon", "v2:driver", "v2:driver2", "v2:harness"] : ["v2:test", "v2:daemon", "v2:driver", "v2:harness"]) {
-      await runStep("npm", ["run", script], checkout, log, gateEnv);
+  const gate = await gateTestEnv(workDir);
+  try {
+    await runStep("npm", ["ci"], checkout, log, gate.env);
+    await runStep("npm", ["run", "check"], checkout, log, gate.env);
+    await runStep("npm", ["run", "build"], checkout, log, gate.env);
+    if (skipTests === true) {
+      log("deploy: WARNING test gate skipped (--skip-tests) — this artifact is not release-grade");
+    } else {
+      for (const script of release ? ["v2:test", "v2:daemon", "v2:driver", "v2:driver2", "v2:harness"] : ["v2:test", "v2:daemon", "v2:driver", "v2:harness"]) {
+        await runStep("npm", ["run", script], checkout, log, gate.env);
+      }
     }
-  }
+  } finally { await gate.dispose(); }
 
   // npm pack gives exactly the `files` set a real install would receive; the
   // lockfile rides along so the stage can `npm ci --omit=dev` production deps.

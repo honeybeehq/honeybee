@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 import { test } from "node:test";
 import { promisify } from "node:util";
 import { buildAddGenericPasswordCommand, claudeKeychainService, credentialDigest, decodeSecurityPasswordOutput, identityOnlyCredentials, keychainAvailable, readClaudeKeychain, readClaudeKeychainState, writeClaudeKeychainEntry } from "../src/nativeKeychain.ts";
@@ -160,7 +160,10 @@ test("buildAddGenericPasswordCommand rejects account/service values that break t
 // isolated in a throwaway keychain file so the developer's login keychain is
 // never touched. Exercises the same command construction writeClaudeKeychain
 // uses, with the explicit keychain-path argument targeting the fixture.
-test("security -i writes Claude-format credentials as raw JSON, not hex text (macOS only)", { skip: process.platform !== "darwin" }, async () => {
+const securityOnPath = (process.env.PATH ?? "").split(delimiter).map((dir) => join(dir, "security")).find((path) => existsSync(path));
+const systemSecurityOnPath = securityOnPath !== undefined && realpathSync(securityOnPath) === "/usr/bin/security";
+
+test("security -i writes Claude-format credentials as raw JSON, not hex text (macOS only)", { skip: process.platform !== "darwin" ? "macOS only" : !systemSecurityOnPath && "security on PATH is a refusing shim (deploy gate); the real tokenizer check needs the system binary" }, async () => {
   const dir = mkdtempSync(join(tmpdir(), "hive-keychain-test-"));
   const keychain = join(dir, "test.keychain-db");
   try {

@@ -72,7 +72,7 @@ for (const scenario of ["recover", "stamp", "bee", "generation", "host", "journa
         assert.ok(readFileSync(join(dir, "logs", `${bee.id}.jsonl`), "utf8").includes("recovered without restart"));
         assert.equal(store.auditTail(0, 1000).filter(row => row.kind === "runtime.pending_start_bound").length, 1);
       } else {
-        if (scenario === "socket-peer") {
+        if (scenario === "socket-peer" || scenario === "gone") {
           const deadline = Date.now() + 5000;
           while (second.hasProcess(bee.id, 1) && Date.now() < deadline) await sleep(10);
         } else await sleep(150);

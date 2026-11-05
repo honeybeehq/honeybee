@@ -18,7 +18,7 @@ async function fixture() {
   await mkdir(join(root, previous, "dist", "v2"), { recursive: true });
   await writeFile(join(root, previous, "dist", "cli.js"), "");
   await writeFile(join(root, previous, "dist", "v2", "cli.js"), "var SCHEMA_VERSION = 44;\n");
-  await writeFile(join(external, "dist", "build-identity.json"), JSON.stringify({ schemaVersion: 1, component: "honeybee", version: "0.1.0", packageVersion: "0.1.0", sourceRevision: current, dirty: false, release: true, target: "linux-x64" }));
+  await writeFile(join(external, "dist", "build-identity.json"), JSON.stringify({ schemaVersion: 1, component: "honeybee", version: "0.1.0", packageVersion: "0.1.0", sourceRevision: current, dirty: false, release: true, target: `${process.platform}-${process.arch}` }));
   await symlink(external, join(root, "current"));
   await writeFile(join(root, "deploys.json"), JSON.stringify({ schemaVersion: 1, entries: [{ sha: previous, artifactHash: "old", at: "2026-10-22T00:00:00Z", by: "fixture" }, { sha: current, artifactHash: await hashDirectoryTree(join(external, "dist")), at: "2026-10-22T01:00:00Z", by: "fixture" }] }));
   return { dir, root, external };

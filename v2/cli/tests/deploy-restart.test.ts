@@ -1,7 +1,8 @@
 import { persistNodePin, probeNativeNode } from "../../core/src/nodeRuntime.ts";
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { copyFile, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { copyNodeExecutable } from "../../core/tests/helpers.ts";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { restartDeployedDaemon } from "../src/deploy/command.ts";
@@ -23,7 +24,7 @@ test("fresh verified activation executes installed current v2 CLI with scoped da
     const root = join(dir, "runtime"), calls = join(dir, "calls.jsonl");
     await mkdir(join(root, "current", "dist"), { recursive: true });
     const pinnedNode = join(dir, "node-24-pinned");
-    await copyFile(process.execPath, pinnedNode);
+    copyNodeExecutable(pinnedNode);
     persistNodePin(join(dir, "v2"), probeNativeNode(pinnedNode));
     await writeFile(join(root, "current", "dist", "cli.js"), `require('node:fs').appendFileSync(${JSON.stringify(calls)}, JSON.stringify({ args: process.argv.slice(2), interpreter: process.execPath, nodeOptions: process.env.NODE_OPTIONS, electron: process.env.ELECTRON_RUN_AS_NODE })+'\\n'); if(process.argv[4] === 'status') console.log(JSON.stringify({running:true}));`);
     await restartDeployedDaemon({ root, installedDir: join(root, "current"), sha: "a".repeat(40), log() {} });
