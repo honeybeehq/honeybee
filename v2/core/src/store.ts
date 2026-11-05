@@ -8,6 +8,7 @@ import { createHash } from "node:crypto";
 import { DELIVERY_CONFIRMATION_SQL, publicDeliveryConfirmation, readDeliveryConfirmations } from "./deliveryConfirmation.ts";
 import { DELIVERY_CONFIRMATION_MAX_WIRE_BYTES, DELIVERY_CONFIRMATION_AUDIT_RESERVE_BYTES, deliveryConfirmationIntentFits, MAX_DELIVERY_CONFIRMATION_BYTES, type NeverWrittenDeliveryHoldReason, DELIVERY_CONFIRMATION_REASONS, type DeliveryConfirmation, type DeliveryConfirmationIntent, type KnownDeliveryConfirmationIntent, type PrepareDeliveryConfirmationIntent, type PrepareUnknownDeliveryConfirmationIntent, type DeliveryConfirmationReason, type ResolveDeliveryConfirmation, type DeliveryConfirmationResolution, type DeliveryConfirmationDecision } from "./deliveryConfirmationTypes.ts";
 import { DeliveryNotHeldError } from "./types.ts";
+import type { TranscriptSegmentReadyReason } from "./types.ts";
 import type { QuotaRecoveryRow, QuotaRecoveryReasonDetail } from "./types.ts";
 import { QUOTA_RECOVERIES_TABLE_SQL } from "./schema.ts";
 import { automaticQuotaRecovery, quotaRecoveryMatches, type QuotaObservedEvent } from "./quota.ts";
@@ -9954,12 +9955,22 @@ export class CoreStore {
 
   putTranscriptSegmentObjects(
     entries: ReadonlyArray<{ segment: Omit<TranscriptSegmentObjectRow, "id" | "ordinal">; cursor: Omit<TranscriptSegmentCursorRow, "beeId" | "updatedAt"> }>,
-    opts: { audit?: boolean } = {},
+    opts: { reason: TranscriptSegmentReadyReason; rowAudit?: boolean },
   ): TranscriptSegmentObjectRow[] {
-    return this.tx(() => entries.map(({ segment, cursor }) => {
-      const ordinal = (this.lastTranscriptSegmentObject(segment.beeId)?.ordinal ?? -1) + 1;
-      return this.putTranscriptSegmentObject({ ...segment, ordinal }, cursor, opts);
-    }));
+    return this.tx(() => {
+      const rows = entries.map(({ segment, cursor }) => {
+        const ordinal = (this.lastTranscriptSegmentObject(segment.beeId)?.ordinal ?? -1) + 1;
+        return this.putTranscriptSegmentObject({ ...segment, ordinal }, cursor, { audit: opts.rowAudit !== false });
+      });
+      if (rows.length === 0) return rows;
+      const beeId = rows[0]!.beeId;
+      const cursor = this.getTranscriptSegmentCursor(beeId)!;
+      this.audit("transcript.segment.ready", beeId, {
+        reason: opts.reason, fromOrdinal: rows[0]!.ordinal, toOrdinal: rows[rows.length - 1]!.ordinal, segments: rows,
+        cursor: { path: cursor.path, lineNo: cursor.lineNo, byteOffset: cursor.byteOffset, epoch: cursor.epoch },
+      });
+      return rows;
+    });
   }
 
   putTranscriptSegmentObject(

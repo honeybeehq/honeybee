@@ -524,17 +524,16 @@ test("config.9b: satellites default to a 3-day archive floor, half the Cells vol
   });
 });
 
-test("transcripts.segments: off by default with a data-dir store, every key validated with a warning fallback", () => {
+test("transcripts.segments: a data-dir store by default, every key validated with a warning fallback", () => {
   const defaults = transcriptSegmentsOf(undefined, "/d/v2");
-  assert.deepEqual(defaults, { enabled: false, storeDir: "/d/v2/transcript-objects", maxLines: 1024, maxRawBytes: 1024 * 1024, warnings: [] });
-  const custom = transcriptSegmentsOf({ segments: { enabled: true, storeDir: "~/objects", maxLines: 10, maxRawBytes: 4096 } }, "/d/v2");
-  assert.equal(custom.enabled, true);
+  assert.deepEqual(defaults, { storeDir: "/d/v2/transcript-objects", maxLines: 1024, maxRawBytes: 1024 * 1024, warnings: [] });
+  const custom = transcriptSegmentsOf({ segments: { storeDir: "~/objects", maxLines: 10, maxRawBytes: 4096 } }, "/d/v2");
   assert.ok(custom.storeDir.endsWith("/objects") && !custom.storeDir.startsWith("~"));
   assert.equal(custom.maxLines, 10);
   assert.equal(custom.maxRawBytes, 4096);
-  const invalid = transcriptSegmentsOf({ segments: { enabled: "yes", storeDir: "relative/dir", maxLines: 0, maxRawBytes: 10 } }, "/d/v2");
-  assert.deepEqual([invalid.enabled, invalid.storeDir, invalid.maxLines, invalid.maxRawBytes], [false, "/d/v2/transcript-objects", 1024, 1024 * 1024]);
-  assert.equal(invalid.warnings.length, 4);
+  const invalid = transcriptSegmentsOf({ segments: { storeDir: "relative/dir", maxLines: 0, maxRawBytes: 10 } }, "/d/v2");
+  assert.deepEqual([invalid.storeDir, invalid.maxLines, invalid.maxRawBytes], ["/d/v2/transcript-objects", 1024, 1024 * 1024]);
+  assert.equal(invalid.warnings.length, 3);
   assert.equal(transcriptSegmentsOf({ segments: 5 }, "/d/v2").warnings.length, 1);
 });
 

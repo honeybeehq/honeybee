@@ -25,7 +25,7 @@ function makeRig(root: string, keyFile: string, durability: Record<string, unkno
   const { dir, cleanup } = makeDaemonDir({
     bootHangTimeoutMs: 60_000,
     durability: { resumeBundle: { enabled: true, keyFile }, ...durability },
-    transcripts: { segments: { enabled: true, storeDir: join(root, "objects") } },
+    transcripts: { segments: { storeDir: join(root, "objects") } },
     agents: { cellstub: { command: process.execPath, args: [CELL_AGENT_PATH], adapter: "stub", env: { STUB_SESSION_ID: "stub-session-1" } } },
   });
   return { dir, cleanup };

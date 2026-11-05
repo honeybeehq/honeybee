@@ -340,14 +340,12 @@ export interface NodeConfigFile {
 }
 
 export interface TranscriptSegmentsConfig {
-  enabled?: boolean;
   storeDir?: string;
   maxLines?: number;
   maxRawBytes?: number;
 }
 
 export interface ResolvedTranscriptSegments {
-  enabled: boolean;
   storeDir: string;
   maxLines: number;
   maxRawBytes: number;
@@ -355,7 +353,7 @@ export interface ResolvedTranscriptSegments {
 }
 
 export function transcriptSegmentsOf(raw: unknown, dataDir: string): ResolvedTranscriptSegments {
-  const out: ResolvedTranscriptSegments = { enabled: false, storeDir: join(dataDir, "transcript-objects"), maxLines: 1024, maxRawBytes: 1024 * 1024, warnings: [] };
+  const out: ResolvedTranscriptSegments = { storeDir: join(dataDir, "transcript-objects"), maxLines: 1024, maxRawBytes: 1024 * 1024, warnings: [] };
   const section = raw !== null && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>).segments : undefined;
   if (section === undefined) return out;
   if (section === null || typeof section !== "object" || Array.isArray(section)) {
@@ -364,10 +362,6 @@ export function transcriptSegmentsOf(raw: unknown, dataDir: string): ResolvedTra
   }
   const c = section as Record<string, unknown>;
   const warn = (key: string, expected: string) => out.warnings.push(`transcripts.segments.${key} must be ${expected}, got ${JSON.stringify(c[key])}; using the default`);
-  if (c.enabled !== undefined) {
-    if (typeof c.enabled === "boolean") out.enabled = c.enabled;
-    else warn("enabled", "a boolean");
-  }
   if (c.storeDir !== undefined) {
     if (typeof c.storeDir === "string" && (isAbsolute(c.storeDir) || c.storeDir.startsWith("~/"))) out.storeDir = c.storeDir.startsWith("~/") ? join(homedir(), c.storeDir.slice(2)) : c.storeDir;
     else warn("storeDir", "an absolute path or a ~/ path");

@@ -264,7 +264,7 @@ export const MIRROR_BEE_HANDOFF_AUDIT_KINDS = [
   "bee.handoff_failed",
 ] as const;
 export const MIRROR_TRANSCRIPT_SEGMENT_AUDIT_KINDS = ["transcript_segment.put", "bee.deleted"] as const;
-export const MIRROR_TRANSCRIPT_SEGMENT_OBJECT_AUDIT_KINDS = ["transcript_segment_object.put", "bee.deleted"] as const;
+export const MIRROR_TRANSCRIPT_SEGMENT_OBJECT_AUDIT_KINDS = ["transcript_segment_object.put", "transcript.segment.ready", "bee.deleted"] as const;
 export const MIRROR_TRANSCRIPT_SEGMENT_OBJECT_KEYS = ["id", "beeId", "ordinal", "firstLine", "lastLine", "byteStart", "byteEnd", "harness", "rawRef", "rawSize", "rawBytes", "projectedRef", "projectedSize", "projectedBytes", "projectionVersion", "digest", "closedAt", "epoch", "path", "logSegmentId"] as const;
 export const MIRROR_ACTION_AUDIT_KINDS = ["action.put", "bee.deleted"] as const;
 export const MIRROR_ACTION_QUEUE_AUDIT_KINDS = ["action_queue.put", "bee.deleted"] as const;

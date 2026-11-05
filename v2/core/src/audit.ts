@@ -696,6 +696,7 @@ export function replayAudit(rows: AuditRow[]): StateDump {
       case "cell.parked":
       case "node.capacity":
       case "transcript_segment_object.put":
+      case "transcript.segment.ready":
       case "cell.retention.pass":
       case "cell.pressure.floor_unmet":
       case "cell.retention.daily_cap":

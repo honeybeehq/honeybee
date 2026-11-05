@@ -261,7 +261,35 @@ export async function cutTranscript(request: TranscriptCutRequest): Promise<Tran
   return result;
 }
 
-if (parentPort && workerData && (workerData as { kind?: unknown }).kind === "bundleResume") {
+export interface WorkerServerRequest {
+  id: number;
+  request: TranscriptCutRequest | TranscriptSweepRequest;
+}
+
+export interface WorkerServerReply {
+  id: number;
+  result: TranscriptCutResult | TranscriptSweepResult;
+}
+
+function failedCut(request: TranscriptCutRequest, error: unknown): TranscriptCutResult {
+  return { segments: [], cursor: request.cursor, written: { objects: 0, bytes: 0 }, shrunk: false, missing: false, checkpointRejected: null, projectorReset: false, error: error instanceof Error ? error.message : String(error) };
+}
+
+function failedSweep(error: unknown): TranscriptSweepResult {
+  return { objects: 0, bytes: 0, swept: 0, error: error instanceof Error ? error.message : String(error) };
+}
+
+async function serve(request: TranscriptCutRequest | TranscriptSweepRequest): Promise<TranscriptCutResult | TranscriptSweepResult> {
+  if ((request as TranscriptSweepRequest).kind === "sweep") return sweepTranscriptObjects(request as TranscriptSweepRequest).catch((error: unknown) => failedSweep(error));
+  return cutTranscript(request as TranscriptCutRequest).catch((error: unknown) => failedCut(request as TranscriptCutRequest, error));
+}
+
+if (parentPort && workerData && (workerData as { kind?: unknown }).kind === "server") {
+  const port = parentPort;
+  port.on("message", (message: WorkerServerRequest) => {
+    void serve(message.request).then((result) => port.postMessage({ id: message.id, result } satisfies WorkerServerReply));
+  });
+} else if (parentPort && workerData && (workerData as { kind?: unknown }).kind === "bundleResume") {
   const request = workerData as ResumeBundleRequest;
   Promise.resolve()
     .then(() => bundleResumeState(request.state, request.storeRoot, readResumeKey(request.keyFile), request.beeId, request.epoch))
@@ -282,9 +310,9 @@ if (parentPort && workerData && (workerData as { kind?: unknown }).kind === "bun
 } else if (parentPort && workerData && (workerData as { kind?: unknown }).kind === "sweep") {
   sweepTranscriptObjects(workerData as TranscriptSweepRequest)
     .then((result) => parentPort!.postMessage(result))
-    .catch((error: unknown) => parentPort!.postMessage({ objects: 0, bytes: 0, swept: 0, error: error instanceof Error ? error.message : String(error) } satisfies TranscriptSweepResult));
+    .catch((error: unknown) => parentPort!.postMessage(failedSweep(error)));
 } else if (parentPort && workerData && typeof (workerData as { beeId?: unknown }).beeId === "string") {
   cutTranscript(workerData as TranscriptCutRequest)
     .then((result) => parentPort!.postMessage(result))
-    .catch((error: unknown) => parentPort!.postMessage({ segments: [], cursor: (workerData as TranscriptCutRequest).cursor, written: { objects: 0, bytes: 0 }, shrunk: false, missing: false, checkpointRejected: null, projectorReset: false, error: error instanceof Error ? error.message : String(error) } satisfies TranscriptCutResult));
+    .catch((error: unknown) => parentPort!.postMessage(failedCut(workerData as TranscriptCutRequest, error)));
 }

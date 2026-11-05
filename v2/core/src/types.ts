@@ -1395,6 +1395,8 @@ export interface TranscriptSegmentObjectRow {
   logSegmentId: string | null;
 }
 
+export type TranscriptSegmentReadyReason = "turn_ended" | "exited" | "boot" | "manual";
+
 export interface TranscriptSegmentCursorRow {
   beeId: string;
   path: string;

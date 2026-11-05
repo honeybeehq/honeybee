@@ -1127,21 +1127,17 @@ export class HiveDaemon {
         ...(this.deps.championStaleHomeRetentionMs !== undefined ? { staleHomeRetentionMs: this.deps.championStaleHomeRetentionMs } : {}),
       });
     }
-    if (this.cfg.transcriptSegments.enabled) {
-      this.transcriptObjects = createDirectoryTranscriptObjectStore(this.cfg.transcriptSegments.storeDir);
-      this.segmenter = new TranscriptSegmenter({
-        store: () => this.mustStore(),
-        objectStore: this.transcriptObjects,
-        now: () => Date.now(),
-        log: (op) => this.log(op),
-        maxLines: this.cfg.transcriptSegments.maxLines,
-        maxRawBytes: this.cfg.transcriptSegments.maxRawBytes,
-        ...(this.deps.transcriptMaxWorkers !== undefined ? { maxWorkers: this.deps.transcriptMaxWorkers } : {}),
-      });
-      this.log(`transcripts.segments enabled store=${this.cfg.transcriptSegments.storeDir} max_lines=${this.cfg.transcriptSegments.maxLines} max_raw_bytes=${this.cfg.transcriptSegments.maxRawBytes} projection=${TRANSCRIPT_PROJECTION_VERSION}`);
-    } else {
-      this.log("transcripts.segments disabled (transcripts.segments.enabled)");
-    }
+    this.transcriptObjects = createDirectoryTranscriptObjectStore(this.cfg.transcriptSegments.storeDir);
+    this.segmenter = new TranscriptSegmenter({
+      store: () => this.mustStore(),
+      objectStore: this.transcriptObjects,
+      now: () => Date.now(),
+      log: (op) => this.log(op),
+      maxLines: this.cfg.transcriptSegments.maxLines,
+      maxRawBytes: this.cfg.transcriptSegments.maxRawBytes,
+      ...(this.deps.transcriptMaxWorkers !== undefined ? { maxWorkers: this.deps.transcriptMaxWorkers } : {}),
+    });
+    this.log(`transcripts.segments store=${this.cfg.transcriptSegments.storeDir} max_lines=${this.cfg.transcriptSegments.maxLines} max_raw_bytes=${this.cfg.transcriptSegments.maxRawBytes} projection=${TRANSCRIPT_PROJECTION_VERSION}`);
     this.core = new DaemonCore({
       store,
       driver,
@@ -6273,7 +6269,7 @@ export class HiveDaemon {
    */
   private transcriptSegmentsStatus(): TranscriptSegmentsStatus {
     const cfg = this.cfg.transcriptSegments;
-    return { enabled: cfg.enabled, store: this.transcriptObjects?.locator ?? null, projectionVersion: TRANSCRIPT_PROJECTION_VERSION, maxLines: cfg.maxLines, maxRawBytes: cfg.maxRawBytes, backlog: this.segmenter?.backlog() ?? 0, objects: this.segmenter?.objects() ?? null };
+    return { enabled: true, store: this.transcriptObjects?.locator ?? null, projectionVersion: TRANSCRIPT_PROJECTION_VERSION, maxLines: cfg.maxLines, maxRawBytes: cfg.maxRawBytes, backlog: this.segmenter?.backlog() ?? 0, objects: this.segmenter?.objects() ?? null };
   }
 
   private lastObjectSweepAt: number | null = null;

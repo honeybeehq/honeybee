@@ -1,21 +1,23 @@
-# Transcript segment objects — Honeybee contract (H4, 2026-10-30)
+# Transcript segment objects — Honeybee contract (H4, 2026-10-30; v2 2026-11-05)
 
-Capability `transcript.segments.v1`. Schema **v52** (additive: `transcript_segment_objects`, `transcript_segment_cursors`). Protocol stays `v2/2`. Flag `transcripts.segments.enabled` (default **false**; the flag is the rollback: off, nothing is cut and the session log stays the only copy, exactly as before).
+Capabilities `transcript.segments.v1` and `transcript.segments.v2`. Schema **v52** (additive: `transcript_segment_objects`, `transcript_segment_cursors`). Protocol stays `v2/2`. Segments are always on (2026-11-05, migration step M-H4): there is no flag; the rollback is `git revert`.
 
-Honeybee cuts each bee's session log into **segments** at the source, projects each segment once, and pushes raw plus projected objects to the workspace object store, content-addressed. Home keeps pointers; clients never parse. This is the producer half of Apiary's S4 (`services/apiaryd/src/domains/hive/transcriptSegments.ts`); once a node advertises the capability with `deployInfo.transcriptSegments.enabled = true`, Apiary stops cutting that node's logs itself and mirrors Honeybee's pointer rows.
+Honeybee cuts each bee's session log into **segments** at the source, projects each segment once, and pushes raw plus projected objects to the local object store, content-addressed. Home keeps pointers; clients never parse. This is the producer half of Apiary's S4 (`services/apiaryd/src/domains/hive/transcriptSegments.ts`); a node advertising the capability reports `deployInfo.transcriptSegments.enabled = true` (always, kept for the current Apiary build and deleted with the v1 tag at cutover C4), so Apiary stops cutting that node's logs itself and mirrors Honeybee's pointer rows.
+
+**v2 (`transcript.segments.v2`).** Every cut that produced segments commits one `transcript.segment.ready { reason, fromOrdinal, toOrdinal, segments: TranscriptSegmentObjectRow[], cursor: { path, lineNo, byteOffset, epoch } }` audit row in the same transaction as its pointer rows (at most 100 segments per row; a longer cut announces in order, one row per batch). `reason` is `turn_ended`, `exited`, `boot` or `manual`. Boot catch-up cuts announce too, so a watcher following deltas sees every segment, including the ones a crash left uncut. The per-row `transcript_segment_object.put` deltas of v1 stay (non-boot cuts only) until C4 deletes them with the v1 tag.
 
 ## When a segment is cut
 
 - **Turn end.** Every non-synthetic `turn_ended` observation and every runtime `exited` observation schedules a cut for that bee (one in flight per bee; a request during a cut re-runs once it ends). The cut takes every complete line appended since the cursor and emits segments of at most `maxLines` (1024) lines or `maxRawBytes` (1 MiB) raw bytes; the remainder is always emitted too, so nothing waits for a size threshold. A torn last line (no newline yet) waits for the next cut.
 - **Rotation.** When the bee's `sessionLogPath` differs from the cursor's path (a handoff opened a new v23 log file), the old file's remainder is cut first, then the cursor moves to the new file with `byteOffset 0` and a fresh projector; line numbering continues.
-- **Boot.** The daemon schedules a cut for every bee whose runtime is stopped (catch-up after a crash or a deploy). Boot cuts write pointer rows without `transcript_segment_object.put` audit rows, so a 31k-segment catch-up does not flood the audit log or the watch stream; consumers read them through `transcript.segments`.
+- **Boot.** The daemon schedules a cut for every bee whose runtime is stopped and whose log is not already cut to its end (catch-up after a crash or a deploy; a bee whose cursor sits at the end of its current log file schedules nothing). Boot cuts write pointer rows without `transcript_segment_object.put` audit rows, so a 31k-segment catch-up does not flood the audit log or the watch stream with per-row deltas; they announce through `transcript.segment.ready` (one row per 100 segments) and consumers can also read them through `transcript.segments`.
 - Never mid-turn: a cut needs a `turn_ended` or `exited` fact. A live runtime's tail stays in the session log only, where `hive tail -f` and Apiary's live stream read it.
 
 Deviation from Apiary's S4 cutter, which cut by size and a 10-minute idle timer: Honeybee cuts at turn boundaries (plus size caps inside a long turn). Readers see the same thing — dense ordinals, monotone line numbers, byte-exact raw ranges.
 
 ## How a cut runs
 
-Every cut runs in a worker thread (`transcriptSegmentWorker.ts`, bundled as `dist/v2/transcript-segment-worker.js`): it streams the file in 1 MiB reads (growing to at most 64 MiB when a single line is longer than the window), hashes and projects each complete line, groups lines across reads up to the caps, compresses and writes the objects, and returns the pointer rows plus the cursor after each segment. The daemon thread only inserts the rows. At most one cut runs at a time (`maxWorkers`, default 1) and the queue is paced 25 ms between bees, so a catch-up over thousands of stopped bees is a background trickle, not a burst on the RPC lane. A rejected projector checkpoint replays the file prefix in the same chunked way; a prefix over 64 MiB starts a fresh projector and logs `transcripts.segment.projector_reset`.
+Every cut runs in a persistent worker thread (`transcriptSegmentWorker.ts`, bundled as `dist/v2/transcript-segment-worker.js`, started once with `{ kind: "server" }` and answering cut and sweep requests over messages; a crashed worker fails its in-flight request and the next request starts a new one): it streams the file in 1 MiB reads (growing to at most 64 MiB when a single line is longer than the window), hashes and projects each complete line, groups lines across reads up to the caps, compresses and writes the objects, and returns the pointer rows plus the cursor after each segment. The daemon thread only inserts the rows. At most one cut runs at a time (`maxWorkers`, default 1) and the queue is paced 25 ms between bees, so a catch-up over thousands of stopped bees is a background trickle, not a burst on the RPC lane. A rejected projector checkpoint replays the file prefix in the same chunked way; a prefix over 64 MiB starts a fresh projector and logs `transcripts.segment.projector_reset`.
 
 ## What a segment is
 
@@ -41,11 +43,11 @@ Projection version: Honeybee writes `TRANSCRIPT_PROJECTION_VERSION` **8**. Versi
 
 ## Pointers
 
-`transcript_segment_objects` rows (one per segment, `UNIQUE (bee_id, ordinal)`, dense ordinals enforced by `putTranscriptSegmentObject`), written in one transaction with the advanced cursor; every row is also an informational `transcript_segment_object.put { segment }` audit row, so the watch stream carries it as a delta. The rows are **not** in the snapshot (a bee accrues thousands); read them with:
+`transcript_segment_objects` rows (one per segment, `UNIQUE (bee_id, ordinal)`, dense ordinals enforced by `putTranscriptSegmentObject`), written in one transaction with the advanced cursor and the cut's `transcript.segment.ready` row; every non-boot row is also an informational `transcript_segment_object.put { segment }` audit row (v1), so the watch stream carries both as deltas. The rows are **not** in the snapshot (a bee accrues thousands); read them with:
 
 ```
 transcript.segments { beeId, afterOrdinal?, limit? } → { beeId, segments: TranscriptSegmentObjectRow[], store: { kind: "directory", root } | null, cursor }
-deployInfo.transcriptSegments → { enabled, store, projectionVersion, maxLines, maxRawBytes }
+deployInfo.transcriptSegments → { enabled: true, store, projectionVersion, maxLines, maxRawBytes, backlog, objects }
 ```
 
 CLI: `hive transcript <bee> --segments` lists the pointers; `hive transcript <bee> --from-objects [--raw]` renders the transcript from the object store alone (daemon down → the read-only store plus the configured store directory, labeled STALE). That is the gate: a killed executor's bees read to their last segment from the objects alone. A final line without a trailing newline is not cut until the newline lands, so `--from-objects` lags the session log by that one torn line while a turn is being written.
@@ -55,7 +57,7 @@ CLI: `hive transcript <bee> --segments` lists the pointers; `hive transcript <be
 ## Config
 
 ```
-transcripts: { segments: { enabled: false, storeDir: "<data-dir>/transcript-objects", maxLines: 1024, maxRawBytes: 1048576 } }
+transcripts: { segments: { storeDir: "<data-dir>/transcript-objects", maxLines: 1024, maxRawBytes: 1048576 } }
 ```
 
 Invalid values warn (`config.transcripts.invalid`) and fall back to the default; they never refuse boot.

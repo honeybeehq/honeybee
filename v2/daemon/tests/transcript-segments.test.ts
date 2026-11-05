@@ -1,9 +1,10 @@
 /**
  * H4 transcript segment objects in the REAL daemon: turn ends cut the session
  * log into dense, byte-exact raw + projected objects in the directory store with
- * pointer rows and audit deltas; a killed daemon's bee still reads to its last
- * segment from the objects alone (read-only store + store directory); a restart
- * resumes the cursor without gaps or duplicates; the flag off cuts nothing.
+ * pointer rows, per-row deltas and one `transcript.segment.ready` delta per cut;
+ * a killed daemon's bee still reads to its last segment from the objects alone
+ * (read-only store + store directory); a restart resumes the cursor without gaps
+ * or duplicates and schedules no boot cut for a log that did not grow.
  * Temp dirs and stub agents only.
  */
 import { test } from "node:test";
@@ -47,13 +48,14 @@ function nonBlankLines(path: string, upTo?: number): string[] {
   return text.split("\n").map((l) => l.replace(/\r$/, "")).filter((l) => l.trim().length > 0);
 }
 
-test("transcript-segments.0: verb and capability are published", () => {
+test("transcript-segments.0: verb and capabilities are published", () => {
   assert.ok(RPC_VERBS.includes("transcript.segments"));
   assert.ok((DAEMON_CAPABILITIES as readonly string[]).includes("transcript.segments.v1"));
+  assert.ok((DAEMON_CAPABILITIES as readonly string[]).includes("transcript.segments.v2"));
 });
 
-test("transcript-segments.1: turn ends cut dense byte-exact segments; a killed daemon's bee reads to its last segment from the objects alone; a restart resumes without gaps", { timeout: 180_000 }, async () => {
-  const { dir, cleanup } = makeDaemonDir({ transcripts: { segments: { enabled: true, maxLines: 3 } } });
+test("transcript-segments.1: turn ends cut dense byte-exact segments and announce them; a killed daemon's bee reads to its last segment from the objects alone; a restart resumes without gaps", { timeout: 180_000 }, async () => {
+  const { dir, cleanup } = makeDaemonDir({ transcripts: { segments: { maxLines: 3 } } });
   let daemon: DaemonHandle | null = null;
   try {
     const blobs = join(dir, "transcript-objects", "blobs", "transcript-archives");
@@ -110,8 +112,16 @@ test("transcript-segments.1: turn ends cut dense byte-exact segments; a killed d
         assert.ok(Array.isArray(JSON.parse(line.events)));
       }
     }
-    const audits = (await client.request<AuditTailResult>("audit.tail", { limit: 500 })).rows.filter((r) => r.kind === "transcript_segment_object.put");
+    const auditRows = (await client.request<AuditTailResult>("audit.tail", { limit: 500 })).rows;
+    const audits = auditRows.filter((r) => r.kind === "transcript_segment_object.put");
     assert.equal(audits.length, rows.length, "one pointer delta per segment");
+    const ready = auditRows.filter((r) => r.kind === "transcript.segment.ready");
+    assert.ok(ready.length >= 1 && ready.length <= rows.length, "one ready delta per cut, never more than one per segment");
+    assert.ok(ready.every((r) => r.beeId === beeId && r.payload.reason === "turn_ended"));
+    const announced = ready.flatMap((r) => (r.payload.segments as Array<{ ordinal: number }>).map((s) => s.ordinal));
+    assert.deepEqual(announced, rows.map((r) => r.ordinal), "ready deltas announce every segment once, in order");
+    assert.deepEqual(ready.map((r) => [r.payload.fromOrdinal, r.payload.toOrdinal]), ready.map((r) => { const o = (r.payload.segments as Array<{ ordinal: number }>).map((s) => s.ordinal); return [o[0], o[o.length - 1]]; }));
+    assert.equal((ready[ready.length - 1]!.payload.cursor as { byteOffset: number }).byteOffset, rows[rows.length - 1]!.byteEnd, "the ready delta carries the advanced cursor");
     const swept = await waitFor(async () => {
       const status = (await client.request<DeployInfoResult>("deployInfo")).transcriptSegments;
       return status?.objects && !existsSync(orphan) ? status : null;
@@ -141,7 +151,10 @@ test("transcript-segments.1: turn ends cut dense byte-exact segments; a killed d
 
     daemon = await startDaemon(dir);
     client = await daemon.client();
-    await waitFor(async () => (await segments(client, beeId)).segments.length === rows.length ? true : null, "boot catch-up cuts nothing new when the log did not grow", 30_000);
+    const hivedLog = () => readFileSync(join(dir, "hived.log"), "utf8");
+    await waitFor(() => hivedLog().includes("transcripts.segment.catch_up scheduled=") ? true : null, "boot catch-up ran", 30_000);
+    assert.ok(hivedLog().includes("transcripts.segment.catch_up scheduled=0"), "a log that did not grow schedules no boot cut");
+    assert.equal((await segments(client, beeId)).segments.length, rows.length);
     await talk(client, beeId, "four");
     const after = await waitFor(async () => {
       const r = await segments(client, beeId);
@@ -153,30 +166,6 @@ test("transcript-segments.1: turn ends cut dense byte-exact segments; a killed d
     assert.equal(after.segments[after.segments.length - 1]!.lastLine, grown.length);
     const seen = new Set<number>();
     for (const row of after.segments) for (let l = row.firstLine; l <= row.lastLine; l += 1) { assert.ok(!seen.has(l), `line ${l} appears once`); seen.add(l); }
-    client.close();
-  } finally {
-    await daemon?.stop().catch(() => {});
-    cleanup();
-  }
-});
-
-test("transcript-segments.2: with the flag off nothing is cut and no store appears; the status says so", { timeout: 120_000 }, async () => {
-  const { dir, cleanup } = makeDaemonDir();
-  let daemon: DaemonHandle | null = null;
-  try {
-    daemon = await startDaemon(dir);
-    const client = await daemon.client();
-    const info = await client.request<DeployInfoResult>("deployInfo");
-    assert.equal(info.transcriptSegments?.enabled, false);
-    assert.equal(info.transcriptSegments?.store, null);
-    const spawned = await client.request<SpawnResult>("spawn", { name: "quiet", agent: "stub", cwd: dir });
-    await idle(client, spawned.beeId);
-    await talk(client, spawned.beeId, "hello");
-    await new Promise((r) => setTimeout(r, 500));
-    const r = await segments(client, spawned.beeId);
-    assert.deepEqual(r.segments, []);
-    assert.equal(r.store, null);
-    assert.equal(existsSync(join(dir, "transcript-objects")), false);
     client.close();
   } finally {
     await daemon?.stop().catch(() => {});

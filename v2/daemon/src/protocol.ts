@@ -207,6 +207,7 @@ export const DAEMON_CAPABILITIES = [
   "cell.park.v1",
   "node.capacity.v1",
   "transcript.segments.v1",
+  "transcript.segments.v2",
   "champions.v1",
   "bee.resume_bundle.v1",
   /**
@@ -1840,7 +1841,7 @@ export interface AuditTailResult {
 }
 
 export interface TranscriptSegmentsStatus {
-  enabled: boolean;
+  enabled: true;
   store: { kind: "directory"; root: string } | null;
   projectionVersion: number;
   maxLines: number;
