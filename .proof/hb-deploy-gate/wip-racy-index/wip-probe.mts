@@ -1,0 +1,15 @@
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, mkdirSync, statSync, utimesSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+const repo = process.env.REPO!;
+const { snapshotWip } = await import(join(repo, "v2/driver-cell/src/wip.ts"));
+const git = (cwd: string, args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
+const d = mkdtempSync("/private/tmp/hb-gate/wipprobe-"); const origin = join(d, "origin"); mkdirSync(join(origin, "src"), { recursive: true });
+git(origin, ["init", "-q"]); git(origin, ["config", "user.email", "a@b"]); git(origin, ["config", "user.name", "t"]);
+writeFileSync(join(origin, "src", "app.ts"), "export const version = 1;\n"); git(origin, ["add", "-A"]); git(origin, ["commit", "-qm", "one"]);
+const space = join(d, "space"); git(d, ["clone", "-q", origin, space]); git(space, ["config", "core.trustctime", "false"]);
+const app = join(space, "src", "app.ts"); const before = statSync(app);
+writeFileSync(app, "export const version = 2;\n"); utimesSync(app, before.atime, before.mtime);
+await new Promise(r => setTimeout(r, 1500));
+const snap = snapshotWip(space, join(d, "box"), "cell-1");
+console.log(`${process.env.LABEL}: snapshot src/app.ts = ${git(space, ["show", `${snap.tree}:src/app.ts`])} dirty=${snap.dirty}`);

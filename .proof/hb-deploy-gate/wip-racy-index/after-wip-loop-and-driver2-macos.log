@@ -1,0 +1,52 @@
+== wip loop
+ℹ pass 2
+ℹ fail 0
+ℹ pass 2
+ℹ fail 0
+ℹ pass 2
+ℹ fail 0
+ℹ pass 2
+ℹ fail 0
+== v2:driver2
+✖ provision-worker: a fresh image hit exits after ready without maintenance Git children (747.205542ms)
+✖ secret runner lease kills child and grandchild on kill (detached=false, sandbox=false) (3019.6425ms)
+✖ secret runner lease kills child and grandchild on stop (detached=false, sandbox=false) (3005.446917ms)
+✖ secret runner lease kills child and grandchild on normal (detached=false, sandbox=false) (3013.673958ms)
+✖ secret runner lease kills child and grandchild on deadline (detached=false, sandbox=false) (3007.419584ms)
+✖ secret runner lease kills child and grandchild on cancel-frozen (detached=false, sandbox=false) (3010.982458ms)
+✖ secret runner lease kills child and grandchild on supervisor-kill (detached=false, sandbox=false) (3009.902667ms)
+✖ secret runner lease kills child and grandchild on supervisor-only-kill (detached=false, sandbox=false) (3017.952292ms)
+✖ child-only injection redacts stdout, stderr, EOF, nonzero, spawn failure and truncation before capture (2.440875ms)
+✖ private stdout capture releases only bounded successful bytes and suppresses both ordinary streams (1.536334ms)
+✖ supervisor preserves command exit codes and fragmented unicode configuration (0.888334ms)
+✖ unavailable containment refuses before sending configuration or executing argv (0.844791ms)
+✖ real runner masks overlapping synthetic values in both streams (sandbox=false) (2.2825ms)
+✖ real runner mid-value normal masks or drops both stream tails (sandbox=false) (1.640291ms)
+✖ real runner mid-value cancel masks or drops both stream tails (sandbox=false) (1.285709ms)
+✖ real runner mid-value timeout masks or drops both stream tails (sandbox=false) (1.301167ms)
+✖ real runner mid-value exit7 masks or drops both stream tails (sandbox=false) (1.036584ms)
+✖ real runner mid-value signal masks or drops both stream tails (sandbox=false) (0.783041ms)
+✖ real runner mid-value supervisor-kill masks or drops both stream tails (sandbox=false) (1.444166ms)
+ℹ pass 182
+ℹ fail 19
+✖ failing tests:
+✖ provision-worker: a fresh image hit exits after ready without maintenance Git children (747.205542ms)
+✖ secret runner lease kills child and grandchild on kill (detached=false, sandbox=false) (3019.6425ms)
+✖ secret runner lease kills child and grandchild on stop (detached=false, sandbox=false) (3005.446917ms)
+✖ secret runner lease kills child and grandchild on normal (detached=false, sandbox=false) (3013.673958ms)
+✖ secret runner lease kills child and grandchild on deadline (detached=false, sandbox=false) (3007.419584ms)
+✖ secret runner lease kills child and grandchild on cancel-frozen (detached=false, sandbox=false) (3010.982458ms)
+✖ secret runner lease kills child and grandchild on supervisor-kill (detached=false, sandbox=false) (3009.902667ms)
+✖ secret runner lease kills child and grandchild on supervisor-only-kill (detached=false, sandbox=false) (3017.952292ms)
+✖ child-only injection redacts stdout, stderr, EOF, nonzero, spawn failure and truncation before capture (2.440875ms)
+✖ private stdout capture releases only bounded successful bytes and suppresses both ordinary streams (1.536334ms)
+✖ supervisor preserves command exit codes and fragmented unicode configuration (0.888334ms)
+✖ unavailable containment refuses before sending configuration or executing argv (0.844791ms)
+✖ real runner masks overlapping synthetic values in both streams (sandbox=false) (2.2825ms)
+✖ real runner mid-value normal masks or drops both stream tails (sandbox=false) (1.640291ms)
+✖ real runner mid-value cancel masks or drops both stream tails (sandbox=false) (1.285709ms)
+✖ real runner mid-value timeout masks or drops both stream tails (sandbox=false) (1.301167ms)
+✖ real runner mid-value exit7 masks or drops both stream tails (sandbox=false) (1.036584ms)
+✖ real runner mid-value signal masks or drops both stream tails (sandbox=false) (0.783041ms)
+✖ real runner mid-value supervisor-kill masks or drops both stream tails (sandbox=false) (1.444166ms)
+driver2 exit=

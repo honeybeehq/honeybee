@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, mkdirSync, rmSync, statSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, rmSync, statSync, utimesSync } from "node:fs";
 import { join } from "node:path";
 import { gitEnv, revParse, tryGit } from "./git.ts";
 
@@ -64,6 +64,8 @@ function seedIndex(spaceDir: string, index: string, stage: WipStage, env: Record
   if (existsSync(real)) {
     try {
       copyFileSync(real, index);
+      const written = statSync(real);
+      utimesSync(index, written.atime, written.mtime);
     } catch {
       rmSync(index, { force: true });
     }

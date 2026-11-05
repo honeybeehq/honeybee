@@ -1,0 +1,2 @@
+before (index copy takes a fresh mtime): snapshot src/app.ts = export const version = 1; dirty=false
+after (index copy keeps the real index mtime): snapshot src/app.ts = export const version = 2; dirty=true
