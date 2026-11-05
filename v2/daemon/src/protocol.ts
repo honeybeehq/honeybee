@@ -281,6 +281,15 @@ export const DAEMON_CAPABILITIES = [
    * results). The audit kind `account.lease.granted` is secret-free.
    */
   "account.lease.grant.v1",
+  /**
+   * 2026-11-05 (H6, additive): the account row owns its credential share and
+   * authority epoch (`shareId`, `shareEpoch`, nullable on mirrored rows);
+   * `account.lease.grant` and `account.lease.batch` derive them (their
+   * `shareId`/`epoch` params are optional and must agree when given); and
+   * `account.import` adopts the machine's own harness login as a native
+   * account without touching it. Schema v56.
+   */
+  "account.share.v1",
 ] as const;
 export type DaemonCapability = (typeof DAEMON_CAPABILITIES)[number];
 
@@ -615,6 +624,7 @@ export const RPC_VERBS = [
   "account.list",
   "account.get",
   "account.add",
+  "account.import",
   "account.config.preview",
   "account.config.import",
   "account.remove",
@@ -911,6 +921,33 @@ export interface ImportedCredentials {
  * mirror row promptly converges. Import can sign the machine's regular CLI
  * out of that provider (refresh tokens rotate on use).
  */
+/**
+ * H6 (`account.share.v1`): `account.import {harness, label?, id?, penalty?}`
+ * adopts the machine's own harness login (the vendor home: `~/.claude`,
+ * `~/.codex`, …, or the home env var) as this node's one native account.
+ * Nothing is copied, moved or rewritten: Honeybee runs the harness on that
+ * home with no home env and never signs it in, leases or changes it, so the
+ * CLI stays logged in. Idempotent: an existing native account for the
+ * harness is answered with `created: false`. Refusals: `account_unavailable`
+ * (no recipe or no vendor home), `no_credentials_to_import` (nothing is
+ * logged in there; `checked` lists what was looked at), `invalid_request`.
+ */
+export interface AccountImportParams {
+  harness: string;
+  label?: string;
+  id?: string;
+  penalty?: number;
+  idempotencyKey?: string;
+}
+
+export interface AccountImportResult extends DedupMarkers {
+  account: MirrorAccountRow;
+  created: boolean;
+  credentialHealth: CredentialHealth;
+  /** The vendor home adopted and the credential files found in it (or `keychain` for a macOS Keychain login). */
+  source: { home: string; files: string[] };
+}
+
 export interface AccountAddResult extends DedupMarkers {
   account: MirrorAccountRow;
   /** `unverified` after an importExisting adoption; `absent` for a fresh logged-out account. */
@@ -1240,9 +1277,12 @@ export const MIN_LEASE_GRANT_TTL_MS = 60_000;
  * `account.lease.grant` (capability `account.lease.grant.v1`) — on the node
  * that OWNS the account: mint its refresh-blanked material for one named
  * node and answer with the complete `account.lease.install` payload for that
- * node. `shareId` and `epoch` are the carrier's share facts (Apiary's org
- * account-authority record; genesis epoch 1, +1 on take-over); the same
- * share and epoch with a later `expiresAt` is a renewal. `ttlMs` is the
+ * node. The share facts come from the account row (H6, `account.share.v1`):
+ * `shareId` is minted at the row's first grant and `epoch` starts at 1 and
+ * rises with every take-over through the credential handoff plane; the
+ * `shareId`/`epoch` params are optional and must agree with the row when
+ * given (a row without share facts adopts them). The same share and epoch
+ * with a later `expiresAt` is a renewal. `ttlMs` is the
  * lease window (default 36 h). `authorityNodeId` defaults to this node's id
  * (`deployInfo.nodeId`) and may only name that id or the node id the local
  * Apiary service registered with; any other value is `invalid_request`
@@ -1263,8 +1303,10 @@ export const MIN_LEASE_GRANT_TTL_MS = 60_000;
 export interface AccountLeaseGrantParams {
   id: string;
   nodeId: string;
-  shareId: string;
-  epoch: number;
+  /** H6: optional; the account row owns its share id. When given it must equal the row's (`invalid_request`, reason `share_id`); it seeds a row that has none yet. */
+  shareId?: string;
+  /** H6: optional; the account row owns its authority epoch. When given it must equal the row's (`invalid_request`, reason `epoch`); it seeds a row that has none yet. */
+  epoch?: number;
   ttlMs?: number;
   authorityNodeId?: string;
 }

@@ -303,6 +303,7 @@ import { BEE_IMPORT_BUNDLE_BYTES_MAX,
   RpcError,
   SPAWN_SUBSTRATES,
   type AccountAddResult,
+  type AccountImportResult,
   type AccountConfigImportResult,
   type AccountConfigPreviewResult,
   type AccountBackfillResult,
@@ -2241,6 +2242,8 @@ export class HiveDaemon {
         return this.rpcAccountGet(params);
       case "account.add":
         return this.rpcAccountAdd(params);
+      case "account.import":
+        return this.rpcAccountImport(params, conn);
       case "account.config.preview":
         return this.rpcAccountConfigPreview(params);
       case "account.config.import":
@@ -7342,6 +7345,43 @@ export class HiveDaemon {
     return { account: accounts.mirrorRow(account), credentialHealth, imported: null, verification: "none" };
   }
 
+  /**
+   * H6: `account.import {harness}` — adopt the machine's own harness login as
+   * this node's native account. The row points at the vendor home; nothing
+   * there is read into Honeybee, copied or rewritten, so the CLI keeps its
+   * login and refresh chain. Local Unix-socket callers only.
+   */
+  private rpcAccountImport(params: Record<string, unknown>, conn: RpcConn): Promise<AccountImportResult> {
+    if (conn.ingress !== "local_unix") throw new RpcError("caller_not_trusted", "account.import adopts this computer's own login; call it on this node's Unix socket.", { reason: "local_required" });
+    const accounts = this.mustAccounts();
+    const harness = this.param(params, "harness");
+    for (const key of ["label", "id"]) if (params[key] !== undefined && params[key] !== null && (typeof params[key] !== "string" || (params[key] as string).length === 0)) throw new RpcError("invalid_request", `account.import: ${key} must be a non-empty string`);
+    if (params.penalty !== undefined && params.penalty !== null && typeof params.penalty !== "number") throw new RpcError("invalid_request", "account.import: penalty must be a number");
+    const recipe = recipeFor(harness);
+    const native = accounts.nativeRecipe(harness);
+    const home = accounts.nativeHomeOf(harness);
+    if (!recipe || !native || home === null) throw new RpcError("account_unavailable", `account.import: ${harness} has no login on this computer that Honeybee can adopt`);
+    return this.withAsyncIdempotency("account.import", params, async () => {
+      const existing = accounts.nativeAccount(harness);
+      if (existing) {
+        const moved = accounts.nativeHomeRefusal(existing);
+        if (moved) throw new RpcError("account_unavailable", moved);
+        return { account: accounts.mirrorRow(existing), created: false, credentialHealth: accounts.credentialHealthOf(existing), source: { home, files: accounts.nativeLoginFiles(harness) } };
+      }
+      const files = accounts.nativeLoginFiles(harness);
+      if (files.length === 0 && harness === "claude") { if (await accounts.nativeKeychainLogin(home)) files.push("keychain"); }
+      if (files.length === 0) throw new RpcError("no_credentials_to_import", `account.import: no ${harness} login found at ${home}; sign in there first (${recipe.login.command} ${recipe.login.args.join(" ")})`, { checked: accounts.nativeLoginPaths(harness) });
+      const label = typeof params.label === "string" ? params.label : native.label;
+      const id = typeof params.id === "string" ? params.id : accountIdFor(harness, label);
+      if (!isAccountId(id)) throw new RpcError("invalid_request", "Account id must be a bounded safe account identity.");
+      if (this.mustStore().getAccount(id)) throw new RpcError("invalid_request", `account already exists: ${id}`);
+      const account = this.mustStore().createAccount({ id, harness, label, homePath: home, penalty: typeof params.penalty === "number" ? params.penalty : 0, native: true, status: accounts.honestStatus({ harness, id, homePath: home, native: true }, "ok") });
+      const credentialHealth = accounts.credentialHealthOf(account);
+      this.log(`account.import id=${id} harness=${harness} home=${home} files=${files.join(",")} status=${account.status} credentialHealth=${credentialHealth}`);
+      return { account: accounts.mirrorRow(account), created: true, credentialHealth, source: { home, files } };
+    });
+  }
+
   /** v18: `account.verify {id}` — the harness's real probe, awaited; the mirror row follows through the audit stream. */
   private rpcAccountVerify(params: Record<string, unknown>): Promise<AccountVerifyResult> {
     const account = this.requireAccount(params);
@@ -7723,14 +7763,36 @@ export class HiveDaemon {
     const safeId = (value: unknown): value is string => typeof value === "string" && /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,199}$/.test(value);
     const id = this.accountIdParam(params);
     if (!safeId(params.nodeId)) throw new RpcError("invalid_request", "account.lease.grant: nodeId must be a safe node identity.", { reason: "node_id" });
-    if (!safeId(params.shareId) || params.shareId.length < 8) throw new RpcError("invalid_request", "account.lease.grant: shareId must be a safe share identity of at least 8 characters.", { reason: "share_id" });
-    if (typeof params.epoch !== "number" || !Number.isSafeInteger(params.epoch) || params.epoch < 0) throw new RpcError("invalid_request", "account.lease.grant: epoch must be a non-negative integer.", { reason: "epoch" });
+    if (params.shareId !== undefined && params.shareId !== null && (!safeId(params.shareId) || params.shareId.length < 8)) throw new RpcError("invalid_request", "account.lease.grant: shareId, when given, must be a safe share identity of at least 8 characters.", { reason: "share_id" });
+    if (params.epoch !== undefined && params.epoch !== null && (typeof params.epoch !== "number" || !Number.isSafeInteger(params.epoch) || params.epoch < 1)) throw new RpcError("invalid_request", "account.lease.grant: epoch, when given, must be a positive integer.", { reason: "epoch" });
     if (params.ttlMs !== undefined && params.ttlMs !== null && (typeof params.ttlMs !== "number" || !Number.isSafeInteger(params.ttlMs) || params.ttlMs < MIN_LEASE_GRANT_TTL_MS || params.ttlMs > MAX_LEASE_GRANT_TTL_MS)) throw new RpcError("invalid_request", `account.lease.grant: ttlMs must be an integer from ${MIN_LEASE_GRANT_TTL_MS} to ${MAX_LEASE_GRANT_TTL_MS}.`, { reason: "ttl" });
     const own = this.ownNodeIds();
     if (params.authorityNodeId !== undefined && params.authorityNodeId !== null && (!safeId(params.authorityNodeId) || !own.includes(params.authorityNodeId))) throw new RpcError("invalid_request", `account.lease.grant: authorityNodeId must be this node (${own.join(" or ")}).`, { reason: "authority_node_id" });
     const authorityNodeId = typeof params.authorityNodeId === "string" ? params.authorityNodeId : own[0]!;
     if (own.includes(params.nodeId)) throw new RpcError("invalid_request", `account.lease.grant: ${params.nodeId} is the authority node itself; a lease is for another node.`, { reason: "self_grant" });
-    return { id, nodeId: params.nodeId, shareId: params.shareId, epoch: params.epoch, ttlMs: typeof params.ttlMs === "number" ? params.ttlMs : DEFAULT_LEASE_GRANT_TTL_MS, authorityNodeId };
+    return { id, nodeId: params.nodeId, ...(typeof params.shareId === "string" ? { shareId: params.shareId } : {}), ...(typeof params.epoch === "number" ? { epoch: params.epoch } : {}), ttlMs: typeof params.ttlMs === "number" ? params.ttlMs : DEFAULT_LEASE_GRANT_TTL_MS, authorityNodeId };
+  }
+
+  /**
+   * H6: the account row owns its share id and authority epoch. A row without
+   * them gets them here, once: the caller's values when it still carries
+   * them (the Apiary ledger before C5), else a fresh share id and the epoch
+   * the credential handoff plane already reached for this account (genesis
+   * 1). Afterwards a caller-supplied value must equal the row's; a different
+   * one is a stale carrier record and is refused typed.
+   */
+  private deriveShareFacts(account: AccountRow, caller: { shareId?: string; epoch?: number }): { shareId: string; epoch: number } {
+    const store = this.mustStore();
+    let row = account;
+    if (row.shareId === null || row.shareEpoch === null) {
+      const shareId = row.shareId ?? caller.shareId ?? randomUUID();
+      const epoch = Math.max(row.shareEpoch ?? 0, caller.epoch ?? 0, store.credentialAuthorityEpoch(account.id), 1);
+      row = store.setAccountShare(account.id, { shareId, epoch });
+      this.log(`account.share account=${account.id} shareId=${shareId} epoch=${epoch} origin=${row.shareId === caller.shareId ? "caller" : "minted"}`);
+    }
+    if (caller.shareId !== undefined && caller.shareId !== row.shareId) throw new RpcError("invalid_request", `account.lease.grant: account ${account.id} belongs to share ${row.shareId}, not ${caller.shareId}.`, { reason: "share_id", shareId: row.shareId, epoch: row.shareEpoch });
+    if (caller.epoch !== undefined && caller.epoch !== row.shareEpoch) throw new RpcError("invalid_request", `account.lease.grant: account ${account.id} is at authority epoch ${row.shareEpoch}, not ${caller.epoch}.`, { reason: "epoch", shareId: row.shareId, epoch: row.shareEpoch });
+    return { shareId: row.shareId!, epoch: row.shareEpoch! };
   }
 
   /**
@@ -7746,15 +7808,16 @@ export class HiveDaemon {
     const grantedAt = window?.grantedAt ?? Date.now();
     const expiresAt = window?.expiresAt ?? Math.floor((grantedAt + input.ttlMs!) / 1000);
     if (expiresAt * 1000 <= Date.now()) throw new RpcError("invalid_request", "account.lease.grant: the lease window has already closed.", { reason: "ttl" });
+    const share = this.deriveShareFacts(account, input);
     const lease = await this.mustAccounts().mintLease(account, {});
     const grant: AccountLeaseGrant = {
-      account: account.id, harness: account.harness, nodeId: input.nodeId, authorityNodeId: input.authorityNodeId!, shareId: input.shareId, epoch: input.epoch, ttlMs: input.ttlMs!, grantedAt, expiresAt,
+      account: account.id, harness: account.harness, nodeId: input.nodeId, authorityNodeId: input.authorityNodeId!, shareId: share.shareId, epoch: share.epoch, ttlMs: input.ttlMs!, grantedAt, expiresAt,
       materialExpiresAt: lease.expiresAt ?? null,
       ...(lease.authorityInstanceId !== undefined ? { authorityInstanceId: lease.authorityInstanceId } : {}),
       ...(lease.generation !== undefined ? { generation: lease.generation } : {}),
     };
     const install: AccountLeaseInstallParams = {
-      id: account.id, harness: account.harness, label: account.label, shareId: input.shareId, authorityNodeId: input.authorityNodeId!, epoch: input.epoch, expiresAt, files: lease.files, nodeId: input.nodeId,
+      id: account.id, harness: account.harness, label: account.label, shareId: share.shareId, authorityNodeId: input.authorityNodeId!, epoch: share.epoch, expiresAt, files: lease.files, nodeId: input.nodeId,
       ...(lease.authorityInstanceId !== undefined ? { authorityInstanceId: lease.authorityInstanceId } : {}),
       ...(lease.generation !== undefined ? { generation: lease.generation } : {}),
     };
@@ -7815,7 +7878,7 @@ export class HiveDaemon {
             const input = this.leaseGrantParams(item.params);
             const result = await this.mintLeaseGrant(input);
             results.push({ index: item.index, op: "grant", id: result.grant.account, nodeId: input.nodeId, ok: true, result });
-            entries.push({ index: item.index, op: "grant", id: result.grant.account, nodeId: input.nodeId, ok: true, replay: { ...input, id: result.grant.account }, grant: result.grant });
+            entries.push({ index: item.index, op: "grant", id: result.grant.account, nodeId: input.nodeId, ok: true, replay: { ...input, id: result.grant.account, shareId: result.grant.shareId, epoch: result.grant.epoch }, grant: result.grant });
           } else if (item.op === "install") {
             const result = await this.rpcAccountLeaseInstall(item.params, conn);
             const entry: AccountLeaseBatchItemResult = { index: item.index, op: "install", id: result.account.id, ok: true, result };

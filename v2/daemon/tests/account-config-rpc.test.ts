@@ -76,7 +76,7 @@ test("rpc account config: fixed preview/import contract, typed refusals, seriali
     await client.request<AccountAddResult>("account.add", {
       harness: "codex",
       label: "same-home",
-      homePath: sourceHome,
+      native: true,
       idempotencyKey: "add-same-home",
     });
     await rejects(client, "account.config.preview", { id: "codex-same-home" }, "config_import_refused");

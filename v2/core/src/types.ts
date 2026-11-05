@@ -690,6 +690,10 @@ export interface AccountRow {
   pausedOwner: string | null;
   pausedAt: number | null;
   native: boolean;
+  /** The credential share this row belongs to: minted on the authority at its first grant, carried by every lease of it; null until then. */
+  shareId: string | null;
+  /** The share's authority epoch on this row (genesis 1; raised by a take-over); null until the share exists. */
+  shareEpoch: number | null;
   addedAt: number;
   updatedAt: number;
 }
@@ -2027,6 +2031,8 @@ export interface CredentialHandoffBinding {
   retainedGeneration?: number;
   retainedUnusableCount?: number;
   recoveryEpoch?: number;
+  /** H6: the source row's credential share, carried so the new authority keeps granting under the same share id. */
+  shareId?: string;
 }
 export interface CredentialHandoffReceipt {
   kind: "export" | "prepared" | "commit" | "adopted" | "aborted" | "stand_down" | "operator_takeover" | "operator_taken_down" | "operator_refused" | "retained_discard_request" | "retained_discard_settlement";

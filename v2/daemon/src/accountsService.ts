@@ -1961,10 +1961,10 @@ export class AccountsService {
    * home is the account (singleton harnesses without a recipe are always
    * candidates).
    */
-  credentialed(account: Pick<AccountRow, "harness" | "id" | "homePath">): boolean {
+  credentialed(account: Pick<AccountRow, "harness" | "id" | "homePath"> & Partial<Pick<AccountRow, "native">>): boolean {
     const recipe = recipeFor(account.harness);
     if (!recipe) return true;
-    return dirHasCredentials(this.vaultDirOf(account), recipe) || dirHasCredentials(account.homePath, recipe);
+    return dirHasCredentials(this.vaultDirOf(account), recipe) || dirHasCredentials(account.homePath, recipe) || this.nativeKeychainOwned({ harness: account.harness, native: account.native === true });
   }
 
   /** Why this node cannot hold `harness` accounts at all (the recipe's `unisolatedOn` reason for this platform), else null. */
@@ -2012,8 +2012,36 @@ export class AccountsService {
 
   nativeBeeEnv(account: AccountRow, env: Readonly<Record<string, string>>): Record<string, string> {
     if (!this.isNative(account)) return { ...env };
-    const redirect = new Set(nativeAccountRecipe(account.harness, this.platform)?.redirectEnv ?? []);
+    const redirect = new Set([...(nativeAccountRecipe(account.harness, this.platform)?.redirectEnv ?? []), ...(account.harness === "claude" ? Object.keys(CLAUDE_COMPETING_AUTH_ENV_SCRUB) : [])]);
     return Object.fromEntries(Object.entries(env).filter(([key]) => !redirect.has(key)));
+  }
+
+  /** H6: the machine's own `harness` login files present in its vendor home (recipe-relative), empty unless the primary credential is a recognised login. */
+  nativeLoginFiles(harness: string): string[] {
+    const recipe = recipeFor(harness);
+    const vendor = resolveVendorHome(harness, this.env, this.home);
+    if (!recipe || !vendor) return [];
+    const primary = primaryCredentialFile(recipe);
+    const present = vendor.files.filter(file => file.role === "credential" && readIfFile(file.path) !== null);
+    const primaryPath = vendor.files.find(file => file.rel === primary)?.path;
+    return primaryPath !== undefined && this.validPrimaryCredential(harness, primary, readIfFile(primaryPath)) ? present.map(file => file.rel) : [];
+  }
+
+  /** The machine-side credential paths `nativeLoginFiles` looks at. */
+  nativeLoginPaths(harness: string): string[] {
+    return resolveVendorHome(harness, this.env, this.home)?.files.filter(file => file.role === "credential").map(file => file.path) ?? [];
+  }
+
+  /** H6: whether the machine's own Claude login lives in the Keychain item for `home` (macOS). */
+  async nativeKeychainLogin(home: string): Promise<boolean> {
+    if (this.platform !== "darwin") return false;
+    const state = await this.keychainStateReader(home).catch((): KeychainState => ({ status: "unavailable" }));
+    return state.status === "present" && this.validPrimaryCredential("claude", ".credentials.json", state.raw);
+  }
+
+  /** A native Claude login on macOS lives in the user's Keychain, which the user's own Claude reads; Honeybee judges it present without a file. */
+  private nativeKeychainOwned(account: Pick<AccountRow, "harness" | "native">): boolean {
+    return account.native === true && account.harness === "claude" && this.platform === "darwin";
   }
 
   foreignHomeRefusal(account: AccountRow, what: string): string | null {
@@ -2055,7 +2083,7 @@ export class AccountsService {
     const source = dirHasCredentials(account.homePath, recipe)
       ? account.homePath
       : dirHasCredentials(this.vaultDirOf(account), recipe) ? this.vaultDirOf(account) : null;
-    if (source === null) return "absent";
+    if (source === null) return this.nativeKeychainOwned(account) ? "present" : "absent";
     if (account.harness === "muse") return this.museDocumentState(readIfFile(join(source, primary)), this.isNative(account));
     if (account.harness !== "claude") return "present";
     return this.claudeDocumentState(readIfFile(join(source, primary)));
@@ -2248,7 +2276,7 @@ export class AccountsService {
    * requests pass through. Harnesses without a recipe (the home is the
    * account) are always credentialed.
    */
-  honestStatus(account: Pick<AccountRow, "harness" | "id" | "homePath">, requested: AccountStatus): AccountStatus {
+  honestStatus(account: Pick<AccountRow, "harness" | "id" | "homePath"> & Partial<Pick<AccountRow, "native">>, requested: AccountStatus): AccountStatus {
     if (requested !== "ok") return requested;
     if (this.centralCredentialInDoubt(account)) return "auth_needed";
     return this.credentialed(account) ? "ok" : "auth_needed";

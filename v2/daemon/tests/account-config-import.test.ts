@@ -29,6 +29,8 @@ function account(harness: string, homePath: string): AccountRow {
     pausedOwner: null,
     pausedAt: null,
     native: false,
+    shareId: null,
+    shareEpoch: null,
     addedAt: 1,
     updatedAt: 1,
   };

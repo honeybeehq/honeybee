@@ -32,6 +32,7 @@ import {
   RpcError,
   LEASE_FENCE_FIELDS,
   type AccountAddResult,
+  type AccountImportResult,
   type AccountConfigImportResult,
   type AccountConfigPreviewResult,
   type AccountBackfillResult,
@@ -864,9 +865,10 @@ const ACCOUNT_USAGE =
   "       hive account credentials handoff-status [--file payload.json]\n" +
   "       hive account credentials <export|adopt-prepare|export-prepare|export-commit|adopt|adopt-abort|export-abort|export-confirm|export-settle|stand-down|handoff-status|handoff-key-rotate|handoff-identity-set|stand-down-receipt|take-over-apply|take-over-complete|take-over-cancel> --file protected-payload.json [--out protected-material.json] [--replace] [--retained-generation N] [--discard-retained-chain --confirm]\n" +
   "       hive account lease install [--enrol] --file payload.json | lease remove <id> [--check-only | --discard-native --confirm] | lease export <id> --json\n" +
-  "       hive account lease grant <id> --node <nodeId> --share <shareId> --epoch <n> [--ttl-ms <ms>] [--authority <nodeId>] [--out material.json] [--register] --json | lease batch --file items.json [--idempotency-key key] [--out material.json] [--register] --json\n" +
+  "       hive account lease grant <id> --node <nodeId> [--share <shareId>] [--epoch <n>] [--ttl-ms <ms>] [--authority <nodeId>] [--out material.json] [--register] --json | lease batch --file items.json [--idempotency-key key] [--out material.json] [--register] --json\n" +
   "       hive account capture <selector> | verify <selector> | limits [<selector>] | reset <selector> [--credit-id id] --idempotency-key key\n" +
   "       hive account restored <selector> | interruptions [<selector>]\n" +
+  "       hive account import <harness> [--label l] [--id id] [--penalty n]   (adopt this computer's own harness login; it stays signed in)\n" +
   "       hive account import [--root ~/.hive] [--dry-run] | backfill [--dry-run]";
 
 const ACCOUNT_LIMITS_RPC_TIMEOUT_MS = 120_000;
@@ -1001,12 +1003,12 @@ async function cmdAccount(ctx: CliContext, parsed: Parsed): Promise<number> {
         return 0;
       }
       if (action === "grant" || action === "batch") {
-        if (!ctx.json) throw new Error(`usage: hive account lease ${action === "grant" ? "grant <id> --node <nodeId> --share <shareId> --epoch <n> [--ttl-ms <ms>] [--authority <nodeId>]" : "batch --file items.json [--idempotency-key key]"} --json`);
+        if (!ctx.json) throw new Error(`usage: hive account lease ${action === "grant" ? "grant <id> --node <nodeId> [--share <shareId>] [--epoch <n>] [--ttl-ms <ms>] [--authority <nodeId>]" : "batch --file items.json [--idempotency-key key]"} --json`);
         let params: Record<string, unknown>;
         if (action === "grant") {
           const id = parsed.positional[3], nodeId = parsed.flags.get("--node"), shareId = parsed.flags.get("--share"), epoch = parsed.flags.get("--epoch");
-          if (!id || typeof nodeId !== "string" || typeof shareId !== "string" || typeof epoch !== "string") throw new Error("usage: hive account lease grant <id> --node <nodeId> --share <shareId> --epoch <n> [--ttl-ms <ms>] [--authority <nodeId>] --json");
-          params = { id, nodeId, shareId, epoch: Number(epoch), ...(parsed.flags.has("--ttl-ms") ? { ttlMs: Number(parsed.flags.get("--ttl-ms")) } : {}), ...(typeof parsed.flags.get("--authority") === "string" ? { authorityNodeId: parsed.flags.get("--authority") } : {}) };
+          if (!id || typeof nodeId !== "string" || shareId !== undefined && typeof shareId !== "string" || epoch !== undefined && typeof epoch !== "string") throw new Error("usage: hive account lease grant <id> --node <nodeId> [--share <shareId>] [--epoch <n>] [--ttl-ms <ms>] [--authority <nodeId>] --json");
+          params = { id, nodeId, ...(typeof shareId === "string" ? { shareId } : {}), ...(typeof epoch === "string" ? { epoch: Number(epoch) } : {}), ...(parsed.flags.has("--ttl-ms") ? { ttlMs: Number(parsed.flags.get("--ttl-ms")) } : {}), ...(typeof parsed.flags.get("--authority") === "string" ? { authorityNodeId: parsed.flags.get("--authority") } : {}) };
         } else {
           const file = parsed.flags.get("--file");
           if (typeof file !== "string") throw new Error("usage: hive account lease batch --file items.json [--idempotency-key key] --json");
@@ -1428,6 +1430,22 @@ async function cmdAccount(ctx: CliContext, parsed: Parsed): Promise<number> {
       return r.outcome === "reset" || r.outcome === "alreadyRedeemed" ? 0 : 1;
     }
     case "import": {
+      const harness = parsed.positional[2];
+      if (harness) {
+        const penaltyFlag = parsed.flags.get("--penalty") as string | undefined;
+        const r = await withClient(ctx, (c) => {
+          if (!c.capabilities.includes("account.share.v1")) throw new RpcError("capability_missing", "Update Honeybee: account.share.v1 is required.");
+          return c.request<AccountImportResult>("account.import", {
+            harness,
+            ...(typeof parsed.flags.get("--label") === "string" ? { label: parsed.flags.get("--label") as string } : {}),
+            ...(typeof parsed.flags.get("--id") === "string" ? { id: parsed.flags.get("--id") as string } : {}),
+            ...(penaltyFlag !== undefined ? { penalty: Number(penaltyFlag) } : {}),
+            idempotencyKey: key,
+          });
+        });
+        emit(ctx, [confirm("ok", r.created ? "adopted" : "already adopted", `account ${r.account.id} (${r.account.harness}; ${r.account.nativeLogin ?? `home ${r.account.homePath}`}) — ${r.source.files.join(", ")} in ${tildify(r.source.home)} stay as they are; status ${r.account.status}`, r.deduped)], r, false);
+        return 0;
+      }
       const root = parsed.flags.get("--root") as string | undefined;
       const dryRun = parsed.flags.get("--dry-run") === true;
       const r = await withClient(ctx, (c) => c.request<AccountImportRegistryResult>("account.importRegistry", { ...(root ? { root: resolve(root) } : {}), dryRun, idempotencyKey: key }));

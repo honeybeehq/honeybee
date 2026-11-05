@@ -32,7 +32,8 @@ function binding(value: unknown): CredentialHandoffBinding {
     claimId: input.claimId === null ? null : name(input.claimId), targetAccount: input.targetAccount === null ? null : name(input.targetAccount), targetKey: input.targetKey === null ? null : name(input.targetKey),
     ...(input.retainedGeneration !== undefined ? { retainedGeneration: integer(input.retainedGeneration) } : {}),
     ...(input.retainedUnusableCount !== undefined ? { retainedUnusableCount: integer(input.retainedUnusableCount) } : {}),
-    ...(input.recoveryEpoch !== undefined ? { recoveryEpoch: integer(input.recoveryEpoch) } : {}) };
+    ...(input.recoveryEpoch !== undefined ? { recoveryEpoch: integer(input.recoveryEpoch) } : {}),
+    ...(input.shareId !== undefined ? { shareId: name(input.shareId) } : {}) };
 }
 function unsigned(value: CredentialHandoffReceipt): Buffer {
   return Buffer.from(JSON.stringify({ kind: value.kind, binding: value.binding }));
@@ -176,7 +177,8 @@ export class CredentialHandoffService {
 
   async export(params: Record<string, unknown>) {
     const account = this.account(params.account);
-    const handoffId = name(params.handoffId), from = identity(params.from), to = identity(params.to), epoch = integer(params.epoch);
+    const handoffId = name(params.handoffId), from = identity(params.from), to = identity(params.to);
+    const epoch = params.epoch === undefined ? Math.max(this.store.credentialAuthorityEpoch(account.id), account.shareEpoch ?? 0) + 1 : integer(params.epoch);
     this.assertSelf(from);
     if (account.source === "leased" || from.nodeId === to.nodeId || epoch <= this.store.credentialAuthorityEpoch(account.id)) throw new RpcError("credential_handoff_conflict", "Handoff requires a local authority, a different peer and a higher destination epoch.");
     return this.lane(account, `export:${handoffId}`, async () => {
@@ -195,7 +197,7 @@ export class CredentialHandoffService {
       if (ttlMs < 1000 || ttlMs > 600_000) throw new RpcError("invalid_request", "Export preparation TTL must be between one second and ten minutes.");
       const since = this.now();
       const bound: CredentialHandoffBinding = { handoffId, sourceAccount: account.id, harness: account.harness, generation: value.generation, epoch, from, to,
-        sourceKey: this.publicKey(), materialDigest: digest(value.document), since, prepareBy: since + ttlMs, claimId: null, targetAccount: null, targetKey: null };
+        sourceKey: this.publicKey(), materialDigest: digest(value.document), since, prepareBy: since + ttlMs, claimId: null, targetAccount: null, targetKey: null, ...(account.shareId !== null ? { shareId: account.shareId } : {}) };
       const signed = this.signed("export", bound);
       this.store.putCredentialHandoff({ handoffId, role: "source", account: account.id, state: "exported", binding: bound, receipt: signed, generation: null, expiresAt: null }, { ...state, phase: "handing_off" });
       return { receipt: signed, material: { generation: value.generation, document: value.document } };
@@ -204,7 +206,8 @@ export class CredentialHandoffService {
 
   async adoptPrepare(params: Record<string, unknown>) {
     const account = this.account(params.account), signed = receipt(params.exportReceipt);
-    const from = identity(params.from), to = identity(params.to), handoffId = name(params.handoffId), epoch = integer(params.epoch);
+    const from = identity(params.from), to = identity(params.to), handoffId = name(params.handoffId);
+    const epoch = params.epoch === undefined ? signed.binding.epoch : integer(params.epoch);
     this.assertSelf(to);
     if (!same(from, identity(params.authenticatedPeer))) throw new RpcError("credential_handoff_conflict", "Export source differs from the authenticated lane peer.");
     const bound = signed.binding;
@@ -695,7 +698,7 @@ export class CredentialHandoffService {
         const self = this.self(), source = same(held.binding.from, self), peer = source ? held.binding.to : held.binding.from;
         const peerAccount = source ? held.binding.targetAccount : held.binding.sourceAccount;
         if (!peerAccount) throw new RpcError("credential_handoff_unavailable", "The abandoned handoff has no durable peer preparation.");
-        const floor = Math.max(this.store.credentialAuthorityEpoch(account.id), held.binding.epoch);
+        const floor = Math.max(this.store.credentialAuthorityEpoch(account.id), held.binding.epoch, account.shareEpoch ?? 0);
         const epoch = params.epoch === undefined ? floor + 1 : integer(params.epoch);
         if (epoch <= floor) throw new RpcError("credential_handoff_stale_epoch", "Take-over epoch must exceed the abandoned handoff and local authority.");
         const bound: CredentialHandoffBinding = { ...held.binding, handoffId, from: self, to: peer, sourceAccount: peerAccount, targetAccount: account.id,

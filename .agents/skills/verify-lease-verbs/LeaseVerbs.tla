@@ -18,7 +18,7 @@ Windows == 1..W
 Epochs == 1..MaxEpoch
 OwnerOf(e) == IF e % 2 = 1 THEN "A" ELSE "C"   \* A owns odd epochs, C owns even ones (take-over)
 
-VARIABLES ownerEpoch,   \* the share epoch Apiary's authority record carries now
+VARIABLES ownerEpoch,   \* the share's authority epoch on the owner's account row (accounts.share_epoch, H6)
           payloads,     \* install payloads minted so far: Apiary may deliver any of them, late or twice
           epoch,        \* satellite row: 0 = no row yet, else the installed epoch
           window,       \* satellite row: the installed lease window (expiresAt)
@@ -50,14 +50,15 @@ Init ==
   /\ replayWindow = 0 /\ replayAsked = 0
   /\ mints = 0 /\ audits = 0
 
-\* account.lease.grant on the owner: mint for the current share epoch with a chosen window.
+\* account.lease.grant on the owner: mint for the row's share epoch (deriveShareFacts) with a chosen window.
 \* The owner stamps its own node id; with OwnerSignsAuthority off, the caller's authorityNodeId is copied in.
 GrantWindow(w) ==
   /\ payloads' = payloads \cup {Payload(ownerEpoch, w)} \cup (IF OwnerSignsAuthority THEN {} ELSE {ForgedPayload(ownerEpoch, w)})
   /\ mints' = mints + 1 /\ audits' = audits + 1
   /\ UNCHANGED <<ownerEpoch, epoch, window, authority, revoked, accepted, keyState, receipt, installRuns, replayWindow, replayAsked>>
 
-\* Apiary's take-over commits a new authority record: epoch + 1, authored by the new owner.
+\* A take-over through the credential handoff plane: the new owner's row adopts at epoch + 1
+\* (credentialHandoff.ts export derives it from the row; store.putCredentialAuthorityEpoch raises share_epoch).
 TakeOver ==
   /\ ownerEpoch < MaxEpoch
   /\ ownerEpoch' = ownerEpoch + 1
