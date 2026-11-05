@@ -1,0 +1,292 @@
+
+# A. account.lease.grant derives share and epoch from the account row (A owner, B target, trust on)
+
+## A1 first grant without shareId/epoch: minted share, epoch 1, persisted on the row
+```json
+{
+  "grant": {
+    "shareId": "a8250358-9dda-47ea-a4ba-d4e8b5bd8d57",
+    "epoch": 1,
+    "nodeId": "apiary-node-b",
+    "expiresAt": 1793991691
+  },
+  "install": {
+    "id": "codex-lx",
+    "shareId": "a8250358-9dda-47ea-a4ba-d4e8b5bd8d57",
+    "epoch": 1,
+    "nodeId": "apiary-node-b"
+  },
+  "row": {
+    "id": "codex-lx",
+    "source": "local",
+    "shareId": "a8250358-9dda-47ea-a4ba-d4e8b5bd8d57",
+    "shareEpoch": 1,
+    "lease": null
+  }
+}
+```
+
+## A2 caller-supplied share facts must agree with the row
+```json
+{
+  "second grant, no params: same share and epoch, later window": "ok",
+  "caller passes the row's own shareId + epoch 1": "ok",
+  "caller passes another shareId": "invalid_request (share_id)",
+  "caller passes epoch 2 (row is at 1)": "invalid_request (epoch)",
+  "caller passes epoch 0": "invalid_request (epoch)"
+}
+```
+
+## A3 B installs the payload: the leased row carries the same share and epoch
+```json
+{
+  "id": "codex-lx@a8250358",
+  "source": "leased",
+  "shareId": "a8250358-9dda-47ea-a4ba-d4e8b5bd8d57",
+  "shareEpoch": 1,
+  "lease": {
+    "shareId": "a8250358-9dda-47ea-a4ba-d4e8b5bd8d57",
+    "epoch": 1,
+    "authorityNodeId": "32b189b8-e2b6-4b64-81f2-373b93a70193",
+    "expiresAt": 1794034891
+  }
+}
+```
+
+## A4 batch without share facts, then its replay: deduped, same facts and windows
+```json
+{
+  "first": [
+    {
+      "nodeId": "apiary-node-b",
+      "shareId": "a8250358-9dda-47ea-a4ba-d4e8b5bd8d57",
+      "epoch": 1,
+      "expiresAt": 1793991691
+    },
+    {
+      "nodeId": "node-c",
+      "shareId": "a8250358-9dda-47ea-a4ba-d4e8b5bd8d57",
+      "epoch": 1,
+      "expiresAt": 1794207691
+    }
+  ],
+  "replay": {
+    "deduped": true,
+    "items": [
+      {
+        "nodeId": "apiary-node-b",
+        "shareId": "a8250358-9dda-47ea-a4ba-d4e8b5bd8d57",
+        "epoch": 1,
+        "expiresAt": 1793991691
+      },
+      {
+        "nodeId": "node-c",
+        "shareId": "a8250358-9dda-47ea-a4ba-d4e8b5bd8d57",
+        "epoch": 1,
+        "expiresAt": 1794207691
+      }
+    ]
+  }
+}
+```
+
+## A5 a pre-H6 carrier still passing its own facts seeds a row that has none (Apiary before C5)
+```json
+{
+  "seeded": {
+    "shareId": "share-codex-old",
+    "epoch": 3
+  },
+  "next": {
+    "shareId": "share-codex-old",
+    "epoch": 3
+  },
+  "row": {
+    "id": "codex-old",
+    "source": "local",
+    "shareId": "share-codex-old",
+    "shareEpoch": 3,
+    "lease": null
+  }
+}
+```
+
+## A6 share facts survive a daemon restart
+```json
+{
+  "id": "codex-lx",
+  "source": "local",
+  "shareId": "a8250358-9dda-47ea-a4ba-d4e8b5bd8d57",
+  "shareEpoch": 1,
+  "lease": null
+}
+```
+
+# B. a take-over through the credential handoff plane raises the epoch; the new owner grants at epoch 2 under the same share (owner X, new owner Y, satellite Z; fake codex token server)
+
+## B1 X owns the share at epoch 1 and leases it to Z
+```json
+{
+  "owner": {
+    "id": "codex-shared-example.com",
+    "source": "local",
+    "shareId": "732d4bc5-84fd-42e7-94ac-6b114183e746",
+    "shareEpoch": 1,
+    "lease": null
+  },
+  "z": {
+    "id": "codex-shared-example.com@732d4bc5",
+    "source": "leased",
+    "shareId": "732d4bc5-84fd-42e7-94ac-6b114183e746",
+    "shareEpoch": 1,
+    "lease": {
+      "shareId": "732d4bc5-84fd-42e7-94ac-6b114183e746",
+      "epoch": 1,
+      "authorityNodeId": "6f32c1b0-62db-42f2-a3c2-4bfa4f1431ea",
+      "expiresAt": 1793991693
+    }
+  }
+}
+```
+
+## B2 export without an epoch param: the binding carries row epoch + 1 and the share id
+```json
+{
+  "epoch": 2,
+  "shareId": "732d4bc5-84fd-42e7-94ac-6b114183e746"
+}
+```
+
+## B3 after adoption: Y's row is the authority at epoch 2 under the same share; X's row is stood down
+```json
+{
+  "y": {
+    "id": "codex-shared-example.com",
+    "source": "local",
+    "shareId": "732d4bc5-84fd-42e7-94ac-6b114183e746",
+    "shareEpoch": 2,
+    "lease": null
+  },
+  "x": {
+    "id": "codex-shared-example.com",
+    "source": "local",
+    "shareId": "732d4bc5-84fd-42e7-94ac-6b114183e746",
+    "shareEpoch": 1,
+    "lease": null,
+    "status": "ok"
+  }
+}
+```
+
+## B4 the new owner grants at epoch 2; the old owner cannot; the satellite moves to epoch 2 and refuses the stale epoch
+```json
+{
+  "Y grants without params": {
+    "shareId": "732d4bc5-84fd-42e7-94ac-6b114183e746",
+    "epoch": 2,
+    "authorityNodeId": "6df16340-5dae-4b2b-aa0d-ce4acc5e078c"
+  },
+  "X (old owner) grants now": "credential_handoff_fenced",
+  "Z installs Y's epoch-2 payload over X's epoch-1 lease": "ok",
+  "Z installs X's stale epoch-1 payload again": "account_lease_conflict (retired_instance)",
+  "z row": {
+    "id": "codex-shared-example.com@732d4bc5",
+    "source": "leased",
+    "shareId": "732d4bc5-84fd-42e7-94ac-6b114183e746",
+    "shareEpoch": 2,
+    "lease": {
+      "shareId": "732d4bc5-84fd-42e7-94ac-6b114183e746",
+      "epoch": 2,
+      "authorityNodeId": "6df16340-5dae-4b2b-aa0d-ce4acc5e078c",
+      "expiresAt": 1793991693
+    }
+  }
+}
+```
+
+# C. account.import adopts stand-in claude and codex logins in a scratch HOME; the files stay byte-identical and the bee runs on the machine's own home
+
+## C1 import results
+```json
+{
+  "claude": {
+    "created": true,
+    "id": "claude-this-computer",
+    "homePath": "/home/trmd/.hive/v2/tmp/fbcb3059-176c-4fd4-a599-215be3f600e2/hb-v2-daemon-XMTJgO/machine-home/.claude",
+    "status": "ok",
+    "credentialHealth": "unverified",
+    "nativeLogin": "This computer: uses your own claude sign-in (`claude auth login`) on this computer. Honeybee never copies or changes it.",
+    "source": {
+      "home": "/home/trmd/.hive/v2/tmp/fbcb3059-176c-4fd4-a599-215be3f600e2/hb-v2-daemon-XMTJgO/machine-home/.claude",
+      "files": [
+        ".credentials.json",
+        ".claude.json"
+      ]
+    }
+  },
+  "claudeAgain": {
+    "created": false,
+    "id": "claude-this-computer"
+  },
+  "codex": {
+    "created": true,
+    "id": "codex-this-computer",
+    "homePath": "/home/trmd/.hive/v2/tmp/fbcb3059-176c-4fd4-a599-215be3f600e2/hb-v2-daemon-XMTJgO/machine-home/.codex",
+    "status": "ok",
+    "source": {
+      "home": "/home/trmd/.hive/v2/tmp/fbcb3059-176c-4fd4-a599-215be3f600e2/hb-v2-daemon-XMTJgO/machine-home/.codex",
+      "files": [
+        "auth.json"
+      ]
+    }
+  },
+  "grokWithNoLogin": {
+    "code": "no_credentials_to_import",
+    "checked": [
+      "/home/trmd/.hive/v2/tmp/fbcb3059-176c-4fd4-a599-215be3f600e2/hb-v2-daemon-XMTJgO/machine-home/.grok/auth.json"
+    ]
+  },
+  "relay lane": "caller_not_trusted (local_required)",
+  "isolated add of the vendor home is redirected to import": "invalid_request"
+}
+```
+
+## C2 a bee on the imported account ran the harness on the machine's own home (no CLAUDE_CONFIG_DIR); the stand-in login files are byte-identical before and after
+```json
+{
+  "beeEnv": [
+    {
+      "CLAUDE_CONFIG_DIR": null,
+      "CLAUDE_CODE_OAUTH_TOKEN": null
+    }
+  ],
+  "hashesBefore": {
+    "claudeCred": "2eedbb05deb059e6",
+    "claudeJson": "191ef9cdf9e83c10",
+    "codexAuth": "3282dabd8ff447b2"
+  },
+  "hashesAfter": {
+    "claudeCred": "2eedbb05deb059e6",
+    "claudeJson": "191ef9cdf9e83c10",
+    "codexAuth": "3282dabd8ff447b2"
+  },
+  "vaultCopyExists": false,
+  "homesCopyExists": false
+}
+```
+
+## C3 CLI: hive account import codex (already adopted)
+```json
+{
+  "rc": 0,
+  "out": [
+    "✓  already adopted account codex-this-computer (codex; This computer: uses your own codex sign-in (`codex login`) on this computer. Honeybee never copies or changes it.) — auth.json in ~/.hive/v2/tmp/fbcb3059-176c-4fd4-a599-215be3f600e2/hb-v2-daemon-XMTJgO/machine-home/.codex stay as they are; status ok"
+  ],
+  "err": []
+}
+```
+
+C4 a native (imported) account is never leased: account.lease.grant → lease_unsupported
+
+ALL CHECKS PASSED
+driver exit 0

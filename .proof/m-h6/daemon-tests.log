@@ -1,0 +1,499 @@
+✔ select.1: candidate rules — none registered / all paused / none credentialed are typed refusals; a lone candidate short-circuits without a limits read (41.112432ms)
+✔ select.2: the operator's case over ROWS — 30% weekly with 3h to reset beats 25% with 6 days; stale rows are used and logged as stale (28.12296ms)
+✔ allocation.1: active owner admissions are durable, proportional, and fail closed without complete fleet activity (48.603899ms)
+✔ allocation.2: all protected accounts return a typed wait; there is no singleton or least-bad fallback (24.250405ms)
+✔ allocation.3: authoritative local activity charges long sessions and lets idle history age out (28.922564ms)
+✔ allocation.4: only fresh provider evidence after exhaustion reopens headroom (26.299497ms)
+✔ allocation.5: a remotely observed claim replaces its owner hold without a gap or double count (25.613082ms)
+✔ allocation.6: node activity reports authoritative pending work, freshness, and observed claims (27.071707ms)
+✔ select.3: auth_needed accounts are skipped while a healthy one exists (named in the reason) and refused (typed) otherwise; paused never (27.19675ms)
+✔ select.4: live-bee commitments steer around a busy account; the winner's in-flight load and penalty are named (28.440596ms)
+✔ select.5: near-ties rotate through the per-harness cursor ROW (a same-instant burst spreads); a Fable model reaches the scoring (30.59267ms)
+✔ select.6: rr cycles in registration order, skips auth failures, and does not disturb auto's near-tie cursor (32.391174ms)
+✔ select.7: pick debits expire; measured velocity from consecutive refreshes ages and projects the hot account out; exhaustion evidence is a down-tier class until the cool-off (36.767458ms)
+✔ select.8: exhaustion evidence down-tiers an account for the cool-off, then it competes again (26.625861ms)
+✔ select.9: an account at or past its weekly ceiling leaves auto, rr and admission until its window resets (29.54828ms)
+✔ limits.0:the real Codex app-server transport returns typed success and authentication failures (107.618549ms)
+✔ reset limits: passes one key through consume, accepts only closed outcomes, refreshes, and preserves count-only credits (40.366893ms)
+✔ reset transport: sends the supplied key, refreshes after redemption, and rejects unknown outcomes (317.835342ms)
+✔ limits.1: fetch writes the table (claude via the home token + injected usage transport, codex via the injected app-server transport); failures = unreadable rows; auth failure → auth_needed, recovery → ok (61.978209ms)
+✔ limits.agy: an imported HOME-scoped token clears auth_needed while provider limits remain unsupported (30.177592ms)
+✔ limits.muse: the XDG-pair home and auth.json expiry decide credential state; provider limits stay unsupported and expiry drives auth_needed (26.211274ms)
+✔ limits.muse.observed: usage a Muse runtime observed becomes the readable limits row, dated by observedAtMs; the probe keeps it, a credential loss replaces it (27.040446ms)
+✔ muse.darwin: one Keychain login per macOS user — a Muse account is held, captured and leased there but never ready, selected or activated into a home (26.979829ms)
+✔ muse.expiry: an OAuth login whose access token passed expires_at is expired where nothing can refresh it (darwin), and the limits probe then marks it auth_needed (24.191309ms)
+✔ muse.keychain: an auth.json that only points at the OS keychain is a present login that is never captured, imported or leased (27.121914ms)
+✖ muse.native: This Mac — on darwin the machine's own Muse login is the one runnable Muse account; it runs with no home env and is never activated, copied, leased or written (24.684017ms)
+✔ muse.native.stranded: a native account whose daemon now resolves another muse home stays native and fails closed, never an ordinary account (25.699641ms)
+✔ accounts.foreign-home: capture, config import, backup restore and adoption are refused for a home outside homesDir; homes inside it are unaffected (26.775091ms)
+✔ accounts.foreign-home.activation: the vault is never copied into an empty home outside homesDir; auto selection skips it and homes inside it still activate (25.620397ms)
+✔ accounts.foreign-home.gateways: gateway MCP config is never seeded into a populated home outside homesDir; a populated home inside it still converges (23.571335ms)
+✔ muse.native.env: a native bee's own env cannot redirect where Muse finds its login or config; other accounts keep theirs (23.006417ms)
+✔ limits.1a: Codex probes are per-home single-flight; transient failure keeps the last good row while auth failure invalidates it (26.366836ms)
+✔ limits.1aa: concurrent active admissions join one fresh quota probe per account (40.12341ms)
+✔ limits.1b: expired Claude chains refresh once, persist home + keychain + vault, and a rejected refresh is typed auth_failed (46.60273ms)
+✔ hive2.1: two sessions sharing one account that both failed auth do NOT strand refresh — the daemon takes it over and recovers (28.727865ms)
+✔ hive2.2: a single HEALTHY session still owns refresh even when an unhealthy sibling is present (no regression on rotating tokens) (25.477449ms)
+✔ hive2.3: rejected refresh requests login; temporary/timeout refresh keeps last-good and never requests login (27.754684ms)
+✔ hive2.4: daemon-restart recovery re-attempts every auth_needed Claude account and leaves other harnesses alone (39.046236ms)
+✔ hive2.5: reauthentication landing DURING recovery is used without a network refresh (check newer credentials first) (23.78981ms)
+✔ hive2.6: claudeCredentialFresh preserves a still-valid on-disk token against a delayed error (23.936234ms)
+✔ limits.1c: Grok, Kimi, Cursor, MiniMax, and z.ai use their real provider windows; rotating OAuth chains persist (31.621388ms)
+✔ limits.1d: the daemon never races a live Grok runtime's rotating refresh token (23.843824ms)
+✔ limits.2: freshness policy schedules stale candidates off the caller path, deduplicates the lane, and skips fresh/lone candidates (58.722241ms)
+✔ limits.3: the periodic in-daemon sweep runs every limitsRefreshMs, never overlaps itself, and is bounded by the fetch timeout (86.929736ms)
+✔ activation.1: an EMPTY home is activated from the vault (+ home defaults, mirrors); a POPULATED home is untouched byte for byte; the vault is never written by a spawn; claude keychain seeded via the injected writer (41.791942ms)
+✔ activation.2: a populated account waits for the common gateway seeder, preserves operator config, and stores only forwarded names (30.005488ms)
+✔ capture.1: explicit recovery captures an unchanged valid Claude credential from the external store (dotted account id) (24.699367ms)
+✔ capture.2: explicit recovery refuses an invalid current credential without touching the vault or login state (22.769376ms)
+✔ import.1: the old registry → rows (dry-run plans, real applies, re-run skips); the operator's ids/penalty/pause/addedAt come across; env-only bees backfill by home path (28.291126ms)
+﹣ import.2 (READ-ONLY): a dry-run of the importer against the REAL ~/.hive plans the operator's accounts without writing anything (0.065066ms) # no ~/.hive/vault/accounts.json on this machine
+✔ health.1: credentialHealthOf — absent without a primary credential; a file alone is unverified; login or a readable limits probe verify (24.382952ms)
+✔ import.v18.1: importExisting copies the vendor home's credential (+ config) into the vault — the home env var when set, else the recipe default under $HOME; nothing anywhere is a typed refusal listing every path checked (26.853863ms)
+✔ import.v18.2: relocated vendor files — Claude's ~/.claude.json + Keychain item (external), opencode's XDG data store — land under the recipe's vault layout (26.054871ms)
+✔ status.v18: honestStatus never returns ok without a credential (auth_needed instead); paused / auth_needed pass through; a recipe-less harness is always credentialed (23.189973ms)
+✔ verify.v18: the real limits probe settles an import — readable → verified (and the row is re-published for the mirror), auth failure → auth_needed; no probe → unverified; nothing → absent; a Codex probe activates the EMPTY home from the vault first (45.716819ms)
+✔ import.v18.3: the old-registry importer creates a credential-less record as auth_needed, never as a usable-looking ok row (22.978162ms)
+Grok busy probes: enrolling/disabling/refreshing operation_in_progress=provider_error; account auth remains ok
+✔ Grok central busy limits probes preserve account auth during ownership changes (24.920527ms)
+✔ lease unknown stays raw across reopen, refuses readiness and admission, and names the account (144.735506ms)
+✔ lease unknown background refresh cannot activate a home or probe credentials (121.936822ms)
+✔ handoff.loop.cross-family: idle codex source → claude target; seed delivered first, queued mail follows in order (55.205528ms)
+✔ handoff.loop.working: stopAt=idle waits for the running turn; the source takes no new turn; stopAt=now stops mid-turn (48.580163ms)
+✔ handoff.loop.stopped: a stopped source admits, the stop moots, the switch and target boot proceed (34.665673ms)
+✔ handoff.loop.restart: a daemon crash at every phase resumes from durable state; replaying the key returns the same receipt (48.190616ms)
+✔ handoff.loop.target-boot-failure: the target exhausting its spawn budget fails the handoff at stage start; revive retries with the seed still first (41.607163ms)
+✔ handoff.loop.context-failure: a transcript read failure fails the handoff before the switch and revives the source on its old harness (31.554689ms)
+✔ handoff.loop.async-summarizer: the switch waits for the summarizer; its result is the seed; a rejection fails at stage context (65.361463ms)
+✔ handoff.loop.supersede: an operator stop during stopping cancels the handoff; the bee keeps its harness and thread (29.4663ms)
+ℹ tests 67
+ℹ suites 0
+ℹ pass 65
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 1
+ℹ todo 0
+ℹ duration_ms 3127.15837
+
+✖ failing tests:
+
+test at v2/daemon/tests/accounts-service.test.ts:1146:1
+✖ muse.native: This Mac — on darwin the machine's own Muse login is the one runnable Muse account; it runs with no home env and is never activated, copied, leased or written (24.684017ms)
+  AssertionError [ERR_ASSERTION]: only a recipe that says so offers a native account
+  + actual - expected
+  
+  + '/home/trmd/.hive/v2/tmp/fbcb3059-176c-4fd4-a599-215be3f600e2/hb-v2-accounts-YWayDT/machine-home/.claude'
+  - null
+  
+      at TestContext.<anonymous> (file:///home/trmd/.hive/v2/cells/rebuild-m-h6-account-authority-bfd40608e476/github-com-honeybeehq-honeybee-a9015b303498-space-bfd40608e476/v2/daemon/tests/accounts-service.test.ts:1157:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: '/home/trmd/.hive/v2/tmp/fbcb3059-176c-4fd4-a599-215be3f600e2/hb-v2-accounts-YWayDT/machine-home/.claude',
+    expected: null,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+✔ leased export RPC: scoped original artifact is transient, local-only, uncached, restart-safe and revoke-fenced (1356.351077ms)
+✔ hb-lease-fix: trusted-caller gate, owner-signed authority, node-bound payloads, key bound to items/principal, audited replays, redacted CLI (1200.674409ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2769.513931
+✔ rpc.accounts.1: CRUD verbs, typed errors, idempotent add, spawn binding (explicit / paused / mismatch / auto / unbound), snapshot + watch carry accounts (1039.126301ms)
+✔ rpc.accounts.fuzzy: one selector works across account verbs, spawn agent shorthand, explicit override, and swap (832.986112ms)
+✔ rpc account.resetLimits: duplicate keys return one effect; uncertain and wrong-harness failures stay typed (817.887089ms)
+✔ rpc.accounts.2: bee.swapAccount (fake-claude) — same-harness stop → rebind → revive with resume under a NEW session id in the new home; cross-harness refused; stopped bee rebound only (1374.374525ms)
+✔ rpc allocation owner: acquire is authoritative, claim swap is atomic, and all-protected returns account_wait (1778.274586ms)
+✔ rpc allocation owner serializes concurrent node admissions and a remote node consumes one claim once (1465.92191ms)
+✔ rpc allocation owner claim gates active automatic spawn while shadow acquisition remains observational (1117.228786ms)
+✔ rpc.accounts.2b: bee.swapAccount clears stale auth_needed before the replacement generation presents as working (1348.26416ms)
+✔ rpc.accounts.3: automatic rotation on exhaustion (fake-claude @quota:delayed) — swap to the untried account and continue automatically; opt-out honored; no candidate = flagged, no loop; auth_needed evidence → account status (2764.487777ms)
+✔ rpc.accounts.ceiling: past its weekly ceiling an account refuses explicit work, idle bees move off with a note, and stopped bees move off when they wake (1895.703435ms)
+✔ rpc.accounts.f2: add refuses pre-existing credentials by default; importExisting adopts as unverified; health is validation evidence, never file-existence; a fresh add is auth_needed, never ok (518.417153ms)
+✔ rpc.accounts.v18: importExisting imports the MACHINE's vendor home (the field finding); nothing importable is `no_credentials_to_import` naming the paths; snapshot + watch deltas carry credentialHealth; login success flips status (528.79546ms)
+✔ rpc.accounts: Codex usageLimitExceeded persists bee and account boundaries until successful recovery (1068.845409ms)
+✔ rpc central credentials: per-account opt-in/status/lease/disable, idempotent enable, in-place login, native capture fenced, expired and refused candidates rejected (609.651561ms)
+retained @ account and @ label: install/epoch renewal/revoke/reinstall PASS; full id cap210; invalid charset/overflow typed invalid_request
+✔ lease account ids share core validation: retained @ ids renew, revoke and reinstall without suffix rewriting (497.260159ms)
+✔ rpc.accounts.2c: bee.swapAccount (fake-claude) recovers a lost session id from the bee's session log, refuses typed when nothing can be carried, and stays "none" only for a bee that never ran (2325.795743ms)
+ℹ tests 16
+ℹ suites 0
+ℹ pass 16
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 20222.476684
+✔ lease.claude.1: ships .credentials.json with DEEP, EXACT refresh blanking; access token, near-miss keys, and expiry preserved; log secret-free (36.537521ms)
+✔ lease.claude.2: an expired chain is refreshed through the daemon's own refresher first; the NEW refresh token also never ships (27.80939ms)
+✔ lease.claude.4: the 15-minute ship floor — a dying-but-not-expired token is refreshed, never re-shipped; a refresh that stays under the floor refuses (29.119846ms)
+✔ lease.claude.3: typed refusals — no credential; near-expiry chain a live runtime still owns; failed refresh (28.211071ms)
+✔ lease.claude.5: an idle running Claude loses the refresh at the deferral deadline — retried mints from T-15m ship a later expiry with over 5 minutes to spare (29.08029ms)
+✔ lease.claude.6: past the deadline the daemon still yields to a Claude that is refreshing or has refreshed (38.914941ms)
+✔ lease.claude.7: the daemon does not rotate under a running Claude when it cannot publish to the Keychain that Claude reads (28.168819ms)
+✔ lease.claude.8: a rotated chain the Keychain refused is re-published until running Claudes can read it (36.598489ms)
+✔ lease.claude.9: with no Claude running the daemon still rotates only from a readable Keychain (34.371973ms)
+✔ lease.codex.1: ships access+id token with refresh_token blanked (field KEPT); blanking is DEEP (stray refresh keys outside tokens too); a subscription lease's OPENAI_API_KEY is blanked (26.753277ms)
+✔ lease.codex.3: a shipped file always carries refresh_token — present as "" even when the source file lacks the field (codex serde hard-fails without it) (23.286561ms)
+✔ lease.codex.2: a near-expiry token triggers the central rotation and harvests home → vault; a rotation that stays stale is a typed TTL refusal (29.685566ms)
+✔ lease.grok.1: every issuer::client entry's refresh_token blanked; cached keys preserved; expiresAt = the soonest entry expiry; kindNote carries the XAI_API_KEY scrub rule (23.482111ms)
+✔ lease.kimi.1: API-key lease ships (refresh blanked); an OAuth-only account is a durable lease_unsupported refusal (23.855837ms)
+✔ lease.opencode.1: single coding-plan provider filtered out of the multi-provider auth.json; other providers DROPPED, not blanked; none → lease_unsupported (23.576695ms)
+✔ lease.muse.1: a held login requires authority minting and leases only the key, never the bootstrap or profile (41.189641ms)
+✔ lease.muse.2: a static API key has a bounded four-hour delivery lease (23.405362ms)
+✔ lease.muse.3: Keychain, bootstrap, missing and invalid documents have typed refusals (24.648668ms)
+✔ lease.muse.4: a delivered working key imports without any bootstrap on the recipient (24.147153ms)
+✔ lease.muse.5: a Mac holds and mints centrally in its vault; it never publishes a runtime home (28.583143ms)
+✔ lease.flight.1: concurrent mints for one account JOIN a single mint (the rotation runs once) (23.351097ms)
+✔ lease.flight.2: refused while the account's refresher is mid-rotation (40.949584ms)
+✔ lease.strategy.1: harnesses without a lease strategy are a durable typed refusal (23.192709ms)
+✔ rpc.lease.1: account.lease verb — result shape, typed errors, capability tag, and no secret bytes in daemon output or the audit stream (488.253656ms)
+✔ central.claude: idle local runtime does not block rotation; leases and runtime copies never carry refresh tokens (64.580304ms)
+✔ central.foreign-home: a central authority never enrolls or publishes into a home outside homesDir (39.972105ms)
+✔ central.claude: enrollment refuses idle runtimes, and existing accounts retain their behavior (24.522042ms)
+✔ central.claude: an expired candidate is refused before any state change; native copies stay intact (#12) (26.554721ms)
+✔ central.claude: a provider rejection during enrollment aborts with native copies intact and no access-only publication (#12) (27.98422ms)
+✔ central.claude: a lost provider response during enrollment is retried after backoff; a consumed token ends in login_required (#12) (32.315677ms)
+✔ central.claude: an enrollment interrupted mid-rotation is uncertain on resume and resolves on the next refresh (#12) (45.381206ms)
+✔ central.claude: disabling an interrupted enrollment never republishes its unconfirmed refresh token (44.604296ms)
+✔ central.claude: multiple accounts enroll and rotate independently (44.438645ms)
+✔ central.claude: force refresh is coalesced with lease requests and keyed retries survive service restart (48.152491ms)
+✔ central.claude: force refresh re-evaluates after an unrelated ensure rejects (30.033241ms)
+✔ central.claude: saved rotation survives publication failure; an unknown outcome is retried after backoff and recovers (37.860431ms)
+✔ central.claude: uncertain disable remains fenced across failed publication and restart (31.414386ms)
+✔ central.claude: a refused refresh token ends in login_required — auth_needed with the reason, a typed lease refusal, no last-good limits (31.272619ms)
+✔ central.claude: a refresh the provider did not process stays ready, backs off and recovers; last-good limits stay (31.898516ms)
+✔ central.claude: a refresh interrupted by a daemon death resolves on the next tick instead of freezing (44.346755ms)
+✔ central.claude: an uncertain row from before schema v35 has no retry metadata and is still retried by the tick alone (43.618321ms)
+✔ central.claude: a retry that succeeds but cannot publish still ends the doubt once the saved result settles (33.541188ms)
+✔ central.claude: unreadable Keychain blocks enrollment before the validating rotation and preserves the native copy (24.792117ms)
+✔ central.claude: lost authority has a supported disable and login recovery path (28.286628ms)
+✔ central.claude: a foreign native rotation is preserved and blocks provider refresh (28.412542ms)
+✔ central.claude: a foreign login that lands during enrollment is detected before the validating rotation (27.623028ms)
+✔ central.claude: a pending native Keychain seed prevents enrollment (25.59178ms)
+✔ central.claude: a validated rotation is saved before publication; a retry publishes without rotating again (#12) (31.121666ms)
+✔ central.claude: disable restores a validated enrollment result over its older adopted copies (29.138873ms)
+✔ central.claude relogin: login_required logs in place — generation +1, ready, ok, login recorded, copies access-only, running runtime untouched (37.321314ms)
+✔ central.claude relogin: another Anthropic account or an unknown one is refused with nothing changed; replaceAccount allows it (32.384951ms)
+✔ central.claude relogin: an authority with no recorded identity uses the home's Claude Code account record (32.01389ms)
+✔ central.claude relogin: a sign-in cancelled while it waited behind a refresh changes nothing (28.820855ms)
+✔ central.claude relogin: an organization that cannot be named is unverified, not a wildcard (49.115151ms)
+✔ central.claude relogin: a login whose expiry the provider did not give clears the previous login's expiry (31.804383ms)
+✔ central.claude early refresh: a failure before the provider is retried with backoff, not on every tick (51.603157ms)
+✔ central.claude relogin: a login saved before publication failed settles on the next tick-driven ensure without a new provider call (33.500108ms)
+✔ central.claude lease minTtlMs: below the requested margin the chain is refreshed first; a just-issued token or an unprocessed refresh still ships (31.174809ms)
+✔ central.claude early refresh: due once no more than the ahead window remains, never within the minimum interval of an issue, quiet after a failure (30.66068ms)
+✔ account mirror: loginDueAt is three days before the provider login ends (23.444057ms)
+✔ peer lease adoption preserves native material and refuses working or operator-paused accounts (40.951108ms)
+✔ peer lease publication uses Claude locks and keeps starts blocked until Keychain publication succeeds (46.822026ms)
+✔ revoked leases retain all account rows and bee bindings, audit once and accept a newer authority epoch (62.873137ms)
+✔ native backups exclude access-only leases, enforce permissions and retain only the latest genuine chain (54.891997ms)
+✔ explicit lease adoption replaces a stopped working native login with a genuine restorable backup, but never a running bee or central authority (46.740217ms)
+✔ explicit adoption checks stopped bees again after awaiting the per-home Keychain read (25.083051ms)
+✔ versioned lease publication: generation is not eligible until home, mirrors and Keychain finish, durable completion marker survives service recreation (32.180784ms)
+✔ auth death eligibility stays harness-keyed; native, Muse, legacy and unpublished leases are excluded (27.061888ms)
+✔ legacy lease renewal after auth death preserves ordinary AuthResume and releases only unclaimed versioned candidates (180.287439ms)
+✔ central lease mint compatibility: Codex and Claude ship valid matching material during refreshing or uncertainty without a generation label (191.89259ms)
+✔ authority instance: actual enable, refresh, restart, disable/remove/re-add/enable scopes minted leases (56.201873ms)
+ℹ tests 71
+ℹ suites 0
+ℹ pass 71
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3434.53286
+lease enrol isolated RPC: stable same-row receipt after publication SIGKILL; live process unchanged; legacy first death then stamped once-only recovery; profile retained on revoke
+✔ lease enrol RPC: live unchanged process, generationless publication SIGKILL/retry, legacy first death then stamped recovery, retained receipt and profile-safe revoke (3028.996115ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3215.308721
+✔ lease fences RPC: own stored export, authenticated first hop, durable history and no second hop (2163.697024ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2309.590947
+✔ leased export claude: ephemeral current access only, original scope/expiry, one redacted audit per call (45.23968ms)
+✔ leased export codex: ephemeral current access only, original scope/expiry, one redacted audit per call (32.223958ms)
+✔ leased export grok: ephemeral current access only, original scope/expiry, one redacted audit per call (31.053213ms)
+✔ leased export refuses revoked without effects (30.275152ms)
+✔ leased export refuses expired without effects (30.093108ms)
+✔ leased export refuses publication_pending without effects (29.667711ms)
+✔ leased export refuses generation_missing without effects (31.082009ms)
+✔ leased export refuses instance_missing without effects (30.394252ms)
+✔ leased export refuses unbounded_expiry without effects (29.882518ms)
+✔ leased export refuses paused without effects (29.887037ms)
+✔ leased export refuses account_auth_needed without effects (31.406249ms)
+✔ leased export refuses local/native/central/static claude (28.182204ms)
+✔ leased export refuses local/native/central/static kimi (27.228791ms)
+✔ leased export refuses local/native/central/static muse (27.594301ms)
+✔ leased export fails closed on missing primary (27.588129ms)
+✔ leased export fails closed on corrupt primary (27.942228ms)
+✔ leased export fails closed on mismatch primary (28.861243ms)
+✔ leased export fails closed on refresh primary (28.321946ms)
+✔ leased export fails closed on symlink primary (28.166884ms)
+✔ leased export fails closed on expiry primary (28.018176ms)
+✔ leased export refuses handoff source/exported/false (28.038535ms)
+✔ leased export refuses handoff source/prepared/false (28.109864ms)
+✔ leased export refuses handoff source/committed/false (28.491626ms)
+✔ leased export refuses handoff destination/preparing/false (27.575485ms)
+✔ leased export refuses handoff destination/prepared/false (28.682215ms)
+✔ leased export refuses handoff destination/adopting/false (27.461644ms)
+✔ leased export refuses handoff destination/adopting/true (27.892812ms)
+✔ leased export refuses handoff destination/failed/false (27.92774ms)
+✔ leased export refuses a live authority lane then succeeds after it settles (28.634182ms)
+✔ leased export waits for install publication and remove, and never reads their stale pre-lane origin (37.324098ms)
+✔ leased export refuses unclaimed auth recovery, permits claimed idle or spawn-failed receipt and deadline-released legacy (40.287547ms)
+✔ leased export ingress is direct local Unix only, missing facts fail closed (0.399737ms)
+✔ leased export enrolled live row generationless coverage pending (28.093542ms)
+✔ leased export enrolled live row scoped coverage pending (31.435395ms)
+✔ leased export permits a deadline-released unclaimed candidate and does not require historical auth receipt settlement (30.792557ms)
+✔ leased export refuses the current known-failed legacy revision, then permits a changed publication (33.136752ms)
+✔ leased export copies only stored bounded fence provenance and refuses a forwarded row (29.467892ms)
+ℹ tests 37
+ℹ suites 0
+ℹ pass 37
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1332.388208
+✔ lease remove native guard RPC/CLI: local confirmation, read-only preview, SIGKILL before deletion and one durable authorisation (1635.77425ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1778.268167
+✔ account config import: Claude copies config-only files, merges missing safe values, preserves destination auth and conflicts (15.451927ms)
+✔ account config import: auth-only mixed JSON is skipped and malformed reasons are static (1.878421ms)
+✔ account config import: JSONC comments survive safe extraction and unusable MCP servers do not make a config ready (3.493128ms)
+✔ account config import: Grok and Kimi TOML import safe settings without provider auth (9.208835ms)
+✔ account config import: environment homes win and source symlink escapes are reported without copying (3.531803ms)
+✔ account config import: raw aliases cannot smuggle mixed config, env files, private keys, or destination links (4.27684ms)
+✔ account config import: traversal depth and destination config reads are bounded (7.208387ms)
+✔ account config import: unresolved Kimi default_model is skipped (0.949255ms)
+✔ account config import: unknown harness and equal source/destination are typed refusals (0.895971ms)
+ℹ tests 9
+ℹ suites 0
+ℹ pass 9
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 243.94637
+✖ rpc account config: fixed preview/import contract, typed refusals, serialized imports, and durable exact retry (956.439246ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 0
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1085.630742
+
+✖ failing tests:
+
+test at v2/daemon/tests/account-config-rpc.test.ts:26:1
+✖ rpc account config: fixed preview/import contract, typed refusals, serialized imports, and durable exact retry (956.439246ms)
+  Error [RpcError]: account.add: /home/trmd/.hive/v2/tmp/fbcb3059-176c-4fd4-a599-215be3f600e2/hb-v2-daemon-sWqbAh/machine-home/.codex is this computer's own codex sign-in; add it with native: true
+      at RpcClient.onFrame (file:///home/trmd/.hive/v2/cells/rebuild-m-h6-account-authority-bfd40608e476/github-com-honeybeehq-honeybee-a9015b303498-space-bfd40608e476/v2/cli/src/client.ts:217:9)
+      at RpcClient.onData (file:///home/trmd/.hive/v2/cells/rebuild-m-h6-account-authority-bfd40608e476/github-com-honeybeehq-honeybee-a9015b303498-space-bfd40608e476/v2/cli/src/client.ts:193:33)
+      at Socket.<anonymous> (file:///home/trmd/.hive/v2/cells/rebuild-m-h6-account-authority-bfd40608e476/github-com-honeybeehq-honeybee-a9015b303498-space-bfd40608e476/v2/cli/src/client.ts:127:51)
+      at Socket.emit (node:events:514:28)
+      at addChunk (node:internal/streams/readable:568:12)
+      at readableAddChunkPushByteMode (node:internal/streams/readable:519:3)
+      at Readable.push (node:internal/streams/readable:399:5)
+      at Pipe.onStreamRead (node:internal/stream_base_commons:189:23) {
+    code: 'invalid_request',
+    details: undefined
+  }
+auth death exit/restart: provider revocation → held accepted FIFO mail → higher lease generation → one same-id/session recovery; duplicate and operator stop fenced
+✔ auth death isolated daemons: revoked provider access, process exit, newer lease revives once; restart, mail FIFO and operator stop (3958.552324ms)
+auth death system-stop: provider revocation → held accepted FIFO mail → higher lease generation → one same-id/session recovery; duplicate and operator stop fenced
+✔ auth death isolated daemons: revoked provider access, system idle stop, newer lease revives once; restart, mail FIFO and operator stop (4027.306376ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 8147.442412
+✔ authority instance RPC: scoped lease survives restart; legacy holder upgrades, lower same-instance and retired replay refuse (1294.545138ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1433.696709
+claude local Unix facts only: node_relay/remote hellos refuse identity/peer/key facts and parameter spoofing; explicit --replace voids unclaimed export/prepared shadow, persists restart; post-shadow/pre-pin SIGKILL retry completes; source refresh works
+claude 1/4 export fence survives A SIGKILL/restart; refresh/mint/enable/disable refused; timers skip
+claude 2/4/7 prepared B survives SIGKILL before rotation; adopt rotates exactly once; replay no-op; same leased row becomes local, bee account preserved; home access-only; old token consumed
+claude 3 confirm: authority removed, homes/vault/mirrors refresh-byte hits=0; source provider calls=0; old row accepts new authority lease in place
+claude terminal adopted peer protected: typed signed refusal preserves chain byte-for-byte; issuer cancels unapplied takeover and confirms original adoption, no provider
+claude crash after rotated authority file save before publish: SIGKILL/restart/retry publishes saved generation, total rotations=1
+claude preparation crash: durable preparing state exposes no receipt before material fsync; replay completes then one rotation
+claude 5 abort restores A; delayed prepare cannot commit; signed abort cleans B; unprepared source refuses/cancels takeover with signed abort; delayed adopt refused
+claude key rotation: unclaimed export durably aborted; old pinned key verifies abort; prepared claims refuse; peer node mismatch refused; 0700/0600; duplicate/restart replay no-op; key-replacement SIGKILL keeps exports aborted; no provider call
+claude TTL unprepared export auto-aborts, survives restart, signed abort receipt available; late preparation cannot commit; source alone judges TTL
+claude 6 invalid_grant typed; B not enabled/no authority; malformed settings untouched, B restart/RPC healthy; A committed_fenced, explicit operator takeover required
+claude failed destination operator take-over: retained leased row becomes local/native-login-required; both sides scrub, no provider
+claude pending cleanup: typed rejection survives unreadable material; restart serves RPC; affected account fenced; repair triggers background scrub
+claude known rotated chain with missing access: retained_unusable, public saved generation/eligibility; adopt replay no provider
+claude live member initial retained recovery: explicit generation in protected CLI payload rotates saved chain once, identical payload replay no provider, signed normal completion
+claude unknown response: durable uncertain destination, private material retained, source committed fence held
+claude response-before-save SIGKILL: outcome unknown, source committed, destination retained privately; retry calls provider zero times; explicit native takeover required
+claude explicit take-over CLI: confirm required, signed self/higher epoch; both sides scrubbed without provider; local login fenced until verified peer acknowledgment; restart/replay no-op; issuer same row local/auth_needed
+claude standDown running-bee fence: refusal before scrub/epoch/operation changes, no provider; explicit stop permits retry
+claude signed standDown: unauthenticated/mismatched receipt refused; scrub failure preserves phase, durable operation fences; restart/repair and post-demotion SIGKILL same-receipt retry complete without provider
+claude 8 standDown scrubs without provider call
+claude release-peer destination preparing SIGKILL: missing primary and temporary received material voided, terminal claim, zero provider
+claude release-peer destination prepared: zero provider; terminal claim survives restart and refuses late commit/prepare; holder preserved or shadow voided; epoch+1
+claude release-peer destination failed: zero provider; terminal claim survives restart and refuses late commit/prepare; holder preserved or shadow voided; epoch+1
+claude release-peer destination adopted: zero provider; terminal claim survives restart and refuses late commit/prepare; holder preserved or shadow voided; epoch+1
+claude release-peer destination uncertain: zero provider; terminal claim survives restart and refuses late commit/prepare; holder preserved or shadow voided; epoch+1
+claude source settlement refuses newer native login: native and authority byte-identical, source fence held, no provider call
+claude live-member cap: exactly three unusable rotations, no fourth; source signed settlement/restart replay, response-save SIGKILL cap kept, cleanup failure/restart/repair replay, explicit discard on same row native-login-required, epoch+1, zero extra provider
+grok release-peer explicit retained chain rotated once/published authority: one call, terminal replay no provider, epoch+1
+grok release-peer explicit retained chain invalid_grant proven dead/scrubbed: one call, terminal replay no provider, epoch+1
+grok retained_unusable: saved chain/generation returned, previous request no provider; fresh bound generation rotates once and publishes; older generation replay no provider, holder reports no scrub
+grok retained_unusable cap: three explicit bound failures -> login_required/reason; capped discard refused below limit, real CLI explicitly discards with provider-session warning, same row local/native-login-required, zero provider
+claude release-peer prepared: no commit/provider in abort, chain byte-identical until scheduled next-tick normal rotation; epoch+1; signed abort clears returning shadow and same row accepts higher lease
+claude release-peer restored: removed roster fact persisted, CLI confirmed, one rotation, ready/access-only, epoch+1, replay no provider; old destination copy rejected
+claude release-peer repeated account: current claim inferred over terminal history; resolved private marker permits only new higher-generation claim
+claude release-peer rejected: destination already rotated, source scrubbed/native-login-required, named-account warning retains removed peer login, replay no provider
+claude release-peer release-before SIGKILL: durable fact/attempt; retry outcome=uncertain, total provider calls=0, no blind repeat
+claude release-peer response SIGKILL: durable fact/attempt; retry outcome=uncertain, total provider calls=1, no blind repeat
+claude release-peer release-save SIGKILL: durable fact/attempt; retry outcome=restored, total provider calls=1, no blind repeat
+claude release-peer known 429: unconsumed proof persisted, explicit retry after SIGKILL spends original chain once; native recovery refused while retryable
+claude release-peer running bee refused without attempt/provider; explicit stop allows release
+claude release-peer audit: one secret-free outcome ledger row, authenticated roster version/author counter persisted
+claude 9 secret scan logs/SQLite/ledgers/RPC metadata=0; owned daemon PIDs 1981318,1981203 stopped; stub closed in cleanup
+✔ credential handoff claude: two isolated daemons, durable prepare/commit, rotation, scrub, abort, TTL, replay and failures (27209.756887ms)
+codex local Unix facts only: node_relay/remote hellos refuse identity/peer/key facts and parameter spoofing; explicit --replace voids unclaimed export/prepared shadow, persists restart; post-shadow/pre-pin SIGKILL retry completes; source refresh works
+codex 1/4 export fence survives A SIGKILL/restart; refresh/mint/enable/disable refused; timers skip
+codex 2/4/7 prepared B survives SIGKILL before rotation; adopt rotates exactly once; replay no-op; same leased row becomes local, bee account preserved; home access-only; old token consumed
+codex 3 confirm: authority removed, homes/vault/mirrors refresh-byte hits=0; source provider calls=0; old row accepts new authority lease in place
+codex terminal adopted peer protected: typed signed refusal preserves chain byte-for-byte; issuer cancels unapplied takeover and confirms original adoption, no provider
+codex crash after rotated authority file save before publish: SIGKILL/restart/retry publishes saved generation, total rotations=1
+codex preparation crash: durable preparing state exposes no receipt before material fsync; replay completes then one rotation
+codex 5 abort restores A; delayed prepare cannot commit; signed abort cleans B; unprepared source refuses/cancels takeover with signed abort; delayed adopt refused
+codex key rotation: unclaimed export durably aborted; old pinned key verifies abort; prepared claims refuse; peer node mismatch refused; 0700/0600; duplicate/restart replay no-op; key-replacement SIGKILL keeps exports aborted; no provider call
+codex TTL unprepared export auto-aborts, survives restart, signed abort receipt available; late preparation cannot commit; source alone judges TTL
+codex 6 invalid_grant typed; B not enabled/no authority; malformed settings untouched, B restart/RPC healthy; A committed_fenced, explicit operator takeover required
+codex failed destination operator take-over: retained leased row becomes local/native-login-required; both sides scrub, no provider
+codex pending cleanup: typed rejection survives unreadable material; restart serves RPC; affected account fenced; repair triggers background scrub
+codex known rotated chain with missing access: retained_unusable, public saved generation/eligibility; adopt replay no provider
+codex live member initial retained recovery: explicit generation in protected CLI payload rotates saved chain once, identical payload replay no provider, signed normal completion
+codex unknown response: durable uncertain destination, private material retained, source committed fence held
+codex response-before-save SIGKILL: outcome unknown, source committed, destination retained privately; retry calls provider zero times; explicit native takeover required
+codex explicit take-over CLI: confirm required, signed self/higher epoch; both sides scrubbed without provider; local login fenced until verified peer acknowledgment; restart/replay no-op; issuer same row local/auth_needed
+codex standDown running-bee fence: refusal before scrub/epoch/operation changes, no provider; explicit stop permits retry
+codex signed standDown: unauthenticated/mismatched receipt refused; scrub failure preserves phase, durable operation fences; restart/repair and post-demotion SIGKILL same-receipt retry complete without provider
+codex 8 standDown scrubs without provider call
+codex release-peer destination preparing SIGKILL: missing primary and temporary received material voided, terminal claim, zero provider
+codex release-peer destination prepared: zero provider; terminal claim survives restart and refuses late commit/prepare; holder preserved or shadow voided; epoch+1
+codex release-peer destination failed: zero provider; terminal claim survives restart and refuses late commit/prepare; holder preserved or shadow voided; epoch+1
+codex release-peer destination adopted: zero provider; terminal claim survives restart and refuses late commit/prepare; holder preserved or shadow voided; epoch+1
+codex release-peer destination uncertain: zero provider; terminal claim survives restart and refuses late commit/prepare; holder preserved or shadow voided; epoch+1
+codex source settlement refuses newer native login: native and authority byte-identical, source fence held, no provider call
+codex live-member cap: exactly three unusable rotations, no fourth; source signed settlement/restart replay, response-save SIGKILL cap kept, cleanup failure/restart/repair replay, explicit discard on same row native-login-required, epoch+1, zero extra provider
+grok release-peer explicit retained chain rotated once/published authority: one call, terminal replay no provider, epoch+1
+grok release-peer explicit retained chain invalid_grant proven dead/scrubbed: one call, terminal replay no provider, epoch+1
+grok retained_unusable: saved chain/generation returned, previous request no provider; fresh bound generation rotates once and publishes; older generation replay no provider, holder reports no scrub
+grok retained_unusable cap: three explicit bound failures -> login_required/reason; capped discard refused below limit, real CLI explicitly discards with provider-session warning, same row local/native-login-required, zero provider
+codex release-peer prepared: no commit/provider in abort, chain byte-identical until scheduled next-tick normal rotation; epoch+1; signed abort clears returning shadow and same row accepts higher lease
+codex release-peer restored: removed roster fact persisted, CLI confirmed, one rotation, ready/access-only, epoch+1, replay no provider; old destination copy rejected
+codex release-peer repeated account: current claim inferred over terminal history; resolved private marker permits only new higher-generation claim
+codex release-peer rejected: destination already rotated, source scrubbed/native-login-required, named-account warning retains removed peer login, replay no provider
+codex release-peer release-before SIGKILL: durable fact/attempt; retry outcome=uncertain, total provider calls=0, no blind repeat
+codex release-peer response SIGKILL: durable fact/attempt; retry outcome=uncertain, total provider calls=1, no blind repeat
+codex release-peer release-save SIGKILL: durable fact/attempt; retry outcome=restored, total provider calls=1, no blind repeat
+codex release-peer known 429: unconsumed proof persisted, explicit retry after SIGKILL spends original chain once; native recovery refused while retryable
+codex release-peer running bee refused without attempt/provider; explicit stop allows release
+codex release-peer audit: one secret-free outcome ledger row, authenticated roster version/author counter persisted
+codex 9 secret scan logs/SQLite/ledgers/RPC metadata=0; owned daemon PIDs 1982485,1982278 stopped; stub closed in cleanup
+✔ credential handoff codex: two isolated daemons, durable prepare/commit, rotation, scrub, abort, TTL, replay and failures (30361.259211ms)
+grok local Unix facts only: node_relay/remote hellos refuse identity/peer/key facts and parameter spoofing; explicit --replace voids unclaimed export/prepared shadow, persists restart; post-shadow/pre-pin SIGKILL retry completes; source refresh works
+grok 1/4 export fence survives A SIGKILL/restart; refresh/mint/enable/disable refused; timers skip
+grok 2/4/7 prepared B survives SIGKILL before rotation; adopt rotates exactly once; replay no-op; same leased row becomes local, bee account preserved; home access-only; old token consumed
+grok 3 confirm: authority removed, homes/vault/mirrors refresh-byte hits=0; source provider calls=0; old row accepts new authority lease in place
+grok terminal adopted peer protected: typed signed refusal preserves chain byte-for-byte; issuer cancels unapplied takeover and confirms original adoption, no provider
+grok crash after rotated authority file save before publish: SIGKILL/restart/retry publishes saved generation, total rotations=1
+grok preparation crash: durable preparing state exposes no receipt before material fsync; replay completes then one rotation
+grok 5 abort restores A; delayed prepare cannot commit; signed abort cleans B; unprepared source refuses/cancels takeover with signed abort; delayed adopt refused
+grok key rotation: unclaimed export durably aborted; old pinned key verifies abort; prepared claims refuse; peer node mismatch refused; 0700/0600; duplicate/restart replay no-op; key-replacement SIGKILL keeps exports aborted; no provider call
+grok TTL unprepared export auto-aborts, survives restart, signed abort receipt available; late preparation cannot commit; source alone judges TTL
+grok 6 invalid_grant typed; B not enabled/no authority; malformed settings untouched, B restart/RPC healthy; A committed_fenced, explicit operator takeover required
+grok failed destination operator take-over: retained leased row becomes local/native-login-required; both sides scrub, no provider
+grok pending cleanup: typed rejection survives unreadable material; restart serves RPC; affected account fenced; repair triggers background scrub
+grok known rotated chain with missing access: retained_unusable, public saved generation/eligibility; adopt replay no provider
+grok live member initial retained recovery: explicit generation in protected CLI payload rotates saved chain once, identical payload replay no provider, signed normal completion
+grok terminal malformed expiry: replacement chain kept privately, login_required_retained, zero further rotations on retry
+grok unknown response: durable uncertain destination, private material retained, source committed fence held
+grok response-before-save SIGKILL: outcome unknown, source committed, destination retained privately; retry calls provider zero times; explicit native takeover required
+grok explicit take-over CLI: confirm required, signed self/higher epoch; both sides scrubbed without provider; local login fenced until verified peer acknowledgment; restart/replay no-op; issuer same row local/auth_needed
+grok signed standDown: unauthenticated/mismatched receipt refused; scrub failure preserves phase, durable operation fences; restart/repair and post-demotion SIGKILL same-receipt retry complete without provider
+grok 8 standDown scrubs without provider call
+grok release-peer destination preparing SIGKILL: missing primary and temporary received material voided, terminal claim, zero provider
+grok release-peer destination prepared: zero provider; terminal claim survives restart and refuses late commit/prepare; holder preserved or shadow voided; epoch+1
+grok release-peer destination failed: zero provider; terminal claim survives restart and refuses late commit/prepare; holder preserved or shadow voided; epoch+1
+grok release-peer destination adopted: zero provider; terminal claim survives restart and refuses late commit/prepare; holder preserved or shadow voided; epoch+1
+grok release-peer destination uncertain: zero provider; terminal claim survives restart and refuses late commit/prepare; holder preserved or shadow voided; epoch+1
+grok source settlement refuses newer native login: native and authority byte-identical, source fence held, no provider call
+grok live-member cap: exactly three unusable rotations, no fourth; source signed settlement/restart replay, response-save SIGKILL cap kept, cleanup failure/restart/repair replay, explicit discard on same row native-login-required, epoch+1, zero extra provider
+grok release-peer explicit retained chain rotated once/published authority: one call, terminal replay no provider, epoch+1
+grok release-peer explicit retained chain invalid_grant proven dead/scrubbed: one call, terminal replay no provider, epoch+1
+grok release-peer retained-chain release-before SIGKILL: durable attempt, saved replacement publication or unknown stop, zero blind retry
+grok release-peer retained-chain response SIGKILL: durable attempt, saved replacement publication or unknown stop, zero blind retry
+grok release-peer retained-chain release-save SIGKILL: durable attempt, saved replacement publication or unknown stop, zero blind retry
+grok retained_unusable: saved chain/generation returned, previous request no provider; fresh bound generation rotates once and publishes; older generation replay no provider, holder reports no scrub
+grok retained_unusable cap: three explicit bound failures -> login_required/reason; capped discard refused below limit, real CLI explicitly discards with provider-session warning, same row local/native-login-required, zero provider
+grok release-peer prepared: no commit/provider in abort, chain byte-identical until scheduled next-tick normal rotation; epoch+1; signed abort clears returning shadow and same row accepts higher lease
+grok source retained_unusable: committed refresh retains chain and names recovery; real CLI fresh generation rotates once, signed abort cleans returning shadow, replay no provider
+grok source retained_unusable cap: three defined failures, no fourth rotation; explicit capped discard leaves same row native-login-required with provider-session warning
+grok release-peer restored: removed roster fact persisted, CLI confirmed, one rotation, ready/access-only, epoch+1, replay no provider; old destination copy rejected
+grok release-peer repeated account: current claim inferred over terminal history; resolved private marker permits only new higher-generation claim
+grok release-peer rejected: destination already rotated, source scrubbed/native-login-required, named-account warning retains removed peer login, replay no provider
+grok release-peer release-before SIGKILL: durable fact/attempt; retry outcome=uncertain, total provider calls=0, no blind repeat
+grok release-peer response SIGKILL: durable fact/attempt; retry outcome=uncertain, total provider calls=1, no blind repeat
+grok release-peer release-save SIGKILL: durable fact/attempt; retry outcome=restored, total provider calls=1, no blind repeat
+grok release-peer known 429: unconsumed proof persisted, explicit retry after SIGKILL spends original chain once; native recovery refused while retryable
+grok release-peer audit: one secret-free outcome ledger row, authenticated roster version/author counter persisted
+grok 9 secret scan logs/SQLite/ledgers/RPC metadata=0; owned daemon PIDs 1983395,1983277 stopped; stub closed in cleanup
+✔ credential handoff grok: two isolated daemons, durable prepare/commit, rotation, scrub, abort, TTL, replay and failures (27786.887864ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 85545.108938
+v2 daemon/cli test files failed (1 of 12):
+  v2/daemon/tests/account-config-rpc.test.ts (exit 1)
+exit 1
