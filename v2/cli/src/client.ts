@@ -36,8 +36,6 @@ export interface DaemonInstance {
 }
 
 export interface ConnectOptions {
-  /** Shorthand for `legacyProtocolVerbs: ["update.status"]`. */
-  updateOwnerCompatibility?: true;
   /**
    * Verbs this client may still issue when the daemon speaks the previous
    * protocol (v2/1). Deploys run the newly installed CLI against the daemon
@@ -102,7 +100,7 @@ export class RpcClient {
             reject(new RpcError("protocol_mismatch", "server hello is not json"));
             return;
           }
-          const legacyVerbs = options.updateOwnerCompatibility === true ? ["update.status" as const] : options.legacyProtocolVerbs ?? [];
+          const legacyVerbs = options.legacyProtocolVerbs ?? [];
           client.legacyVerbs = hello.protocol === LEGACY_PROTOCOL && legacyVerbs.length > 0 ? legacyVerbs : null;
           if (hello.protocol !== PROTOCOL && !client.legacyVerbs) {
             socket.destroy();

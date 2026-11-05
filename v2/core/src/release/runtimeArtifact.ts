@@ -13,7 +13,7 @@
  * `artifactHash` is exactly the digest `hive deploy` records in deploys.json:
  * deploySettle's tree digest of dist/ (stamp excluded), written into
  * dist/.build-stamp.json BEFORE the tarball is cut, so the stamp travels with
- * the bytes it describes and a later `hive deploy --artifact` can re-verify.
+ * the bytes it describes and a later install can re-verify.
  *
  * Pure orchestration over an already-built artifact directory: nothing here
  * runs git, npm, or the build. scripts/build-runtime-artifact.mjs supplies the
@@ -195,7 +195,7 @@ export async function packRuntimeArtifact(options: PackRuntimeArtifactOptions): 
   const manifest = await describeRuntimeArtifact(options);
   const manifestText = `${JSON.stringify(manifest, null, 2)}\n`;
   // The in-tarball copy lets a single downloaded file describe itself
-  // (`hive deploy --artifact <tarball>` reads sha/artifactHash from it).
+  // (an installer reads sha/artifactHash from it).
   await writeFile(join(options.artifactDir, RUNTIME_ARTIFACT_MANIFEST_FILENAME), manifestText);
 
   await mkdir(options.outDir, { recursive: true });

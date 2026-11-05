@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { readBuildIdentity } from "../../../core/src/release/buildIdentity.ts";
-import { recordedSocketPath, readLiveUpdateOwner } from "./updateOwnerClient.mjs";
+import { recordedSocketPath, readLiveRuntimeStatus } from "./liveDaemon.ts";
 import { resolveNodePin } from "../../../core/src/nodeRuntime.ts";
 /**
  * Versioned runtime deploys (reset WP0 — docs/design/specs/reset-00-deploy.md).
@@ -29,22 +29,13 @@ import { tmpdir, userInfo } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { withFileLock } from "../../../core/src/lock.ts";
-import { configuredV2Runtime, installedV2Identity, RUNTIME_MODE_CONFIG, V2_DEPLOY_MARKER } from "../../../core/src/runtimeMode.ts";
-import { exposeDeployedCli } from "./cliExposure.ts";
-import { unpackDeployArtifact, artifactTreeDigest, assertArtifactLinksContained } from "./artifact.ts";
-import type { ComponentIdentity } from "../../../core/src/release/index.ts";
-import { canonicalDigest } from "../../../core/src/canonical.ts";
-import { assertUpdateAdmission, UPDATE_RECOVERY_CONTRACT, type UpdateAdmission } from "./updateAdmission.ts";
-import { hashDirectoryTree, readBuildStamp, verifyDistAgainstArtifact, writeBuildStamp } from "../../../core/src/release/settle.ts";
+import { configuredV2Runtime, RUNTIME_MODE_CONFIG } from "../../../core/src/runtimeMode.ts";
+import { artifactTreeDigest, assertArtifactLinksContained } from "../../../core/src/release/strictUnpack.ts";
+import { hashDirectoryTree, writeBuildStamp } from "../../../core/src/release/settle.ts";
 import { atomicWriteFile, storeRoot } from "../../../core/src/fsx.ts";
 import { hostGitEnv } from "../../../core/src/hostGit.ts";
-import { assertRuntimeUpdateAllowed, readUpdateReservation, DeployReservationHeldError } from "./readUpdateReservation.ts";
-import { isApiarySwap } from "../../../core/src/apiarySwap.ts";
-import { parseUpdateReservation, type UpdateReservation } from "../../../core/src/updateReservation.ts";
 
 const execFileAsync = promisify(execFile);
-
-export { DeployReservationHeldError } from "./readUpdateReservation.ts";
 
 export const RUNTIME_DIR_NAME = "runtime";
 export const CURRENT_LINK_NAME = "current";
@@ -126,41 +117,6 @@ export type DeployHooks = {
   /** Separate final step so tests (and --no-restart futures) never touch a real daemon. */
   restartDaemon: (context: RestartDaemonContext) => Promise<void>;
 };
-
-const admittedRestarts = new WeakMap<RestartDaemonContext, Pick<RestartDaemonContext, "root" | "installedDir" | "sha"> & { reservation?: UpdateReservation }>();
-
-export function hasDeployRestartAdmission(context: RestartDaemonContext): boolean {
-  const admission = admittedRestarts.get(context);
-  return admission !== undefined && admission.root === context.root && admission.installedDir === context.installedDir
-    && admission.sha === context.sha;
-}
-
-export async function assertDeployRestartAdmission(context: RestartDaemonContext): Promise<void> {
-  if (!hasDeployRestartAdmission(context)) throw new Error("deploy: restart admission expired");
-  const expected = admittedRestarts.get(context)!.reservation;
-  const live = await readUpdateReservation(context.root);
-  if (!hasDeployRestartAdmission(context)) throw new Error("deploy: restart admission expired");
-  if (!live?.active) return;
-  if (isApiarySwap(live)) throw new DeployReservationHeldError(live.id, live.epoch, "apiary-swap");
-  const reservation = parseUpdateReservation(live);
-  if (!expected || reservation.id !== expected.id || reservation.epoch !== expected.epoch
-    || reservation.recoverySubjectDigest !== expected.recoverySubjectDigest) throw new DeployReservationHeldError(reservation.id, reservation.epoch);
-}
-
-async function restartWithAdmission(hooks: Pick<DeployHooks, "restartDaemon" | "backupStore">, context: RestartDaemonContext, reservation?: UpdateReservation): Promise<void> {
-  const restore = context.restorePrevious;
-  if (restore) context.restorePrevious = async () => {
-    if (!hasDeployRestartAdmission(context)) throw new Error("deploy: restart admission expired");
-    return restore();
-  };
-  const checkRollback = context.assertRollbackSafe;
-  if (checkRollback) context.assertRollbackSafe = async () => {
-    if (!hasDeployRestartAdmission(context)) throw new Error("deploy: restart admission expired");
-    return checkRollback();
-  };
-  admittedRestarts.set(context, { root: context.root, installedDir: context.installedDir, sha: context.sha, reservation });
-  try { await hooks.restartDaemon(context); } finally { admittedRestarts.delete(context); }
-}
 
 export type DeployOptions = {
   repoRoot: string;
@@ -299,8 +255,8 @@ export async function assertRollbackStoreCompatible(root: string, installedDir: 
   let stored: number;
   try {
     const socket = recordedSocketPath(dataDir);
-    const response = existsSync(socket) ? await readLiveUpdateOwner(socket, dataDir) : { kind: "offline" as const };
-    if (response.kind === "live") stored = Number((response.owner as { schemaVersion?: unknown }).schemaVersion);
+    const response = existsSync(socket) ? await readLiveRuntimeStatus(socket, dataDir) : { kind: "offline" as const };
+    if (response.kind === "live") stored = Number(response.status.store.schemaVersion);
     else {
       const db = new DatabaseSync(store, { readOnly: true });
       try { stored = Number(db.prepare("SELECT value FROM meta WHERE key='schema_version'").get()?.value); }
@@ -448,7 +404,6 @@ export async function deployVersion(options: DeployOptions): Promise<DeployOutco
 
 async function deployVersionLocked(options: DeployOptions): Promise<DeployOutcome> {
   const root = options.root ?? runtimeRoot();
-  await assertRuntimeUpdateAllowed(root, "deploy");
   const keep = Math.max(1, Math.floor(options.keep ?? DEFAULT_KEEP_VERSIONS));
   const log = options.log ?? (() => undefined);
   const now = options.now ?? (() => new Date());
@@ -584,9 +539,9 @@ async function backupBeforeRuntimeSwap(root: string, hooks: Pick<DeployHooks, "b
   log(`deploy: store backup receipt ${receipt.receiptPath}`);
 }
 
-async function publishDeploy({ root, sha, artifactDir, artifactHash, keep, by, now, log, hooks, immutable = false, gate, reservation }: {
+async function publishDeploy({ root, sha, artifactDir, artifactHash, keep, by, now, log, hooks, gate }: {
   root: string; sha: string; artifactDir: string; artifactHash: string; keep: number; by: string;
-  now: () => Date; log: (line: string) => void; hooks: Pick<DeployHooks, "restartDaemon" | "backupStore">; immutable?: boolean; gate?: "full" | "tests-skipped"; reservation?: UpdateReservation;
+  now: () => Date; log: (line: string) => void; hooks: Pick<DeployHooks, "restartDaemon" | "backupStore">; gate?: "full" | "tests-skipped";
 }): Promise<DeployOutcome> {
   const previousLink = await readlink(join(root, CURRENT_LINK_NAME)).catch((error: NodeJS.ErrnoException) => { if (error.code === "ENOENT") return null; throw error; });
   const previousSha = await currentDeployTarget(root);
@@ -599,7 +554,6 @@ async function publishDeploy({ root, sha, artifactDir, artifactHash, keep, by, n
     await mkdir(root, { recursive: true });
     staging = join(root, `.staging.${sha}.${process.pid}.${Date.now()}`);
     await cp(artifactDir, staging, { recursive: true, verbatimSymlinks: true });
-    if (immutable) await syncDeployTree(staging);
 
     await backupBeforeRuntimeSwap(root, hooks, staging, previousSha, log);
     if (previousLink) {
@@ -612,20 +566,13 @@ async function publishDeploy({ root, sha, artifactDir, artifactHash, keep, by, n
     // instant `current` could be pointing at it.
     const versionDir = join(root, sha);
     let displaced: string | null = null;
-    if (immutable && existsSync(versionDir)) {
-      // Full-tree comparison includes dependencies, contracts and executable metadata.
-      if (await artifactTreeDigest(versionDir) !== await artifactTreeDigest(artifactDir)) throw new Error("deploy: immutable version conflict");
-      await rm(staging, { recursive: true });
-      staging = null;
-    }
     await persistV2RuntimeMode(root);
-    if (staging && existsSync(versionDir)) {
+    if (existsSync(versionDir)) {
       displaced = join(root, `.displaced.${sha}.${process.pid}.${Date.now()}`);
       await rename(versionDir, displaced);
     }
     try {
-      if (staging) await rename(staging, versionDir);
-      if (immutable) await syncDeployPath(root);
+      await rename(staging, versionDir);
     } catch (error) {
       if (displaced) await rename(displaced, versionDir).catch(() => undefined);
       throw error;
@@ -634,9 +581,7 @@ async function publishDeploy({ root, sha, artifactDir, artifactHash, keep, by, n
     if (await readlink(join(root, CURRENT_LINK_NAME)).catch(() => null) !== previousLink) throw new Error("deploy: current runtime changed while staging");
     if (retainedDigest && await artifactTreeDigest(resolve(root, previousLink!)) !== retainedDigest) throw new Error("deploy: external current bytes changed while staging");
     await retargetCurrent(root, sha);
-    const last = immutable && previousSha === sha ? (await readDeployHistory(root)).at(-1) : undefined;
-    const entry: DeployHistoryEntry = last?.sha === sha && last.artifactHash === artifactHash
-      ? last : { sha, at: now().toISOString(), artifactHash, by, ...(gate ? { gate } : {}) };
+    const entry: DeployHistoryEntry = { sha, at: now().toISOString(), artifactHash, by, ...(gate ? { gate } : {}) };
     let restored = false;
     const restorePrevious = async (): Promise<boolean> => {
       if (!previousLink) return false;
@@ -657,7 +602,7 @@ async function publishDeploy({ root, sha, artifactDir, artifactHash, keep, by, n
     };
     let activated = false;
     try {
-      await restartWithAdmission(hooks, { root, installedDir: versionDir, sha, log, ...(previousLink ? { restorePrevious, assertRollbackSafe } : {}) }, reservation);
+      await hooks.restartDaemon({ root, installedDir: versionDir, sha, log, ...(previousLink ? { restorePrevious, assertRollbackSafe } : {}) });
       if (restored) throw new Error("deploy: activation rolled back");
       activated = true;
     } catch (error) {
@@ -674,76 +619,12 @@ async function publishDeploy({ root, sha, artifactDir, artifactHash, keep, by, n
         else log(`deploy: previous runtime bytes retained for recovery at ${displaced}`);
       }
     }
-    if (entry !== last) await appendDeployHistory(root, entry);
-    const pruned = immutable ? [] : await pruneRuntimeVersionsLocked(root, { keep });
+    await appendDeployHistory(root, entry);
+    const pruned = await pruneRuntimeVersionsLocked(root, { keep });
     for (const removed of pruned) log(`deploy: pruned old version ${removed.slice(0, 12)}`);
     return { sha, artifactHash: artifactHash, installedDir: versionDir, previousSha, pruned, entry };
   } finally {
     if (staging) await rm(staging, { recursive: true, force: true });
-  }
-}
-
-export type DeployArtifactOptions = {
-  archive: string;
-  identity: ComponentIdentity;
-  /** Compare-and-swap fence supplied by the coordinated update owner. */
-  expectedCurrent: string | null;
-  admission: UpdateAdmission | { fresh: true };
-  /** Optional owner-managed CLI exposure after successful activation. */
-  cliBinDirectory?: string;
-  root?: string;
-  hooks: Pick<DeployHooks, "restartDaemon" | "backupStore">;
-};
-
-export async function deployArtifact(options: DeployArtifactOptions): Promise<DeployOutcome> {
-  const root = options.root ?? runtimeRoot();
-  await mkdir(root, { recursive: true });
-  const workDir = await mkdtemp(join(root, ".artifact-"));
-  try {
-    return await withFileLock(join(root, ".deploy.lock"), async () => {
-      await assertRuntimeUpdateAllowed(root, "artifact");
-      const prepared = await unpackDeployArtifact(options.archive, options.identity, workDir);
-      if (prepared.recoveryContract !== UPDATE_RECOVERY_CONTRACT) throw new Error("deploy: artifact lacks the recovery admission contract; coordinated migration required");
-      // The archive cannot supply its own admission receipt or redirect this write.
-      const marker = join(prepared.artifactDir, V2_DEPLOY_MARKER);
-      await rm(marker, { force: true });
-      await writeFile(marker, JSON.stringify({ schemaVersion: 1, runtime: "v2", recoveryContract: prepared.recoveryContract, identity: prepared.identity }), { flag: "wx" });
-      const currentPath = join(root, CURRENT_LINK_NAME);
-      const current = await lstat(currentPath).catch((error: NodeJS.ErrnoException) => {
-        if (error.code === "ENOENT") return null;
-        throw error;
-      });
-      if (current && !current.isSymbolicLink()) throw new Error("deploy: current runtime changed");
-      const currentSha = current ? await currentDeployTarget(root) : null;
-      if (current && !currentSha) throw new DeployRollbackError("ROLLBACK_CURRENT_IDENTITY_MISSING", "missing valid build identity at runtime/current");
-      if (current && await readlink(currentPath) !== currentSha) {
-        await assertArtifactLinksContained(currentPath);
-        const external = readBuildIdentity(join(currentPath, "dist", "build-identity.json"));
-        const stamp = await readBuildStamp(join(currentPath, "dist"));
-        if (external.target !== `${process.platform}-${process.arch}` || !stamp) throw new DeployRollbackError("ROLLBACK_CURRENT_IDENTITY_MISSING", "external current lacks a native build target or verified dist build stamp; reconcile the Apiary installation before artifact admission");
-        await verifyDistAgainstArtifact(join(currentPath, "dist"), stamp.hash);
-      }
-      const installed = installedV2Identity(root);
-      // Resume after an atomic switch followed by a lost restart response. This
-      // exception is only for the identical owner-verified complete artifact.
-      const replay = currentSha === prepared.identity.sourceRevision
-        && installed !== null && canonicalDigest(installed) === canonicalDigest(prepared.identity)
-        && await artifactTreeDigest(join(root, currentSha)) === await artifactTreeDigest(prepared.artifactDir);
-      if (currentSha !== options.expectedCurrent && !replay) throw new Error("deploy: current runtime changed");
-      const reservation = "fresh" in options.admission ? undefined : parseUpdateReservation(options.admission.reservation);
-      if ("fresh" in options.admission) {
-        if (options.admission.fresh !== true || Object.keys(options.admission).length !== 1 || options.expectedCurrent !== null
-          || (!replay && ["v2", "store.json", "bees", "sessions", "legacy-agentpit", "FROZEN"].some(name => existsSync(join(root, "..", name)))))
-          throw new Error("deploy: fresh installation requires an empty node; coordinated migration required");
-      } else await assertUpdateAdmission(root, prepared.identity, { ...options.admission, reservation: reservation! });
-      const outcome = await publishDeploy({ root, sha: prepared.identity.sourceRevision, ...prepared,
-        keep: DEFAULT_KEEP_VERSIONS, by: deployedBy(), now: () => new Date(), log: () => undefined,
-        hooks: options.hooks, immutable: true, reservation });
-      if (options.cliBinDirectory !== undefined) await exposeDeployedCli(root, options.cliBinDirectory, resolveNodePin(join(root, "..", "v2")).path);
-      return outcome;
-    });
-  } finally {
-    await rm(workDir, { recursive: true, force: true });
   }
 }
 
@@ -760,7 +641,6 @@ export async function rollbackDeploy(options: RollbackOptions): Promise<Rollback
 
 async function rollbackDeployLocked(options: RollbackOptions): Promise<RollbackOutcome> {
   const root = options.root ?? runtimeRoot();
-  await assertRuntimeUpdateAllowed(root, "rollback");
   const log = options.log ?? (() => undefined);
   const now = options.now ?? (() => new Date());
   const by = options.by ?? deployedBy();
@@ -791,7 +671,7 @@ async function rollbackDeployLocked(options: RollbackOptions): Promise<RollbackO
   };
   log(`deploy: rolled back ${currentSha.slice(0, 12)} → ${target.sha.slice(0, 12)}`);
   try {
-    await restartWithAdmission(options.hooks, { root, installedDir: join(root, target.sha), sha: target.sha, log,
+    await options.hooks.restartDaemon({ root, installedDir: join(root, target.sha), sha: target.sha, log,
       restorePrevious: async () => { await assertRollbackStoreCompatible(root, resolve(root, currentLink!)); await retargetCurrent(root, currentLink!); return true; },
       assertRollbackSafe: async () => { await assertRollbackStoreCompatible(root, resolve(root, currentLink!)); } });
   } catch (error) {
@@ -820,7 +700,6 @@ export async function pruneRuntimeVersions(
   options: { keep?: number } = {},
 ): Promise<string[]> {
   return withFileLock(join(root, ".deploy.lock"), async () => {
-    await assertRuntimeUpdateAllowed(root, "prune");
     return pruneRuntimeVersionsLocked(root, options);
   });
 }

@@ -1124,6 +1124,17 @@ export interface GatewayRow {
 }
 
 /** H7: the one content-hashed skill tree installed into every Honeybee-owned home. */
+export type RuntimeJournalEvent = "installed" | "pruned";
+
+export interface RuntimeJournalEntry {
+  seq: number;
+  at: number;
+  event: RuntimeJournalEvent;
+  sha: string;
+  by: string;
+  detail: Record<string, unknown>;
+}
+
 export interface SkillTreeRow {
   digest: string;
   files: number;

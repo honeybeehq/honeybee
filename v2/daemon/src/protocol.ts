@@ -1,7 +1,6 @@
 import type { PublicBeeRow } from "../../core/src/envRedaction.ts";
 export type { BeeTellParams, BeeTellResult, BeeReactParams, BeeReactResult, SetHumanOutputModeParams, SetHumanOutputModeResult } from "../../core/src/humanOutputTypes.ts";
 import { honeybeeBuildIdentity, type BuildIdentity } from "../../core/src/release/buildIdentity.ts";
-export { UPDATE_RECOVERY_CONTRACT } from "../../core/src/updateReservation.ts";
 export type { ReconnectToolsResult, ReconnectToolsReceipt, ReconnectToolsError } from "../../core/src/reconnectTools.ts";
 import type { ThreadOperationView } from "../../core/src/threadOperation.ts";
 /**
@@ -27,6 +26,7 @@ import type {
   AccountLeaseEnrolment,
   GatewayRow,
   SkillTreeRow,
+  RuntimeJournalEntry,
   AuthInterruptionRow,
   ActionDefinition,
   ActionQueueView,
@@ -117,8 +117,6 @@ export const DAEMON_CAPABILITIES = [
   "bee.turn_quiet.v1",
   "mail.answer_marker.v1",
   "mail.automation_marker.v1",
-  "update.reservation.v1",
-  "update.reservation.apiary-swap.v1",
   "bee.reconnectTools.v1",
   "thread.operations.v1",
   "thread.handoff.codex.hsr.v1",
@@ -315,6 +313,14 @@ export const DAEMON_CAPABILITIES = [
    * home activated later. Audit kind `skills.installed`.
    */
   "skills.install.v1",
+  /**
+   * 2026-11-05 (D3, additive): `runtime.install {archive, descriptor, signature}`,
+   * `runtime.status` and `runtime.prune {keep}` — Honeybee installs a signed
+   * release into `<storeRoot>/runtime/<sha>` itself, reports its runtime root and
+   * journal, and prunes versions it is not running. Audit kinds
+   * `runtime.installed` and `runtime.pruned`.
+   */
+  "runtime.update.v1",
 ] as const;
 export type DaemonCapability = (typeof DAEMON_CAPABILITIES)[number];
 
@@ -389,6 +395,7 @@ export const RPC_ERROR_CODES = [
   "react_emoji_invalid",
   "invalid_request",
   "caller_not_trusted",
+  "runtime_refused",
   "confined_spawn_refused",
   "confined_peer_refused",
   "local_peer_credentials_unavailable",
@@ -696,15 +703,10 @@ export const RPC_VERBS = [
   "account.credentials.enable",
   "account.credentials.refresh",
   "account.credentials.disable",
-  "update.apiarySwap.status",
-  "update.apiarySwap.acquire",
-  "update.apiarySwap.release",
-  "update.apiarySwap.abandon",
-  "update.apiarySwap.recover",
   "store.backup",
-  "update.status",
-  "update.reserve",
-  "update.release",
+  "runtime.install",
+  "runtime.status",
+  "runtime.prune",
   // v18 (additive): run the harness's real credential probe on demand.
   "account.verify",
   "account.limits",
@@ -888,6 +890,76 @@ export interface SkillsInstallResult extends DedupMarkers {
   changed: boolean;
   replaced: string | null;
   homes: Array<{ account: string; home: string; status: "installed" | "unchanged" }>;
+}
+
+/**
+ * `runtime.install {archive, descriptor, signature, idempotencyKey?}` (capability
+ * `runtime.update.v1`) — a verified direct local caller hands Honeybee a
+ * downloaded release: `archive` is an absolute path to the runtime tarball,
+ * `descriptor` the parsed `release.json` and `signature` the parsed
+ * `release.json.sig`. Honeybee verifies the Ed25519 signature over the canonical
+ * descriptor against its compiled-in release keys, the sha256 of the archive,
+ * `identity.target` against this machine and `engines.node` against the node's
+ * Node pin (the key list is the compiled-in constant; nothing in the environment
+ * or on disk adds a key), unpacks with the strict extractor into `<storeRoot>/runtime/<sha>`
+ * and records `installed` in its journal (meta `runtime_journal`). The same
+ * bytes again are quiet (`changed: false`). Nothing is activated.
+ * Refusals: `caller_not_trusted`, `confined_peer_refused`, `invalid_request`
+ * (`details.reason`: `archive` | `descriptor` | `signature` | `keep`) and
+ * `runtime_refused` (`details.reason`: `signature_invalid` | `key_unknown` |
+ * `archive_digest_mismatch` | `target_mismatch` | `node_pin_unmet` |
+ * `archive_unsafe` | `archive_invalid` | `install_conflict` | `is_current` |
+ * `is_previous`).
+ */
+export interface RuntimeInstallParams {
+  archive: string;
+  descriptor: unknown;
+  signature: unknown;
+  idempotencyKey?: string;
+}
+
+export interface RuntimeInstallResult extends DedupMarkers {
+  sha: string;
+  installedDir: string;
+  bytes: number;
+  keyId: string;
+  changed: boolean;
+  journal: RuntimeJournalEntry;
+}
+
+export interface RuntimeVersion {
+  sha: string;
+  installedAt: number;
+  version: string | null;
+  target: string | null;
+  current: boolean;
+  previous: boolean;
+}
+
+/** `runtime.status {}` — the runtime root as Honeybee sees it; read-only. */
+export interface RuntimeStatusResult {
+  root: string;
+  current: string | null;
+  previous: string | null;
+  running: { sourceRevision: string | null; version: string };
+  installed: RuntimeVersion[];
+  journal: RuntimeJournalEntry[];
+  store: { schemaVersion: number; minReaderSchema: number | null };
+  handover: Record<string, unknown> | null;
+  nodePin: { version: string; path: string } | null;
+  keys: { trusted: number; keyIds: string[] };
+}
+
+/** `runtime.prune {keep?, idempotencyKey?}` — remove installed versions beyond the `keep` most recent (default 5), never `current` or `previous`. */
+export interface RuntimePruneParams {
+  keep?: number;
+  idempotencyKey?: string;
+}
+
+export interface RuntimePruneResult extends DedupMarkers {
+  removed: string[];
+  kept: string[];
+  journal: RuntimeJournalEntry[];
 }
 
 export interface SpawnResult extends DedupMarkers {

@@ -19,15 +19,12 @@ const PHONE_DIGEST = Symbol("phoneDigest");
 const PHONE_CARRIER_DIGEST = Symbol("phoneCarrierDigest");
 import { knownAccountLease } from "../../core/src/accountLease.ts";
 import { effectVerb } from "../../core/src/effectResolve.ts";
-import { APIARY_SWAP_CAPABILITY, ApiarySwapError, parseApiarySwapAcquire, parseApiarySwapSettle, parseApiarySwapRecover } from "../../core/src/apiarySwap.ts";
 import { canonicalDigest } from "../../core/src/canonical.ts";
-import { parseComponentIdentity, type ComponentIdentity } from "../../core/src/release/index.ts";
 import { withoutRpcCaller } from "../../core/src/rpcAuditContext.ts";
 import { applyObservation, observationReadRequest, discardObservation } from "./limitsObservation.ts";
 import { reconnectToolsResult, type ReconnectToolsResult } from "../../core/src/reconnectTools.ts";
 import { withFileLock } from "../../core/src/lock.ts";
-import { readBuildIdentity } from "../../core/src/release/buildIdentity.ts";
-import { installedV2Identity } from "../../core/src/runtimeMode.ts";
+import { RuntimeUpdateService } from "./runtimeUpdate.ts";
 import { SCHEMA_VERSION } from "../../core/src/schema.ts";
 import { ThreadOperations } from "./threadOperations.ts";
 import { carryCodexHistory, codexSwapHistoryPath, validateCodexSwapPath } from "./codexSwapHistory.ts";
@@ -298,7 +295,6 @@ import { applyDaemonTmpPolicy, beeTmpPaths, describeBeeTmpPolicy, ensureBeeTmpEn
 import { BEE_IMPORT_BUNDLE_BYTES_MAX,
   DAEMON_VERSION,
   BUILD_IDENTITY,
-  UPDATE_RECOVERY_CONTRACT,
   PROTOCOL,
   RpcError,
   SPAWN_SUBSTRATES,
@@ -2690,48 +2686,14 @@ export class HiveDaemon {
       }
       case "deployInfo":
         return this.rpcDeployInfo();
-      case "update.apiarySwap.status":
-      case "update.apiarySwap.acquire":
-      case "update.apiarySwap.release":
-      case "update.apiarySwap.abandon":
-      case "update.apiarySwap.recover":
-        return this.rpcApiarySwap(verb, params);
       case "store.backup":
         return this.mustStore().backup(JSON.stringify(BUILD_IDENTITY));
-      case "update.status":
-        return { contract: UPDATE_RECOVERY_CONTRACT, schemaVersion: SCHEMA_VERSION,
-          runtimeRoot: join(dirname(this.cfg.dataDir), "runtime"), storePath: this.cfg.storePath,
-          identity: BUILD_IDENTITY, reservation: this.mustStore().durableUpdateReservation(),
-          blockers: this.mustStore().credentialAuthorityRollbackBlockers() };
-      case "update.reserve":
-        if (typeof params.expectedEpoch !== "number") throw new RpcError("invalid_request", "expectedEpoch must be a number");
-        if (resolve(this.cfg.storePath) !== resolve(this.cfg.dataDir, "core.sqlite3")) throw new RpcError("invalid_request", "Custom stores require coordinated migration");
-        return withFileLock(join(dirname(this.cfg.dataDir), "runtime", ".deploy.lock"), async () => this.mustStore().reserveUpdate({ id: this.param(params, "id"),
-          recoverySubjectDigest: this.param(params, "recoverySubjectDigest"), expectedEpoch: params.expectedEpoch as number }));
-      case "update.release":
-        if (resolve(this.cfg.storePath) !== resolve(this.cfg.dataDir, "core.sqlite3")) throw new RpcError("invalid_request", "Custom stores require coordinated migration");
-        return withFileLock(join(dirname(this.cfg.dataDir), "runtime", ".deploy.lock"), async () => {
-          const expected = params.expectedIdentity as Record<string, unknown> | undefined;
-          if (!expected || BUILD_IDENTITY.release !== true || BUILD_IDENTITY.dirty !== false
-            || ["component", "version", "sourceRevision", "target"].some(key => (BUILD_IDENTITY as unknown as Record<string, unknown>)[key] !== expected[key]))
-            throw new RpcError("invalid_request", "Running identity does not match completion receipt");
-          // A pre-switch daemon can survive a failed restart. Its own build
-          // identity is insufficient: completion must match installed current too.
-          const current = join(dirname(this.cfg.dataDir), "runtime", "current");
-          try {
-            const installed = readBuildIdentity(join(current, "dist", "build-identity.json"));
-            const receipt = installedV2Identity(join(dirname(this.cfg.dataDir), "runtime"));
-            const artifact = expected.artifact as Record<string, unknown> | undefined;
-            if (!receipt || !artifact || receipt.artifact.url !== artifact.url || receipt.artifact.sha256 !== artifact.sha256
-              || readlinkSync(current) !== expected.sourceRevision || JSON.stringify(installed) !== JSON.stringify(BUILD_IDENTITY))
-              throw new Error("current differs");
-          } catch {
-            throw new RpcError("invalid_request", "Installed current identity does not match completion receipt");
-          }
-          if (typeof params.epoch !== "number") throw new RpcError("invalid_request", "epoch must be a number");
-          return this.mustStore().releaseUpdate({ id: this.param(params, "id"),
-            recoverySubjectDigest: this.param(params, "recoverySubjectDigest"), epoch: params.epoch });
-        });
+      case "runtime.status":
+        return this.runtimeUpdate().status();
+      case "runtime.install":
+        return this.withAsyncIdempotency(verb, params, () => this.runtimeUpdate().install(params, this.runtimePrincipal(conn)));
+      case "runtime.prune":
+        return this.withAsyncIdempotency(verb, params, () => this.runtimeUpdate().prune(params, this.runtimePrincipal(conn)));
       case "doctor.integrity": {
         if (this.integrityCheck) return this.integrityCheck;
         if (Date.now() - this.integrityCheckAt < 60_000) throw new RpcError("doctor_cooldown", "Integrity check requires a sixty-second interval between runs");
@@ -2802,49 +2764,14 @@ export class HiveDaemon {
     return v as string[];
   }
 
-  private apiarySwapInstalledIdentity(): ComponentIdentity {
-    const root = join(dirname(this.cfg.dataDir), "runtime"), current = join(root, "current");
-    const installed = installedV2Identity(root);
-    if (!installed || !BUILD_IDENTITY.release || BUILD_IDENTITY.dirty !== false
-      || ["component", "version", "sourceRevision", "target"].some(key => Reflect.get(BUILD_IDENTITY, key) !== Reflect.get(installed, key))) {
-      throw new RpcError("invalid_request", "apiary-swap: pinned running identity differs", { reason: "identity_mismatch" });
-    }
-    try {
-      if (readlinkSync(current) !== installed.sourceRevision
-        || JSON.stringify(readBuildIdentity(join(current, "dist", "build-identity.json"))) !== JSON.stringify(BUILD_IDENTITY)) throw new Error("current differs");
-      return parseComponentIdentity(installed);
-    } catch {
-      throw new RpcError("invalid_request", "apiary-swap: installed current identity differs", { reason: "identity_mismatch" });
-    }
+  private runtimeService: RuntimeUpdateService | null = null;
+
+  private runtimeUpdate(): RuntimeUpdateService {
+    return this.runtimeService ??= new RuntimeUpdateService({ dataDir: this.cfg.dataDir, store: () => this.mustStore(), log: (line) => this.log(line) });
   }
 
-  private async rpcApiarySwap(verb: "update.apiarySwap.status" | "update.apiarySwap.acquire" | "update.apiarySwap.release" | "update.apiarySwap.abandon" | "update.apiarySwap.recover", params: Record<string, unknown>): Promise<unknown> {
-    const runtimeRoot = resolve(dirname(this.cfg.dataDir), "runtime"), storePath = resolve(this.cfg.storePath);
-    const storageSupported = ([48, 49, 50, 51] as readonly number[]).includes(SCHEMA_VERSION) && storePath === resolve(this.cfg.dataDir, "core.sqlite3");
-    if (verb === "update.apiarySwap.status") {
-      let installedIdentity: ComponentIdentity | null = null;
-      try { installedIdentity = this.apiarySwapInstalledIdentity(); } catch {}
-      return { contract: APIARY_SWAP_CAPABILITY, receiptAuthority: "trusted-local-owner-attestation", schemaVersion: SCHEMA_VERSION, storageSupported,
-        node: hostname(), runtimeRoot, storePath, identity: BUILD_IDENTITY, installedIdentity,
-        reservation: this.mustStore().durableUpdateReservation() };
-    }
-    return withFileLock(join(runtimeRoot, ".deploy.lock"), async () => {
-      if (!storageSupported) throw new RpcError("invalid_request", "apiary-swap: unsupported storage", { reason: "unsupported_storage" });
-      try {
-        const operation = verb === "update.apiarySwap.acquire" ? "acquire" : verb === "update.apiarySwap.release" ? "release" : verb === "update.apiarySwap.abandon" ? "abandon" : "recover";
-        const request = operation === "acquire" ? parseApiarySwapAcquire(params) : operation === "recover" ? parseApiarySwapRecover(params) : parseApiarySwapSettle(params, operation);
-        const installed = this.apiarySwapInstalledIdentity();
-        if (canonicalDigest(installed) !== canonicalDigest(request.expectedHoneybeeIdentity)) throw new RpcError("invalid_request", "apiary-swap: expected identity differs", { reason: "identity_mismatch" });
-        if ("transaction" in request && (request.transaction.scope.node !== hostname() || request.transaction.scope.runtimeRoot !== runtimeRoot || request.transaction.scope.storePath !== storePath)) throw new RpcError("invalid_request", "apiary-swap: transaction scope differs", { reason: "invalid_transaction" });
-        if (operation === "acquire") return this.mustStore().acquireApiarySwap(params);
-        if (operation === "recover") return this.mustStore().recoverApiarySwap(params);
-        return this.mustStore().settleApiarySwap(params, operation);
-      } catch (error) {
-        if (error instanceof RpcError) throw error;
-        if (error instanceof ApiarySwapError) throw new RpcError("invalid_request", error.message, { reason: error.code });
-        throw error;
-      }
-    });
+  private runtimePrincipal(conn: RpcConn): string {
+    return conn.localPeer ? `${conn.localPeer.uid}:${conn.localPeer.pid}` : "-";
   }
 
   private rpcSetArgs(params: Record<string, unknown>): SetArgsResult {

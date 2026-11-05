@@ -551,6 +551,9 @@ export class RpcServer {
       if ((verb === "doctor.integrity" || verb === "store.backup") && (peer?.state !== "verified" || conn.ingress !== "local_unix" || conn.relayLane !== null)) {
         throw new RpcError("caller_not_trusted", "Store maintenance requires a verified direct local administrator connection.");
       }
+      if ((verb === "runtime.install" || verb === "runtime.prune") && (peer?.state !== "verified" || conn.ingress !== "local_unix" || conn.relayLane !== null)) {
+        throw new RpcError("caller_not_trusted", `${verb} requires a verified direct local administrator connection.`);
+      }
       const caller = peer?.state === "verified" ? {transport: "local_unix" as const, ingress: conn.ingress ?? "remote", uid: peer.peer.uid, pid: peer.peer.pid, verb} : null;
       let secretCapture: { leaseId: string; bytesBase64: string } | undefined;
       let captureExpiresAt = 0;

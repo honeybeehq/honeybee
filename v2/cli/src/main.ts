@@ -27,7 +27,7 @@ import {
   type ExecRunner,
   type ServiceManager,
 } from "../../daemon/src/service.ts";
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, realpathSync, writeFileSync } from "node:fs";
 import {
   RpcError,
   LEASE_FENCE_FIELDS,
@@ -138,7 +138,7 @@ import { filterMailbox, INBOX_AGENT, isInboxAgent, TASK_STATUSES, type AuditRow,
 import { matchAccount } from "../../core/src/accountMatch.ts";
 import { publicAuditRow, publicEnvRecords } from "../../core/src/envRedaction.ts";
 import { hostname } from "node:os";
-import type { AuditTailResult, DeployInfoResult, GatewayRegisterResult, SkillsInstallResult } from "../../daemon/src/protocol.ts";
+import type { AuditTailResult, DeployInfoResult, GatewayRegisterResult, RuntimeInstallResult, RuntimePruneResult, RuntimeStatusResult, RuntimeVersion, SkillsInstallResult } from "../../daemon/src/protocol.ts";
 import { readSkillTreeFromDirectory } from "../../daemon/src/skills.ts";
 import type { TranscriptTurnStream } from "../../adapters/src/transcript.ts";
 import {
@@ -206,6 +206,8 @@ interface Parsed {
 const LIST_FLAGS = new Set(["--add", "--remove", "--option", "--ref", "--env", "--input", "--output", "--only-account"]);
 
 const VALUE_FLAGS = new Set([
+  "--descriptor",
+  "--signature",
   "--offset",
   "--field",
   "--from",
@@ -1579,6 +1581,65 @@ async function cmdSkills(ctx: CliContext, parsed: Parsed): Promise<number> {
     ...r.homes.map((home) => `  ${home.status === "installed" ? "+" : "="} ${home.account}  ${tildify(home.home)}`),
   ], r, false);
   return 0;
+}
+
+const RUNTIME_USAGE = "usage: hive runtime status [--json] | hive runtime list [--json] | hive runtime install <archive.tar.gz> --descriptor <release.json> --signature <release.json.sig> [--idempotency-key key] [--json] | hive runtime prune [keep] [--idempotency-key key] [--json]";
+
+function requireRuntimeUpdate(c: RpcClient): void {
+  if (!c.capabilities.includes("runtime.update.v1")) throw new RpcError("capability_missing", "Update Honeybee: runtime.update.v1 is required.");
+}
+
+function runtimeJournalLine(entry: import("../../core/src/types.ts").RuntimeJournalEntry): string {
+  const detail = Object.entries(entry.detail).filter(([, value]) => value !== undefined && value !== null && typeof value !== "object").map(([key, value]) => `${key}=${String(value)}`).join(" ");
+  return `  ${new Date(entry.at).toISOString()}  ${entry.event.padEnd(9)}  ${entry.sha.slice(0, 12)}  by ${entry.by}${detail ? `  ${detail}` : ""}`;
+}
+
+async function cmdRuntime(ctx: CliContext, parsed: Parsed): Promise<number> {
+  const action = parsed.positional[1];
+  const key = parsed.flags.get("--idempotency-key");
+  if (action === "status" || action === "list") {
+    const status = await withClient(ctx, async (c) => { requireRuntimeUpdate(c); return c.request<RuntimeStatusResult>("runtime.status"); });
+    const versionLine = (v: RuntimeVersion) => `  ${v.current ? "*" : v.previous ? "<" : " "} ${v.sha}  ${(v.version ?? "-").padEnd(28)}  ${(v.target ?? "-").padEnd(12)}  installed ${new Date(v.installedAt).toISOString()}${v.current ? "  current" : ""}${v.previous ? "  previous" : ""}`;
+    if (action === "list") { emit(ctx, status.installed.length === 0 ? [`no versions installed under ${tildify(status.root)}`] : status.installed.map(versionLine), { root: status.root, current: status.current, previous: status.previous, installed: status.installed }, false); return 0; }
+    emit(ctx, [
+      `runtime root ${tildify(status.root)}`,
+      `current  ${status.current ?? "none"}`,
+      `previous ${status.previous ?? "none"}`,
+      `running  ${status.running.sourceRevision ?? "unknown"} (${status.running.version})`,
+      `store    schema ${status.store.schemaVersion}, min reader ${status.store.minReaderSchema ?? "-"}`,
+      `node pin ${status.nodePin ? `${status.nodePin.version} (${status.nodePin.path})` : "none"}`,
+      `keys     ${status.keys.trusted} trusted${status.keys.keyIds.length ? `: ${status.keys.keyIds.join(", ")}` : ""}`,
+      `handover ${status.handover ? JSON.stringify(status.handover) : "none"}`,
+      `installed (${status.installed.length}):`,
+      ...status.installed.map(versionLine),
+      `journal (last ${status.journal.length}):`,
+      ...status.journal.map(runtimeJournalLine),
+    ], status, false);
+    return 0;
+  }
+  if (action === "install") {
+    const archive = parsed.positional[2], descriptorPath = parsed.flags.get("--descriptor"), signaturePath = parsed.flags.get("--signature");
+    if (!archive || typeof descriptorPath !== "string" || typeof signaturePath !== "string" || parsed.positional.length !== 3) throw new Error(RUNTIME_USAGE);
+    const descriptor: unknown = JSON.parse(readFileSync(descriptorPath, "utf8"));
+    const signature: unknown = JSON.parse(readFileSync(signaturePath, "utf8"));
+    const r = await withClient(ctx, async (c) => {
+      requireRuntimeUpdate(c);
+      return c.request<RuntimeInstallResult>("runtime.install", { archive: realpathSync(archive), descriptor, signature, ...(typeof key === "string" ? { idempotencyKey: key } : {}) }, 600_000);
+    });
+    emit(ctx, [confirm("ok", r.changed ? "installed" : "already installed", `${r.sha} → ${tildify(r.installedDir)} (${r.bytes} bytes, key ${r.keyId})`, r.deduped)], r, false);
+    return 0;
+  }
+  if (action === "prune") {
+    const keepArg = parsed.positional[2];
+    if (parsed.positional.length > 3 || (keepArg !== undefined && !/^[0-9]+$/.test(keepArg))) throw new Error(RUNTIME_USAGE);
+    const r = await withClient(ctx, async (c) => {
+      requireRuntimeUpdate(c);
+      return c.request<RuntimePruneResult>("runtime.prune", { ...(keepArg !== undefined ? { keep: Number(keepArg) } : {}), ...(typeof key === "string" ? { idempotencyKey: key } : {}) }, 600_000);
+    });
+    emit(ctx, [confirm("ok", "pruned", `${r.removed.length} removed, ${r.kept.length} kept`, r.deduped), ...r.removed.map((sha) => `  - ${sha}`), ...r.kept.map((sha) => `  = ${sha}`)], r, false);
+    return 0;
+  }
+  throw new Error(RUNTIME_USAGE);
 }
 
 async function cmdReconnectTools(ctx: CliContext, parsed: Parsed): Promise<number> {
@@ -4985,6 +5046,8 @@ export async function runV2Cli(argv: string[], io: CliIo = defaultIo): Promise<n
         return await cmdGateway(ctx, parsed);
       case "skills":
         return await cmdSkills(ctx, parsed);
+      case "runtime":
+        return await cmdRuntime(ctx, parsed);
       case "x":
         return await cmdX(ctx, parsed);
       case "run":
@@ -5071,26 +5134,6 @@ export async function runV2Cli(argv: string[], io: CliIo = defaultIo): Promise<n
       }
       case "deploy-info":
         return await cmdDeployInfo(ctx);
-      case "update-owner": {
-        const updateArgs = parsed.positional.slice(1);
-        const sub = updateArgs[0];
-        if (sub === "apiary-swap") {
-          if ([...parsed.flags.keys()].some(flag => !["--data-dir", "--socket", "--json"].includes(flag))
-            || parsed.args.length || parsed.tags.length || parsed.lists.size || parsed.rest !== null) throw new Error("update-owner apiary-swap: only --data-dir, --socket and --json are supported");
-          const operation = updateArgs[1];
-          if (operation !== "status" && operation !== "acquire" && operation !== "release" && operation !== "abandon" && operation !== "recover") throw new Error("update-owner apiary-swap: expected status, acquire, release, abandon, or recover");
-          if (updateArgs.length !== (operation === "status" ? 2 : 3)) throw new Error("update-owner apiary-swap: expected an exact request file for mutations");
-          const params = operation === "status" ? {} : JSON.parse(readFileSync(updateArgs[2]!, "utf8"));
-          const result = await withClient(ctx, c => c.request(`update.apiarySwap.${operation}`, params));
-          ctx.io.out(JSON.stringify(ctx.json ? withDaemonTarget(ctx, result) : result));
-          return 0;
-        }
-        if (sub !== "status" && sub !== "reserve" && sub !== "release") throw new Error("update-owner: expected status, reserve, or release");
-        const params = sub === "status" ? {} : JSON.parse(readFileSync(updateArgs[1] ?? "", "utf8"));
-        const result = await withClient(ctx, c => c.request(`update.${sub}`, params));
-        ctx.io.out(JSON.stringify(ctx.json ? withDaemonTarget(ctx, result) : result));
-        return 0;
-      }
       case "health":
         return await cmdHealth(ctx);
       case "harnesses":

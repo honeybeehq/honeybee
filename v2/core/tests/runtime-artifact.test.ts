@@ -190,7 +190,7 @@ test("pack writes tarball + manifest + SHA256SUMS; tarball is the stage dir with
     await mkdir(extracted);
     execFileSync("tar", ["-xzf", outcome.tarballPath, "-C", extracted]);
     assert.equal(await readFile(join(extracted, RUNTIME_ARTIFACT_MANIFEST_FILENAME), "utf8"), outside);
-    // The extracted dist re-hashes to the recorded artifactHash — what `hive deploy --artifact` will verify.
+    // The extracted dist re-hashes to the recorded artifactHash — what an installer will verify.
     assert.equal(await hashDirectoryTree(join(extracted, "dist")), parsed.artifactHash);
     assert.equal((await readBuildStamp(join(extracted, "dist")))?.hash, parsed.artifactHash);
 

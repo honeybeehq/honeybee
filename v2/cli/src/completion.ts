@@ -36,7 +36,7 @@ COMMAND_NAMES.sort();
 const COMMAND_FLAGS = [...KNOWN_FLAGS].sort();
 
 export const SHELLS = ["bash", "zsh", "fish"];
-const DEPLOY_FLAGS = ["--rollback", "--list", "--init", "--json", "--keep", "--skip-tests", "--allow-non-descendant", "--provision-question-withdrawal", "--artifact", "--identity", "--admission", "--expected-current", "--bin-dir", "--help"];
+const DEPLOY_FLAGS = ["--rollback", "--list", "--init", "--json", "--keep", "--skip-tests", "--allow-non-descendant", "--provision-question-withdrawal", "--help"];
 
 export type CompletionState = { bees: Array<{ id: string; handle: string | null; name: string; human_ref?: string | null }> };
 
