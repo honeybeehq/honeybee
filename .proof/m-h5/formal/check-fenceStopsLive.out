@@ -1,0 +1,8 @@
+
+VIOLATION FencedHasNoLiveIncarnation: A is fenced at epoch 0 with a live incarnation and no stop on its way
+  shortest path (2 steps):
+    start(A)
+    fence(A, epoch 0)
+
+Model checking found 1 violation(s).
+  distinct states: 22, max epoch 3, two executors, one Champion, at most 2 bundles per node and 2 plain starts per node, broken rules: fenceStopsLive

@@ -1,0 +1,14 @@
+
+VIOLATION BundleEpochsHaveOneWriter: both executors wrote bundles under epoch 1 (A, B); the Home cannot tell whose home is current
+  shortest path (8 steps):
+    start(A)
+    stop(A)
+    export(A)
+    start(A)
+    fence(A, epoch 1)
+    bundle(A)
+    start(B, handover A@0#1 epoch 0 +bytes)
+    bundle(B)
+
+Model checking found 1 violation(s).
+  distinct states: 646, max epoch 3, two executors, one Champion, at most 2 bundles per node and 2 plain starts per node, broken rules: bundleSkippedWhileFenced

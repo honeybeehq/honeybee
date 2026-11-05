@@ -1,0 +1,28 @@
+{
+  "bees": 1001,
+  "getChampionByBee on an ordinary bee (the per-turn-end lookup every node now does)": {
+    "p50us": 0.44,
+    "p95us": 0.91,
+    "perCallUs": 1.24
+  },
+  "getChampionByBee on the incarnation": {
+    "p50us": 3.03,
+    "p95us": 5.17,
+    "perCallUs": 3.43
+  },
+  "getBee (for scale: the lookup the daemon already does per turn end)": {
+    "p50us": 7.72,
+    "p95us": 12.39,
+    "perCallUs": 8.27
+  },
+  "createBee with kind: champion (the one extra column on the spawn insert)": {
+    "p50us": 251.1,
+    "p95us": 303.49,
+    "perCallUs": 269.58
+  },
+  "createBee default kind": {
+    "p50us": 257.98,
+    "p95us": 309.27,
+    "perCallUs": 275.74
+  }
+}

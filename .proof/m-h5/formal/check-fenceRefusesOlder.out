@@ -1,0 +1,11 @@
+
+VIOLATION StaleFenceIsQuiet: fence(A, epoch 0) changed A although its row is at epoch 1 (inc live -> stopping)
+  shortest path (5 steps):
+    start(A)
+    stop(A)
+    export(A)
+    start(A, handover A@0#1 epoch 0 +bytes)
+    fence(A, epoch 0)
+
+Model checking found 1 violation(s).
+  distinct states: 55, max epoch 3, two executors, one Champion, at most 2 bundles per node and 2 plain starts per node, broken rules: fenceRefusesOlder

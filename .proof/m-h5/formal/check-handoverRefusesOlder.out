@@ -1,0 +1,11 @@
+
+VIOLATION FencedStaysFencedUntilNewerHandover: A lost its fence through start(A, handover A@0#1 epoch 0 +bytes) (epoch 1 -> 1)
+  shortest path (5 steps):
+    start(A)
+    stop(A)
+    export(A)
+    fence(A, epoch 1)
+    start(A, handover A@0#1 epoch 0 +bytes)
+
+Model checking found 1 violation(s).
+  distinct states: 59, max epoch 3, two executors, one Champion, at most 2 bundles per node and 2 plain starts per node, broken rules: handoverRefusesOlder
