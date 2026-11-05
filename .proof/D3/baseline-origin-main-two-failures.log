@@ -1,0 +1,100 @@
+✔ hashDirectoryTree digests path + content and ignores the stamp file (15.55978ms)
+✔ writeBuildStamp records the tree digest and readBuildStamp tolerates garbage (5.302019ms)
+✔ a settled install (stamp and tree both matching the local build) resolves first probe (5.504524ms)
+✔ a mid-copy install settles only once the tree catches up to its stamp (7.610872ms)
+✔ an install that never settles throws after the timeout with the disagreement (4.111675ms)
+✔ a recorded repack settles: base stamp, additions with their digests, nothing else changed (37.365486ms)
+✔ a repack that changed anything beyond its recorded additions never settles (288.573303ms)
+✔ a local repack record must be byte-identical to the installed one (32.017378ms)
+✔ the tree digest preserves historical host-locale ordering for rollback (224.497527ms)
+✔ settling without a local stamp is a caller error, not a wait (2.701571ms)
+✖ the deploy archive allowlist excludes workstation state and retains runtime assets (291.10555ms)
+✖ real unshare peer is refused by a disposable daemon while host CLI still spawns (2.257525ms)
+✖ sandbox-off host keeps unregistered host callers unconfined and still confines child-userns peers (0.598347ms)
+✖ an explicitly unsandboxed Cell does not put a sandboxed satellite into strict host refusal (85.943957ms)
+✖ strict host with trust disabled cannot treat an unattributed host peer as registered (0.796084ms)
+✔ missing Linux peer credentials fail closed with a diagnostic error: degraded (187.822135ms)
+✔ missing Linux peer credentials fail closed with a diagnostic error: lookup_failed (2.319808ms)
+ℹ tests 17
+ℹ suites 0
+ℹ pass 12
+ℹ fail 5
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1027.373026
+
+✖ failing tests:
+
+test at v2/core/tests/release-settle.test.ts:274:1
+✖ the deploy archive allowlist excludes workstation state and retains runtime assets (291.10555ms)
+  Error: Command failed: npm pack --dry-run --json
+  npm error code EBADDEVENGINES
+  npm error EBADDEVENGINES The developer of this package has specified the following through devEngines
+  npm error EBADDEVENGINES Invalid devEngines.packageManager
+  npm error EBADDEVENGINES Invalid semver version ">=11 <12" does not match "12.0.1" for "packageManager"
+  npm error EBADDEVENGINES {
+  npm error EBADDEVENGINES   current: { name: 'npm', version: '12.0.1' },
+  npm error EBADDEVENGINES   required: { name: 'npm', version: '>=11 <12', onFail: 'error' }
+  npm error EBADDEVENGINES }
+  npm error A complete log of this run can be found in: /home/trmd/.npm/_logs/2026-11-05T18_10_13_602Z-debug-0.log
+  
+      at genericNodeError (node:internal/errors:985:15)
+      at wrappedFn (node:internal/errors:539:14)
+      at checkExecSyncError (node:child_process:925:11)
+      at execFileSync (node:child_process:961:15)
+      at TestContext.<anonymous> (file:///var/tmp/d3-base/v2/core/tests/release-settle.test.ts:275:37)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:911:18)
+      at Test.postRun (node:internal/test_runner/test:1465:19)
+      at Test.run (node:internal/test_runner/test:1390:12) {
+    status: 1,
+    signal: null,
+    output: [ null, '{\n  "error": {\n    "code": "EBADDEVENGINES",\n    "summary": "The developer of this package has specified the following through devEngines\\nInvalid devEngines.packageManager\\nInvalid semver version \\">=11 <12\\" does not match \\"12.0.1\\" for \\"packageManager\\"",\n    "detail": "[object Object]"\n  }\n}\n', `npm error code EBADDEVENGINES\nnpm error EBADDEVENGINES The developer of this package has specified the following through devEngines\nnpm error EBADDEVENGINES Invalid devEngines.packageManager\nnpm error EBADDEVENGINES Invalid semver version ">=11 <12" does not match "12.0.1" for "packageManager"\nnpm error EBADDEVENGINES {\nnpm error EBADDEVENGINES   current: { name: 'npm', version: '12.0.1' },\nnpm error EBADDEVENGINES   required: { name: 'npm', version: '>=11 <12', onFail: 'error' }\nnpm error EBADDEVENGINES }\nnpm error A complete log of this run can be found in: /home/trmd/.npm/_logs/2026-11-05T18_10_13_602Z-debug-0.log\n` ],
+    pid: 2185040,
+    stdout: '{\n  "error": {\n    "code": "EBADDEVENGINES",\n    "summary": "The developer of this package has specified the following through devEngines\\nInvalid devEngines.packageManager\\nInvalid semver version \\">=11 <12\\" does not match \\"12.0.1\\" for \\"packageManager\\"",\n    "detail": "[object Object]"\n  }\n}\n',
+    stderr: `npm error code EBADDEVENGINES\nnpm error EBADDEVENGINES The developer of this package has specified the following through devEngines\nnpm error EBADDEVENGINES Invalid devEngines.packageManager\nnpm error EBADDEVENGINES Invalid semver version ">=11 <12" does not match "12.0.1" for "packageManager"\nnpm error EBADDEVENGINES {\nnpm error EBADDEVENGINES   current: { name: 'npm', version: '12.0.1' },\nnpm error EBADDEVENGINES   required: { name: 'npm', version: '>=11 <12', onFail: 'error' }\nnpm error EBADDEVENGINES }\nnpm error A complete log of this run can be found in: /home/trmd/.npm/_logs/2026-11-05T18_10_13_602Z-debug-0.log\n`
+  }
+
+test at v2/daemon/tests/confined-peer-rpc.test.ts:14:1
+✖ real unshare peer is refused by a disposable daemon while host CLI still spawns (2.257525ms)
+  Error: ownerBoundEnv: native owner birth unavailable; refusing an unfenced test daemon
+      at ownerBoundEnv (file:///var/tmp/d3-base/v2/daemon/tests/helpers.ts:326:23)
+      at startDaemon (file:///var/tmp/d3-base/v2/daemon/tests/helpers.ts:366:10)
+      at TestContext.<anonymous> (file:///var/tmp/d3-base/v2/daemon/tests/confined-peer-rpc.test.ts:23:24)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Test.start (node:internal/test_runner/test:1191:17)
+      at startSubtestAfterBootstrap (node:internal/test_runner/harness:385:17)
+
+test at v2/daemon/tests/confined-peer-rpc.test.ts:116:1
+✖ sandbox-off host keeps unregistered host callers unconfined and still confines child-userns peers (0.598347ms)
+  Error: ownerBoundEnv: native owner birth unavailable; refusing an unfenced test daemon
+      at ownerBoundEnv (file:///var/tmp/d3-base/v2/daemon/tests/helpers.ts:326:23)
+      at startDaemon (file:///var/tmp/d3-base/v2/daemon/tests/helpers.ts:366:10)
+      at TestContext.<anonymous> (file:///var/tmp/d3-base/v2/daemon/tests/confined-peer-rpc.test.ts:119:26)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:911:18)
+      at Test.postRun (node:internal/test_runner/test:1465:19)
+      at Test.run (node:internal/test_runner/test:1390:12)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3)
+
+test at v2/daemon/tests/confined-peer-rpc.test.ts:140:1
+✖ an explicitly unsandboxed Cell does not put a sandboxed satellite into strict host refusal (85.943957ms)
+  Error: ownerBoundEnv: native owner birth unavailable; refusing an unfenced test daemon
+      at ownerBoundEnv (file:///var/tmp/d3-base/v2/daemon/tests/helpers.ts:326:23)
+      at startDaemon (file:///var/tmp/d3-base/v2/daemon/tests/helpers.ts:366:10)
+      at TestContext.<anonymous> (file:///var/tmp/d3-base/v2/daemon/tests/confined-peer-rpc.test.ts:145:24)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7)
+
+test at v2/daemon/tests/confined-peer-rpc.test.ts:160:1
+✖ strict host with trust disabled cannot treat an unattributed host peer as registered (0.796084ms)
+  Error: ownerBoundEnv: native owner birth unavailable; refusing an unfenced test daemon
+      at ownerBoundEnv (file:///var/tmp/d3-base/v2/daemon/tests/helpers.ts:326:23)
+      at startDaemon (file:///var/tmp/d3-base/v2/daemon/tests/helpers.ts:366:10)
+      at TestContext.<anonymous> (file:///var/tmp/d3-base/v2/daemon/tests/confined-peer-rpc.test.ts:167:24)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7)
