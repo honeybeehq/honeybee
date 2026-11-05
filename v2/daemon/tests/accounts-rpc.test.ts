@@ -49,7 +49,7 @@ import type {
 import { openCoreStore, type MirrorAccountRow } from "../../core/src/index.ts";
 import type { RpcClient } from "../../cli/src/client.ts";
 import { makeDaemonDir, startDaemon, waitFor, type DaemonHandle } from "./helpers.ts";
-import { claudeProjectKey } from "../../driver-tmux/src/index.ts";
+import { claudeProjectKey } from "../../adapters/src/claude.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const FAKE_CLAUDE = join(here, "..", "..", "driver-hsr", "test-agent", "fake-claude.mjs");

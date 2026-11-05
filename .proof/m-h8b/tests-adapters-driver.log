@@ -1,0 +1,743 @@
+✔ agy projector: replayed calls, results and replies stay deduplicated across checkpoints (7.986226ms)
+✔ agy projector: bounded FIFO dedupe preserves replay and eviction order after restore (71.452968ms)
+✔ agy projector: flushed assistant fragments also obey the dedupe bound (20.289538ms)
+✔ agy projector: captured tool turn maps user, tool pair, reply, usage suffix, and result (2.018141ms)
+✔ agy projector: failed tool without output projects tool_info error (0.760317ms)
+✔ agy projector: result response is a fallback and never duplicates text_delta (1.475226ms)
+✔ agy projector: agent response fragments emit once when the step completes (0.757561ms)
+✔ agy projector: flush emits an in-progress assistant response once (0.693317ms)
+✔ agy projector: captured cumulative result usage becomes per-turn usage (1.055771ms)
+✔ agy projector: missing usage invalidates the cumulative baseline (1.100829ms)
+✔ agy projector: resumed cumulative duration waits for a baseline (0.810144ms)
+✔ agy projector: captured auth error stays visible as an interrupt and terminal result (0.584105ms)
+✔ agy projector: init and known progress are noise; malformed and future events are safe (0.882464ms)
+✔ agy projector factory is registered for CLI transcripts (0.183616ms)
+✔ agy CLI rendering shows the user, tools, and reply once; last returns the reply (0.583994ms)
+✔ agy: init is real boot evidence and lands the ready process on idle (2.448116ms)
+✔ agy: recorded two-turn stream maps agent responses and results, while user/tool steps remain noise (0.54597ms)
+✔ agy: recorded skip-permissions stream keeps ACTIVE and DONE tool updates as noise (0.354418ms)
+✔ agy: auth ERROR result sets auth_needed despite the process exit code being unreliable (0.321735ms)
+✔ agy: shared auth classifier recognizes both captured stdout and stderr cues (0.224406ms)
+✔ agy: resource ERROR result sets resource_blocked and ends the turn without contrary clears (0.28355ms)
+✔ agy: malformed lines, unknown events, and unknown step types are noise (0.264113ms)
+✔ agy: encodeMessage emits the probed one-line stream-json user envelope (0.343948ms)
+✔ agy: adapter surface matches the print-mode lifecycle and resume contract (0.420737ms)
+✔ args.compose.1: claude — base < default < bee < resume; later --model wins, boolean idempotent, resume last (2.632013ms)
+✔ args.compose.2: empty/null layers, --flag=value spelling, -r alias, repeated within one layer, no bee args (0.337536ms)
+✔ args.compose.2b: claude --append-system-prompt is repeatable so a dest overlay does not drop an earlier prompt (0.191893ms)
+✔ args.compose.3: unknown flags and positionals pass through verbatim in place — never de-duplicated or re-ordered (0.224046ms)
+✔ args.compose.4: codex — -m/--model alias, -c keyed per key (later wins per key, different keys coexist), --config spellings (0.266287ms)
+✔ args.compose.5: codexSpawnPlan lifts --model + approval/sandbox flags into the thread request; -c overrides and positionals stay on argv (0.331905ms)
+✔ args.compose.6: grokSpawnPlan lifts --model/--effort in front of stdio (0.290454ms)
+✔ args.compose.7: agy valued flags use later-wins composition and permission bypass is idempotent (0.199798ms)
+✔ args.compose.8: agy preserves repeatable --add-dir values across layers (0.208064ms)
+✔ args.compose.9: muse folds --reasoning-effort onto --effort and de-duplicates -c per key (0.301025ms)
+✔ args.compose.10: museSpawnPlan lifts model, effort and approval posture into the protocol (0.888967ms)
+✔ projector source changes require checkpoint version review (3.261807ms)
+✔ checkpoint digest excludes stateless projectors, adapters and unrelated shared-module code (2.261144ms)
+✔ checkpoint digest guards stateful projectors, registry and shared validators (17.415765ms)
+✔ codex: exact checkpoint validation (3.055185ms)
+✔ grok: exact checkpoint validation (0.572472ms)
+✔ agy: exact checkpoint validation (0.652578ms)
+✔ muse: exact checkpoint validation (0.605597ms)
+✔ claude: exact checkpoint validation (0.36024ms)
+✔ stub: exact checkpoint validation (0.361532ms)
+✔ unknown-provider: exact checkpoint validation (0.351663ms)
+✔ reject lossy JSON, exotic objects, cycles, and throwing accessors without throwing (0.503589ms)
+✔ 4 MiB UTF-8 JSON envelope boundary is inclusive (36.022024ms)
+✔ checkpoint and restore detach nested provider data; checkpoint never flushes chunks (1.605258ms)
+✔ provider-owned nested state rejects unknown fields, bad types and duplicate map keys (1.659785ms)
+✔ fallback dialect differs from the exact checkpoint registry key (0.261929ms)
+✔ Grok retains tool dedupe without retaining already emitted large inputs (47.531975ms)
+✔ shared serialization preserves lone surrogates through UTF-8 JSON storage (11.166654ms)
+✔ Grok restored tool inputs remain available only to an un-emitted call (0.966999ms)
+✔ claude projector: a full turn — prompt, thinking, tool pair, reply, result (5.490366ms)
+✔ claude projector: redacted thinking, meta users, and protocol noise (1.191184ms)
+✔ claude projector: image results stay typed and their synthetic dimensions echo stays hidden (0.869349ms)
+✔ claude projector: registered in the factory (no renderer fallback) (0.251688ms)
+✔ claude projector: assistant message.usage becomes turn-scoped token_usage with providerTurnId (0.734207ms)
+✔ claude projector: usage carries the billed model; result rows carry the harness cost + dominant model (0.571651ms)
+✔ claude projector: native session-file lines stamp their events; HSR lines stay unstamped (0.58679ms)
+✔ claude projector: an errored result projects a halt (interrupt) carrying the CLI's errors, then the turn end (0.986046ms)
+✔ claude projector: out-of-range numeric timestamps preserve events with an unknown timestamp (0.863818ms)
+✔ claude: system/init → booted(sessionId) + spawn_failed clear + turn_ended (boots to idle) (3.203954ms)
+✔ claude: progress pings carry no state edge; assistant output OPENS a turn (self-woken turns — driver dedupes mid-turn) (0.481887ms)
+✔ claude: the assistant line Claude Code writes for a failed API call is not provider progress (0.531182ms)
+✔ claude: successful result → contrary-evidence clears + turn_ended (0.410277ms)
+✔ claude: overloaded error result → resource_blocked set + turn_ended, no clears (0.476986ms)
+✔ claude: rejected rate_limit_event → resource_blocked set with reset hint (1.142951ms)
+✔ claude: allowed rate_limit_event → resource_blocked clear (contrary evidence) (0.418113ms)
+✔ claude: login-required error result → auth_needed set + turn_ended, no clears (0.364027ms)
+✔ claude: non-JSON, unknown types and control messages → [] (0.395358ms)
+✔ claude: encodeMessage emits one stream-json user line (0.515351ms)
+✔ claude: adapter surface — mid-turn accept, no boot lines, stable parse identity (0.402763ms)
+✔ claude: resumeArgs (spec 07 §F) — `--resume <id>`; init after resume echoes the same session id → booted carries it (0.276277ms)
+✔ claude v6: forkArgs = `--resume <src> --fork-session` (never --session-id); encodeInterrupt = control_request interrupt with unique request ids; the ack parses to [] (0.484822ms)
+✔ claude: typed authentication failure and HTTP 401 work without provider prose; quota remains distinct (0.333929ms)
+✔ claude: fresh delivery refuses a known active turn and accepts idle (0.214527ms)
+✔ codex projector: captured HSR sequence projects one native turn and folded shell events (9.103506ms)
+✔ codex projector: command completion folds fields retained from item/started (0.684089ms)
+✔ codex projector: item folding covers MCP, files, thinking, compaction, web, and unknown types (2.406856ms)
+✔ codex projector: MCP completion without a start emits call then result (0.441478ms)
+✔ codex projector: empty commentary and app-server protocol noise emit nothing (0.563004ms)
+✔ codex projector: thread/fork response replays inherited turns once (1.757174ms)
+✔ codex projector: interrupted turn completion is an end only and never re-renders nested items (0.543646ms)
+✔ codex projector: native rollout messages and tools remain projected without duplicate copies (2.216256ms)
+✔ codex projector: app-server tokenUsage.total becomes cumulative usage with uncached input and the thread model (0.687616ms)
+✔ Codex recovery queries live threads before a new handshake (2.019534ms)
+✔ Codex recovery refuses ambiguous, mismatched, paged and malformed thread answers (0.290384ms)
+✔ Codex live thread state reports authenticated live idle or active evidence (0.397172ms)
+✔ Codex marks only the sole initialize response as bootstrap (0.411449ms)
+✔ codex: bootLines is a single initialize request (1.479755ms)
+✔ codex: initialize response → respond with initialized + thread/start (ack-ordered handshake) (1.422473ms)
+✔ codex: thread/start response → booted(threadId) + spawn_failed clear + turn_ended (0.358366ms)
+✔ codex: turn/started → turn_started; turn/completed → clears + turn_ended (0.474742ms)
+✔ codex: error notification with auth-expiry signature → auth_needed set (0.491244ms)
+✔ codex: error notification with rate-limit text → resource_blocked set; generic error → [] (0.392442ms)
+✔ codex: rateLimits reached → resource_blocked set with primary-window reset hint (0.91634ms)
+✔ codex: benign rolling rateLimits update (reached null) → [] (0.232692ms)
+✔ codex: mid-turn deltas, reasoning and usage notifications carry no state edge (0.345872ms)
+✔ codex: inbound server request is refused (method-not-found), never left hanging (0.410167ms)
+✔ codex: encodeMessage requires the learned thread id; idle encodes turn/start (0.471636ms)
+✔ codex: a running turn encodes turn/steer with its native id and refuses safely before that id is known (0.207743ms)
+✔ codex: turn delivery responses confirm or refuse the mailbox message; errors still surface flags (0.187975ms)
+✔ codex: resume requests metadata only and reaches idle with the preserved conversation id (0.371151ms)
+✔ codex v6: turn/started carries the turn id; encodeInterrupt = turn/interrupt {threadId, turnId} (null before a turn id is known); the ack parses to [] (0.398344ms)
+✔ codex v6: forkThreadId → the handshake sends thread/fork {threadId: source}; the response's NEW thread.id lands as booted; resume wins over fork (0.300774ms)
+✔ codex: GPT-6 Astra model passes verbatim to start, resume, and fork (0.233994ms)
+✔ codex: developerInstructions ride on thread/start and thread/resume, not as a replacement of cwd/model (0.261237ms)
+✔ codex: usage-limit failure stays blocked after turn completion (0.307818ms)
+✔ codex: typed quota error survives unfamiliar message wording and completion-only errors (0.215068ms)
+✔ codex: only an explicitly successful completion clears boundary flags (0.297969ms)
+✔ codex: legacy usage-limit text and failed auth retain their boundaries (0.29351ms)
+✔ codex: fresh delivery starts a turn and refuses every known active turn (0.223114ms)
+✔ grok projector: captured ACP chunks assemble into one assistant message (6.524756ms)
+✔ grok projector: user message chunks coalesce into one message (0.641256ms)
+✔ grok projector: tool updates fold into one call and completion uses the same callId (0.808861ms)
+✔ grok projector: flush emits an otherwise-open chunk buffer (0.567212ms)
+✔ grok projector: prompt_complete flushes the open assistant message (0.683989ms)
+✔ grok projector: session/prompt emits turn_start before the user message (0.436398ms)
+✔ grok projector: session/prompt suppresses Grok's echoed user chunks once (0.690612ms)
+✔ grok projector: a mismatched user chunk is not mistaken for a prompt mirror (1.239488ms)
+✔ grok projector: session/update turn_completed ends the turn after flushing (0.539839ms)
+✔ grok projector: auto compaction flushes the prior chunk and preserves token counts (0.934816ms)
+✔ grok projector: generated continuation summary is a boundary, not a user message (0.535741ms)
+✔ grok projector: unrecognized methods and non-boundary updates do not flush open chunks (0.955366ms)
+✔ grok projector: thinking chunks coalesce and native chat_history shapes remain supported (0.934866ms)
+✔ grok projector: redacted thinking requires redacted=true and omits text (0.332586ms)
+✔ grok projector: project-then-flatten preserves the full last assistant text (1.619666ms)
+✔ grok projector: turn_completed usage is projected turn-scoped with uncached input, prompt id, and model (0.653309ms)
+✔ grok: live smoke fixture — initialize prefers cached_token, session/new boots, prompt ends the turn (2.503815ms)
+✔ grok: bootLines is a single initialize request (0.277369ms)
+✔ grok: initialize response → authenticate with cached_token (0.209116ms)
+✔ grok: authenticate response → session/new with cwd (0.185511ms)
+✔ grok: session setup passes daemon-supplied MCP servers through ACP (0.278631ms)
+✔ grok: session/new response → booted(sessionId) + spawn_failed clear + turn_ended (0.172054ms)
+✔ grok: resume handshake uses session/load (0.215549ms)
+✔ grok: encodeMessage needs a session id; prompt result ends the turn (0.346082ms)
+✔ grok: authenticate error with login signature → auth_needed (0.29853ms)
+✔ grok: permission request auto-allows allow_once (0.640354ms)
+✔ grok: session/prompt JSON-RPC -32003 → resource_blocked + turn_ended (0.282739ms)
+✔ grok: session/update agent output opens a turn (self-woken) (0.204949ms)
+✔ grok: turn_completed notification ends a self-woken turn (0.302638ms)
+✔ grok: replayed turn_completed does not close the live turn (0.170722ms)
+✔ grok: encodeInterrupt is a session/cancel notification (0.238252ms)
+✔ Kimi ACP prompt, streamed answer and result survive checkpoint restore (2.86687ms)
+✔ Kimi argv layers choose the final model/mode without forwarding prompt-only flags (1.780389ms)
+✔ Kimi configuration errors cannot acknowledge startup; replay is deterministic (0.793541ms)
+✔ Kimi turn errors set provider flags, success clears them and interrupt cancels the same session (0.429635ms)
+✔ Kimi restricted permission requests cancel, yolo selects an actual allow-once option (0.25736ms)
+✔ real echo session projects turns, messages, usage and cancellation, and skips reminder children (5.964137ms)
+✔ real meta session projects the bash result envelope as a shell event and counts cached usage per turn (1.758647ms)
+✔ context usage, foreground completion, partial tool output, status and plan usage notifications from the real session project nothing (0.668128ms)
+✔ bash results without the JSON envelope keep the raw text as stdout (0.680412ms)
+✔ schema-derived tool session maps shell, tools, edits, subagents, reasoning, compaction and usage (2.182781ms)
+✔ client requests, responses and deltas are not transcript events; interrupts are (0.467028ms)
+✔ repeated item/started does not duplicate a tool call and a lone item/completed pairs itself (0.41212ms)
+✔ checkpoint restore keeps open tool items and per-turn usage (1.140226ms)
+✔ open item and usage retention is bounded (40.949756ms)
+✔ compaction that did not compact is visible but not a compaction (0.455445ms)
+✔ muse turn stream reads the real echo session (1.426241ms)
+✔ muse: initialize names a valid MSP client and requests session MCP without input dialogs (2.874144ms)
+✔ muse: handshake sends initialized then session/start with gateways, model and approval mode, and boots idle (0.664581ms)
+✔ muse: each runtime mints its own session/start command id (the host dedups by it) (0.979293ms)
+✔ muse: resume loads the recorded session with gateways and never boots on failure (0.533927ms)
+✔ muse: resume with a different model applies session/setModel before booting (0.358066ms)
+✔ muse: an initialize failure is spawn evidence, an auth failure at setup is auth evidence (0.22632ms)
+✔ muse: mail is turn/start with a stable UUIDv7 command id; steer while a turn runs (0.431428ms)
+✔ muse: the turn/start ack confirms delivery; a rejected command is refused for retry (0.281817ms)
+✔ muse: recorded turn maps to session-scoped edges with progress and success clears (0.460504ms)
+✔ muse: cancelled turns close without evidence; authRequired and quota failures set flags first (0.431498ms)
+✔ muse: usage/changed and a quota terminal pass the observed usage through verbatim (schema-shaped fixture) (0.488068ms)
+✔ muse: interrupt targets the known turn with a fresh UUIDv7 command id (0.328548ms)
+✔ muse: server requests are refused so the host never waits on Honeybee (0.254815ms)
+✔ muse: fresh command ids are RFC 9562 version 7 with the time prefix (0.145132ms)
+✔ stub: ready → booted(sessionId) + spawn_failed clear + turn_ended (2.513363ms)
+✔ stub: turn markers map 1:1; ok turn ends with contrary-evidence clears (0.417471ms)
+✔ stub: ok:false turn end is a turn end WITHOUT clears (the turn hit a boundary) (0.238664ms)
+✔ stub: auth error → auth_needed set; rate_limited → resource_blocked set/clear by status (0.975275ms)
+✔ stub: text, unknown events and non-JSON → [] (0.317406ms)
+✔ stub: encodeMessage carries the mailbox message id verbatim (0.308529ms)
+✔ stub v6: encodeInterrupt is the {type:"interrupt"} line; an interrupted turn_ended is a normal successful turn end (1.735231ms)
+✔ repairs: the registry projector carries Apiary's compat repairs so both sides project the same events (4.45751ms)
+✖ adopted Codex readiness: idle (15207.501078ms)
+✖ adopted Codex readiness: active (15223.046297ms)
+✔ adopted Codex readiness: transient-status (4726.297309ms)
+✔ adopted Codex readiness: agent-birth (511.36301ms)
+✔ adopted Codex readiness: unowned-agent (496.666737ms)
+✔ Claude adopted readiness waits for the complete journal before deriving idle (2620.047744ms)
+✔ late legacy thread response cannot replace the recovered thread across adoption (500.532328ms)
+
+Interrupted while running:
+
+⚠ v2/driver-hsr/tests/adopted-readiness.test.ts (v2/driver-hsr/tests/adopted-readiness.test.ts:1:1)
+⚠ v2/driver-hsr/tests/driver.test.ts (v2/driver-hsr/tests/driver.test.ts:1:1)
+⚠ v2/driver-hsr/tests/execution-handshake.test.ts (v2/driver-hsr/tests/execution-handshake.test.ts:1:1)
+⚠ v2/driver-hsr/tests/fresh-turn.test.ts (v2/driver-hsr/tests/fresh-turn.test.ts:1:1)
+⚠ v2/driver-hsr/tests/legacy-birth.test.ts (v2/driver-hsr/tests/legacy-birth.test.ts:1:1)
+⚠ v2/driver-hsr/tests/pending-start-recovery.test.ts (v2/driver-hsr/tests/pending-start-recovery.test.ts:1:1)
+⚠ v2/driver-hsr/tests/psutil.test.ts (v2/driver-hsr/tests/psutil.test.ts:1:1)
+⚠ v2/driver-hsr/tests/reconnect-tools.test.ts (v2/driver-hsr/tests/reconnect-tools.test.ts:1:1)
+⚠ v2/driver-hsr/tests/runner-host.test.ts (v2/driver-hsr/tests/runner-host.test.ts:1:1)
+⚠ v2/driver-hsr/tests/turn-quiet.test.ts (v2/driver-hsr/tests/turn-quiet.test.ts:1:1)
+✖ v2/driver-hsr/tests/adopted-readiness.test.ts (1799782.398022ms)
+✖ spawn: booted carries pid-at-spawn identity; own process group; verbatim session log (313.277842ms)
+✔ start throws while the bee already has a live, healthy process (187.774235ms)
+✖ deliver: not_ready while booting (Q2); accepted at idle; ground truth + agent ack (15550.564968ms)
+✖ bee stop owns detached runner cleanup: TERM honored → exited(stopped_by_user); dead-already is hadProcess:false (264.602105ms)
+✖ stop: SIGTERM-ignoring process is KILLed after the bounded grace (240.770476ms)
+✖ crash mid-turn → exited(crashed); hang → no turn_ended, stop still works (15258.268175ms)
+✔ clean exit after a turn → exited(clean) (654.862488ms)
+✔ boot crash (exit before ready) and unspawnable binary → exited(crashed), never a throw (497.908791ms)
+✔ F8: a bare command the resolver found nowhere crashes with a detail naming the executable (206.739561ms)
+✔ flag evidence: auth/rate-limit setters and their contrary-evidence clearers (297.579082ms)
+✔ re-adoption (B7): reconcileAtBoot adopts the surviving pid and stops the dead one (301.829952ms)
+✔ revive while the old process is dying: start defers, spawns after the death, in order (711.285767ms)
+✔ detach cancels deferred starts without signaling the surviving runtime (249.761293ms)
+✔ observe() and observeEvidence() never block and drain exactly once (241.116217ms)
+✔ session log survives across generations as one verbatim stream (Q1) (504.582957ms)
+✔ readyAtSpawn: silent-until-input runtime becomes deliverable when its runner socket connects (212.374859ms)
+✔ readyAtSpawn with NOTHING to deliver: the synthetic booted is paired with a synthetic turn_ended — never a `running` no output will close (2026-09-02 swap-revive stall) (243.56731ms)
+✔ readyAtSpawn status poll (deterministic, no spawn): synthetic booted pairs with a synthetic turn_ended only while the driver's phase is idle (8.338309ms)
+✔ runner status cannot turn an unavailable identity into an exit (2.908611ms)
+✔ readyAtSpawn refuses delivery until the runner socket connects, then opens one real turn before the OS-status poll (242.55317ms)
+✔ readyAtSpawn: a spawn that fails outright (missing cwd / binary) is exited(crashed) with NO synthetic booted (463.401741ms)
+✔ readyAtSpawn v9: the spawn booted is SYNTHETIC; zero-output instant death emits no real evidence (the 2026-08-18 soak loop) (301.079122ms)
+✔ readyAtSpawn v9: the first parsed output pushes a REAL booted (boot evidence); the deliver-opened turn_started is synthetic (270.284536ms)
+✔ late init must not close an in-flight turn (cell smoke 2026-08-17 phantom turn_ended) (839.57759ms)
+✔ agy auth before init is flag evidence, not real boot evidence (296.421664ms)
+✔ session evidence (spec 07 §F): the booted session id is drained via observeSessions, once per value, per generation (510.814874ms)
+✔ v6 interrupt: idle → reasoned no-op; mid-turn (hung) → in-band interrupt ends the turn (turn_ended), process stays live, next delivery works; booting/gone → not_ready/no_process (517.933885ms)
+✔ v6 interrupt: a harness without an in-band interrupt answers unsupported (never SIGINT) (276.310212ms)
+✔ self-woken turn: unprompted assistant output on an IDLE runtime opens a turn — one turn_started, then result closes it (2026-08-19 'needs your reply' while working) (756.394313ms)
+✔ codex native subagent lifecycle cannot start or end the root bee turn (1.743417ms)
+✖ v2/driver-hsr/tests/driver.test.ts (1799780.885844ms)
+✖ runner host waits for exact inherited release, rejects wrong attempts, and forks only once (3.019977ms)
+✖ owner disconnect before release never forks an agent (3.83477ms)
+✖ HSR owner commits release and recovers pending identity with agent-start acceptance (38.510598ms)
+✔ HSR refuses a mismatched bee or runtime generation before spec preparation (1.200302ms)
+✔ unset, empty, relative or root runtime directories refuse before mkdir (2.685898ms)
+✔ claude: fresh delivery refuses known active without writing (3.459381ms)
+✔ codex: fresh delivery refuses known active without writing (1.002227ms)
+✔ codex: fresh start refusal remains unconsumed and a stale steer plan cannot write (3.793741ms)
+✖ legacy HSR birth requires authenticated CAS even with executionHost match=false (298.995454ms)
+✖ legacy HSR birth requires authenticated CAS even with executionHost match=true (267.682169ms)
+✖ execution host PID and ticks cannot override a bound token from another boot (1.308031ms)
+✖ v2/driver-hsr/tests/legacy-birth.test.ts (1799775.777099ms)
+✖ pending start recovery: recover (280.290685ms)
+✖ pending start recovery: stamp (261.232278ms)
+✖ pending start recovery: bee (258.922461ms)
+✖ pending start recovery: generation (279.27935ms)
+✖ pending start recovery: host (263.521206ms)
+✖ pending start recovery: journal (271.297723ms)
+✖ pending start recovery: stopped-race (291.785366ms)
+✖ pending start recovery: bound-race (269.916941ms)
+✖ pending start recovery: socket-peer (290.592349ms)
+✖ pending start recovery: birth-race (272.371069ms)
+✖ pending start recovery: gone (299.362718ms)
+✖ v2/driver-hsr/tests/pending-start-recovery.test.ts (1799773.747075ms)
+✔ Darwin native read includes unreaped zombies and preserves exact birth (50.940026ms)
+✔ native process union validates live, zombie, gone and unavailable without guessing death (0.729407ms)
+✔ native birth milliseconds fit STRICT storage without weakening exact process identity (0.644222ms)
+✔ legacy timestamp is discovery only and bounded to five seconds (0.189328ms)
+✖ real native self observation is exact and has no ps fallback (1.407284ms)
+✖ real native child transitions live to zombie to gone without a process census (19.216894ms)
+✔ native EPERM arm is unavailable and cannot become death or signal permission (88.7954ms)
+✔ pidAlive treats an other-user permission denial as a reused pid but keeps unobservable pids alive (0.402172ms)
+✔ reconnect uses the existing host/thread, fences send, and recovers receipt after daemon detach (45994.289079ms)
+✔ reconnect refuses a real active turn and legacy host recovery evidence (265.141663ms)
+✔ native config rejection fails explicitly without reload or session replacement (272.004376ms)
+✔ runner host logs an item/completed image generation as a file reference (130.916793ms)
+✔ runner host logs every thread/fork image generation as a file reference (82.184327ms)
+✔ runner host keeps an inbound line without image substrings byte-identical (85.472425ms)
+✔ runner host keeps a malformed image generation line byte-identical (81.273427ms)
+✔ runner host keeps image generation bytes verbatim in the observation journal (84.63088ms)
+✔ mail delivery stays unconsumed until the runner socket connects, then sends once (47787.931323ms)
+✔ host delivery refuses before encoding and distinguishes write throws from backpressure (2.317092ms)
+✔ a source checkout defaults to the sibling TypeScript runner-host entry (337.149229ms)
+✔ an explicit hostCommand remains a complete caller-owned override (167.997534ms)
+✔ daemon restart: the runtime survives and the successor daemon delivers at full capability (348.70045ms)
+✔ adoption replays a runner-persisted completion missed by the dead daemon (390.639279ms)
+✔ recovery replay after the completion fold is idempotent (369.375067ms)
+✔ recovery preserves journal order when completion is followed by a newer turn start (310.807573ms)
+✔ missing or generation-corrupt recovery evidence fails closed without manufacturing idle (1624.714964ms)
+✔ a genuinely long-running silent turn stays running across adoption (535.939356ms)
+✔ Codex thread/status idle plus turn/completed maps through adoption to one turn end (316.67923ms)
+✔ Codex adoption restores the durable thread and active turn, then confirms steer and idle delivery (605.018522ms)
+✔ adoption with dead host artifacts falls back to refusing, never a phantom runtime (317.369641ms)
+✔ quiet final assistant evidence survives a restart before turn completion (1786.95935ms)
+✔ runner host preserves explicit harness Node options (91.980147ms)
+✔ runtime confinement observes synthetic readiness and adopted runner children (243.365147ms)
+✔ quiet matches Apiary exact-only semantics, including astral invisibles (2.634228ms)
+✔ final assistant text wins; child threads and tool output cannot silence the root (3.323106ms)
+✔ Claude assistant final text is classified and reset between turns (1.673361ms)
+✔ tmux hook or quiescence cannot classify intermediate transcript text (0.515803ms)
+✔ Claude native sidechain rows cannot replace root final text (0.455074ms)
+✔ quiet text followed by failure or interruption stays unclassified (1.073236ms)
+✔ ACP errors and cancelled prompt results cannot classify prior quiet chunks (3.013515ms)
+✔ ACP successful completion stays quiet and foreign sessions cannot replace the root (0.371471ms)
+ℹ tests 285
+ℹ suites 0
+ℹ pass 255
+ℹ fail 26
+ℹ cancelled 4
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1799879.168357
+
+✖ failing tests:
+
+test at v2/driver-hsr/tests/adopted-readiness.test.ts:14:101
+✖ adopted Codex readiness: idle (15207.501078ms)
+  Error: drainUntil timeout; saw: []
+      at drainUntil (file:///home/trmd/.hive/v2/cells/rebuild-m-h8b-parsers-08171133f54e/github-com-honeybeehq-honeybee-a9015b303498-space-08171133f54e/v2/driver-hsr/tests/helpers.ts:71:13)
+      at async TestContext.<anonymous> (file:///home/trmd/.hive/v2/cells/rebuild-m-h8b-parsers-08171133f54e/github-com-honeybeehq-honeybee-a9015b303498-space-08171133f54e/v2/driver-hsr/tests/adopted-readiness.test.ts:23:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+
+test at v2/driver-hsr/tests/adopted-readiness.test.ts:14:101
+✖ adopted Codex readiness: active (15223.046297ms)
+  Error: drainUntil timeout; saw: []
+      at drainUntil (file:///home/trmd/.hive/v2/cells/rebuild-m-h8b-parsers-08171133f54e/github-com-honeybeehq-honeybee-a9015b303498-space-08171133f54e/v2/driver-hsr/tests/helpers.ts:71:13)
+      at async TestContext.<anonymous> (file:///home/trmd/.hive/v2/cells/rebuild-m-h8b-parsers-08171133f54e/github-com-honeybeehq-honeybee-a9015b303498-space-08171133f54e/v2/driver-hsr/tests/adopted-readiness.test.ts:23:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+
+test at v2/driver-hsr/tests/adopted-readiness.test.ts:1:1
+✖ v2/driver-hsr/tests/adopted-readiness.test.ts (1799782.398022ms)
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at v2/driver-hsr/tests/driver.test.ts:50:1
+✖ spawn: booted carries pid-at-spawn identity; own process group; verbatim session log (313.277842ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+  
+  + []
+  - [
+  -   {
+  -     beeId: 'bee-a',
+  -     generation: 1,
+  -     pid: 2372822,
+  -     pidStartedAt: 1793876408450
+  -   }
+  - ]
+  
+      at TestContext.<anonymous> (file:///home/trmd/.hive/v2/cells/rebuild-m-h8b-parsers-08171133f54e/github-com-honeybeehq-honeybee-a9015b303498-space-08171133f54e/v2/driver-hsr/tests/driver.test.ts:80:12)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: [],
+    expected: [ { beeId: 'bee-a', generation: 1, pid: 2372822, pidStartedAt: 1793876408450 } ],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at v2/driver-hsr/tests/driver.test.ts:98:1
+✖ deliver: not_ready while booting (Q2); accepted at idle; ground truth + agent ack (15550.564968ms)
+  Error: delivery 11 was never accepted for bee-b
+      at deliverUntilAccepted (file:///home/trmd/.hive/v2/cells/rebuild-m-h8b-parsers-08171133f54e/github-com-honeybeehq-honeybee-a9015b303498-space-08171133f54e/v2/driver-hsr/tests/driver.test.ts:45:38)
+      at async TestContext.<anonymous> (file:///home/trmd/.hive/v2/cells/rebuild-m-h8b-parsers-08171133f54e/github-com-honeybeehq-honeybee-a9015b303498-space-08171133f54e/v2/driver-hsr/tests/driver.test.ts:109:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+
+test at v2/driver-hsr/tests/driver.test.ts:131:1
+✖ bee stop owns detached runner cleanup: TERM honored → exited(stopped_by_user); dead-already is hadProcess:false (264.602105ms)
+  Error: stop pending process identity proof
+      at RuntimeHost.stop (file:///home/trmd/.hive/v2/cells/rebuild-m-h8b-parsers-08171133f54e/github-com-honeybeehq-honeybee-a9015b303498-space-08171133f54e/v2/driver-hsr/src/driver.ts:1034:73)
+      at TestContext.<anonymous> (file:///home/trmd/.hive/v2/cells/rebuild-m-h8b-parsers-08171133f54e/github-com-honeybeehq-honeybee-a9015b303498-space-08171133f54e/v2/driver-hsr/tests/driver.test.ts:138:33)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    code: 'process_identity_unresolved'
+  }
+
+test at v2/driver-hsr/tests/driver.test.ts:153:1
+✖ stop: SIGTERM-ignoring process is KILLed after the bounded grace (240.770476ms)
+  Error: stop pending process identity proof
+      at RuntimeHost.stop (file:///home/trmd/.hive/v2/cells/rebuild-m-h8b-parsers-08171133f54e/github-com-honeybeehq-honeybee-a9015b303498-space-08171133f54e/v2/driver-hsr/src/driver.ts:1034:73)
+      at TestContext.<anonymous> (file:///home/trmd/.hive/v2/cells/rebuild-m-h8b-parsers-08171133f54e/github-com-honeybeehq-honeybee-a9015b303498-space-08171133f54e/v2/driver-hsr/tests/driver.test.ts:162:16)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    code: 'process_identity_unresolved'
+  }
+
+test at v2/driver-hsr/tests/driver.test.ts:174:1
+✖ crash mid-turn → exited(crashed); hang → no turn_ended, stop still works (15258.268175ms)
+  Error: delivery 21 was never accepted for bee-e
+      at deliverUntilAccepted (file:///home/trmd/.hive/v2/cells/rebuild-m-h8b-parsers-08171133f54e/github-com-honeybeehq-honeybee-a9015b303498-space-08171133f54e/v2/driver-hsr/tests/driver.test.ts:45:38)
+      at async TestContext.<anonymous> (file:///home/trmd/.hive/v2/cells/rebuild-m-h8b-parsers-08171133f54e/github-com-honeybeehq-honeybee-a9015b303498-space-08171133f54e/v2/driver-hsr/tests/driver.test.ts:179:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+
+test at v2/driver-hsr/tests/driver.test.ts:1:1
+✖ v2/driver-hsr/tests/driver.test.ts (1799780.885844ms)
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at v2/driver-hsr/tests/execution-handshake.test.ts:28:1
+✖ runner host waits for exact inherited release, rejects wrong attempts, and forks only once (3.019977ms)
+  AssertionError [ERR_ASSERTION]: native exact birth required
+      at TestContext.<anonymous> (file:///home/trmd/.hive/v2/cells/rebuild-m-h8b-parsers-08171133f54e/github-com-honeybeehq-honeybee-a9015b303498-space-08171133f54e/v2/driver-hsr/tests/execution-handshake.test.ts:30:58)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.start (node:internal/test_runner/test:1262:17)
+      at startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: null,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at v2/driver-hsr/tests/execution-handshake.test.ts:48:1
+✖ owner disconnect before release never forks an agent (3.83477ms)
+  AssertionError [ERR_ASSERTION]: native owner birth
+      at TestContext.<anonymous> (file:///home/trmd/.hive/v2/cells/rebuild-m-h8b-parsers-08171133f54e/github-com-honeybeehq-honeybee-a9015b303498-space-08171133f54e/v2/driver-hsr/tests/execution-handshake.test.ts:50:58)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: null,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at v2/driver-hsr/tests/execution-handshake.test.ts:62:1
+✖ HSR owner commits release and recovers pending identity with agent-start acceptance (38.510598ms)
+  Error [ExecutionFenceError]: Owner process birth is unavailable
+      at RuntimeHost.launch (file:///home/trmd/.hive/v2/cells/rebuild-m-h8b-parsers-08171133f54e/github-com-honeybeehq-honeybee-a9015b303498-space-08171133f54e/v2/driver-hsr/src/driver.ts:548:37)
+      at RuntimeHost.start (file:///home/trmd/.hive/v2/cells/rebuild-m-h8b-parsers-08171133f54e/github-com-honeybeehq-honeybee-a9015b303498-space-08171133f54e/v2/driver-hsr/src/driver.ts:510:10)
+      at TestContext.<anonymous> (file:///home/trmd/.hive/v2/cells/rebuild-m-h8b-parsers-08171133f54e/github-com-honeybeehq-honeybee-a9015b303498-space-08171133f54e/v2/driver-hsr/tests/execution-handshake.test.ts:72:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    code: 'rpc_execution_history_unknown',
+    details: undefined
+  }
+
+test at v2/driver-hsr/tests/legacy-birth.test.ts:11:45
+✖ legacy HSR birth requires authenticated CAS even with executionHost match=false (298.995454ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + 'unavailable'
+  - 'bound'
+  
+      at TestContext.<anonymous> (file:///home/trmd/.hive/v2/cells/rebuild-m-h8b-parsers-08171133f54e/github-com-honeybeehq-honeybee-a9015b303498-space-08171133f54e/v2/driver-hsr/tests/legacy-birth.test.ts:20:12)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'unavailable',
+    expected: 'bound',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at v2/driver-hsr/tests/legacy-birth.test.ts:11:45
+✖ legacy HSR birth requires authenticated CAS even with executionHost match=true (267.682169ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + 'unavailable'
+  - 'bound'
+  
+      at TestContext.<anonymous> (file:///home/trmd/.hive/v2/cells/rebuild-m-h8b-parsers-08171133f54e/github-com-honeybeehq-honeybee-a9015b303498-space-08171133f54e/v2/driver-hsr/tests/legacy-birth.test.ts:20:12)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'unavailable',
+    expected: 'bound',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at v2/driver-hsr/tests/legacy-birth.test.ts:48:1
+✖ execution host PID and ticks cannot override a bound token from another boot (1.308031ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + 'unavailable'
+  - 'present'
+  
+      at TestContext.<anonymous> (file:///home/trmd/.hive/v2/cells/rebuild-m-h8b-parsers-08171133f54e/github-com-honeybeehq-honeybee-a9015b303498-space-08171133f54e/v2/driver-hsr/tests/legacy-birth.test.ts:52:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'unavailable',
+    expected: 'present',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at v2/driver-hsr/tests/legacy-birth.test.ts:1:1
+✖ v2/driver-hsr/tests/legacy-birth.test.ts (1799775.777099ms)
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at v2/driver-hsr/tests/pending-start-recovery.test.ts:14:3
+✖ pending start recovery: recover (280.290685ms)
+  AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:
+  
+    assert.ok(proc.processIdentity)
+  
+      at TestContext.<anonymous> (file:///home/trmd/.hive/v2/cells/rebuild-m-h8b-parsers-08171133f54e/github-com-honeybeehq-honeybee-a9015b303498-space-08171133f54e/v2/driver-hsr/tests/pending-start-recovery.test.ts:32:14)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at v2/driver-hsr/tests/pending-start-recovery.test.ts:14:3
+✖ pending start recovery: stamp (261.232278ms)
+  AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:
+  
+    assert.ok(proc.processIdentity)
+  
+      at TestContext.<anonymous> (file:///home/trmd/.hive/v2/cells/rebuild-m-h8b-parsers-08171133f54e/github-com-honeybeehq-honeybee-a9015b303498-space-08171133f54e/v2/driver-hsr/tests/pending-start-recovery.test.ts:32:14)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at v2/driver-hsr/tests/pending-start-recovery.test.ts:14:3
+✖ pending start recovery: bee (258.922461ms)
+  AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:
+  
+    assert.ok(proc.processIdentity)
+  
+      at TestContext.<anonymous> (file:///home/trmd/.hive/v2/cells/rebuild-m-h8b-parsers-08171133f54e/github-com-honeybeehq-honeybee-a9015b303498-space-08171133f54e/v2/driver-hsr/tests/pending-start-recovery.test.ts:32:14)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at v2/driver-hsr/tests/pending-start-recovery.test.ts:14:3
+✖ pending start recovery: generation (279.27935ms)
+  AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:
+  
+    assert.ok(proc.processIdentity)
+  
+      at TestContext.<anonymous> (file:///home/trmd/.hive/v2/cells/rebuild-m-h8b-parsers-08171133f54e/github-com-honeybeehq-honeybee-a9015b303498-space-08171133f54e/v2/driver-hsr/tests/pending-start-recovery.test.ts:32:14)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at v2/driver-hsr/tests/pending-start-recovery.test.ts:14:3
+✖ pending start recovery: host (263.521206ms)
+  AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:
+  
+    assert.ok(proc.processIdentity)
+  
+      at TestContext.<anonymous> (file:///home/trmd/.hive/v2/cells/rebuild-m-h8b-parsers-08171133f54e/github-com-honeybeehq-honeybee-a9015b303498-space-08171133f54e/v2/driver-hsr/tests/pending-start-recovery.test.ts:32:14)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at v2/driver-hsr/tests/pending-start-recovery.test.ts:14:3
+✖ pending start recovery: journal (271.297723ms)
+  AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:
+  
+    assert.ok(proc.processIdentity)
+  
+      at TestContext.<anonymous> (file:///home/trmd/.hive/v2/cells/rebuild-m-h8b-parsers-08171133f54e/github-com-honeybeehq-honeybee-a9015b303498-space-08171133f54e/v2/driver-hsr/tests/pending-start-recovery.test.ts:32:14)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at v2/driver-hsr/tests/pending-start-recovery.test.ts:14:3
+✖ pending start recovery: stopped-race (291.785366ms)
+  AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:
+  
+    assert.ok(proc.processIdentity)
+  
+      at TestContext.<anonymous> (file:///home/trmd/.hive/v2/cells/rebuild-m-h8b-parsers-08171133f54e/github-com-honeybeehq-honeybee-a9015b303498-space-08171133f54e/v2/driver-hsr/tests/pending-start-recovery.test.ts:32:14)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at v2/driver-hsr/tests/pending-start-recovery.test.ts:14:3
+✖ pending start recovery: bound-race (269.916941ms)
+  AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:
+  
+    assert.ok(proc.processIdentity)
+  
+      at TestContext.<anonymous> (file:///home/trmd/.hive/v2/cells/rebuild-m-h8b-parsers-08171133f54e/github-com-honeybeehq-honeybee-a9015b303498-space-08171133f54e/v2/driver-hsr/tests/pending-start-recovery.test.ts:32:14)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at v2/driver-hsr/tests/pending-start-recovery.test.ts:14:3
+✖ pending start recovery: socket-peer (290.592349ms)
+  AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:
+  
+    assert.ok(proc.processIdentity)
+  
+      at TestContext.<anonymous> (file:///home/trmd/.hive/v2/cells/rebuild-m-h8b-parsers-08171133f54e/github-com-honeybeehq-honeybee-a9015b303498-space-08171133f54e/v2/driver-hsr/tests/pending-start-recovery.test.ts:32:14)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at v2/driver-hsr/tests/pending-start-recovery.test.ts:14:3
+✖ pending start recovery: birth-race (272.371069ms)
+  AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:
+  
+    assert.ok(proc.processIdentity)
+  
+      at TestContext.<anonymous> (file:///home/trmd/.hive/v2/cells/rebuild-m-h8b-parsers-08171133f54e/github-com-honeybeehq-honeybee-a9015b303498-space-08171133f54e/v2/driver-hsr/tests/pending-start-recovery.test.ts:32:14)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at v2/driver-hsr/tests/pending-start-recovery.test.ts:14:3
+✖ pending start recovery: gone (299.362718ms)
+  AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:
+  
+    assert.ok(proc.processIdentity)
+  
+      at TestContext.<anonymous> (file:///home/trmd/.hive/v2/cells/rebuild-m-h8b-parsers-08171133f54e/github-com-honeybeehq-honeybee-a9015b303498-space-08171133f54e/v2/driver-hsr/tests/pending-start-recovery.test.ts:32:14)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at v2/driver-hsr/tests/pending-start-recovery.test.ts:1:1
+✖ v2/driver-hsr/tests/pending-start-recovery.test.ts (1799773.747075ms)
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at v2/driver-hsr/tests/psutil.test.ts:94:1
+✖ real native self observation is exact and has no ps fallback (1.407284ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + 'unavailable'
+  - 'present'
+  
+      at TestContext.<anonymous> (file:///home/trmd/.hive/v2/cells/rebuild-m-h8b-parsers-08171133f54e/github-com-honeybeehq-honeybee-a9015b303498-space-08171133f54e/v2/driver-hsr/tests/psutil.test.ts:96:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'unavailable',
+    expected: 'present',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at v2/driver-hsr/tests/psutil.test.ts:104:1
+✖ real native child transitions live to zombie to gone without a process census (19.216894ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + 'unavailable'
+  - 'present'
+  
+      at TestContext.<anonymous> (file:///home/trmd/.hive/v2/cells/rebuild-m-h8b-parsers-08171133f54e/github-com-honeybeehq-honeybee-a9015b303498-space-08171133f54e/v2/driver-hsr/tests/psutil.test.ts:111:46)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'unavailable',
+    expected: 'present',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

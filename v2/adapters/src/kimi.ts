@@ -1,6 +1,7 @@
 /** Kimi Code ACP. Pure protocol translation; session IDs come only from Kimi. */
 import { asObject, bootedToIdle, isAuthNeededMessage, isResourceBlockedMessage, parseJsonLine, successfulTurnClears, type AdapterSignal, type HarnessAdapter } from "./types.ts";
-import type { GrokMcpServerStdio } from "./grok.ts";
+import { createGrokProjector, isGrokCheckpointState, type GrokCheckpointState, type GrokMcpServerStdio } from "./grok.ts";
+import { projectorCheckpoint, type TranscriptFamily, type TranscriptProjector } from "./transcript.ts";
 
 export type KimiMode = "default" | "plan" | "auto" | "yolo";
 export interface KimiAdapterOptions {
@@ -120,3 +121,31 @@ export function kimiAdapter(opts: KimiAdapterOptions): HarnessAdapter {
     },
   };
 }
+
+// checkpoint-digest:start
+/** Kimi and Grok share ACP chunks/tools; Kimi closes turns with RPC results. */
+export function createKimiProjector(restored?: GrokCheckpointState): TranscriptProjector {
+  const acp = createGrokProjector(restored);
+  return {
+    harness: "kimi",
+    checkpoint: () => projectorCheckpoint("kimi", acp.checkpoint().state),
+    pushLine(line) {
+      const row = parseJsonLine(line);
+      if (row && row.method === undefined && typeof row.id === "number" && row.id >= 1000 && ("result" in row || "error" in row)) {
+        const events = acp.pushLine(JSON.stringify({ method: "session/prompt_complete" }));
+        const error = row.error;
+        if (error && typeof error === "object" && "message" in error) events.unshift({ kind: "message", ts: null, role: "assistant", text: `Kimi error: ${String(error.message)}` });
+        return events;
+      }
+      return acp.pushLine(line);
+    },
+    flush: () => acp.flush(),
+  };
+}
+// checkpoint-digest:end
+
+export const kimiTranscripts: TranscriptFamily = {
+  harness: "kimi",
+  createProjector: () => createKimiProjector(),
+  restoreProjector: (state) => isGrokCheckpointState(state) ? createKimiProjector(state) : undefined,
+};

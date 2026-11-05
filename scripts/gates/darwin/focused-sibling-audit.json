@@ -37,6 +37,11 @@
       "siblingClosure": true
     },
     {
+      "path": "src/peercredReceipt.ts",
+      "sha256": "df1960b105d1b7b5e128259df724189f67535b81bd38ab9f2b9fca3f8ce8bf29",
+      "siblingClosure": true
+    },
+    {
       "path": "src/release/buildIdentity.ts",
       "sha256": "9cb80c0207f1c073937edf615ab75fa8a68a201a8e2541daf800195c1a51d4ce",
       "siblingClosure": true
@@ -58,7 +63,7 @@
     },
     {
       "path": "v2/adapters/src/agy.ts",
-      "sha256": "ae4751062d36382252aae126e7c0ee024bbcf65009cc12adc16721e24e9dbbc7",
+      "sha256": "28007749fb857991b438bba17ea754244645cfd405bbbfbf91ef0c1cbd789b0d",
       "siblingClosure": true
     },
     {
@@ -68,42 +73,57 @@
     },
     {
       "path": "v2/adapters/src/claude.ts",
-      "sha256": "e646b3f70d05de3157b7f4f5a9cca5b1ecf955ed4055b69b5b474dff250ee42b",
+      "sha256": "58b75c644abf3676d9c223a31955643fc0fffd541e43f410ced6cf3ed522c78c",
       "siblingClosure": true
     },
     {
       "path": "v2/adapters/src/codex.ts",
-      "sha256": "ff8b48113ec3d78113b0b275925bf51fbb56f52486ad773517a3cce6b0074dc5",
+      "sha256": "27af19ca4cc8420bc04789d1f56dde4a2537ca4693bf4e461045be6482bb6db4",
       "siblingClosure": true
     },
     {
       "path": "v2/adapters/src/grok.ts",
-      "sha256": "71f647f0b8fb2a32427604ddf45e0a7b54a4a1b876418c7f91de8c3024c0d84f",
+      "sha256": "483fa687c922ea79501ca0e34fa4460544d4a8b068cdd3494fe479327b948d25",
       "siblingClosure": true
     },
     {
       "path": "v2/adapters/src/index.ts",
-      "sha256": "9502ec947af87a8498461954351b566227d23180a990c1254113d5dd7370ce40",
+      "sha256": "7fa2a0ae700df08ecfa02c02b2eefb3f622f42ae2337fb8e0592a77de16fc593",
       "siblingClosure": true
     },
     {
       "path": "v2/adapters/src/kimi.ts",
-      "sha256": "01a12959dd7b507aee8e5cebf1789a12c0593acdb65549f506537dad4235feec",
+      "sha256": "c4bd3201e9228e374314dd8b5390e234ba2ce8e7e2b821d40c27ad364979d15f",
       "siblingClosure": true
     },
     {
       "path": "v2/adapters/src/muse.ts",
-      "sha256": "4e7b29125fd4a2936adef6387d5e3529aec06f9e70c876b48171261250e62859",
+      "sha256": "be57de3cf03e745be77a55d934c072f288ccf6b8fab1a8acb39001cf0875d7fd",
       "siblingClosure": true
     },
     {
       "path": "v2/adapters/src/stub.ts",
-      "sha256": "4fdfca1b8dca0cc396bd495fac99d5fcab7005b40bb598e33413a5747e8f3ccc",
+      "sha256": "f660f40a82c18f528c425020571bc33bb332f52d8749d63f805b915ffbf62dc3",
+      "siblingClosure": true
+    },
+    {
+      "path": "v2/adapters/src/transcript-context.ts",
+      "sha256": "846d9896ff283b7f4fc163061d02c207d8dd55f1a0f90aa585d1e441f1157e0e",
+      "siblingClosure": true
+    },
+    {
+      "path": "v2/adapters/src/transcript.ts",
+      "sha256": "0480fe13d3e6008b22e2fcf92625af00aaebbe1ed782bf6ca7429ae3352a5e46",
+      "siblingClosure": true
+    },
+    {
+      "path": "v2/adapters/src/transcripts.ts",
+      "sha256": "b7bd9b47c8ffabed87416ba5871b1eb2d7635f423fc294197e1541c1b7e167a4",
       "siblingClosure": true
     },
     {
       "path": "v2/adapters/src/types.ts",
-      "sha256": "50362585ef13a29f24fda4d5286fe228e0d383a73ac41f881c71514eb710df0e",
+      "sha256": "2731d0ad4ae78c0c057eecbc824acd319af92baf4c36abe7df7e32f8f69a770c",
       "siblingClosure": true
     },
     {
@@ -222,6 +242,11 @@
       "siblingClosure": true
     },
     {
+      "path": "v2/core/src/processIdentity.ts",
+      "sha256": "6e0f9ecf9be188d9c81cee671c36b1a5dc1281345a73e59f148df0abb0f9cb6b",
+      "siblingClosure": true
+    },
+    {
       "path": "v2/core/src/quiet.ts",
       "sha256": "5d5a6df3b8ced1d2709ef2e180d442e9478f1076ad68b068980f0ba3a0547cc2",
       "siblingClosure": true
@@ -242,8 +267,18 @@
       "siblingClosure": true
     },
     {
+      "path": "v2/core/src/runtimeProcessIdentity.ts",
+      "sha256": "9752417ad5d833e57d317168ae5b49b2946dc951d375ebf702a02668ae73d6d4",
+      "siblingClosure": true
+    },
+    {
       "path": "v2/core/src/schema.ts",
       "sha256": "9d159bb59c5fd70a17e766b5972fb52e0fc7bb38aa29762c7334262ceed824f9",
+      "siblingClosure": true
+    },
+    {
+      "path": "v2/core/src/socketPath.ts",
+      "sha256": "47130b1d5066b4fd7d17b865df4a34fe1cdf382c8909d1aed5f7dbd07945c67c",
       "siblingClosure": true
     },
     {
@@ -259,6 +294,11 @@
     {
       "path": "v2/core/src/threadOperation.ts",
       "sha256": "c63c088bc0f067f2693b7ca600317fd755d3fcc8ec2e17ba62852ddb3f9d2933",
+      "siblingClosure": true
+    },
+    {
+      "path": "v2/core/src/transcriptSegment.ts",
+      "sha256": "9512e04b4c499c80b85f2f2cc3fe570d544e6ec08cf5519b1db4fed0b765a113",
       "siblingClosure": true
     },
     {
@@ -533,7 +573,7 @@
     },
     {
       "path": "v2/driver-hsr/src/driver.ts",
-      "sha256": "4dbc9dabac093bf68fd8e545d2dd8c9a08bf58038075675f24b9436cd436d515",
+      "sha256": "bf23ccec3bddc2e49ee4b4871235821ba63d8fd1062a3472ef4b66c06ef49a98",
       "siblingClosure": true
     },
     {
@@ -562,6 +602,11 @@
       "siblingClosure": true
     },
     {
+      "path": "v2/driver-hsr/src/turn-quiet.ts",
+      "sha256": "818039bb489f2d22ee0c9435054cc4d2d8a2091a6e187d9515020546a6cf72e3",
+      "siblingClosure": true
+    },
+    {
       "path": "v2/driver-hsr/test-agent/fake-codex.mjs",
       "sha256": "cfe3bb894684e7193657e462d9884ee40b6868651f701c08bf8778221e7ca1ac",
       "siblingClosure": true
@@ -569,51 +614,6 @@
     {
       "path": "v2/driver-hsr/test-agent/fake-muse.mjs",
       "sha256": "71accc1bd5cd5e0a0d5b608ff360ec0b2a2e84a45b56102735d033c452285776",
-      "siblingClosure": true
-    },
-    {
-      "path": "v2/driver-tmux/src/agy-projection.ts",
-      "sha256": "7a3476ed16c60ed26f78e56d68baef15e443c99814e605139301a6dadc6d93a8",
-      "siblingClosure": true
-    },
-    {
-      "path": "v2/driver-tmux/src/claude-projection.ts",
-      "sha256": "997d3f1a06622368fbb38acfd9c239fa8c64039355926de6bf06526df88fbe16",
-      "siblingClosure": true
-    },
-    {
-      "path": "v2/driver-tmux/src/codex-projection.ts",
-      "sha256": "2d0e941ce89411362665e04c6390bd45c2ccf87c1cf9f4c38f21713ae4673056",
-      "siblingClosure": true
-    },
-    {
-      "path": "v2/driver-tmux/src/grok-projection.ts",
-      "sha256": "d1f4a75e356a1617a711edf95af7369dcab9b972e092eceb15679d14e7d8d2e4",
-      "siblingClosure": true
-    },
-    {
-      "path": "v2/driver-tmux/src/kimi-projection.ts",
-      "sha256": "a4da4dc37525162a1512d68b5165fc3fe77203c2dea834e8ebdcf6774437d062",
-      "siblingClosure": true
-    },
-    {
-      "path": "v2/driver-tmux/src/muse-projection.ts",
-      "sha256": "e000620db32f5c09e1de6fc76f88ea3e5d8aa0c082f76e645a57fc2856364e3a",
-      "siblingClosure": true
-    },
-    {
-      "path": "v2/driver-tmux/src/transcript-projection.ts",
-      "sha256": "5e45f511a64f624aec96eabe63646a3312a5995a94004c642e2f52cc47dc89fd",
-      "siblingClosure": true
-    },
-    {
-      "path": "v2/driver-tmux/src/transcripts.ts",
-      "sha256": "f96e148962bedda1ad16714302a15356d8aefbd2a3279b51f0e8a957b2025f9b",
-      "siblingClosure": true
-    },
-    {
-      "path": "v2/driver-tmux/src/turn-quiet.ts",
-      "sha256": "46ee3e54c63d81bfd549d9e63a7981cce799061689a6f333b0abd4122089cc52",
       "siblingClosure": true
     },
     {
@@ -629,26 +629,6 @@
     {
       "path": "v2/harness/src/statePath.ts",
       "sha256": "df552b5372a82fe36d01676ba554fb0efecf423852d776a929860eb7daab8d59",
-      "siblingClosure": true
-    },
-    {
-      "path": "v2/core/src/runtimeProcessIdentity.ts",
-      "sha256": "9752417ad5d833e57d317168ae5b49b2946dc951d375ebf702a02668ae73d6d4",
-      "siblingClosure": true
-    },
-    {
-      "path": "v2/core/src/processIdentity.ts",
-      "sha256": "6e0f9ecf9be188d9c81cee671c36b1a5dc1281345a73e59f148df0abb0f9cb6b",
-      "siblingClosure": true
-    },
-    {
-      "path": "src/peercredReceipt.ts",
-      "sha256": "df1960b105d1b7b5e128259df724189f67535b81bd38ab9f2b9fca3f8ce8bf29",
-      "siblingClosure": true
-    },
-    {
-      "path": "v2/core/src/socketPath.ts",
-      "sha256": "47130b1d5066b4fd7d17b865df4a34fe1cdf382c8909d1aed5f7dbd07945c67c",
       "siblingClosure": true
     }
   ],

@@ -4,7 +4,7 @@ npm run build > "$L/build.log" 2>&1; rc=$?; echo "build exit=$rc"; [ "$rc" -eq 0
 gate_lockdown
 sum() { cat "$@" | awk '/^ℹ tests/{t+=$3} /^ℹ pass/{p+=$3} /^ℹ fail/{f+=$3} /^ℹ skipped/{k+=$3} END{print "tests="t+0" pass="p+0" fail="f+0" skipped="k+0}'; }
 sb node_modules/.bin/tsc -p tsconfig.json --noEmit > "$L/check.log" 2>&1 && sb node_modules/.bin/tsc -p tsconfig.test.json --noEmit >> "$L/check.log" 2>&1; rc=$?; echo "STEP check (seatbelt) exit=$rc"; [ $rc -ne 0 ] && { tail -20 "$L/check.log"; gate_fail check; }
-ok=0; for c in core harness adapters driver-hsr daemon cli driver-cell driver-tmux; do sb node_modules/.bin/tsc -p v2/$c/tsconfig.json > "$L/v2check-$c.log" 2>&1 || { ok=1; tail -10 "$L/v2check-$c.log"; }; done; echo "STEP v2:check (seatbelt) exit=$ok"; [ $ok -ne 0 ] && gate_fail v2:check
+ok=0; for c in core harness adapters driver-hsr daemon cli driver-cell; do sb node_modules/.bin/tsc -p v2/$c/tsconfig.json > "$L/v2check-$c.log" 2>&1 || { ok=1; tail -10 "$L/v2check-$c.log"; }; done; echo "STEP v2:check (seatbelt) exit=$ok"; [ $ok -ne 0 ] && gate_fail v2:check
 SUITE=$(ls v2/daemon/tests/*.test.ts v2/cli/tests/*.test.ts)
 EXCLUDED_FILE=scripts/gates/darwin/excluded-tests.txt
 [ -f "$EXCLUDED_FILE" ] || { echo "REFUSING: $EXCLUDED_FILE is missing"; exit 98; }

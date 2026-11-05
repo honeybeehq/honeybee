@@ -5,7 +5,7 @@ import { dirname, join, relative } from "node:path";
 import { pipeline } from "node:stream/promises";
 import { Transform } from "node:stream";
 import * as zlib from "node:zlib";
-import { claudeProjectKey } from "../../driver-tmux/src/transcripts.ts";
+import { claudeProjectKey } from "../../adapters/src/claude.ts";
 import { codexHistoryPath } from "./threadHistory.ts";
 
 export const RESUME_BUNDLE_OBJECT_DIR = join("blobs", "resume-bundles");

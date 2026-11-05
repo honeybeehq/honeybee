@@ -166,10 +166,10 @@ import { TranscriptSegmenter } from "./transcriptSegmenter.ts";
 import { ChampionHomeSync } from "./championHomes.ts";
 import { BeeResumeSync, accountHomeOf } from "./beeResumeSync.ts";
 import { HANDOFF_SEED_SENDER, renderHandoffSeed } from "../../core/src/handoff.ts";
-import { decodeProjectedSegment, decompressSegment } from "../../driver-tmux/src/transcript-segment-format.ts";
+import { decodeProjectedSegment, decompressSegment } from "../../core/src/transcriptSegment.ts";
 import { resumeStateKey, resumeStateScope, writeResumeKey } from "./resumeBundles.ts";
 import { createDirectoryTranscriptObjectStore, type TranscriptObjectStore } from "./transcriptObjectStore.ts";
-import { TRANSCRIPT_PROJECTION_VERSION } from "../../driver-tmux/src/transcript-projection.ts";
+import { TRANSCRIPT_PROJECTION_VERSION } from "../../adapters/src/transcript.ts";
 import { CredentialAuthorityError, credentialErrorDetails } from "./claudeCredentialAuthority.ts";
 import { RuntimeHost, pidAlive, verifyProcessIdentity, type SpawnSpec } from "../../driver-hsr/src/index.ts";
 import {
@@ -218,7 +218,8 @@ import {
   TranscriptUnavailableError,
 } from "./relocateSession.ts";
 import { REMOTE_SENDER_RE, isPeerSender } from "./envelope.ts";
-import { claudeProjectKey, renderTranscriptLines } from "../../driver-tmux/src/index.ts";
+import { claudeProjectKey } from "../../adapters/src/claude.ts";
+import { renderTranscriptLines } from "../../adapters/src/transcripts.ts";
 import {
   agyAdapter,
   agyArgGrammar,

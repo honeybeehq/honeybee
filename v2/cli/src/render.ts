@@ -8,7 +8,7 @@ import { LEASE_UNKNOWN_MESSAGE } from "../../core/src/accountLease.ts";
  */
 import { CLAUDE_LOGIN_DUE_MS } from "../../core/src/mirror.ts";
 import { INBOX_AGENT, isInboxAgent, type AccountCredentialAuthority, type AccountCredentialAuthorityStatus, type AuditRow } from "../../core/src/types.ts";
-import type { TranscriptTurn } from "../../driver-tmux/src/transcripts.ts";
+import type { TranscriptTurn } from "../../adapters/src/transcript.ts";
 import type {
   AccountGetResult,
   AccountLimitsResult,

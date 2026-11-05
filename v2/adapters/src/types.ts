@@ -210,6 +210,10 @@ export function toNumber(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
+export function nonEmptyString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0 ? value : undefined;
+}
+
 export function parseJsonLine(line: string): Record<string, unknown> | undefined {
   try {
     return asObject(JSON.parse(line));

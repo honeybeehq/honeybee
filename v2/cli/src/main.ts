@@ -140,7 +140,7 @@ import { publicAuditRow, publicEnvRecords } from "../../core/src/envRedaction.ts
 import { hostname } from "node:os";
 import type { AuditTailResult, DeployInfoResult, GatewayRegisterResult, SkillsInstallResult } from "../../daemon/src/protocol.ts";
 import { readSkillTreeFromDirectory } from "../../daemon/src/skills.ts";
-import type { TranscriptTurnStream } from "../../driver-tmux/src/transcripts.ts";
+import type { TranscriptTurnStream } from "../../adapters/src/transcript.ts";
 import {
   agyArgGrammar,
   claudeArgGrammar,
@@ -4187,7 +4187,8 @@ function readSessionLogSnapshot(path: string): SessionLogSnapshot {
 }
 
 async function lastAssistantReply(agent: string, logPath: string): Promise<string | null> {
-  const { lastAssistantText, renderTranscriptLines } = await import("../../driver-tmux/src/transcripts.ts");
+  const { renderTranscriptLines } = await import("../../adapters/src/transcripts.ts");
+  const { lastAssistantText } = await import("../../adapters/src/transcript.ts");
   return lastAssistantText(renderTranscriptLines(agent, readSessionLogLines(logPath)));
 }
 
@@ -4298,7 +4299,7 @@ async function cmdTranscript(ctx: CliContext, parsed: Parsed): Promise<number> {
     return 0;
   }
 
-  const stream = (await import("../../driver-tmux/src/transcripts.ts")).createTranscriptTurnStream(harness);
+  const stream = (await import("../../adapters/src/transcripts.ts")).createTranscriptTurnStream(harness);
   const turns = lines.flatMap((line) => stream.pushLine(line));
   if (!follow) turns.push(...stream.flush());
   const shown = tailN != null ? turns.slice(-tailN) : turns;
@@ -4323,7 +4324,7 @@ async function transcriptFromObjects(ctx: CliContext, parsed: Parsed, view: View
     return 0;
   }
   const objects = (await import("../../daemon/src/transcriptObjectStore.ts")).createDirectoryTranscriptObjectStore(root);
-  const { decodeProjectedSegment, decompressSegment } = await import("../../driver-tmux/src/transcript-segment-format.ts");
+  const { decodeProjectedSegment, decompressSegment } = await import("../../core/src/transcriptSegment.ts");
   const raw = parsed.flags.get("--raw") === true;
   const out: string[] = [];
   let missing = 0;
@@ -4382,7 +4383,7 @@ async function cmdTail(ctx: CliContext, parsed: Parsed): Promise<number> {
     return 0;
   }
 
-  const stream = (await import("../../driver-tmux/src/transcripts.ts")).createTranscriptTurnStream(harness);
+  const stream = (await import("../../adapters/src/transcripts.ts")).createTranscriptTurnStream(harness);
   const turns = lines.flatMap((line) => stream.pushLine(line));
   if (!follow) turns.push(...stream.flush());
   for (const line of turnLines(turns).slice(-backlog)) ctx.io.out(line);

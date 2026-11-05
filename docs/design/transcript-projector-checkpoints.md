@@ -78,18 +78,18 @@ retaining its own registry key in the checkpoint.
 
 Both version fences are global. A Grok state schema change therefore invalidates Codex
 and Agy checkpoints too. This deliberately favors simple compatibility decisions.
-The test-only source digest covers the three stateful projector modules (Codex, Grok,
-Agy), plus the explicitly marked `checkpoint-digest:start/end` regions containing the
-registry/restore in `transcripts.ts` and checkpoint envelope/validators/serialization in
-`transcript-projection.ts`. Keep new shared checkpoint logic inside these regions.
-Claude, event types, observation parsers and renderer implementations are excluded: their
-edits do not automatically require discarding every harness's checkpoint. Event semantic
+The test-only source digest covers the explicitly marked `checkpoint-digest:start/end`
+regions: the stateful projectors of the Codex, Grok, Agy, Kimi and Muse families in
+`v2/adapters/src/<harness>.ts`, the registry/restore in `transcripts.ts` and the checkpoint
+envelope/validators/serialization in `transcript.ts`. Keep new checkpoint logic inside these
+regions. Claude, Stub, the adapters, event types and repairs are excluded: their edits do
+not automatically require discarding every harness's checkpoint. Event semantic
 changes in excluded code still require a reviewed `projectionVersion` bump. Included
 source changes require reviewing versions, bumping the relevant constant, and refreshing
 the fixture with:
 
 ```sh
-UPDATE_TRANSCRIPT_CHECKPOINT_DIGEST=1 node --test v2/driver-tmux/tests/checkpoint-digest.test.ts
+UPDATE_TRANSCRIPT_CHECKPOINT_DIGEST=1 node --test v2/adapters/tests/checkpoint-digest.test.ts
 ```
 
 The refresh command refuses a changed digest with unchanged versions. The digest is

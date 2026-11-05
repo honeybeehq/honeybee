@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import { pidAlive } from "../../driver-hsr/src/psutil.ts";
 import { localRepoIdentity } from "../../driver-cell/src/git.ts";
 import { fingerprintOrigin, g, makeOrigin } from "../../driver-cell/tests/helpers.ts";
-import { claudeProjectKey } from "../../driver-tmux/src/index.ts";
+import { claudeProjectKey } from "../../adapters/src/claude.ts";
 import type { BeeMoveResult, CellExecResult, CellRetainedRemoveResult, MailboxResult, SendRpcResult, SpawnResult, ViewResult } from "../src/protocol.ts";
 import { makeDaemonDir, startDaemon, waitFor } from "./helpers.ts";
 

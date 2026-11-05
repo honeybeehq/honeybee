@@ -1,0 +1,22 @@
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"clientInfo":{"name":"honeybee","title":"Honeybee","version":"2"},"capabilities":{"requestedCapabilities":["sessionMcp"],"userInputDialogs":false}}}
+{"jsonrpc":"2.0","id":1,"result":{"serverInfo":{"name":"muse","version":"1.4.7"},"grantedCapabilities":["sessionMcp"],"museHome":"/home/trmd/.hive/v2/tmp/d1a2096b-b9ee-4726-8eb4-4da37e7ac1f7/hb-v2-daemon-uxu6AQ/homes/muse-sub/xdg-data/muse"}}
+{"jsonrpc":"2.0","method":"initialized"}
+{"jsonrpc":"2.0","id":2,"method":"session/start","params":{"commandId":"01a1ab79-d18d-792b-8527-82979372cc29","workspaceRoot":"/home/trmd/.hive/v2/tmp/d1a2096b-b9ee-4726-8eb4-4da37e7ac1f7/hb-m-h8b-tail-ghfdSw","approvalMode":"allowAll","config":{"mcpServers":{}}}}
+{"jsonrpc":"2.0","id":2,"result":{"session":{"sessionId":"01a133e2-6725-7481-a1f9-1b611f7748be","status":"idle","providerId":"echo","modelId":null}}}
+{"jsonrpc":"2.0","id":1007,"method":"turn/start","params":{"sessionId":"01a133e2-6725-7481-a1f9-1b611f7748be","commandId":"00000000-0000-7000-8000-000000000007","input":[{"type":"text","text":"hello muse"}],"ifBusy":"queue"}}
+{"jsonrpc":"2.0","id":1007,"result":{"commandId":"00000000-0000-7000-8000-000000000007","disposition":"started","status":"accepted","turnId":"00000000-0000-7000-8000-000000000007"}}
+{"jsonrpc":"2.0","method":"session/statusChanged","params":{"sessionId":"01a133e2-6725-7481-a1f9-1b611f7748be","status":"running"}}
+{"jsonrpc":"2.0","method":"turn/started","params":{"sessionId":"01a133e2-6725-7481-a1f9-1b611f7748be","commandId":"00000000-0000-7000-8000-000000000007","turnId":"00000000-0000-7000-8000-000000000007"}}
+{"jsonrpc":"2.0","method":"item/started","params":{"sessionId":"01a133e2-6725-7481-a1f9-1b611f7748be","item":{"kind":"agentMessage","status":"inProgress","text":"","turnId":"00000000-0000-7000-8000-000000000007"}}}
+{"jsonrpc":"2.0","method":"item/completed","params":{"sessionId":"01a133e2-6725-7481-a1f9-1b611f7748be","item":{"kind":"agentMessage","status":"completed","text":"echo: ok","turnId":"00000000-0000-7000-8000-000000000007"}}}
+{"emittedAtMs":1791870000004,"jsonrpc":"2.0","method":"usage/changed","params":{"observedAtMs":1793878187824,"tier":"fixture-tier-from-provider","weekly":{"resetsAtMs":1792300000000,"usedPercent":12},"window":{"resetsAtMs":1793881847824,"usedPercent":37,"windowDurationMins":300}}}
+{"jsonrpc":"2.0","method":"session/statusChanged","params":{"sessionId":"01a133e2-6725-7481-a1f9-1b611f7748be","status":"idle"}}
+{"jsonrpc":"2.0","method":"turn/completed","params":{"sessionId":"01a133e2-6725-7481-a1f9-1b611f7748be","durationMs":5,"terminal":"completed","turnId":"00000000-0000-7000-8000-000000000007"}}
+{"jsonrpc":"2.0","id":1008,"method":"turn/start","params":{"sessionId":"01a133e2-6725-7481-a1f9-1b611f7748be","commandId":"00000000-0000-7000-8000-000000000008","input":[{"type":"text","text":"second message for muse"}],"ifBusy":"queue"}}
+{"jsonrpc":"2.0","id":1008,"result":{"commandId":"00000000-0000-7000-8000-000000000008","disposition":"started","status":"accepted","turnId":"00000000-0000-7000-8000-000000000008"}}
+{"jsonrpc":"2.0","method":"session/statusChanged","params":{"sessionId":"01a133e2-6725-7481-a1f9-1b611f7748be","status":"running"}}
+{"jsonrpc":"2.0","method":"turn/started","params":{"sessionId":"01a133e2-6725-7481-a1f9-1b611f7748be","commandId":"00000000-0000-7000-8000-000000000008","turnId":"00000000-0000-7000-8000-000000000008"}}
+{"jsonrpc":"2.0","method":"item/started","params":{"sessionId":"01a133e2-6725-7481-a1f9-1b611f7748be","item":{"kind":"agentMessage","status":"inProgress","text":"","turnId":"00000000-0000-7000-8000-000000000008"}}}
+{"jsonrpc":"2.0","method":"item/completed","params":{"sessionId":"01a133e2-6725-7481-a1f9-1b611f7748be","item":{"kind":"agentMessage","status":"completed","text":"echo: ok","turnId":"00000000-0000-7000-8000-000000000008"}}}
+{"jsonrpc":"2.0","method":"session/statusChanged","params":{"sessionId":"01a133e2-6725-7481-a1f9-1b611f7748be","status":"idle"}}
+{"jsonrpc":"2.0","method":"turn/completed","params":{"sessionId":"01a133e2-6725-7481-a1f9-1b611f7748be","durationMs":5,"terminal":"completed","turnId":"00000000-0000-7000-8000-000000000008"}}

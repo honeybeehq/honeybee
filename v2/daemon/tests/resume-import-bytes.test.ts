@@ -12,7 +12,7 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync } from "
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { claudeProjectKey } from "../../driver-tmux/src/transcripts.ts";
+import { claudeProjectKey } from "../../adapters/src/claude.ts";
 import { RpcError, type BeeImportResult, type BeeResumeBundlesResult, type SendRpcResult, type SpawnResult, type ViewResult } from "../src/protocol.ts";
 import { resumeBundlePath } from "../src/resumeBundles.ts";
 import type { RpcClient } from "../../cli/src/client.ts";

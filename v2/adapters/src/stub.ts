@@ -31,6 +31,7 @@ import {
   type HarnessAdapter,
   type InterruptContext,
 } from "./types.ts";
+import { projectorFromTurns, restoreStateless, type TranscriptFamily, type TranscriptProjector, type TranscriptTurn } from "./transcript.ts";
 
 export function parseStubLine(line: string): AdapterSignal[] {
   const msg = parseJsonLine(line);
@@ -91,4 +92,23 @@ export const stubAdapter: HarnessAdapter = {
   encodeInterrupt(_ctx: InterruptContext): string | null {
     return JSON.stringify({ type: "interrupt" });
   },
+};
+
+/** stub — the test agent's NDJSON ({event:"text"|"error"|…}); text = assistant output. */
+function renderStubLine(line: string): TranscriptTurn[] {
+  const row = parseJsonLine(line);
+  if (!row || typeof row.event !== "string") return [];
+  if (row.event === "text" && typeof row.text === "string") return [{ role: "assistant", text: row.text }];
+  if (row.event === "error") return [{ role: "system", text: `[error: ${String(row.message ?? "?")}]` }];
+  return [];
+}
+
+function createStubProjector(): TranscriptProjector {
+  return projectorFromTurns("stub", renderStubLine);
+}
+
+export const stubTranscripts: TranscriptFamily = {
+  harness: "stub",
+  createProjector: createStubProjector,
+  restoreProjector: (state) => restoreStateless(state, createStubProjector),
 };

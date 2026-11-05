@@ -12,7 +12,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { decodeProjectedSegment, decompressSegment, segmentDigest } from "../../driver-tmux/src/transcript-segment-format.ts";
+import { decodeProjectedSegment, decompressSegment, segmentDigest } from "../../core/src/transcriptSegment.ts";
 import { createDirectoryTranscriptObjectStore } from "../src/transcriptObjectStore.ts";
 import { DAEMON_CAPABILITIES, RPC_VERBS, type AuditTailResult, type DeployInfoResult, type HealthResult, type SpawnResult, type TranscriptSegmentsResult, type ViewResult } from "../src/protocol.ts";
 import { runV2Cli, type CliIo } from "../../cli/src/main.ts";

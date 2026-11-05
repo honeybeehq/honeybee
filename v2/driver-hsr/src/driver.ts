@@ -9,7 +9,7 @@ import type { ExecutionStart, ExecutionRuntimeHooks, ExecutionProcess } from "..
 import { exactProcessBirth } from "../../harness/src/processIdentity.ts";
 import { stateDirectory, stateFile } from "../../harness/src/statePath.ts";
 import { canonicalDigest, type JsonValue } from "../../core/src/canonical.ts";
-import { TurnQuiet } from "../../driver-tmux/src/turn-quiet.ts";
+import { TurnQuiet } from "./turn-quiet.ts";
 import { childNodePath, nativeNodeEnv } from "../../core/src/nodeRuntime.ts";
 import type { ReconnectToolsReceipt } from "../../core/src/reconnectTools.ts";
 import { spawn, type ChildProcess } from "node:child_process";

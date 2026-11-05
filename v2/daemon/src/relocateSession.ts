@@ -22,7 +22,7 @@ import {
   linkSync,
 } from "node:fs";
 import { join } from "node:path";
-import { claudeProjectKey } from "../../driver-tmux/src/index.ts";
+import { claudeProjectKey } from "../../adapters/src/claude.ts";
 
 export class TranscriptConflictError extends Error {
   constructor(message: string) {

@@ -4,7 +4,7 @@ import { copyFileSync, existsSync, linkSync, mkdirSync, readFileSync, rmSync, wr
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { claudeProjectKey } from "../../driver-tmux/src/index.ts";
+import { claudeProjectKey } from "../../adapters/src/claude.ts";
 import {
   findClaudeTranscript,
   relocateClaudeSession,

@@ -15,7 +15,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { pidAlive } from "../../driver-hsr/src/psutil.ts";
 import { makeOrigin } from "../../driver-cell/tests/helpers.ts";
-import { renderTranscriptLines } from "../../driver-tmux/src/index.ts";
+import { renderTranscriptLines } from "../../adapters/src/transcripts.ts";
 import { HANDOFF_SEED_MARKER } from "../../core/src/index.ts";
 import type {
   AccountAddResult,

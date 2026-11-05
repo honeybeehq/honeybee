@@ -1,0 +1,183 @@
+✔ handoff.loop.cross-family: idle codex source → claude target; seed delivered first, queued mail follows in order (66.345725ms)
+✔ handoff.loop.working: stopAt=idle waits for the running turn; the source takes no new turn; stopAt=now stops mid-turn (49.64493ms)
+✔ handoff.loop.stopped: a stopped source admits, the stop moots, the switch and target boot proceed (35.882432ms)
+✔ handoff.loop.restart: a daemon crash at every phase resumes from durable state; replaying the key returns the same receipt (50.13924ms)
+✔ handoff.loop.target-boot-failure: the target exhausting its spawn budget fails the handoff at stage start; revive retries with the seed still first (44.179602ms)
+✔ handoff.loop.context-failure: a transcript read failure fails the handoff before the switch and revives the source on its old harness (34.045733ms)
+✔ handoff.loop.async-summarizer: the switch waits for the summarizer; its result is the seed; a rejection fails at stage context (71.799622ms)
+✔ handoff.loop.supersede: an operator stop during stopping cancels the handoff; the bee keeps its harness and thread (29.961408ms)
+✔ relocate: copies jsonl and sibling, then is present on retry (2.556106ms)
+✔ relocate: crash after jsonl publication without marker recovers (1.15302ms)
+✔ relocate: unrelated dest jsonl without marker is refused (1.049228ms)
+✔ relocate: unrelated dest sibling with no jsonl is refused (0.954745ms)
+✔ relocate: exclusive publish hardlink without marker recovers (1.061122ms)
+✔ relocate: findClaudeTranscript does not scan other project keys (0.637659ms)
+ℹ tests 14
+ℹ suites 0
+ℹ pass 14
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 484.405827
+✔ transcript-segments.0: verb and capabilities are published (0.883666ms)
+✔ transcript-segments.1: turn ends cut dense byte-exact segments and announce them; a killed daemon's bee reads to its last segment from the objects alone; a restart resumes without gaps (1706.413777ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1809.828089
+✔ cut: small chunks stream a log into dense byte-exact segments, a torn tail waits, and the cursor resumes without re-reading (16.044381ms)
+✔ cut: a line longer than the chunk grows the read window up to the cap; one longer than the cap is left for a later cut (5.1776ms)
+✔ cut: a shrunk log starts a new epoch at byte 0 while line numbers keep climbing; a missing log cuts nothing (4.876303ms)
+✔ cut: a rejected checkpoint replays the prefix in chunks and projects the same events as an uninterrupted projector (6.633588ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 118.019456
+✔ resume-reseed.1: an import without a usable bundle re-seeds the bee from its projected transcript (2017.812086ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2102.429269
+✔ resume-bundles.0: capability published; flag off bundles nothing and reports no status (1907.869962ms)
+✔ resume-bundles.1: turn ends bundle the harness state encrypted with the epoch; unchanged state writes no row; rows are capped (2813.853243ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 4805.527148
+✔ resume-import.1: a killed executor's bee is imported elsewhere with its state, id and handle; epochs fence the old executor (5178.441901ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 5267.631739
+✔ resume-import-bytes.1: an import onto an executor with its own object directory restores natively from inline bundle bytes (2040.174472ms)
+✔ resume-import-bytes.2: without the bytes the same import is fresh with bundle_missing (1869.467195ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3994.65065
+✔ resume-import-cell.1: a Cell bee's WIP follows it to the importing executor (2910.547238ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3025.87728
+✔ handoff.rpc.replay-defaults: omitted target defaults stay bound to the original source after later switches (1539.211778ms)
+✔ handoff.rpc: capability, validation, idempotency, typed refusals, and unavailable target accounts (1264.177125ms)
+✔ handoff.rpc.cross-family: claude → codex on an idle hsr bee keeps identity, mailbox order, and publishes parseable segments (1262.000096ms)
+✔ handoff.rpc.same-family: a context reset keeps args unless replaced, opens a fresh thread, and stays on the account (1618.830892ms)
+✔ handoff.rpc.working+stopped: stopAt=idle waits for the running turn, stopAt=now stops a hung turn, a stopped source hands off (5023.665053ms)
+✔ handoff.rpc.disconnect+crash: a lost response replays to the same operation; SIGKILL during stopping and starting resumes (2147.491235ms)
+✔ handoff.rpc.cell: a Cell bee hands off in place — same Cell, cwd, dirty files, one runtime in the checkout (1766.44342ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 14783.329097
+✔ cell move RPC preserves conversation, source work, mail and retained operations (1810.214819ms)
+✔ cell move refuses its Cell worktree as a regular-checkout destination before fencing (1342.037982ms)
+✔ retained Cell RPCs reject invalid optional parameter types before binding idempotency keys (1614.826241ms)
+✔ cell move survives daemon loss after durable admission (2062.189632ms)
+✔ retained exec after daemon loss never replays and releases its gate after process absence (4764.59733ms)
+✔ cell move completes on dest idle with no mail for Codex (1701.744093ms)
+✔ cell move carries Claude transcript and completes with no mail (1639.268136ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 15050.441527
+✔ rpc.accounts.1: CRUD verbs, typed errors, idempotent add, spawn binding (explicit / paused / mismatch / auto / unbound), snapshot + watch carry accounts (1048.250896ms)
+✔ rpc.accounts.fuzzy: one selector works across account verbs, spawn agent shorthand, explicit override, and swap (841.854393ms)
+✔ rpc account.resetLimits: duplicate keys return one effect; uncertain and wrong-harness failures stay typed (815.01532ms)
+✔ rpc.accounts.2: bee.swapAccount (fake-claude) — same-harness stop → rebind → revive with resume under a NEW session id in the new home; cross-harness refused; stopped bee rebound only (1290.759218ms)
+✔ rpc allocation owner: acquire is authoritative, claim swap is atomic, and all-protected returns account_wait (1795.644732ms)
+✔ rpc allocation owner serializes concurrent node admissions and a remote node consumes one claim once (1582.654357ms)
+✔ rpc allocation owner claim gates active automatic spawn while shadow acquisition remains observational (1179.745332ms)
+✔ rpc.accounts.2b: bee.swapAccount clears stale auth_needed before the replacement generation presents as working (1189.079276ms)
+✔ rpc.accounts.3: automatic rotation on exhaustion (fake-claude @quota:delayed) — swap to the untried account and continue automatically; opt-out honored; no candidate = flagged, no loop; auth_needed evidence → account status (2498.957548ms)
+✔ rpc.accounts.ceiling: past its weekly ceiling an account refuses explicit work, idle bees move off with a note, and stopped bees move off when they wake (1697.579272ms)
+✔ rpc.accounts.f2: add refuses pre-existing credentials by default; importExisting adopts as unverified; health is validation evidence, never file-existence; a fresh add is auth_needed, never ok (517.815394ms)
+✔ rpc.accounts.v18: importExisting imports the MACHINE's vendor home (the field finding); nothing importable is `no_credentials_to_import` naming the paths; snapshot + watch deltas carry credentialHealth; login success flips status (548.487143ms)
+✔ rpc.accounts: Codex usageLimitExceeded persists bee and account boundaries until successful recovery (886.965734ms)
+✔ rpc central credentials: per-account opt-in/status/lease/disable, idempotent enable, in-place login, native capture fenced, expired and refused candidates rejected (618.745309ms)
+retained @ account and @ label: install/epoch renewal/revoke/reinstall PASS; full id cap210; invalid charset/overflow typed invalid_request
+✔ lease account ids share core validation: retained @ ids renew, revoke and reinstall without suffix rewriting (480.61938ms)
+✔ rpc.accounts.2c: bee.swapAccount (fake-claude) recovers a lost session id from the bee's session log, refuses typed when nothing can be carried, and stays "none" only for a bee that never ran (2207.869215ms)
+ℹ tests 16
+ℹ suites 0
+ℹ pass 16
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 19373.002443
+✔ verbs.agent-account-selector: auto/rr suffixes collapse without hijacking ordinary hyphenated agents (1.738908ms)
+✔ verbs.login-flow: interactive logins are driven from the terminal; json/no-wait just start; the rendered flow carries no secret and no attach target (0.701543ms)
+✔ verbs.x: spawn + first send in one shot (fire-and-forget); prompt lands in the mailbox; usage error without a prompt (1048.224004ms)
+✔ verbs.run: spawn + send + wait + print the reply + archive; --keep leaves the bee (1881.833829ms)
+✔ verbs.wait: blocks until idle with no queued mail; a hung turn times out with exit 1 (2790.723617ms)
+✔ verbs.here: the HIVE_BEE_ID stamp — full line, --json, and the loud unset error (681.2846ms)
+✔ verbs.transcript+last: stub session log rendered as turns; --raw verbatim; --tail bounds; last = newest assistant text (1660.227255ms)
+✔ verbs.transcript: claude-format fixture — text turns kept, tool traffic one-lined, thinking/result elided; stale offline read (74.18185ms)
+✔ verbs.tail: rendered backlog with -n (--raw for verbatim); -f/--follow streams appends until SIGINT (292.762144ms)
+✔ verbs.transcript: -f/--follow streams appended lines until SIGINT (562.992533ms)
+✔ verbs.transcript: agy follow keeps projector state across appended lines (314.697469ms)
+✔ verbs.transcript: follow completes a torn agy record with one projector (312.015719ms)
+✔ verbs.transcript: follow flushes one live agy fragment once on SIGINT (78.118157ms)
+✔ verbs.transcript: follow starts at the backlog snapshot boundary (286.853154ms)
+✔ verbs.last: falls back to the latest seal when the log has no assistant text; --seal skips straight there (73.011095ms)
+✔ verbs.events: audit-row tail with --kind glob and --bee filters; stale fallback when the daemon is down (923.489051ms)
+▶ verbs.set-model: arg surgery — grammar-aware for claude/codex, conservative in-place for unknown harnesses; CLI applies via bee.setArgs
+  ✔ withModelArg unit surface (1.240149ms)
+✔ verbs.set-model: arg surgery — grammar-aware for claude/codex, conservative in-place for unknown harnesses; CLI applies via bee.setArgs (664.615796ms)
+✔ verbs.aliases: ls and ps are list; usage is limits-shaped over account_limits; login/swap-account top-level route through (687.988544ms)
+✔ verbs.account-capture: an already-authenticated home is validated, backed up, and marked logged in (491.303206ms)
+✔ verbs.usage: renders the cached account_limits rows (stale, read-only) with pct + resets, v1-usage style (37.826619ms)
+✔ verbs.help: the grouped v1-style overview lists the new verbs under their sections (1.108885ms)
+✔ handles.ladder: exact id → exact handle (case-insensitive) → exact name → unique prefix; ambiguity lists candidates (0.757432ms)
+✔ handles.live: spawn returns the minted handle; ls leads with it and keeps id= tail; every verb takes the handle (683.457561ms)
+✔ verbs.send-sender: hive send binds the ambient bee identity while operator sends stay human (1098.628109ms)
+✔ verbs.buz: v1 compat — buz send maps tiers onto urgency + sender; buz inbox = mailbox; retired subs guide loudly (1153.27192ms)
+✔ verbs.tag: a bee cannot write apiary:* tags; the operator can (705.756253ms)
+ℹ tests 27
+ℹ suites 0
+ℹ pass 27
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 16673.971905
+exit=0

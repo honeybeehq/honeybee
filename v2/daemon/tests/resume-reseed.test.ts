@@ -13,7 +13,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { HANDOFF_SEED_MARKER } from "../../core/src/handoff.ts";
-import { claudeProjectKey } from "../../driver-tmux/src/transcripts.ts";
+import { claudeProjectKey } from "../../adapters/src/claude.ts";
 import { type BeeImportResult, type BeeResumeBundlesResult, type MailboxResult, type SendRpcResult, type SpawnResult, type TranscriptSegmentsResult, type ViewResult } from "../src/protocol.ts";
 import type { RpcClient } from "../../cli/src/client.ts";
 import { makeDaemonDir, startDaemon, waitFor, type DaemonHandle } from "./helpers.ts";

@@ -1,0 +1,66 @@
+✖ runner host waits for exact inherited release, rejects wrong attempts, and forks only once (2.571015ms)
+✖ owner disconnect before release never forks an agent (0.521393ms)
+✖ HSR owner commits release and recovers pending identity with agent-start acceptance (40.952077ms)
+✔ HSR refuses a mismatched bee or runtime generation before spec preparation (1.195522ms)
+✔ unset, empty, relative or root runtime directories refuse before mkdir (2.773328ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 2
+ℹ fail 3
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 370.613744
+
+✖ failing tests:
+
+test at v2/driver-hsr/tests/execution-handshake.test.ts:28:1
+✖ runner host waits for exact inherited release, rejects wrong attempts, and forks only once (2.571015ms)
+  AssertionError [ERR_ASSERTION]: native exact birth required
+      at TestContext.<anonymous> (file:///tmp/hb-h8b-before/v2/driver-hsr/tests/execution-handshake.test.ts:30:58)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.start (node:internal/test_runner/test:1262:17)
+      at startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: null,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at v2/driver-hsr/tests/execution-handshake.test.ts:48:1
+✖ owner disconnect before release never forks an agent (0.521393ms)
+  AssertionError [ERR_ASSERTION]: native owner birth
+      at TestContext.<anonymous> (file:///tmp/hb-h8b-before/v2/driver-hsr/tests/execution-handshake.test.ts:50:58)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: null,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at v2/driver-hsr/tests/execution-handshake.test.ts:62:1
+✖ HSR owner commits release and recovers pending identity with agent-start acceptance (40.952077ms)
+  Error [ExecutionFenceError]: Owner process birth is unavailable
+      at RuntimeHost.launch (file:///tmp/hb-h8b-before/v2/driver-hsr/src/driver.ts:548:37)
+      at RuntimeHost.start (file:///tmp/hb-h8b-before/v2/driver-hsr/src/driver.ts:510:10)
+      at TestContext.<anonymous> (file:///tmp/hb-h8b-before/v2/driver-hsr/tests/execution-handshake.test.ts:72:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    code: 'rpc_execution_history_unknown',
+    details: undefined
+  }
+exit=1

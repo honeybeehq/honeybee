@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { cutTranscript, type TranscriptCutRequest } from "../src/transcriptSegmentWorker.ts";
 import { createDirectoryTranscriptObjectStore } from "../src/transcriptObjectStore.ts";
-import { decodeProjectedSegment, decompressSegment } from "../../driver-tmux/src/transcript-segment-format.ts";
+import { decodeProjectedSegment, decompressSegment } from "../../core/src/transcriptSegment.ts";
 
 function rig() {
   const root = mkdtempSync(join(tmpdir(), "hb-h4-cut-"));

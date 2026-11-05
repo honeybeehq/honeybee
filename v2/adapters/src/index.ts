@@ -3,10 +3,12 @@
  * Spec: docs/design/specs/reset-03-hsr-driver.md. Zero imports from old code.
  */
 export * from "./types.ts";
+export * from "./transcript.ts";
+export { createTranscriptProjector, createNativeTranscriptProjector, restoreTranscriptProjector, createTranscriptTurnStream, renderTranscriptLines } from "./transcripts.ts";
 export { museAdapter, museFreshCommandId, museMessageCommandId, museSessionMcpServers, MUSE_EFFORTS, type MuseAdapterOptions, type MuseApprovalMode, type MuseEffort } from "./muse.ts";
 export { kimiAdapter, kimiSpawnPlan, type KimiAdapterOptions, type KimiMode } from "./kimi.ts";
 export { agyAdapter, agyResumeArgs, encodeAgyMessage, parseAgyLine } from "./agy.ts";
-export { claudeAdapter, claudeResumeArgs, claudeForkArgs, encodeClaudeInterrupt, parseClaudeLine, encodeClaudeMessage } from "./claude.ts";
+export { canonicalCwd, claudeAdapter, claudeProjectKey, claudeResumeArgs, claudeForkArgs, encodeClaudeInterrupt, parseClaudeLine, encodeClaudeMessage } from "./claude.ts";
 export { codexAdapter, codexRateLimitSignals, codexThreadRequest, type CodexAdapterOptions } from "./codex.ts";
 export { grokAdapter, grokAllowPermissionResult, type GrokAdapterOptions, type GrokMcpServerStdio } from "./grok.ts";
 export { stubAdapter, parseStubLine } from "./stub.ts";

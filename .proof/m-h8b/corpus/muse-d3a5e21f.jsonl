@@ -1,0 +1,36 @@
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"clientInfo":{"name":"honeybee","title":"Honeybee","version":"2"},"capabilities":{"requestedCapabilities":["sessionMcp"],"userInputDialogs":false}}}
+{"jsonrpc":"2.0","id":1,"result":{"serverInfo":{"name":"muse","version":"1.4.7"},"grantedCapabilities":["sessionMcp"],"museHome":"/home/trmd/.hive/v2/tmp/3e7350d6-83fd-4961-bb8b-078a7d411c81/hb-v2-daemon-4c8UzZ/homes/muse-sub/xdg-data/muse"}}
+{"jsonrpc":"2.0","method":"initialized"}
+{"jsonrpc":"2.0","id":2,"method":"session/start","params":{"commandId":"01a1ab31-e87e-7722-92ff-8163c0a2096c","workspaceRoot":"/home/trmd/.hive/v2/tmp/3e7350d6-83fd-4961-bb8b-078a7d411c81/hb-m-h8-lifecycle-enhzjN","approvalMode":"allowAll","config":{"mcpServers":{}}}}
+{"jsonrpc":"2.0","id":2,"result":{"session":{"sessionId":"01a133e2-6725-7481-a1f9-1b611f7748be","status":"idle","providerId":"echo","modelId":null}}}
+{"jsonrpc":"2.0","id":1013,"method":"turn/start","params":{"sessionId":"01a133e2-6725-7481-a1f9-1b611f7748be","commandId":"00000000-0000-7000-8000-00000000000d","input":[{"type":"text","text":"hello muse"}],"ifBusy":"queue"}}
+{"jsonrpc":"2.0","id":1013,"result":{"commandId":"00000000-0000-7000-8000-00000000000d","disposition":"started","status":"accepted","turnId":"00000000-0000-7000-8000-00000000000d"}}
+{"jsonrpc":"2.0","method":"session/statusChanged","params":{"sessionId":"01a133e2-6725-7481-a1f9-1b611f7748be","status":"running"}}
+{"jsonrpc":"2.0","method":"turn/started","params":{"sessionId":"01a133e2-6725-7481-a1f9-1b611f7748be","commandId":"00000000-0000-7000-8000-00000000000d","turnId":"00000000-0000-7000-8000-00000000000d"}}
+{"jsonrpc":"2.0","method":"item/started","params":{"sessionId":"01a133e2-6725-7481-a1f9-1b611f7748be","item":{"kind":"agentMessage","status":"inProgress","text":"","turnId":"00000000-0000-7000-8000-00000000000d"}}}
+{"jsonrpc":"2.0","method":"item/completed","params":{"sessionId":"01a133e2-6725-7481-a1f9-1b611f7748be","item":{"kind":"agentMessage","status":"completed","text":"echo: ok","turnId":"00000000-0000-7000-8000-00000000000d"}}}
+{"emittedAtMs":1791870000004,"jsonrpc":"2.0","method":"usage/changed","params":{"observedAtMs":1793873471023,"tier":"fixture-tier-from-provider","weekly":{"resetsAtMs":1792300000000,"usedPercent":12},"window":{"resetsAtMs":1793877131023,"usedPercent":37,"windowDurationMins":300}}}
+{"jsonrpc":"2.0","method":"session/statusChanged","params":{"sessionId":"01a133e2-6725-7481-a1f9-1b611f7748be","status":"idle"}}
+{"jsonrpc":"2.0","method":"turn/completed","params":{"sessionId":"01a133e2-6725-7481-a1f9-1b611f7748be","durationMs":5,"terminal":"completed","turnId":"00000000-0000-7000-8000-00000000000d"}}
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"clientInfo":{"name":"honeybee","title":"Honeybee","version":"2"},"capabilities":{"requestedCapabilities":["sessionMcp"],"userInputDialogs":false}}}
+{"jsonrpc":"2.0","id":1,"result":{"serverInfo":{"name":"muse","version":"1.4.7"},"grantedCapabilities":["sessionMcp"],"museHome":"/home/trmd/.hive/v2/tmp/3e7350d6-83fd-4961-bb8b-078a7d411c81/hb-v2-daemon-4c8UzZ/homes/muse-sub/xdg-data/muse"}}
+{"jsonrpc":"2.0","method":"initialized"}
+{"jsonrpc":"2.0","id":2,"method":"session/resume","params":{"sessionId":"01a133e2-6725-7481-a1f9-1b611f7748be","commandId":"01a1ab31-eb5e-768f-8d69-3101fe792b96","excludeItems":true,"config":{"mcpServers":{}}}}
+{"jsonrpc":"2.0","id":2,"result":{"session":{"sessionId":"01a133e2-6725-7481-a1f9-1b611f7748be","status":"idle","providerId":"echo","modelId":null}}}
+{"jsonrpc":"2.0","id":1014,"method":"turn/start","params":{"sessionId":"01a133e2-6725-7481-a1f9-1b611f7748be","commandId":"00000000-0000-7000-8000-00000000000e","input":[{"type":"text","text":"hello muse"}],"ifBusy":"queue"}}
+{"jsonrpc":"2.0","id":1014,"result":{"commandId":"00000000-0000-7000-8000-00000000000e","disposition":"started","status":"accepted","turnId":"00000000-0000-7000-8000-00000000000e"}}
+{"jsonrpc":"2.0","method":"session/statusChanged","params":{"sessionId":"01a133e2-6725-7481-a1f9-1b611f7748be","status":"running"}}
+{"jsonrpc":"2.0","method":"turn/started","params":{"sessionId":"01a133e2-6725-7481-a1f9-1b611f7748be","commandId":"00000000-0000-7000-8000-00000000000e","turnId":"00000000-0000-7000-8000-00000000000e"}}
+{"jsonrpc":"2.0","method":"item/started","params":{"sessionId":"01a133e2-6725-7481-a1f9-1b611f7748be","item":{"kind":"agentMessage","status":"inProgress","text":"","turnId":"00000000-0000-7000-8000-00000000000e"}}}
+{"jsonrpc":"2.0","method":"item/completed","params":{"sessionId":"01a133e2-6725-7481-a1f9-1b611f7748be","item":{"kind":"agentMessage","status":"completed","text":"echo: ok","turnId":"00000000-0000-7000-8000-00000000000e"}}}
+{"emittedAtMs":1791870000004,"jsonrpc":"2.0","method":"usage/changed","params":{"observedAtMs":1793873471023,"tier":"fixture-tier-from-provider","weekly":{"resetsAtMs":1792300000000,"usedPercent":12},"window":{"resetsAtMs":1793877131023,"usedPercent":37,"windowDurationMins":300}}}
+{"jsonrpc":"2.0","method":"session/statusChanged","params":{"sessionId":"01a133e2-6725-7481-a1f9-1b611f7748be","status":"idle"}}
+{"jsonrpc":"2.0","method":"turn/completed","params":{"sessionId":"01a133e2-6725-7481-a1f9-1b611f7748be","durationMs":5,"terminal":"completed","turnId":"00000000-0000-7000-8000-00000000000e"}}
+{"jsonrpc":"2.0","id":1019,"method":"turn/start","params":{"sessionId":"01a133e2-6725-7481-a1f9-1b611f7748be","commandId":"00000000-0000-7000-8000-000000000013","input":[{"type":"text","text":"after restart muse"}],"ifBusy":"queue"}}
+{"jsonrpc":"2.0","id":1019,"result":{"commandId":"00000000-0000-7000-8000-000000000013","disposition":"started","status":"accepted","turnId":"00000000-0000-7000-8000-000000000013"}}
+{"jsonrpc":"2.0","method":"session/statusChanged","params":{"sessionId":"01a133e2-6725-7481-a1f9-1b611f7748be","status":"running"}}
+{"jsonrpc":"2.0","method":"turn/started","params":{"sessionId":"01a133e2-6725-7481-a1f9-1b611f7748be","commandId":"00000000-0000-7000-8000-000000000013","turnId":"00000000-0000-7000-8000-000000000013"}}
+{"jsonrpc":"2.0","method":"item/started","params":{"sessionId":"01a133e2-6725-7481-a1f9-1b611f7748be","item":{"kind":"agentMessage","status":"inProgress","text":"","turnId":"00000000-0000-7000-8000-000000000013"}}}
+{"jsonrpc":"2.0","method":"item/completed","params":{"sessionId":"01a133e2-6725-7481-a1f9-1b611f7748be","item":{"kind":"agentMessage","status":"completed","text":"echo: ok","turnId":"00000000-0000-7000-8000-000000000013"}}}
+{"jsonrpc":"2.0","method":"session/statusChanged","params":{"sessionId":"01a133e2-6725-7481-a1f9-1b611f7748be","status":"idle"}}
+{"jsonrpc":"2.0","method":"turn/completed","params":{"sessionId":"01a133e2-6725-7481-a1f9-1b611f7748be","durationMs":5,"terminal":"completed","turnId":"00000000-0000-7000-8000-000000000013"}}

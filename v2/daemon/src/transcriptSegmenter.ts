@@ -1,7 +1,7 @@
 import { statSync } from "node:fs";
 import { Worker } from "node:worker_threads";
 import type { CoreStore, TranscriptSegmentReadyReason } from "../../core/src/index.ts";
-import { SEGMENT_MAX_LINES, SEGMENT_MAX_RAW_BYTES } from "../../driver-tmux/src/transcript-segment-format.ts";
+import { SEGMENT_MAX_LINES, SEGMENT_MAX_RAW_BYTES } from "../../core/src/transcriptSegment.ts";
 import type { TranscriptObjectStore } from "./transcriptObjectStore.ts";
 import { transcriptSegmentWorkerUrl, type SegmentCursor, type TranscriptCutRequest, type TranscriptCutResult, type TranscriptSweepRequest, type TranscriptSweepResult, type WorkerServerReply, type WorkerServerRequest } from "./transcriptSegmentWorker.ts";
 
