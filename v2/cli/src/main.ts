@@ -166,7 +166,6 @@ import {
   renderBeeView,
   renderCommands,
   renderHealth,
-  tmuxCleanupDoctor,
   namingHealthText,
   renderHere,
   renderMailbox,
@@ -367,8 +366,6 @@ const BOOL_FLAGS = new Set([
   "--no-auto",
   "--on",
   "--off",
-  "--attach",
-  "--no-attach",
   "--yolo",
   "--no-yolo",
   "--no-preamble",
@@ -731,7 +728,7 @@ export function agentAccountSelection(token: string): AgentAccountSelection {
   return { agent: token };
 }
 
-/** The spawn RPC path (name = positional[1]) — shared by spawn and the x/run/xa sugar. */
+/** The spawn RPC path (name = positional[1]) — shared by spawn and the x/run sugar. */
 async function spawnBee(
   ctx: CliContext,
   parsed: Parsed,
@@ -3589,13 +3586,12 @@ export function interpolateTemplatePrompt(prompt: string, input: string): string
   return input.length > 0 ? `${prompt}\n\n${input}` : prompt;
 }
 
-type TemplateRunMode = "template" | "spawn" | "x" | "run" | "xa";
+type TemplateRunMode = "template" | "spawn" | "x" | "run";
 
 type TemplateInvocation = {
   template: TemplateRow;
   parsed: Parsed;
   prompt: string;
-  attach: boolean;
   wait: boolean;
 };
 
@@ -3658,22 +3654,20 @@ async function buildTemplateInvocation(
   if (!templateName) {
     throw new Error(
       mode === "template"
-        ? "usage: hive template run <name> [extra input] [--wait|--attach] [--cwd d] [--name n] [-- <agent-args…>]"
+        ? "usage: hive template run <name> [extra input] [--wait] [--cwd d] [--name n] [-- <agent-args…>]"
         : "--template requires a template name",
     );
   }
   if (parsed.flags.has("--agent")) throw new Error("--template cannot be combined with --agent; the template owns the agent");
-  if ((mode === "spawn" || mode === "xa") && parsed.positional.length > 1) {
+  if (mode === "spawn" && parsed.positional.length > 1) {
     throw new Error(`hive ${mode} --template cannot be combined with a positional agent/name`);
   }
-  const attach = mode === "xa" || parsed.flags.get("--attach") === true;
   const wait = mode === "run" || parsed.flags.get("--wait") === true;
-  if (attach && wait) throw new Error("--wait and --attach are mutually exclusive for template runs");
 
   const template = await loadTemplateForRun(ctx, templateName);
   const selected = agentAccountSelection(template.agent);
   const flags = new Map(parsed.flags);
-  for (const control of ["--template", "--attach", "--wait", "--prompt", "--name", "--yolo", "--no-yolo", "--preamble", "--no-preamble"]) {
+  for (const control of ["--template", "--wait", "--prompt", "--name", "--yolo", "--no-yolo", "--preamble", "--no-preamble"]) {
     flags.delete(control);
   }
   flags.set("--agent", selected.agent);
@@ -3685,7 +3679,6 @@ async function buildTemplateInvocation(
     else if (selected.account) flags.set("--account", selected.account);
   }
   if (!flags.has("--substrate") && template.substrate) flags.set("--substrate", template.substrate);
-  if (attach && !flags.has("--substrate")) flags.set("--substrate", "tmux");
 
   const input = (parsed.flags.get("--prompt") as string | undefined) ??
     parsed.positional.slice(mode === "template" ? 3 : 1).join(" ");
@@ -3699,7 +3692,6 @@ async function buildTemplateInvocation(
   return {
     template,
     prompt: interpolateTemplatePrompt(template.prompt, input),
-    attach,
     wait,
     parsed: {
       ...parsed,
@@ -3721,25 +3713,7 @@ async function runTemplateInvocation(ctx: CliContext, parsed: Parsed, mode: Temp
     flags.set("--keep", true);
     return cmdRun(ctx, { ...plan.parsed, flags, positional: ["run", plan.parsed.positional[1] as string, plan.prompt] });
   }
-  if (!plan.attach) {
-    return cmdX(ctx, { ...plan.parsed, positional: ["x", plan.parsed.positional[1] as string, plan.prompt] });
-  }
-
-  const name = plan.parsed.positional[1] as string;
-  const spawned = await spawnBee(ctx, { ...plan.parsed, positional: ["spawn", name] });
-  await withClient(ctx, (c) => c.request<SendRpcResult>("send", {
-    beeId: spawned.beeId,
-    body: plan.prompt,
-    sender: "operator",
-  }));
-  const command = await waitForCommandSettled(ctx, spawned.beeId, runtimeCommandOf(spawned), numFlag(parsed, "--timeout", 60_000));
-  if (command.status === "failed") {
-    ctx.io.err(`spawn failed: ${spawned.humanRef ?? spawned.handle ?? spawned.beeId} (${command.failureCause ?? "unknown"})`);
-    return 1;
-  }
-  return attachToBee(ctx, plan.parsed, spawned.beeId, {
-    print: parsed.flags.get("--print") === true || ctx.json || process.stdout.isTTY !== true,
-  });
+  return cmdX(ctx, { ...plan.parsed, positional: ["x", plan.parsed.positional[1] as string, plan.prompt] });
 }
 
 function championLine(prefix: string, c: ChampionRow): string {
@@ -3980,7 +3954,7 @@ async function cmdPackages(ctx: CliContext, parsed: Parsed): Promise<number> {
 }
 
 // ---------------------------------------------------------------------------
-// v1-alignment: sugar verbs (x, xa, run, wait, here) + reading verbs
+// v1-alignment: sugar verbs (x, run, wait, here) + reading verbs
 // (transcript, tail, last, events) + set-model / usage / attach sugar
 // ---------------------------------------------------------------------------
 
@@ -4017,6 +3991,13 @@ function promptOf(parsed: Parsed, fromIndex: number): string {
  * delivery lands when the bee boots. Spawn flags pass through
  * (--agent/--account/--cwd/--tag/--arg/--parent…).
  */
+function runtimeCommandOf(spawned: SpawnResult): number {
+  if (spawned.commandId == null) {
+    throw new Error(`${spawned.handle ?? spawned.beeId} is mailbox-only (agent '${INBOX_AGENT}'): it has no runtime to run`);
+  }
+  return spawned.commandId;
+}
+
 async function cmdX(ctx: CliContext, parsed: Parsed): Promise<number> {
   if (parsed.flags.has("--template")) return runTemplateInvocation(ctx, parsed, "x");
   const name = parsed.positional[1];
@@ -4041,96 +4022,6 @@ async function cmdX(ctx: CliContext, parsed: Parsed): Promise<number> {
   return 0;
 }
 
-const XA_USAGE =
-  "usage: hive xa <agent[-account|-auto|-rr]> [--name n] [--cwd d] [--account selector|auto|rr|none] [--print] [--timeout ms]\n" +
-  "       spawn one tmux bee and attach (the v1 shape). pane-less substrates: use `x` + `tail`.";
-
-/**
- * Wait until a command leaves queued/running. Spawn creates the runtime row
- * (generation 1, booting) before the driver has a session, so xa cannot attach
- * on the RPC return — it has to wait for this settle.
- */
-async function waitForCommandSettled(
-  ctx: CliContext,
-  beeId: string,
-  commandId: number,
-  timeoutMs: number,
-): Promise<CommandRow> {
-  const deadline = Date.now() + timeoutMs;
-  return withClient(ctx, async (c) => {
-    for (;;) {
-      const { commands } = await c.request<CommandsResult>("commands", { beeId });
-      const cmd = commands.find((row) => row.id === commandId);
-      if (cmd && (cmd.status === "done" || cmd.status === "failed")) return cmd;
-      if (Date.now() > deadline) {
-        throw new Error(
-          `timeout: command ${commandId} still ${cmd?.status ?? "missing"} after ${timeoutMs}ms`,
-        );
-      }
-      await sleep(50);
-    }
-  });
-}
-
-/**
- * `hive xa <agent>` — spawn + attach (the v1 interactive front door).
- * First positional is the harness, not a bee name (`hive xa claude`). `--name`
- * sets the label; otherwise the agent string is the name (handles distinguish
- * repeats). HSR/cell have no pane: refuse them and force tmux when substrate
- * is omitted so the node default never produces a pane-less bee.
- */
-async function cmdXa(ctx: CliContext, parsed: Parsed): Promise<number> {
-  if (parsed.flags.has("--template")) return runTemplateInvocation(ctx, parsed, "xa");
-  const positionalAgent = parsed.positional[1];
-  const flagAgent = parsed.flags.get("--agent") as string | undefined;
-  if (positionalAgent && flagAgent && positionalAgent !== flagAgent) {
-    throw new Error(`${XA_USAGE}\n(agent given twice and they disagree: '${positionalAgent}' vs --agent ${flagAgent})`);
-  }
-  const agent = positionalAgent ?? flagAgent;
-  if (!agent) throw new Error(XA_USAGE);
-  const stray = parsed.positional[2];
-  if (stray !== undefined) {
-    throw new Error(`${XA_USAGE}\n(unexpected argument '${stray}' — xa takes <agent> and optional --name)`);
-  }
-
-  const substrate = parsed.flags.get("--substrate") as string | undefined;
-  if (substrate === "hsr" || substrate === "cell") {
-    ctx.io.err(
-      `hive xa attaches to a terminal, which ${substrate} bees don't have.\n` +
-        `use: hive x <name> <prompt> --agent ${agent} --substrate ${substrate}\n` +
-        `then: hive tail <name>  |  hive send <name> <message…>`,
-    );
-    return 1;
-  }
-
-  const name = (parsed.flags.get("--name") as string | undefined) ?? agent;
-  const flags = new Map(parsed.flags);
-  if (!flags.has("--substrate")) flags.set("--substrate", "tmux");
-
-  const spawned = await spawnBee(ctx, {
-    ...parsed,
-    positional: ["spawn", name, agent],
-    flags,
-  });
-  const timeoutMs = numFlag(parsed, "--timeout", 60_000);
-  const cmd = await waitForCommandSettled(ctx, spawned.beeId, runtimeCommandOf(spawned), timeoutMs);
-  if (cmd.status === "failed") {
-    ctx.io.err(
-      `spawn failed: ${spawned.humanRef ?? spawned.handle ?? spawned.beeId} (${cmd.failureCause ?? "unknown"}) — inspect with: hive view ${spawned.humanRef ?? spawned.handle ?? spawned.beeId}`,
-    );
-    return 1;
-  }
-  return attachToBee(ctx, parsed, spawned.beeId, {
-    print: parsed.flags.get("--print") === true || ctx.json || process.stdout.isTTY !== true,
-  });
-}
-
-function runtimeCommandOf(spawned: SpawnResult): number {
-  if (spawned.commandId == null) {
-    throw new Error(`${spawned.handle ?? spawned.beeId} is mailbox-only (agent '${INBOX_AGENT}'): it has no runtime to attach to or run`);
-  }
-  return spawned.commandId;
-}
 
 /**
  * Idle-wait loop: done when the runtime is idle/stopped AND no mailbox message
@@ -4748,52 +4639,6 @@ async function cmdUsage(ctx: CliContext, parsed: Parsed): Promise<number> {
   return 0;
 }
 
-// --- attach ----------------------------------------------------------------
-
-/**
- * `hive attach <bee> [--print]` — tmux-substrate bees only: attach the
- * driver's recorded session (`hive-v2-<bee>-g<generation>`). hsr/cell bees
- * are pane-less by design and are refused with the v2 way to watch them.
- */
-async function cmdAttach(ctx: CliContext, parsed: Parsed): Promise<number> {
-  const needle = parsed.positional[1];
-  if (!needle) throw new Error("usage: hive attach <bee> [--print]");
-  return attachToBee(ctx, parsed, needle);
-}
-
-async function attachToBee(
-  ctx: CliContext,
-  parsed: Parsed,
-  needle: string,
-  opts: { print?: boolean } = {},
-): Promise<number> {
-  const { result } = await readBee(ctx, needle);
-  const bee = result.bee;
-  if (!bee) throw new RpcError("bee_not_found", `bee not found: ${needle}`);
-  if (bee.substrate !== "tmux") {
-    const how = bee.substrate === "cell" ? "a cell bee (headless harness inside its checkout)" : `an ${bee.substrate} bee (pane-less runner)`;
-    ctx.io.err(
-      `hive attach: ${bee.id} is ${how} — there is no terminal to attach.\n` +
-        `watch it with: hive tail ${needle} --follow  |  hive transcript ${needle} --follow\n` +
-        `talk to it with: hive send ${needle} <message…>`,
-    );
-    return 1;
-  }
-  const generation = result.view.generation;
-  if (generation == null) throw new Error(`hive attach: ${bee.id} has no recorded runtime generation`);
-  const session = (await import("../../driver-tmux/src/driver.ts")).sessionNameFor(bee.id, generation);
-  const socket = readLiveEndpointRecord(ctx.cfg.dataDir)?.tmuxSocketPath ?? join(ctx.cfg.dataDir, "tmux.sock");
-  const quote = (value: string) => "'" + value.replaceAll("'", "'\"'\"'") + "'";
-  const command = `tmux -S ${quote(socket)} attach-session -t ${quote(`=${session}`)}`;
-  if (opts.print || parsed.flags.get("--print") === true || ctx.json) {
-    emit(ctx, [command], { beeId: bee.id, session, socket, command }, false);
-    return 0;
-  }
-  const res = spawnSync("tmux", ["-S", socket, "attach-session", "-t", `=${session}`], { stdio: "inherit" });
-  if (res.error) throw new Error(`tmux attach failed: ${res.error.message}`);
-  return res.status ?? 0;
-}
-
 // ---------------------------------------------------------------------------
 // daemon service subcommands
 // ---------------------------------------------------------------------------
@@ -5141,8 +4986,6 @@ export async function runV2Cli(argv: string[], io: CliIo = defaultIo): Promise<n
         return await cmdSkills(ctx, parsed);
       case "x":
         return await cmdX(ctx, parsed);
-      case "xa":
-        return await cmdXa(ctx, parsed);
       case "run":
         return await cmdRun(ctx, parsed);
       case "wait":
@@ -5163,8 +5006,6 @@ export async function runV2Cli(argv: string[], io: CliIo = defaultIo): Promise<n
       case "usage":
       case "limits":
         return await cmdUsage(ctx, parsed);
-      case "attach":
-        return await cmdAttach(ctx, parsed);
       case "login": {
         const id = parsed.positional[1];
         if (!id) throw new Error("usage: hive login <account> [--method <id>] [--remote] [--no-wait] [--replace-account]");
@@ -5201,12 +5042,10 @@ export async function runV2Cli(argv: string[], io: CliIo = defaultIo): Promise<n
         const security = health.localSecurity;
         const degraded = security?.peerCredentials.state === "peer_credentials_unavailable";
         if (health.identityDiagnostic?.warning) ctx.io.err(`warning: process_identity_unresolved count=${health.identityDiagnostic.count}`);
-        const cleanup = tmuxCleanupDoctor(health);
-        for (const line of cleanup.lines) ctx.io.err(line);
         const helper = health.deliveryFileHelper, helperUnavailable = helper?.state === "delivery_file_helper_unavailable";
         const paneInputUnknown = health.paneInputUnknown ?? 0, deliveryHoldUnknown = health.deliveryHoldUnknown ?? 0, deliveryPrepareAuditUnknown = health.deliveryPrepareAuditUnknown ?? 0;
-        emit(ctx, [confirm(degraded ? "warn" : "ok", "local RPC peer credentials:", security ? `${security.peerCredentials.state} (${security.peerCredentials.target}; ${security.peerCredentials.artifactPath})` : "not reported by this daemon"), confirm(helperUnavailable ? "warn" : "ok", "delivery file native helper:", helper ? `${helper.state} (${helper.target}; ${helper.artifactPath})` : "not reported by this daemon"), confirm(paneInputUnknown ? "warn" : "ok", "pane_input_unknown:", String(paneInputUnknown)), confirm(deliveryHoldUnknown ? "warn" : "ok", "delivery_hold_state_unknown:", String(deliveryHoldUnknown)), confirm(deliveryPrepareAuditUnknown ? "warn" : "ok", "delivery_prepare_audit_unknown:", String(deliveryPrepareAuditUnknown))], {localSecurity: security ?? null, deliveryFileHelper: helper ?? null, paneInputUnknown, deliveryHoldUnknown, deliveryPrepareAuditUnknown, ...(health.identityDiagnostic ? {identityDiagnostic: health.identityDiagnostic} : {}), ...(health.tmuxCleanupRetained ? {tmuxCleanupRetained: health.tmuxCleanupRetained} : {}), ...(health.tmuxCleanupInformational ? {tmuxCleanupInformational: health.tmuxCleanupInformational} : {})}, false);
-        return degraded || helperUnavailable || paneInputUnknown || deliveryHoldUnknown || deliveryPrepareAuditUnknown || health.identityDiagnostic?.warning || cleanup.failed ? 1 : 0;
+        emit(ctx, [confirm(degraded ? "warn" : "ok", "local RPC peer credentials:", security ? `${security.peerCredentials.state} (${security.peerCredentials.target}; ${security.peerCredentials.artifactPath})` : "not reported by this daemon"), confirm(helperUnavailable ? "warn" : "ok", "delivery file native helper:", helper ? `${helper.state} (${helper.target}; ${helper.artifactPath})` : "not reported by this daemon"), confirm(paneInputUnknown ? "warn" : "ok", "pane_input_unknown:", String(paneInputUnknown)), confirm(deliveryHoldUnknown ? "warn" : "ok", "delivery_hold_state_unknown:", String(deliveryHoldUnknown)), confirm(deliveryPrepareAuditUnknown ? "warn" : "ok", "delivery_prepare_audit_unknown:", String(deliveryPrepareAuditUnknown))], {localSecurity: security ?? null, deliveryFileHelper: helper ?? null, paneInputUnknown, deliveryHoldUnknown, deliveryPrepareAuditUnknown, ...(health.identityDiagnostic ? {identityDiagnostic: health.identityDiagnostic} : {})}, false);
+        return degraded || helperUnavailable || paneInputUnknown || deliveryHoldUnknown || deliveryPrepareAuditUnknown || health.identityDiagnostic?.warning ? 1 : 0;
       }
       case "store": {
         const operation = parsed.positional[1];

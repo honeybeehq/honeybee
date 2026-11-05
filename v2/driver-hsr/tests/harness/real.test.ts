@@ -1,7 +1,7 @@
 /**
  * The WP3 invariant gate (`npm run v2:harness:real`, spec 03 test tier 3):
  * the UNMODIFIED WP2 SimDaemon + fault machinery + six-invariant checker
- * driving the REAL HsrDriver with REAL OS child processes (the stub agent).
+ * driving the REAL RuntimeHost with REAL OS child processes (the stub agent).
  *
  * Fault schedules per the spec:
  *  - daemon crash / reboot-equivalent: the store connection is killed while
@@ -31,7 +31,7 @@ import {
   type Violation,
 } from "../../../harness/src/invariants.ts";
 import { Prng } from "../../../harness/src/prng.ts";
-import { HsrDriver } from "../../src/index.ts";
+import { RuntimeHost } from "../../src/index.ts";
 import { stubAdapter } from "../../../adapters/src/index.ts";
 
 const AGENT_PATH = join(import.meta.dirname, "..", "..", "test-agent", "agent.mjs");
@@ -96,7 +96,7 @@ async function runRealSim(seed: number, cfg: RealRunConfig): Promise<RealRunResu
   const dir = mkdtempSync(join(tmpdir(), "hb-v2-real-"));
   const dbPath = join(dir, "core.sqlite3");
   const prng = new Prng(seed);
-  const driver = new HsrDriver({
+  const driver = new RuntimeHost({
     sessionLogDir: join(dir, "logs"),
     stopKillGraceMs: cfg.stopKillGraceMs,
     resolve: () => ({

@@ -28,7 +28,7 @@ test("fresh verified activation executes installed current v2 CLI with scoped da
     await writeFile(join(root, "current", "dist", "cli.js"), `require('node:fs').appendFileSync(${JSON.stringify(calls)}, JSON.stringify({ args: process.argv.slice(2), interpreter: process.execPath, nodeOptions: process.env.NODE_OPTIONS, electron: process.env.ELECTRON_RUN_AS_NODE })+'\\n'); if(process.argv[4] === 'status') console.log(JSON.stringify({running:true}));`);
     await restartDeployedDaemon({ root, installedDir: join(root, "current"), sha: "a".repeat(40), log() {} });
     assert.deepEqual((await readFile(calls, "utf8")).trim().split("\n").map(line => JSON.parse(line)),
-      ["install", "stop", "start", "status"].map(verb => ({ args: ["v2", "daemon", verb, "--data-dir", join(dir, "v2"), ...(verb === "status" ? ["--json"] : [])], interpreter: pinnedNode })));
+      [{ args: ["v2", "ls", "--json", "--all", "--data-dir", join(dir, "v2")], interpreter: pinnedNode }, ...["install", "stop", "start", "status"].map(verb => ({ args: ["v2", "daemon", verb, "--data-dir", join(dir, "v2"), ...(verb === "status" ? ["--json"] : [])], interpreter: pinnedNode }))]);
   } finally {
     if (previousNodeOptions === undefined) delete process.env.NODE_OPTIONS; else process.env.NODE_OPTIONS = previousNodeOptions;
     if (previousElectron === undefined) delete process.env.ELECTRON_RUN_AS_NODE; else process.env.ELECTRON_RUN_AS_NODE = previousElectron;
@@ -61,8 +61,8 @@ for (const absent of [false, true]) {
       const result = restartDeployedDaemon({ root, installedDir: join(root, "current"), sha: "a".repeat(40), log() {} });
       if (absent) await result;
       else await assert.rejects(result, /exited/);
-      const verbs = (await readFile(calls, "utf8")).trim().split("\n").map(line => JSON.parse(line)[2]);
-      assert.deepEqual(verbs, absent ? ["install", "stop", "status", "start", "status"] : ["install", "stop", "status"]);
+      const verbs = (await readFile(calls, "utf8")).trim().split("\n").map(line => { const argv = JSON.parse(line); return argv[1] === "daemon" ? argv[2] : argv[1]; });
+      assert.deepEqual(verbs, absent ? ["ls", "install", "stop", "status", "start", "status"] : ["ls", "install", "stop", "status"]);
     } finally {
     if (previousHome === undefined) delete process.env.HOME;
     else process.env.HOME = previousHome;
@@ -90,7 +90,7 @@ test("persisted v2 config selects the v2 service for an ordinary source restart"
     await writeFile(join(root, "current", "dist", "cli.js"), `require('node:fs').appendFileSync(${JSON.stringify(calls)}, JSON.stringify(process.argv.slice(2))+'\\n'); if(process.argv[4] === 'status') console.log(JSON.stringify({running:true}));`);
     await restartDeployedDaemon({ root, installedDir: join(root, "current"), sha: "b".repeat(40), log() {} });
     assert.deepEqual((await readFile(calls, "utf8")).trim().split("\n").map(line => JSON.parse(line)),
-      ["install", "stop", "start", "status"].map(verb => ["v2", "daemon", verb, "--data-dir", join(dir, "v2"), ...(verb === "status" ? ["--json"] : [])]));
+      [["v2", "ls", "--json", "--all", "--data-dir", join(dir, "v2")], ...["install", "stop", "start", "status"].map(verb => ["v2", "daemon", verb, "--data-dir", join(dir, "v2"), ...(verb === "status" ? ["--json"] : [])])]);
   } finally {
     if (previousHome === undefined) delete process.env.HOME;
     else process.env.HOME = previousHome;

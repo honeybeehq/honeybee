@@ -1,6 +1,6 @@
 /**
  * WP4 integration tier (spec 04 test plan): a REAL daemon process + real
- * HsrDriver + stub agent over a temp store/socket. Covers:
+ * RuntimeHost + stub agent over a temp store/socket. Covers:
  *  - full verb round-trips (spawn → turn → send/--wait semantics → stop →
  *    revive → archive/unarchive → delete) + reads + typed errors + hello
  *  - watch stream: versioned snapshot, contiguous seq deltas, induced gap →
@@ -319,9 +319,8 @@ test("int.4: daemon SIGKILL mid-turn → restart → zero failed states (B7) + r
 
 test("int.4b: runner-persisted completion recovers after SIGKILL and releases idle-urgency mail", async () => {
   const { dir, cleanup } = makeDaemonDir({
-    // Delivery starts near one tick, the turn start folds at the next, and
-    // completion lands 200ms later. That leaves a deterministic crash window
-    // before the following fold without any production hook or live mutation.
+    // The daemon is killed while the stub's 1200ms turn is still running, so
+    // the runner persists the completion that no daemon observed.
     tickMs: 1000,
     stubEnv: { STUB_TURN_MS: "1200" },
     bootHangTimeoutMs: 8000,
@@ -346,6 +345,15 @@ test("int.4b: runner-persisted completion recovers after SIGKILL and releases id
       body: "@hang released only by recovered idle",
       urgency: "idle",
     });
+    const pendingBeforeCrash = await client.request<MailboxResult>("mailbox", { beeId });
+    assert.equal(
+      pendingBeforeCrash.messages.find((message) => message.id === idleMail.messageId)?.deliveredAt,
+      null,
+      "the idle mail waits for the running turn",
+    );
+
+    client.close();
+    await daemon.kill();
     const journalPath = join(dir, "runners", `${beeId}.1.observations.jsonl`);
     await waitFor(() => {
       try {
@@ -353,16 +361,7 @@ test("int.4b: runner-persisted completion recovers after SIGKILL and releases id
       } catch {
         return false;
       }
-    }, "runner persisted completion before store fold", 12_000, 10);
-    const pendingBeforeCrash = await client.request<MailboxResult>("mailbox", { beeId });
-    assert.equal(
-      pendingBeforeCrash.messages.find((message) => message.id === idleMail.messageId)?.deliveredAt,
-      null,
-      "old daemon has not folded the completion",
-    );
-
-    client.close();
-    await daemon.kill();
+    }, "runner persisted the completion after the daemon died", 12_000, 10);
 
     daemon = await startDaemon(dir);
     client = await daemon.client();
@@ -540,7 +539,7 @@ test("int.7: immediate-exit agent → bounded revives on backoff, spawn_failed a
 
 // ---------------------------------------------------------------------------
 // Delivery urgency (schema v8 — spec 01 Q2 amendment) against the REAL stack:
-// daemon process + HsrDriver + stub agent.
+// daemon process + RuntimeHost + stub agent.
 // ---------------------------------------------------------------------------
 
 test("int.urgency.1: mid-turn `now` — the turn is interrupted, the message delivers immediately, and the bee keeps working", async () => {

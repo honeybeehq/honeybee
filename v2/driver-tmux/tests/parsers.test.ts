@@ -5,7 +5,6 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseEventsFileLine } from "../src/events-file.ts";
 import {
   claudeProjectKey,
   claudeTranscriptParser,
@@ -247,30 +246,4 @@ test("renderers.grok: ACP deltas defer to the stateful projector", () => {
   assert.deepEqual(r.renderLine(j({ type: "assistant", content: "from chat_history" })), [
     { role: "assistant", text: "from chat_history" },
   ]);
-});
-
-test("parsers.events-file: claude-hook, codex-notify and generic shapes normalize identically", () => {
-  // claude hook payload shapes (hook stdin JSON, appended verbatim)
-  assert.deepEqual(parseEventsFileLine(j({ hook_event_name: "UserPromptSubmit", session_id: "s" })), [
-    { kind: "turn_started" },
-  ]);
-  assert.deepEqual(parseEventsFileLine(j({ hook_event_name: "Stop", session_id: "s" })), [{ kind: "turn_ended" }]);
-  assert.deepEqual(parseEventsFileLine(j({ hook_event_name: "Notification", message: "needs permission" })), [
-    { kind: "output" },
-  ]);
-  assert.deepEqual(parseEventsFileLine(j({ hook_event_name: "PreToolUse" })), []);
-  // codex notify payload
-  assert.deepEqual(parseEventsFileLine(j({ type: "agent-turn-complete", "turn-id": "t1" })), [
-    { kind: "turn_ended" },
-  ]);
-  // generic v2 shape
-  assert.deepEqual(parseEventsFileLine(j({ event: "turn_started" })), [{ kind: "turn_started" }]);
-  assert.deepEqual(parseEventsFileLine(j({ event: "turn_ended" })), [{ kind: "turn_ended" }]);
-  assert.deepEqual(parseEventsFileLine("garbage"), []);
-});
-
-test("native completion hooks carry final assistant text, never subagent text", () => {
-  assert.deepEqual(parseEventsFileLine(j({ hook_event_name: "Stop", last_assistant_message: "done <quiet/>" })), [{ kind: "turn_ended", finalText: "done <quiet/>" }]);
-  assert.deepEqual(parseEventsFileLine(j({ type: "agent-turn-complete", "last-assistant-message": "Please review" })), [{ kind: "turn_ended", finalText: "Please review" }]);
-  assert.deepEqual(parseEventsFileLine(j({ hook_event_name: "SubagentStop", last_assistant_message: "<quiet/>" })), [{ kind: "output" }]);
 });

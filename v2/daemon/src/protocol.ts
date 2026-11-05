@@ -1786,10 +1786,10 @@ export interface TaskSupplySetResult extends DedupMarkers {
 export type { TaskTransitionAction };
 
 /**
- * The substrates the daemon can spawn onto (contract §1: tmux | hsr | cell).
+ * The substrates the daemon can spawn onto: hsr | cell.
  * `spawn` takes `substrate?` (default `hsr`) and, for `cell`, a `cell`
- * object (SpawnCellParams). Tmux runs the interactive TUI; hsr/cell run the
- * headless adapter protocol.
+ * object (SpawnCellParams). Both run the headless adapter protocol under
+ * the runtime host; a Cell additionally owns the checkout and sandbox.
  * v6: `spawn` also takes `parentId?` — the calling bee (the CLI fills it from
  * HIVE_BEE_ID; apiary passes it explicitly). The parent must exist
  * (`bee_not_found` otherwise). Capability `spawn.external_parent.v1` adds
@@ -1798,7 +1798,7 @@ export type { TaskTransitionAction };
  * absent keeps the local behavior. The child's runtime env is stamped
  * HIVE_BEE / HIVE_BEE_ID / HIVE_PARENT; HIVE_PARENT stays the bare Bee ID.
  */
-export const SPAWN_SUBSTRATES = ["hsr", "cell", "tmux"] as const;
+export const SPAWN_SUBSTRATES = ["hsr", "cell"] as const;
 export type SpawnSubstrate = (typeof SPAWN_SUBSTRATES)[number];
 
 /**
@@ -2185,8 +2185,6 @@ export interface HarnessFact {
 
 export interface HealthResult {
   confinement?: {strict: boolean; reasons: string[]; bwrap: {path: string | null; setuid: boolean}};
-  tmuxCleanupRetained?: number;
-  tmuxCleanupInformational?: number;
   paneInputUnknown?: number;
   deliveryHoldUnknown?: number;
   deliveryPrepareAuditUnknown?: number;

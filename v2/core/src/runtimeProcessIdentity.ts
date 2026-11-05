@@ -7,7 +7,7 @@ export type RuntimeIdentityRead = {kind: "bound"; identity: RuntimeProcessIdenti
 export interface RuntimeIdentityHooks {
   read(beeId: string, generation: number): RuntimeIdentityRead;
   unavailable?(beeId: string, generation: number): void;
-  bindLegacy(beeId: string, generation: number, stamp: number, identity: RuntimeProcessIdentity, proof: "authenticated-host-generation" | "owned-tmux-pane"): boolean;
+  bindLegacy(beeId: string, generation: number, stamp: number, identity: RuntimeProcessIdentity, proof: "authenticated-host-generation"): boolean;
   bindPendingStart?(beeId: string, generation: number, stamp: number, identity: RuntimeProcessIdentity): boolean;
   readinessSessionId?(beeId: string, generation: number): string | null;
   pendingStartBoundAt?(beeId: string, generation: number): number | null;
@@ -16,7 +16,6 @@ export interface RuntimeIdentityHooks {
 }
 export function installRuntimeProcessIdentity(db: DatabaseSync): void {
   if (!db.prepare("PRAGMA table_info(runtimes)").all().some(row => row.name === "process_identity")) db.exec("ALTER TABLE runtimes ADD COLUMN process_identity TEXT");
-  db.exec("CREATE INDEX IF NOT EXISTS audit_tmux_cleanup ON audit(seq) WHERE kind IN ('runtime.tmux_cleanup_retained','runtime.tmux_cleanup_unverifiable','runtime.tmux_cleanup_resolved')");
   db.prepare("INSERT INTO meta(key,value) VALUES('runtime_process_identity_schema','1') ON CONFLICT(key) DO NOTHING").run();
 }
 export function readRuntimeProcessIdentity(db: DatabaseSync, beeId: string, generation: number): RuntimeIdentityRead {

@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { scaledMs } from "../../core/tests/timeScale.ts";
-import { HsrDriver, type SpawnSpec } from "../src/index.ts";
+import { RuntimeHost, type SpawnSpec } from "../src/index.ts";
 import { stubAdapter } from "../../adapters/src/index.ts";
 import type { DriverObservation } from "../../harness/src/driver.ts";
 import type { FlagEvidence } from "../src/index.ts";
@@ -22,7 +22,7 @@ export function sleep(ms: number): Promise<void> {
 
 export interface TestRig {
   dir: string;
-  driver: HsrDriver;
+  driver: RuntimeHost;
   /** Per-bee env overrides for the stub agent (set before start()). */
   agentEnv: Map<string, Record<string, string>>;
   cleanup: () => void;
@@ -31,7 +31,7 @@ export interface TestRig {
 export function makeRig(opts: { stopKillGraceMs?: number; runtimeIdentity?: import("../../core/src/runtimeProcessIdentity.ts").RuntimeIdentityHooks } = {}): TestRig {
   const dir = mkdtempSync(join(tmpdir(), "hb-v2-driver-"));
   const agentEnv = new Map<string, Record<string, string>>();
-  const driver = new HsrDriver({
+  const driver = new RuntimeHost({
     runtimeIdentity: opts.runtimeIdentity,
     sessionLogDir: join(dir, "logs"),
     stopKillGraceMs: opts.stopKillGraceMs ?? 400,
@@ -58,7 +58,7 @@ export function makeRig(opts: { stopKillGraceMs?: number; runtimeIdentity?: impo
 
 /** Accumulate drained observations until `pred` holds or `timeoutMs` passes. */
 export async function drainUntil(
-  driver: HsrDriver,
+  driver: RuntimeHost,
   pred: (events: DriverObservation[]) => boolean,
   timeoutMs = scaledMs(15_000),
 ): Promise<DriverObservation[]> {
@@ -76,7 +76,7 @@ export async function drainUntil(
 
 /** Accumulate drained flag evidence until `pred` holds or `timeoutMs` passes. */
 export async function drainEvidenceUntil(
-  driver: HsrDriver,
+  driver: RuntimeHost,
   pred: (evidence: FlagEvidence[]) => boolean,
   timeoutMs = 15_000,
 ): Promise<FlagEvidence[]> {
@@ -110,7 +110,7 @@ const fixtureBindings = new Map<string, import("../../core/src/runtimeProcessIde
 export function fixtureRuntimeIdentity(root: string): import("../../core/src/runtimeProcessIdentity.ts").RuntimeIdentityHooks {
   return {read: (beeId, generation) => fixtureBindings.get(`${root}:${beeId}:${generation}`) ?? {kind: "legacy"}, bindLegacy: () => false};
 }
-export function persistFixtureProcess(root: string, beeId: string, generation: number, proc: NonNullable<ReturnType<HsrDriver["procOf"]>>): void {
+export function persistFixtureProcess(root: string, beeId: string, generation: number, proc: NonNullable<ReturnType<RuntimeHost["procOf"]>>): void {
   if (!proc.processIdentity) throw new Error("fixture process lacks exact identity");
   fixtureBindings.set(`${root}:${beeId}:${generation}`, {kind: "bound", identity: proc.processIdentity, pidStartedAt: proc.pidStartedAt});
 }

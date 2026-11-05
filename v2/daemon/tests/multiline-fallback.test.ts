@@ -296,7 +296,7 @@ test("Cell private mount policy chooses only the own runtime area or a typed unr
   assert.equal(deliveryContentRoot("/tmp2/data", "cell", true, null, "linux"), "/tmp2/data");
   assert.equal(deliveryContentRoot("/tmp/data", "cell", false, null, "linux"), "/tmp/data");
   assert.equal(deliveryContentRoot("/tmp/data", "cell", true, null, "darwin"), "/tmp/data");
-  for (const substrate of ["hsr", "tmux"] as const) assert.equal(deliveryContentRoot("/tmp/data", substrate, true, null, "linux"), "/tmp/data");
+  assert.equal(deliveryContentRoot("/tmp/data", "hsr", true, null, "linux"), "/tmp/data");
 });
 
 for (const state of ["in_flight", "unknown", "not_attempted"] as const) test(`whole-row corruption after ${state} is UNKNOWN and never creates a fresh pointer`, t => {

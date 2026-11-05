@@ -1,7 +1,7 @@
 /**
  * Cell substrate in the REAL daemon (WP5 driver wired per spec 05 + the WP6
  * §5 exit-path verbs `cell.capture` / `cell.remove`): a real daemon process
- * + real CellDriver (composed over its own HsrDriver) + the cell stub agent
+ * + the real RuntimeHost with its CellService + the cell stub agent
  * (`@sh` directive: commands run INSIDE the spawned child, in the cell) over
  * temp dirs. Covers:
  *  - spawn {substrate:'cell'} → bee row (substrate=cell, cwd=space dir) +

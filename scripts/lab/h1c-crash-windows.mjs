@@ -3,7 +3,7 @@ import {mkdtempSync,readFileSync,writeFileSync,existsSync} from 'node:fs';
 import {join} from 'node:path';
 import {openCoreStore,replayAudit,DeliveryNotHeldError} from '../../v2/core/src/index.ts';
 import {DaemonCore} from '../../v2/daemon/src/loops.ts';
-import {HsrDriver} from '../../v2/driver-hsr/src/index.ts';
+import {RuntimeHost} from '../../v2/driver-hsr/src/index.ts';
 import {codexAdapter} from '../../v2/adapters/src/index.ts';
 import {fixtureRuntimeIdentity,persistFixtureProcess,sleep,pidAlive} from '../../v2/driver-hsr/tests/helpers.ts';
 assert(process.env.TMPDIR?.startsWith('/var/tmp/'),'set an owned TMPDIR');
@@ -13,14 +13,14 @@ const policy={bootHangTimeoutSteps:500_000,commandsPerStep:8,i1DeadlineSteps:540
 for(const window of ['before-intent-commit','after-intent-before-write','after-write-before-ack','after-ack-before-settlement','after-settlement','unknown-held','held-not-written-resume','steer-intent-before-write','degraded-not-written','lane-outage-before-intent','status-unreadable-at-connect']){
  const path=join(root,window+'.sqlite');const writes=join(root,window+'.writes');let clock=Date.now();let store=openCoreStore(path,{now:()=>clock});
  const config={sessionLogDir:join(root,window),runnersDir:join(root,window,'runners'),runtimeIdentity:fixtureRuntimeIdentity(root+window),resolve:()=>({adapter:codexAdapter({cwd:root}),command:process.execPath,args:[fake],cwd:root,env:{...process.env,H1C_WRITES:writes,H1C_ACK:window==='unknown-held'?'never':'yes',H1C_ACK_DELAY_MS:window==='after-write-before-ack'?'300':'0'}})};
- let driver=new HsrDriver(config);let core;let pid;
+ let driver=new RuntimeHost(config);let core;let pid;
  const makeCore=()=>new DaemonCore({store,driver,now:()=>clock,random:()=>0.5,policy,log:()=>{}});
  const tick=async()=>{clock+=200;core.step();await sleep(5);};
  const until=async predicate=>{for(let i=0;i<2000&&!predicate();i++)await tick();assert(predicate(),window+' timed out');};
  const restart=()=>{
   const p=driver.procs.get('bee');const rt=store.currentRuntime('bee');
   persistFixtureProcess(root+window,'bee',1,driver.procOf('bee',1));driver.detachAll();store.close();
-  store=openCoreStore(path,{now:()=>clock});driver=new HsrDriver(config);
+  store=openCoreStore(path,{now:()=>clock});driver=new RuntimeHost(config);
   assert(driver.adopt('bee',1,p.pid,p.pidStartedAt,rt.state,store.runtimeObservationCursor('bee',1),store.getBee('bee').providerSessionId));
   core=makeCore();core.boot();
  };

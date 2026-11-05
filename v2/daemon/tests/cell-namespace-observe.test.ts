@@ -49,7 +49,7 @@ test("Cell runtime readiness records the namespace fail-closed when the Cell row
 });
 
 test("a Cell bee with no resolvable Cell row still spawns and adopts through the real HSR readiness callback", {skip: process.platform !== "linux", timeout: 60_000}, async () => {
-  const { HsrDriver } = await import("../../driver-hsr/src/index.ts");
+  const { RuntimeHost } = await import("../../driver-hsr/src/index.ts");
   const { stubAdapter } = await import("../../adapters/src/index.ts");
   const { fixtureRuntimeIdentity, persistFixtureProcess, AGENT_PATH, drainUntil } = await import("../../driver-hsr/tests/helpers.ts");
   const dir = mkdtempSync(join(tmpdir(), "cell-namespace-hsr-"));
@@ -61,9 +61,9 @@ test("a Cell bee with no resolvable Cell row still spawns and adopts through the
   const namespaces = owner.cellNamespaces as Map<string, string>;
   const onRuntimeReady = (id: string, pid: number | null) => (owner.observeCellRuntimeNamespace as (beeId: string, pid: number | null) => void).call(owner, id, pid);
   const adapter = { ...stubAdapter, readyAtSpawn: true, parseLine: () => [] };
-  const driver = () => new HsrDriver({ onRuntimeReady, runtimeIdentity: fixtureRuntimeIdentity(dir), sessionLogDir: join(dir, "logs"), stopKillGraceMs: 400, resolve: () => ({ adapter, command: process.execPath, args: [AGENT_PATH], cwd: dir, env: { ...process.env, STUB_TURN_MS: "5" } }) });
+  const driver = () => new RuntimeHost({ onRuntimeReady, runtimeIdentity: fixtureRuntimeIdentity(dir), sessionLogDir: join(dir, "logs"), stopKillGraceMs: 400, resolve: () => ({ adapter, command: process.execPath, args: [AGENT_PATH], cwd: dir, env: { ...process.env, STUB_TURN_MS: "5" } }) });
   const first = driver();
-  let second: InstanceType<typeof HsrDriver> | undefined;
+  let second: InstanceType<typeof RuntimeHost> | undefined;
   try {
     first.start(beeId, 1);
     await drainUntil(first, events => events.some(event => event.kind === "booted"));
@@ -105,7 +105,7 @@ test("runtime readiness fired during daemon stop through the real HSR driver lea
   const at = (path: string) => JSON.stringify(fileURLToPath(new URL(path, import.meta.url)));
   const script = join(dir, "stop-race.mts");
   writeFileSync(script, `import { HiveDaemon } from ${at("../src/daemon.ts")};
-import { HsrDriver } from ${at("../../driver-hsr/src/index.ts")};
+import { RuntimeHost } from ${at("../../driver-hsr/src/index.ts")};
 import { stubAdapter } from ${at("../../adapters/src/index.ts")};
 import { fixtureRuntimeIdentity, persistFixtureProcess, AGENT_PATH, drainUntil } from ${at("../../driver-hsr/tests/helpers.ts")};
 const dir = ${JSON.stringify(dir)};
@@ -116,7 +116,7 @@ Object.assign(owner, { store, stopping: true, cfg: { nodeKind: "satellite", cell
 let readies = 0;
 const onRuntimeReady = (id, pid) => { readies++; owner.observeCellRuntimeNamespace(id, pid); };
 const adapter = { ...stubAdapter, readyAtSpawn: true, parseLine: () => [] };
-const driver = () => new HsrDriver({ onRuntimeReady, runtimeIdentity: fixtureRuntimeIdentity(dir), sessionLogDir: dir + "/logs", stopKillGraceMs: 400, resolve: () => ({ adapter, command: process.execPath, args: [AGENT_PATH], cwd: dir, env: { ...process.env, STUB_TURN_MS: "5" } }) });
+const driver = () => new RuntimeHost({ onRuntimeReady, runtimeIdentity: fixtureRuntimeIdentity(dir), sessionLogDir: dir + "/logs", stopKillGraceMs: 400, resolve: () => ({ adapter, command: process.execPath, args: [AGENT_PATH], cwd: dir, env: { ...process.env, STUB_TURN_MS: "5" } }) });
 const first = driver();
 first.start("stopping-cell", 1);
 await drainUntil(first, events => events.some(event => event.kind === "booted"));

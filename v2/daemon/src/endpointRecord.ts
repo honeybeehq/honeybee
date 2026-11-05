@@ -9,7 +9,6 @@ export interface EndpointRecord {
   instanceId: string;
   dataDir: string;
   socketPath: string;
-  tmuxSocketPath?: string;
   pid: number;
   startedAt: number;
   processBirth?: string;
@@ -78,7 +77,6 @@ export function readLiveEndpointRecord(dataDir: string, alive: (pid: number) => 
     ...(typeof r.processBirth === "string" && typeof r.bootId === "string" ? { processBirth: r.processBirth, bootId: r.bootId } : {}),
     dataDir: r.dataDir,
     socketPath: r.socketPath,
-    ...(typeof r.tmuxSocketPath === "string" ? { tmuxSocketPath: r.tmuxSocketPath } : {}),
     pid: r.pid,
     startedAt: r.startedAt,
   };

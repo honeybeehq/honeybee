@@ -31,12 +31,12 @@ test("strict mode triggers and trusted host exceptions", () => {
   assert.deepEqual(strictConfinementReasons(false, "same"), ["cell_userns_unisolated"]);
   assert.deepEqual(strictConfinementReasons(false, "unavailable"), ["cell_userns_unisolated"]);
   assert.equal(onLinux({proc: reader(), strict: true}), "confined");
-  for (const options of [{registered: true}, {substrate: () => "hsr"}, {substrate: () => "tmux"}]) {
+  for (const options of [{registered: true}, {substrate: () => "hsr"}]) {
     assert.equal(onLinux({proc: reader(), strict: true, ...options}), "unconfined");
   }
 });
 
-const forbidden = [{}, {substrate: "hsr"}, {substrate: "tmux"}, {substrate: "cell", cell: {sandbox: false}}, {substrate: "cell", cwd: "/tmp"}, {substrate: "cell", node: "other"}, {substrate: "cell", nodeId: "other"}, {substrate: "cell", relay: "other"}];
+const forbidden = [{}, {substrate: "hsr"}, {substrate: "cell", cell: {sandbox: false}}, {substrate: "cell", cwd: "/tmp"}, {substrate: "cell", node: "other"}, {substrate: "cell", nodeId: "other"}, {substrate: "cell", relay: "other"}];
 test("confined spawn refuses every forbidden placement and permits sandboxed Cells and inbox", () => {
   for (const params of forbidden) assert.throws(() => assertConfinedSpawn(params, {confinement: "confined"}), refused);
   assert.throws(() => assertConfinedSpawn({substrate: "cell"}, {confinement: "confined", ingress: "node_relay"}), refused);

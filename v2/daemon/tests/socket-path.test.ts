@@ -27,7 +27,7 @@ test("socket placement: a data dir whose sockets fit keeps them in place", () =>
   const root = mkdtempSync(join(tmpdir(), "hb-sp-"));
   try {
     const placed = placeDaemonSockets(root, join(root, "hived.sock"), { runnerSocketDir: tmpdir() });
-    assert.deepEqual(placed, { socketPath: join(root, "hived.sock"), tmuxSocketPath: join(root, "tmux.sock"), runnerSocketDir: tmpdir(), socketDir: null });
+    assert.deepEqual(placed, { socketPath: join(root, "hived.sock"), runnerSocketDir: tmpdir(), socketDir: null });
     assert.equal(existsSync(join(root, SOCKET_DIR_RECORD_FILE)), false);
   } finally {
     rmSync(root, { recursive: true, force: true });
@@ -42,9 +42,8 @@ test("socket placement: a deep data dir moves every socket into one short dir th
     const placed = placeDaemonSockets(dir, join(dir, "hived.sock"), { runnerSocketDir: dir, bases: [join(root, "s")] });
     assert.ok(placed.socketDir, "a short dir was created");
     assert.equal(dirname(placed.socketPath), placed.socketDir);
-    assert.equal(dirname(placed.tmuxSocketPath), placed.socketDir);
     assert.equal(placed.runnerSocketDir, placed.socketDir);
-    for (const path of [placed.socketPath, placed.tmuxSocketPath, join(placed.runnerSocketDir, `hb-rh-${"0".repeat(16)}.sock`)]) {
+    for (const path of [placed.socketPath, join(placed.runnerSocketDir, `hb-rh-${"0".repeat(16)}.sock`)]) {
       assert.ok(socketPathFits(path), `${path} fits`);
     }
     assert.match(placed.socketDir!, /\/[a-f0-9]{12}$/);
@@ -134,8 +133,6 @@ test("a daemon on a deep data dir listens on a short socket that clients find th
     const record = readLiveEndpointRecord(dir);
     assert.ok(record, "endpoint record");
     assert.ok(socketPathFits(record.socketPath), `${record.socketPath} fits`);
-    assert.ok(socketPathFits(record.tmuxSocketPath!), `${record.tmuxSocketPath} fits`);
-    assert.equal(dirname(record.socketPath), dirname(record.tmuxSocketPath!));
     assert.notEqual(dirname(record.socketPath), dir);
     assert.equal(daemon.socketPath, record.socketPath);
     const target = resolveDaemonTarget({ dataDirFlag: dir }, { HOME: join(d.dir, "home") });

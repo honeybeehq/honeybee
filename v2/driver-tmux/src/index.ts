@@ -1,16 +1,3 @@
-/**
- * Honeybee v2 tmux driver (WP5 of the reset).
- * Spec: docs/design/specs/reset-05-cell-tmux.md. Zero imports from old code.
- */
-export {
-  TmuxDriver,
-  sessionNameFor,
-  type DeliveryNote,
-  type ObservationSpec,
-  type TmuxDriverConfig,
-  type TmuxSpawnSpec,
-} from "./driver.ts";
-export { TmuxServer, TmuxError, exactSession, shQuote, type TmuxServerConfig, type TmuxResult } from "./tmux.ts";
 export {
   canonicalCwd,
   claudeProjectKey,
@@ -55,5 +42,3 @@ export {
   type TranscriptProjectorFactory,
   type TranscriptTokenUsage,
 } from "./transcript-projection.ts";
-export { parseEventsFileLine } from "./events-file.ts";
-export { JsonlTail } from "./tail.ts";

@@ -15,7 +15,6 @@ import { automaticQuotaRecovery, quotaRecoveryMatches, type QuotaObservedEvent }
 import { MULTILINE_UNSUPPORTED_DETAILS, MULTILINE_DELIVERY_SQL, MULTILINE_UNKNOWN_SQL, advanceMultilineUnsupported, deliveryHold, publicDeliveryFallback, readMultilineDelivery, readDeliveryFallback, type DeliveryFallback, type DeliveryHoldReceipt, type MultilineDeliveryRow } from "./multilineDelivery.ts";
 import { ExecutionStarts, type ExecutionStart, type ExecutionRuntimeHooks } from "./executionStart.ts";
 import {installRuntimeProcessIdentity, processIdentityValue, readRuntimeProcessIdentity, type RuntimeIdentityHooks, type RuntimeProcessIdentity} from "./runtimeProcessIdentity.ts";
-import {cleanupLocator, readTmuxCleanup, type TmuxCleanupHooks, type TmuxCleanupLocator, type TmuxCleanupState} from "./runtimeCleanup.ts";
 import { PHONE_PROVENANCE_SQL } from "./schema.ts";
 import { type PhoneInput, type PhoneOperationOrigin, type PhoneOriginRequest, type PhoneSource, parsePhoneOrigin, phoneDigest, renderPhoneInput, forwardPhoneOrigin } from "./phoneOrigin.ts";
 import { readAccountLease, accountLeaseUnknown, knownAccountLease } from "./accountLease.ts";
@@ -6235,28 +6234,25 @@ export class CoreStore {
     return at;
   }
 
-  tmuxCleanupCounts(): {retained: number; informational: number} {
-    const rows = readTmuxCleanup(this.db);
-    return {retained: rows.malformed + rows.entries.filter(row => row.state === "retained").length, informational: rows.entries.filter(row => row.state === "socket-gone-unverifiable").length};
-  }
-
-  tmuxCleanupHooks(): TmuxCleanupHooks {
-    return {
-      entries: () => readTmuxCleanup(this.db).entries,
-      update: (raw: TmuxCleanupLocator, state: TmuxCleanupState | "resolved") => this.tx(() => {
-        const locator = cleanupLocator(raw);
-        if (!locator) throw new CoreError("Invalid retained cleanup locator");
-        const previous = readTmuxCleanup(this.db).entries.find(row => row.beeId === locator.beeId && row.generation === locator.generation);
-        if (state === "resolved") {
-          if (previous) this.audit("runtime.tmux_cleanup_resolved", locator.beeId, {generation: locator.generation, reason: locator.reason, count: 1});
-          return;
+  retireTmuxSubstrate(): Array<{beeId: string; generation: number | null; pid: number | null}> {
+    return this.tx(() => {
+      const retired: Array<{beeId: string; generation: number | null; pid: number | null}> = [];
+      for (const row of this.db.prepare("SELECT id FROM bees WHERE substrate = 'tmux' ORDER BY id").all() as Array<{id: string}>) {
+        const rt = this.currentRuntime(row.id);
+        if (rt && rt.state !== "stopped") {
+          this.db.prepare("UPDATE runtimes SET state = 'stopped', exit_cause = 'stopped_by_system', updated_at = ? WHERE bee_id = ? AND generation = ?").run(this.now(), row.id, rt.generation);
+          this.pauseMultilineDeliveryBee(row.id);
+          const updated = this.db.prepare("SELECT * FROM runtimes WHERE bee_id = ? AND generation = ?").get(row.id, rt.generation) as Row;
+          this.audit("runtime.updated", row.id, { runtime: mapRuntime(updated) });
         }
-        if (state !== "retained" && state !== "socket-gone-unverifiable") throw new CoreError("Invalid retained cleanup state");
-        if (state === "socket-gone-unverifiable" && !previous) throw new CoreError("Cleanup state has no retained report");
-        if (previous?.state === state && JSON.stringify({...previous, state: undefined}) === JSON.stringify(locator)) return;
-        this.audit(state === "retained" ? "runtime.tmux_cleanup_retained" : "runtime.tmux_cleanup_unverifiable", locator.beeId, {generation: locator.generation, reason: state === "retained" ? locator.reason : state, ...(state === "retained" ? {} : {retainedReason: locator.reason}), count: 1, locator});
-      }),
-    };
+        const before = this.mustGetBee(row.id);
+        this.db.prepare("UPDATE bees SET substrate = 'hsr' WHERE id = ?").run(row.id);
+        this.audit("bee.placement", row.id, { beeId: row.id, placementVersion: before.placementVersion, cwd: before.cwd, previousCwd: before.cwd, substrate: "hsr", previousSubstrate: "tmux", cellId: before.cellId });
+        retired.push({ beeId: row.id, generation: rt && rt.state !== "stopped" ? rt.generation : null, pid: rt && rt.state !== "stopped" ? rt.pid ?? null : null });
+      }
+      this.db.prepare("UPDATE templates SET substrate = 'hsr' WHERE substrate = 'tmux'").run();
+      return retired;
+    });
   }
 
   runtimeIdentityHooks(): RuntimeIdentityHooks {
@@ -6294,7 +6290,7 @@ export class CoreStore {
         return true;
       }),
       bindLegacy: (beeId, generation, stamp, identity, proof) => this.tx(() => {
-        if (!processIdentityValue(identity) || !["authenticated-host-generation", "owned-tmux-pane"].includes(proof)) return false;
+        if (!processIdentityValue(identity) || proof !== "authenticated-host-generation") return false;
         const current = this.currentRuntime(beeId);
         if (!current || current.generation !== generation || current.state === "stopped" || current.pid !== identity.pid || current.pidStartedAt !== stamp) return false;
         if (this.runtimeProcessIdentity(beeId, generation).kind !== "legacy") return false;

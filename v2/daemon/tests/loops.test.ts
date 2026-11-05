@@ -16,8 +16,7 @@ import { join } from "node:path";
 import { beeTaskList, hashBeeMoveRequest, openCoreStore, PLACEMENT_PREFIX_MARKER, type CoreStore } from "../../core/src/index.ts";
 import { DaemonCore, type DaemonCoreOptions, type DaemonPolicy, type I1ViolationEvent } from "../src/loops.ts";
 import type { PerformanceRecorder } from "../src/performance.ts";
-import { SubstrateRouter } from "../src/substrates.ts";
-import { HsrDriver } from "../../driver-hsr/src/index.ts";
+import { RuntimeHost } from "../../driver-hsr/src/index.ts";
 import { codexAdapter, stubAdapter, type AdapterSignal } from "../../adapters/src/index.ts";
 import { AGENT_PATH, FakeDriver, sleep, waitFor } from "./helpers.ts";
 import { BUZ_INJECTION_MARKER, DELIVERY_INTERRUPT_NOTICE } from "../src/envelope.ts";
@@ -465,7 +464,7 @@ test("model change defers across real HSR input admission before the turn observ
   const dir = mkdtempSync(join(tmpdir(), "hb-v2-model-admission-"));
   const store = openCoreStore(join(dir, "core.sqlite3"), { ephemeral: true });
   const starts: Array<string[] | null> = [];
-  const driver = new HsrDriver({
+  const driver = new RuntimeHost({
     sessionLogDir: join(dir, "logs"), stopKillGraceMs: 300,
     resolve: (beeId) => {
       const args = store.getBee(beeId)?.args ?? null;
@@ -1855,12 +1854,12 @@ test("budget.11 (end-to-end repro): a REAL readyAtSpawn process that spawns fine
   // → runtime.created → … → command.completed → runtime.updated, repeating
   // unbounded. Pre-fix the driver's spawn-event synthetic booted reset the
   // budget every generation; this pins the bounded post-fix behavior against
-  // real OS processes and the real HsrDriver.
+  // real OS processes and the real RuntimeHost.
   const dir = mkdtempSync(join(tmpdir(), "hb-v2-synthboot-"));
   const ops: string[] = [];
   const store = openCoreStore(join(dir, "core.sqlite3"), { maxAttempts: 3, backoffBaseMs: 30, ephemeral: true });
   let fixed = false;
-  const driver = new HsrDriver({
+  const driver = new RuntimeHost({
     sessionLogDir: join(dir, "logs"),
     stopKillGraceMs: 300,
     resolve: (_beeId, generation) => ({
@@ -2436,7 +2435,6 @@ interface AsyncDeliveryProcessProbe {
   killTimer: null;
   stdoutRest: Buffer;
   exited: false;
-  hostStyle: true;
   agentPid: number;
   socket: {
     destroyed: false;
@@ -2450,8 +2448,6 @@ interface AsyncDeliveryProcessProbe {
   logOffset: number;
   initialObservationCursor: number;
   pendingObservationCursor: null;
-  legacySharedObservation: false;
-  outboundPending: string[];
   pendingWrites: string[];
   socketBroken: false;
   spawnError: null;
@@ -2462,7 +2458,7 @@ interface AsyncDeliveryProcessProbe {
 interface AsyncDeliveryRig {
   dir: string;
   store: CoreStore;
-  driver: HsrDriver;
+  driver: RuntimeHost;
   core: DaemonCore;
   proc: AsyncDeliveryProcessProbe;
   frames: string[];
@@ -2474,7 +2470,7 @@ function makeAsyncDeliveryRig(): AsyncDeliveryRig {
   const dir = mkdtempSync(join(tmpdir(), "hb-v2-now-ack-race-"));
   const store = openCoreStore(join(dir, "core.sqlite3"), { ephemeral: true });
   const adapter = codexAdapter({ cwd: dir });
-  const driver = new HsrDriver({
+  const driver = new RuntimeHost({
     sessionLogDir: join(dir, "logs"),
     resolve: () => {
       throw new Error("process-free delivery rig must never spawn");
@@ -2519,7 +2515,6 @@ function makeAsyncDeliveryRig(): AsyncDeliveryRig {
     killTimer: null,
     stdoutRest: Buffer.alloc(0),
     exited: false,
-    hostStyle: true,
     agentPid: 4243,
     socket: {
       destroyed: false,
@@ -2536,8 +2531,6 @@ function makeAsyncDeliveryRig(): AsyncDeliveryRig {
     logOffset: 0,
     initialObservationCursor: 0,
     pendingObservationCursor: null,
-    legacySharedObservation: false,
-    outboundPending: [],
     pendingWrites: [],
     socketBroken: false,
     spawnError: null,
@@ -2545,10 +2538,10 @@ function makeAsyncDeliveryRig(): AsyncDeliveryRig {
     realEvidence: true,
   };
   const procs: unknown = Reflect.get(driver, "procs");
-  if (!(procs instanceof Map)) throw new Error("HsrDriver process registry moved or changed shape");
+  if (!(procs instanceof Map)) throw new Error("RuntimeHost process registry moved or changed shape");
   procs.set(proc.beeId, proc);
   const onSignal: unknown = Reflect.get(driver, "onSignal");
-  if (typeof onSignal !== "function") throw new Error("HsrDriver signal seam moved or changed shape");
+  if (typeof onSignal !== "function") throw new Error("RuntimeHost signal seam moved or changed shape");
 
   return {
     dir,
@@ -2629,25 +2622,6 @@ test("urgency.d3c: a distinct later `now` message still interrupts an async-conf
   } finally {
     rig.cleanup();
   }
-});
-
-test("urgency.d3d: the substrate router forwards the urgent delivery identity", () => {
-  const calls: unknown[][] = [];
-  const outcome = Reflect.apply(
-    SubstrateRouter.prototype.interrupt,
-    {
-      driverFor: () => ({
-        interrupt: (...args: unknown[]) => {
-          calls.push(args);
-          return { interrupted: false, reason: "not_ready" };
-        },
-      }),
-    },
-    ["bee-routed", 7, 42],
-  );
-
-  assert.deepEqual(calls, [["bee-routed", 7, 42]]);
-  assert.deepEqual(outcome, { interrupted: false, reason: "not_ready" });
 });
 
 test("urgency.d4: ordering — urgency governs WHEN a message is eligible; among eligible, enqueue order wins", () => {
@@ -2893,7 +2867,7 @@ test("obs.synthetic-turn_ended: a readyAtSpawn boot-to-ready edge idles the stor
   try {
     spawnIdleBee(rig);
     const outputBefore = rig.store.getBee("bee-1")?.lastOutputAt ?? null;
-    // Revive with an empty mailbox (the swap_account shape): the HsrDriver
+    // Revive with an empty mailbox (the swap_account shape): the RuntimeHost
     // mints booted{synthetic} then turn_ended{synthetic} for a claude that
     // sits silently at its prompt.
     rig.store.enqueueCommand("stop", "bee-1");

@@ -423,7 +423,7 @@ test.before(() => {
   });
 });
 
-test("bundled HsrDriver pins its release before current is swapped", { timeout: 120_000 }, async (t) => {
+test("bundled RuntimeHost pins its release before current is swapped", { timeout: 120_000 }, async (t) => {
   const modes = [
     { name: "default resolution", flags: [] },
     { name: "preserve-symlinks resolution", flags: ["--preserve-symlinks", "--preserve-symlinks-main"] },
@@ -451,7 +451,7 @@ test("bundled HsrDriver pins its release before current is swapped", { timeout: 
           20,
         );
 
-        // The daemon imported/constructed HsrDriver from release A. An atomic
+        // The daemon imported/constructed RuntimeHost from release A. An atomic
         // deployment now points current at B, whose host is intentionally
         // poisonous. The next spawn must still use A's pinned sibling.
         swapCurrent(staged);

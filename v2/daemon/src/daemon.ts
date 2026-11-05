@@ -35,7 +35,7 @@ import { codexHistoryPath, pinThreadHistory, readThreadHistory } from "./threadH
 import { threadOperationView, type ThreadOperationRow } from "../../core/src/threadOperation.ts";
 /**
  * HiveDaemon — the real v2 daemon (spec 04). Hosts the WP1 store (sole
- * writer), the WP3 HsrDriver + adapters, and the DaemonCore loops over wall
+ * writer), the WP3 RuntimeHost + adapters, and the DaemonCore loops over wall
  * time; serves every client through the RPC surface (rpc.ts / protocol.ts).
  *
  * Spec mapping:
@@ -171,11 +171,11 @@ import { resumeStateKey, resumeStateScope, writeResumeKey } from "./resumeBundle
 import { createDirectoryTranscriptObjectStore, type TranscriptObjectStore } from "./transcriptObjectStore.ts";
 import { TRANSCRIPT_PROJECTION_VERSION } from "../../driver-tmux/src/transcript-projection.ts";
 import { CredentialAuthorityError, credentialErrorDetails } from "./claudeCredentialAuthority.ts";
-import { HsrDriver, pidAlive, verifyProcessIdentity, type SpawnSpec } from "../../driver-hsr/src/index.ts";
+import { RuntimeHost, pidAlive, verifyProcessIdentity, type SpawnSpec } from "../../driver-hsr/src/index.ts";
 import {
   darwinUserTempDir,
   CellDeleteRefused,
-  CellDriver,
+  CellService,
   CellHeadMovedError,
   CellRuntimeLiveError,
   cellPaths,
@@ -217,10 +217,8 @@ import {
   TranscriptConflictError,
   TranscriptUnavailableError,
 } from "./relocateSession.ts";
-import { SubstrateRouter } from "./substrates.ts";
 import { REMOTE_SENDER_RE, isPeerSender } from "./envelope.ts";
-import { TmuxDriver, claudeProjectKey, renderTranscriptLines } from "../../driver-tmux/src/index.ts";
-import { tmuxSpawnSpec } from "./tmuxHarness.ts";
+import { claudeProjectKey, renderTranscriptLines } from "../../driver-tmux/src/index.ts";
 import {
   agyAdapter,
   agyArgGrammar,
@@ -619,7 +617,6 @@ const MIN_TICK_YIELD_MS = 1;
  * booting the loop ticks at this bound instead; boots last a second or two, so
  * the extra ticks are few and the fact lands within the driver's 50 ms pump.
  */
-const BOOTING_TICK_MS = 25;
 /** How often the tick runs the (synchronous, roster-wide) auto-title scan. */
 const AUTO_TITLE_SCAN_MS = 1000;
 const WEEKLY_CEILING_SWEEP_MS = 15_000;
@@ -774,8 +771,8 @@ export class HiveDaemon {
   private integrityCheck: Promise<{ ok: boolean; results: string[]; durationMs: number }> | null = null;
   private integrityCheckAt = -Infinity;
   private threadOperations: ThreadOperations | null = null;
-  /** The substrate router DaemonCore drives; `.hsr` / `.cell` / `.tmux` are the substrate drivers. */
-  private driver: SubstrateRouter | null = null;
+  private driver: RuntimeHost | null = null;
+  private cells: CellService | null = null;
   private core: DaemonCore | null = null;
   private telemetry: TelemetryStore | null = null;
   private rpc: RpcServer | null = null;
@@ -795,7 +792,6 @@ export class HiveDaemon {
   private lastAutoTitleAt = 0;
   private readonly autoTitleCandidates = new Set<string>();
   private changes = emptyChanges();
-  private bootingRuntime: boolean | null = null;
   private threadOperationsLive = true;
   private quotaRecoveryLive = true;
   private lastBoot: BootReport | null = null;
@@ -840,7 +836,6 @@ export class HiveDaemon {
   private activeStartupPhase: PerformanceSpan | null = null;
   private readonly beeTmp: BeeTmpPolicy | null;
   private runnerSocketDir: string;
-  private tmuxSocketPath = "";
   private readonly beeTmpOverrideLogged = new Set<string>();
 
   constructor(cfg: ResolvedNodeConfig, deps: HiveDaemonDeps = {}) {
@@ -877,9 +872,8 @@ export class HiveDaemon {
     mkdirSync(this.cfg.dataDir, { recursive: true, mode: 0o700 });
     const sockets = placeDaemonSockets(this.cfg.dataDir, this.cfg.socketPath, { runnerSocketDir: this.runnerSocketDir });
     this.cfg = { ...this.cfg, socketPath: sockets.socketPath };
-    this.tmuxSocketPath = sockets.tmuxSocketPath;
     this.runnerSocketDir = sockets.runnerSocketDir;
-    if (sockets.socketDir) this.log(`socket.relocated dir=${sockets.socketDir} socket=${sockets.socketPath} tmux=${sockets.tmuxSocketPath}`);
+    if (sockets.socketDir) this.log(`socket.relocated dir=${sockets.socketDir} socket=${sockets.socketPath}`);
     mkdirSync(this.cfg.sessionLogDir, { recursive: true });
     mkdirSync(dirname(this.cfg.logPath), { recursive: true });
     if (this.beeTmp) applyDaemonTmpPolicy(this.beeTmp, process.env, (path, was) => this.log(`tmp.replaced path=${path} was=${was}`));
@@ -994,34 +988,10 @@ export class HiveDaemon {
     // records the OLD world's transcript path on the row, and the native
     // stream must never be appended to that file.
     const sessionLogPathFor = (beeId: string): string | null => this.ownedSessionLogPath(store.getBee(beeId)?.sessionLogPath ?? null);
-    const hsrConfig = {
-      sessionLogDir: this.cfg.sessionLogDir,
-      sessionLogPathFor,
-      stopKillGraceMs: this.cfg.stopKillGraceMs,
-      adoptToleranceMs: this.cfg.adoptToleranceMs,
-      onWriteLaneReady: () => this.requestTick(),
-      runtimeIdentity: {...store.runtimeIdentityHooks(), unavailable: (beeId: string, generation: number) => this.retainProcessIdentity(beeId, generation)},
-      onRuntimeReady: (beeId: string, pid: number | null) => this.observeCellRuntimeNamespace(beeId, pid),
-      execution: store.executionRuntimeHooks(),
-      executionStartFor: (beeId: string, generation: number) => store.existingExecutionStart(beeId,generation),
-      executionHostFor: (start: ExecutionStart) => store.executionStartHost(start),
-      resolveExecutionAdapter: (beeId: string) => {
-        const bee = store.getBee(beeId), spec = bee ? this.cfg.agents[bee.agent] : null;
-        if (!bee || !spec) throw new ExecutionFenceError("rpc_execution_history_unknown","Fenced adapter cannot be resolved read-only");
-        const adapter = composeSpawn(spec,spec.adapter ?? bee.agent,bee,[],null).adapter;
-        if (!adapter) throw new ExecutionFenceError("rpc_execution_history_unknown","Fenced adapter is unavailable");
-        return adapter;
-      },
-      socketDir: this.runnerSocketDir,
-    };
-    const hsr = new HsrDriver({ ...hsrConfig, resolve: (beeId: string, generation?: number) => this.resolveSpawnSpec(beeId, generation) });
-    // Cell substrate (spec 05): a CellDriver composed over its own inner
-    // HsrDriver — pure delegation; the cell layer adds provisioning, cwd =
-    // the space checkout, and the A4 sandbox. Same harness resolution.
-    const cell = new CellDriver({
+    const cells = new CellService({
       cellsRoot: this.cfg.cellsRoot,
       nodeKind: this.cfg.nodeKind,
-      resolveHarness: (beeId: string, generation?: number) => this.resolveSpawnSpec(beeId, generation),
+      runtimeLive: (beeId: string) => this.cellRuntimeLive(beeId),
       sandboxKvm: this.cfg.cellKvm,
       resolveCell: (beeId: string) => this.resolveCellSpec(beeId),
       resolveSandboxWritablePaths: (beeId: string) => this.resolveCellSandboxWritablePaths(beeId),
@@ -1036,30 +1006,36 @@ export class HiveDaemon {
         const skipped = sync.skipped == null ? "" : ` skipped=${JSON.stringify(sync.skipped)}`;
         this.log(`cell.upstream origin=${originRepo} mirror=${sync.refresh.status} ref=${sync.trackingRef ?? "-"} before=${sync.before ?? "-"} after=${sync.after ?? "-"} ms=${sync.durationMs}${result.built > 0 ? ` pool_built=${result.built}` : ""}${skipped}${error}`);
       },
-      hsr: hsrConfig,
       backgroundProvisioning: true,
       ...(this.cfg.cellWarmPoolFree > 0
         ? { warmPool: { targetFree: this.cfg.cellWarmPoolFree, maxSize: this.cfg.cellWarmPoolMaxSize } }
         : {}),
     });
-    mkdirSync(join(this.cfg.dataDir, "tmux-events"), { recursive: true });
-    const tmux = new TmuxDriver({
-      cleanup: store.tmuxCleanupHooks(),
-      runtimeIdentity: {...store.runtimeIdentityHooks(), unavailable: (beeId: string, generation: number) => this.retainProcessIdentity(beeId, generation)},
-      doctor: counts => this.log(`doctor.runtime_identity non_destructive_legacy=${counts.nonDestructiveLegacy}`),
-      socketPath: this.tmuxSocketPath,
-      eventsDir: join(this.cfg.dataDir, "tmux-events"),
+    this.cells = cells;
+    const driver = new RuntimeHost({
       sessionLogDir: this.cfg.sessionLogDir,
       sessionLogPathFor,
-      resolve: (beeId: string, generation?: number) => this.resolveTmuxSpec(beeId, generation),
       stopKillGraceMs: this.cfg.stopKillGraceMs,
       adoptToleranceMs: this.cfg.adoptToleranceMs,
-    });
-    const driver = new SubstrateRouter({
-      hsr,
-      cell,
-      tmux,
-      substrateOf: (beeId: string) => store.getBee(beeId)?.substrate ?? null,
+      wake: () => this.requestTick(),
+      runtimeIdentity: {...store.runtimeIdentityHooks(), unavailable: (beeId: string, generation: number) => this.retainProcessIdentity(beeId, generation)},
+      onRuntimeReady: (beeId: string, pid: number | null) => this.observeCellRuntimeNamespace(beeId, pid),
+      execution: store.executionRuntimeHooks(),
+      executionStartFor: (beeId: string, generation: number) => store.existingExecutionStart(beeId,generation),
+      executionHostFor: (start: ExecutionStart) => store.executionStartHost(start),
+      resolveExecutionAdapter: (beeId: string) => {
+        const bee = store.getBee(beeId), spec = bee ? this.cfg.agents[bee.agent] : null;
+        if (!bee || !spec) throw new ExecutionFenceError("rpc_execution_history_unknown","Fenced adapter cannot be resolved read-only");
+        const adapter = composeSpawn(spec,spec.adapter ?? bee.agent,bee,[],null).adapter;
+        if (!adapter) throw new ExecutionFenceError("rpc_execution_history_unknown","Fenced adapter is unavailable");
+        return adapter;
+      },
+      socketDir: this.runnerSocketDir,
+      resolve: (beeId: string, generation?: number) => this.resolveSpawnSpec(beeId, generation),
+      prepare: (beeId: string, generation: number, execution: ExecutionStart | null, done: (failure?: string) => void) =>
+        store.getBee(beeId)?.substrate === "cell" ? cells.prepare(beeId, generation, execution, done) : null,
+      onObserved: (event) => cells.observed(event),
+      extraEvidence: (live, cleared) => cells.evidence(live, cleared),
     });
     this.driver = driver;
     this.retention = new CellRetentionService({
@@ -1070,13 +1046,13 @@ export class HiveDaemon {
       log: (op) => this.log(op),
       cellInUse: (beeId, runtime, cellState) =>
         store.retainsMultilineRuntimeContent(beeId, canonicalPath(this.cfg.dataDir)) || (cellState === "retained"
-          ? cell.hasProcess(beeId, runtime?.generation ?? 0)
-          : (runtime != null && runtime.state !== "stopped") || (this.driver?.hasProcess(beeId, runtime?.generation ?? 0) ?? false)),
+          ? this.cellRuntimeLive(beeId, runtime?.generation ?? 0)
+          : (runtime != null && runtime.state !== "stopped") || driver.hasProcess(beeId, runtime?.generation ?? 0)),
       opInFlight: (cellId) => {
         this.releaseAbsentCellOps(cellId);
         return this.cellHasInFlightOp(cellId);
       },
-      forgetCell: (beeId) => cell.forgetCell(beeId),
+      forgetCell: (beeId) => cells.forgetCell(beeId),
       ...(this.deps.retentionWorkerUrl ? { workerUrl: this.deps.retentionWorkerUrl } : {}),
       ...(this.deps.retentionInitialDelayMs !== undefined ? { initialDelayMs: this.deps.retentionInitialDelayMs } : {}),
       ...(this.deps.retentionDiskCheckMs !== undefined ? { diskCheckMs: this.deps.retentionDiskCheckMs } : {}),
@@ -1158,11 +1134,11 @@ export class HiveDaemon {
         files: this.deliveryFiles,
         root: canonicalPath(this.cfg.dataDir),
         rootForBee: bee => {
-          const wrapper = cell.cellOf(bee.id)?.paths.wrapperDir;
+          const wrapper = cells.cellOf(bee.id)?.paths.wrapperDir;
           return deliveryContentRoot(canonicalPath(this.cfg.dataDir), bee.substrate, bee.substrate === "cell" && sandboxEnabled(this.cfg.nodeKind, this.resolveCellSpec(bee.id).sandbox), wrapper ? canonicalPath(wrapper) : null);
         },
         worktrees: bee => {
-          const space = cell.cellOf(bee.id)?.paths.spaceDir;
+          const space = cells.cellOf(bee.id)?.paths.spaceDir;
           return [canonicalPath(bee.cwd), ...(space ? [canonicalPath(space)] : [])];
         },
       },
@@ -1262,12 +1238,12 @@ export class HiveDaemon {
       performance: this.performance,
     });
     try {
-      await this.rpc.listen(() => writeEndpointRecord(this.cfg.dataDir, { instanceId: this.instanceId, dataDir: canonicalPath(this.cfg.dataDir), socketPath: resolve(this.cfg.socketPath), tmuxSocketPath: this.tmuxSocketPath, pid: process.pid, startedAt: this.startedAt, ...this.daemonProcessIdentity() }));
+      await this.rpc.listen(() => writeEndpointRecord(this.cfg.dataDir, { instanceId: this.instanceId, dataDir: canonicalPath(this.cfg.dataDir), socketPath: resolve(this.cfg.socketPath), pid: process.pid, startedAt: this.startedAt, ...this.daemonProcessIdentity() }));
     } catch (error) {
       removeEndpointRecord(this.cfg.dataDir, this.instanceId);
       throw error;
     }
-    cell.trackOrigins(this.recentCellOrigins(store));
+    cells.trackOrigins(this.recentCellOrigins(store));
     void this.accounts?.credentialHandoff.reconcileStartup().catch(() => this.log("account.credentials.handoff_reconcile_failed"));
     rpc.end();
     this.activeStartupPhase = null;
@@ -1316,7 +1292,7 @@ export class HiveDaemon {
       if (options.preserveRuntimes === false) {
         // Test/ephemeral ownership only. Production never selects this path:
         // deploys must preserve runtimes for successor-daemon re-adoption.
-        try { this.driver?.disposeAll(); } finally {
+        try { this.cells?.dispose(); this.driver?.disposeAll(); } finally {
           this.store?.close();
           this.telemetry?.close();
         }
@@ -1327,6 +1303,7 @@ export class HiveDaemon {
         // design and the next boot re-adopts them (contract §3.2). Their pipe
         // handles must not pin our event loop, though — detach them so the
         // process can actually exit.
+        this.cells?.dispose();
         this.driver?.detachAll();
       }
       this.log("daemon.stopped");
@@ -1346,15 +1323,9 @@ export class HiveDaemon {
     if (QUIET_DAEMON_CHANGE_PREFIXES.some(prefix => kind.startsWith(prefix))) return;
     this.changes.any = true;
     if (kind.startsWith("account")) this.changes.accounts = true;
-    if (kind.startsWith("runtime.") || kind === "boot.reconciled" || kind === "bee.created" || kind === "bee.deleted") this.bootingRuntime = null;
     if (change.beeId === null) return;
     if (kind.startsWith("runtime.") || kind === "bee.deleted") this.changes.runtimeBees.add(change.beeId);
     if (kind.startsWith("bee.") || kind === "mail.enqueued" || kind === "mail.replaced" || kind.startsWith("question.")) this.changes.titleBees.add(change.beeId);
-  }
-
-  private hasBootingRuntime(): boolean {
-    if (this.bootingRuntime === null) this.bootingRuntime = this.store?.hasBootingRuntime() ?? false;
-    return this.bootingRuntime;
   }
 
   private requestTick(): void {
@@ -1372,7 +1343,7 @@ export class HiveDaemon {
       if (this.stopping) return;
       this.tick();
       if (!this.stopping) {
-        this.scheduleTick(nextTickDelayMs(this.runtimeStartHolds.size > 0 ? Math.min(1000, this.cfg.tickMs) : this.hasBootingRuntime() ? Math.min(BOOTING_TICK_MS, this.cfg.tickMs) : this.cfg.tickMs));
+        this.scheduleTick(nextTickDelayMs(this.runtimeStartHolds.size > 0 ? Math.min(1000, this.cfg.tickMs) : this.cfg.tickMs));
       }
     }, delayMs));
   }
@@ -1857,7 +1828,7 @@ export class HiveDaemon {
     if (resolution.source !== "configured_path") {
       this.log(`spawn.resolve bee=${beeId} executable=${resolution.executable} source=${resolution.source}${resolution.path ? ` path=${resolution.path}` : ""}`);
     }
-    return {
+    const harness: SpawnSpec = {
       adapter,
       command,
       args,
@@ -1865,6 +1836,10 @@ export class HiveDaemon {
       env,
       commandResolution: resolution,
     };
+    if (bee.substrate !== "cell") return harness;
+    const cells = this.cells;
+    if (!cells) throw new Error(`resolve: bee ${beeId} is a Cell bee but the daemon has no Cell service`);
+    return cells.spawnSpec(beeId, harness, generation);
   }
 
   /**
@@ -1960,33 +1935,10 @@ export class HiveDaemon {
     if (removed.length > 0) this.log(`tmp.boot_sweep removed=${removed.length}`);
   }
 
-  /**
-   * Tmux TUI spawn: same account/home env as HSR, but the interactive CLI
-   * (no headless plumbing args) plus the harness transcript locator.
-   */
-  private resolveTmuxSpec(beeId: string, generation?: number): ReturnType<typeof tmuxSpawnSpec> {
-    if (generation !== undefined) this.stampRuntimeCredential(beeId, generation);
-    const store = this.mustStore();
-    const bee = store.getBee(beeId);
-    if (!bee) throw new Error(`resolveTmux: bee ${beeId} not found`);
-    const spec = this.cfg.agents[bee.agent];
-    if (!spec) throw new Error(`resolveTmux: no agent spec for '${bee.agent}'`);
-    const env = { ...this.runtimeEnvOf(bee, spec, "resolveTmux"), ...this.beeTmpEnv(bee, spec) };
-    // Absence is authoritative too: a root must not inherit a configured parent.
-    if (!bee.parentId) delete env.HIVE_PARENT;
-    let beeArgs = bee.args;
-    if ((spec.adapter ?? bee.agent) === "claude") {
-      const context = this.claudeContextLaunchFor(bee, bee.args ?? [], env);
-      beeArgs = composeArgv(grammarFor("claude"), [bee.args, context.modelArgs]);
-      this.applyContextEnv(env, context);
-    }
-    // Same F8 resolution rule as HSR: the TUI seat must not ENOENT on a CLI
-    // the node's probes can see.
-    const { command, resolution } = resolveSpawnCommand(spec.command, { env });
-    if (resolution.source !== "configured_path") {
-      this.log(`spawn.resolve bee=${beeId} executable=${resolution.executable} source=${resolution.source}${resolution.path ? ` path=${resolution.path}` : ""}`);
-    }
-    return tmuxSpawnSpec({ ...spec, command }, { agent: bee.agent, cwd: bee.cwd, args: beeArgs, env });
+  private cellRuntimeLive(beeId: string, generation?: number): boolean {
+    const driver = this.driver;
+    if (!driver || this.store?.getBee(beeId)?.substrate !== "cell") return false;
+    return generation === undefined ? driver.hasRetainedProcess(beeId) : driver.hasProcess(beeId, generation);
   }
 
   private retainProcessIdentity(beeId: string, generation: number): void {
@@ -2023,8 +1975,11 @@ export class HiveDaemon {
     if (counts.overdue && Date.now() - this.identityWarningAt >= 60000) { this.identityWarningAt = Date.now(); this.log(`doctor.process_identity_unresolved count=${counts.overdue}`); }
   }
 
-  private adoptSurvivors(store: CoreStore, driver: SubstrateRouter): Array<{beeId: string; generation: number}> {
+  private adoptSurvivors(store: CoreStore, driver: RuntimeHost): Array<{beeId: string; generation: number}> {
     const unresolved: Array<{beeId: string; generation: number}> = [];
+    for (const retired of store.retireTmuxSubstrate()) {
+      this.log(`boot.tmux_retired bee=${retired.beeId}${retired.generation != null ? ` gen=${retired.generation} pid=${retired.pid ?? "-"} pane_left_running=true` : ""}`);
+    }
     for (const bee of store.listBees()) {
       const rt = store.currentRuntime(bee.id);
       if (!rt || rt.pid == null || rt.pidStartedAt == null) continue;
@@ -2407,7 +2362,6 @@ export class HiveDaemon {
         const beeId = this.requireBee(params);
         if (verb === "mail.batching.get") return this.mustStore().mailBatchingPolicy(beeId);
         if (typeof params.enabled !== "boolean") throw new RpcError("invalid_request", "enabled must be boolean");
-        if (params.enabled && this.mustStore().getBee(beeId)?.substrate === "tmux") throw new RpcError("mail_batching_unsupported", "tmux cannot guarantee fresh digest turns");
         return this.withIdempotency(verb, params, () => this.mustStore().setMailBatchingPolicy(beeId, params.enabled as boolean));
       }
       case "mail.batch.resolve": {
@@ -2435,10 +2389,8 @@ export class HiveDaemon {
       case "mail.humanFirst.set":
         if (!conn.humanPolicyAuthority) throw new RpcError("human_chat_unauthorized", "Policy changes require the registered Apiary authority");
         if (typeof params.enabled !== "boolean") throw new RpcError("invalid_request", "enabled must be boolean");
-        if (params.enabled && this.mustStore().getBee(this.requireBee(params))?.substrate === "tmux") throw new RpcError("human_first_unsupported", "tmux cannot guarantee fresh human turns");
         return this.mustStore().setHumanFirstPolicy(this.requireBee(params), params.enabled);
       case "send":
-        if (conn.humanChat?.humanFirst === true && this.mustStore().getBee(this.param(params, "beeId"))?.substrate === "tmux") throw new RpcError("human_first_unsupported", "tmux cannot guarantee fresh human turns");
         this.mustStore().assertHumanChatBinding(conn.humanChat, this.param(params, "body"), this.param(params, "beeId"), this.idempotencyKeyOf(params) ?? undefined);
         return this.withIdempotency(verb, params, () => this.rpcSend(params, conn.humanChat));
       case "mail.cancel": {
@@ -3984,20 +3936,20 @@ export class HiveDaemon {
   // -------------------------------------------------------------------------
 
   /** Bee with a registry Cell (active or retained). Capture uses this; spawn/legacy remove do not. */
-  private requireCellBee(params: Record<string, unknown>): { beeId: string; cell: CellDriver; cellId: string | null } {
+  private requireCellBee(params: Record<string, unknown>): { beeId: string; cell: CellService; cellId: string | null } {
     const beeId = this.requireBee(params);
     const bee = this.mustStore().getBee(beeId);
     const row = bee?.cellId ? this.mustStore().getCell(bee.cellId) : null;
     if (!row && bee?.substrate !== "cell") {
       throw new RpcError("invalid_request", `bee ${beeId} is on substrate '${bee?.substrate}', not cell`);
     }
-    const driver = this.driver;
-    if (!driver) throw new RpcError("node_stopped", "daemon is shutting down");
-    return { beeId, cell: driver.cell, cellId: row && row.state !== "removed" ? row.id : null };
+    const cell = this.cells;
+    if (!cell) throw new RpcError("node_stopped", "daemon is shutting down");
+    return { beeId, cell, cellId: row && row.state !== "removed" ? row.id : null };
   }
 
   /** Legacy `cell.remove` only: an active (or evicted) Cell allocation. Retained cells use `cell.retained.remove`. */
-  private requireActiveCellBee(params: Record<string, unknown>): { beeId: string; cell: CellDriver; cellId: string } {
+  private requireActiveCellBee(params: Record<string, unknown>): { beeId: string; cell: CellService; cellId: string } {
     const beeId = this.requireBee(params);
     const bee = this.mustStore().getBee(beeId);
     const row = bee?.cellId ? this.mustStore().getCell(bee.cellId) : null;
@@ -4007,13 +3959,13 @@ export class HiveDaemon {
         `cell.remove is for an active Cell bee; retained allocations use cell.retained.remove`,
       );
     }
-    const driver = this.driver;
-    if (!driver) throw new RpcError("node_stopped", "daemon is shutting down");
-    return { beeId, cell: driver.cell, cellId: row.id };
+    const cell = this.cells;
+    if (!cell) throw new RpcError("node_stopped", "daemon is shutting down");
+    return { beeId, cell, cellId: row.id };
   }
 
   /**
-   * `cell.capture`: CellDriver.capture verbatim. Refusals and conflicts are
+   * `cell.capture`: CellService.capture verbatim. Refusals and conflicts are
    * RESULTS (the report is the answer — the UI renders a branch picker or a
    * conflict staging state), never RPC errors. The transient ref is named by
    * the idempotency key when given, so a replayed operation is one operation.
@@ -4057,7 +4009,7 @@ export class HiveDaemon {
   }
 
   /**
-   * `cell.remove`: the A2 dirty guard (CellDriver.removeCell) then the bee's
+   * `cell.remove`: the A2 dirty guard (CellService.removeCell) then the bee's
    * lifecycle `delete` in the same call. Refused ⇒ nothing changed, no
    * command. A live runtime is a typed `runtime_refused` — stop it first.
    */
@@ -4251,7 +4203,7 @@ export class HiveDaemon {
         receipts: store.listLandingReceipts(beeId),
         upstream: this.cfg.cellRetention.fetchUpstream ? readUpstreamMirror(row.originRepo, upstreamRootFor(this.cfg.dataDir)) : null,
       });
-      driver.cell.forgetCell(beeId);
+      this.cells?.forgetCell(beeId);
       if (parked == null) {
         const evicted = store.evictCell(row.id, { head: null, bytes: null, reason: "operator" });
         return { cell: evicted, status: "absent", forced: false, report: null, bytes: null, envFiles: [], keptPaths: [] };
@@ -4618,10 +4570,6 @@ export class HiveDaemon {
     if (!targetSpec || !(ADAPTER_NAMES as readonly string[]).includes(targetAdapter)) {
       throw new RpcError("invalid_request", `bee.handoff: unknown target agent '${targetAgent}' (no spawn spec/adapter configured)`);
     }
-    if (bee.substrate === "tmux" && targetAgent !== bee.agent) {
-      // The tmux seat's TUI harness is baked into the pane; only the headless substrates re-resolve the harness per generation.
-      throw new RpcError("invalid_request", `bee.handoff: bee ${beeId} runs the ${bee.agent} TUI on tmux; cross-family handoff is available on hsr/cell bees`);
-    }
     return store.transact(() => {
       const claim = allocationClaim;
       const automatic = targetObj.account === undefined || targetObj.account === "auto";
@@ -4670,9 +4618,7 @@ export class HiveDaemon {
       // The target segment's log lives beside the bee's canonical Honeybee log
       // (never beside a foreign/imported transcript path).
       const nextOrdinal = (store.currentTranscriptSegment(beeId)?.ordinal ?? 0) + 1;
-      const targetSessionLogPath = bee.substrate === "tmux" && !this.cfg.sessionLogDir
-        ? null
-        : segmentSessionLogPath(this.canonicalSessionLogPath(beeId), nextOrdinal);
+      const targetSessionLogPath = segmentSessionLogPath(this.canonicalSessionLogPath(beeId), nextOrdinal);
       const handoff = store.admitBeeHandoff({
         beeId,
         idempotencyKey: key,
@@ -4851,7 +4797,7 @@ export class HiveDaemon {
   private checkoutDirOf(store: CoreStore, beeId: string): string | null {
     const bee = store.getBee(beeId);
     if (!bee) return null;
-    const dir = bee.substrate === "cell" ? (this.driver?.cell.cellOf(beeId)?.paths.spaceDir ?? bee.cwd) : bee.cwd;
+    const dir = bee.substrate === "cell" ? (this.cells?.cellOf(beeId)?.paths.spaceDir ?? bee.cwd) : bee.cwd;
     return dir && existsSync(dir) ? dir : null;
   }
 
@@ -4960,7 +4906,7 @@ export class HiveDaemon {
       if (!bee || bee.substrate !== "cell" || !bee.cellId) return null;
       const row = store.getCell(bee.cellId);
       if (!row || row.state !== "active") return null;
-      const cell = this.driver?.cell.cellOf(beeId);
+      const cell = this.cells?.cellOf(beeId);
       if (!cell) return null;
       return { row, cell };
     };
@@ -4978,9 +4924,9 @@ export class HiveDaemon {
         };
       },
       capture: (beeId, opts) => {
-        const driver = this.driver;
-        if (!driver) throw new Error("daemon is shutting down");
-        return driver.cell.capture(beeId, opts);
+        const cells = this.cells;
+        if (!cells) throw new Error("daemon is shutting down");
+        return cells.capture(beeId, opts);
       },
       landed: (beeId, opts) => {
         const found = cellOf(beeId);
@@ -5214,7 +5160,7 @@ export class HiveDaemon {
       return this.cellExecResultFromOp(store.updateCellOp(op.id, { status: "failed", failure }), false);
     };
     if (busy) return persistRefusal("busy");
-    if (!secret && this.driver?.cell.hasProcess(cell.sourceBeeId, store.currentRuntime(cell.sourceBeeId)?.generation ?? 0)) {
+    if (!secret && this.cellRuntimeLive(cell.sourceBeeId, store.currentRuntime(cell.sourceBeeId)?.generation ?? 0)) {
       return persistRefusal("cell_runtime_live");
     }
     const op = existing ?? store.putCellOp({
@@ -5346,7 +5292,7 @@ export class HiveDaemon {
     }
     const driver = this.driver;
     if (!driver) throw new RpcError("node_stopped", "daemon is shutting down");
-    if (driver.cell.hasProcess(cell.sourceBeeId, store.currentRuntime(cell.sourceBeeId)?.generation ?? 0)) {
+    if (this.cellRuntimeLive(cell.sourceBeeId, store.currentRuntime(cell.sourceBeeId)?.generation ?? 0)) {
       throw new RpcError("runtime_refused", `cell ${cellId} still has a live Cell runtime`);
     }
     const op = existing ?? store.putCellOp({ cellId, kind: "remove", idempotencyKey: key, requestHash: hash });
@@ -5574,7 +5520,7 @@ export class HiveDaemon {
     if (bee && harness !== null) {
       let model: string | null = null;
       if (launchEnv && spec) {
-        const args = bee.substrate === "tmux" ? (bee.args ?? []) : composeSpawn(spec, harness, bee).args;
+        const args = composeSpawn(spec, harness, bee).args;
         const context = this.claudeContextLaunchFor(bee, args, launchEnv);
         model = argValue(composeArgv(grammarFor("claude"), [args, context.modelArgs]), "--model") ?? claudeHomeModel(launchEnv) ?? null;
       }
@@ -7078,11 +7024,8 @@ export class HiveDaemon {
 
   private rpcHealth(params: Record<string, unknown> = {}): HealthResult {
     const store = this.mustStore();
-    const cleanup = store.tmuxCleanupCounts();
     return {
       ...(this.identityRecovery.counts(Date.now()).overdue ? {identityDiagnostic: {warning: "process_identity_unresolved" as const, count: this.identityRecovery.counts(Date.now()).overdue}} : {}),
-      ...(cleanup.retained ? {tmuxCleanupRetained: cleanup.retained} : {}),
-      ...(cleanup.informational ? {tmuxCleanupInformational: cleanup.informational} : {}),
       protocol: PROTOCOL,
       pid: process.pid,
       startedAt: this.startedAt,

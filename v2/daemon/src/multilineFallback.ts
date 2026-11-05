@@ -112,15 +112,9 @@ export class MultilineFallback {
     if (fallback.pointer && this.driver.planDeliveryConfirmation?.(message.beeId, generation, message.id, fallback.pointer) != null) {
       return { handled: false, accepted: false, confirmationBody: fallback.pointer };
     }
-    const pane = this.driver.deliveryPane?.(message.beeId, generation);
-    if (bee.substrate === "tmux" && !pane) {
-      this.store.transitionMultilineFallback(message.id, "ready", "held", {detail: "delivery_pane_identity_unavailable"});
-      return {handled: true, accepted: false};
-    }
-    const paneInput = pane ? {code: "pane_input_unknown" as const, ...pane, generation, since: Date.now(), reason: "single_attempt_injection_in_progress"} : undefined;
-    fallback = this.store.transitionMultilineFallback(message.id, "ready", "in_flight", { generation, attempts: (fallback.attempts ?? 0) + 1, attemptPhase: "injecting", ...(paneInput ? {paneInput} : {}) })!;
+    fallback = this.store.transitionMultilineFallback(message.id, "ready", "in_flight", { generation, attempts: (fallback.attempts ?? 0) + 1, attemptPhase: "injecting" })!;
     try {
-      const outcome = this.driver.deliver(message.beeId, generation, message.id, fallback.pointer!, { singleAttempt: true, ...(pane ? {expectedPane: pane} : {}) });
+      const outcome = this.driver.deliver(message.beeId, generation, message.id, fallback.pointer!, { singleAttempt: true });
       if (outcome.accepted) {
         return { handled: true, accepted: this.complete(message, fallback, source), generation: fallback.generation! };
       }
@@ -128,7 +122,6 @@ export class MultilineFallback {
       const cleared = outcome.attemptPhase === "before_enter_cleared" || outcome.detail === "delivery_not_attempted";
       this.store.transitionMultilineFallback(message.id, "in_flight", cleared ? "ready" : "unknown", {
         detail: outcome.detail ?? "delivery_pointer_outcome_unknown", ...(outcome.attemptPhase ? {attemptPhase: outcome.attemptPhase} : cleared ? {attemptPhase: "before_enter_cleared" as const} : {}),
-        ...(paneInput ? {paneInput: {...paneInput, reason: outcome.detail ?? "delivery_pointer_outcome_unknown", ...(cleared || outcome.attemptPhase === "enter_attempted" && outcome.accepted ? {clearedAt: Date.now()} : {})}} : {}),
       });
     } catch {
       this.store.transitionMultilineFallback(message.id, "in_flight", "unknown", { detail: "delivery_pointer_outcome_unknown" });
@@ -138,7 +131,7 @@ export class MultilineFallback {
 
   private complete(message: MessageRow, fallback: DeliveryFallback, source: TurnTriggerSource): boolean {
     if (fallback.generation === null) return false;
-    return this.store.completeMultilineFallback(message.id, fallback.generation, source, !fallback.paneInput || this.driver.deliveryPaneClear?.(message.beeId, fallback.generation) === true).applied;
+    return this.store.completeMultilineFallback(message.id, fallback.generation, source, !fallback.paneInput).applied;
   }
 
   cleanupDeleted(): number {

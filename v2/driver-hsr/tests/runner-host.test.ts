@@ -1,7 +1,7 @@
 /**
  * WP5 runner-host separation: a daemon restart must not kill an hsr runtime
  * or degrade its delivery. The runtime lives under a detached host that owns
- * the agent's pipes; a "restarted daemon" (a fresh HsrDriver over the same
+ * the agent's pipes; a "restarted daemon" (a fresh RuntimeHost over the same
  * dirs) re-adopts by host pid identity at FULL capability — same agent
  * process, working deliver, observed turns — where the old direct-child
  * design lost the pipes and rotated the generation on the next message
@@ -14,7 +14,7 @@ import { test } from "node:test";
 import { mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { HsrDriver, type SpawnSpec } from "../src/index.ts";
+import { RuntimeHost, type SpawnSpec } from "../src/index.ts";
 import { codexAdapter, stubAdapter, type HarnessAdapter } from "../../adapters/src/index.ts";
 import type { DriverObservation } from "../../harness/src/driver.ts";
 import { fixtureRuntimeIdentity, persistFixtureProcess, AGENT_PATH, drainUntil as drainDriverUntil, ofKind, pidAlive, sleep } from "./helpers.ts";
@@ -173,15 +173,15 @@ function processCommand(pid: number): string {
 }
 
 function drainUntil(
-  driver: HsrDriver,
+  driver: RuntimeHost,
   predicate: (events: DriverObservation[]) => boolean,
   timeoutMs = HOST_TEST_TIMEOUT_MS,
 ): Promise<DriverObservation[]> {
   return drainDriverUntil(driver, predicate, timeoutMs);
 }
 
-function makeDriver(dir: string, adapter: HarnessAdapter = stubAdapter, onRuntimeReady?: (beeId: string, pid: number | null) => void): HsrDriver {
-  return new HsrDriver({
+function makeDriver(dir: string, adapter: HarnessAdapter = stubAdapter, onRuntimeReady?: (beeId: string, pid: number | null) => void): RuntimeHost {
+  return new RuntimeHost({
     onRuntimeReady,
     runtimeIdentity: fixtureRuntimeIdentity(dir),
     sessionLogDir: join(dir, "logs"),
@@ -263,11 +263,8 @@ test("host delivery refuses before encoding and distinguishes write throws from 
     pendingDeliveries: Set<number>;
     confirmedDeliveries: Set<number>;
     stopCause: null;
-    hostStyle: true;
     socketBroken: boolean;
     socket: SocketProbe | null;
-    legacySharedObservation: boolean;
-    outboundPending: string[];
     pendingWrites: string[];
   };
   const driver = makeDriver(dir, adapter);
@@ -285,11 +282,8 @@ test("host delivery refuses before encoding and distinguishes write throws from 
     pendingDeliveries: new Set<number>(),
     confirmedDeliveries: new Set<number>(),
     stopCause: null,
-    hostStyle: true,
     socketBroken: false,
     socket: null,
-    legacySharedObservation: false,
-    outboundPending: [],
     pendingWrites: [],
   };
   procs.set(proc.beeId, proc);
@@ -329,8 +323,8 @@ test("host delivery refuses before encoding and distinguishes write throws from 
   procs.delete(proc.beeId);
 });
 
-function makeCodexDriver(dir: string): HsrDriver {
-  return new HsrDriver({
+function makeCodexDriver(dir: string): RuntimeHost {
+  return new RuntimeHost({
     runtimeIdentity: fixtureRuntimeIdentity(dir),
     sessionLogDir: join(dir, "logs"),
     stopKillGraceMs: 400,
@@ -368,7 +362,7 @@ test("a source checkout defaults to the sibling TypeScript runner-host entry", a
 test("an explicit hostCommand remains a complete caller-owned override", async () => {
   const dir = mkdtempSync(join(tmpdir(), "hb-v2-runner-override-"));
   let receivedConfigPath: string | null = null;
-  const driver = new HsrDriver({
+  const driver = new RuntimeHost({
     sessionLogDir: join(dir, "logs"),
     stopKillGraceMs: 400,
     hostCommand(configPath) {
@@ -418,14 +412,14 @@ async function waitForJournal(path: string, predicate: (text: string) => boolean
   }
 }
 
-function checkpointOf(driver: HsrDriver, beeId: string): number {
+function checkpointOf(driver: RuntimeHost, beeId: string): number {
   const evidence = driver.observeRecoveryCursors().find((row) => row.beeId === beeId);
   assert.ok(evidence, `missing recovery cursor for ${beeId}`);
   return evidence.cursor;
 }
 
 async function deliverUntilAccepted(
-  driver: HsrDriver,
+  driver: RuntimeHost,
   beeId: string,
   generation: number,
   messageId: number,
@@ -443,7 +437,7 @@ async function deliverUntilAccepted(
 test("daemon restart: the runtime survives and the successor daemon delivers at full capability", async () => {
   const dir = mkdtempSync(join(tmpdir(), "hb-v2-runner-host-"));
   const first = makeDriver(dir);
-  let second: HsrDriver | null = null;
+  let second: RuntimeHost | null = null;
   try {
     first.start("bee-r", 1);
     await drainUntil(first, (e) => ofKind(e, "booted").length > 0);
@@ -504,7 +498,7 @@ test("daemon restart: the runtime survives and the successor daemon delivers at 
 test("adoption replays a runner-persisted completion missed by the dead daemon", async () => {
   const dir = mkdtempSync(join(tmpdir(), "hb-v2-runner-recovery-"));
   const first = makeDriver(dir);
-  let second: HsrDriver | null = null;
+  let second: RuntimeHost | null = null;
   try {
     first.start("bee-gap", 1);
     await drainUntil(first, (events) => ofKind(events, "turn_ended").length > 0);
@@ -538,7 +532,7 @@ test("adoption replays a runner-persisted completion missed by the dead daemon",
 test("recovery replay after the completion fold is idempotent", async () => {
   const dir = mkdtempSync(join(tmpdir(), "hb-v2-runner-recovery-"));
   const first = makeDriver(dir);
-  let second: HsrDriver | null = null;
+  let second: RuntimeHost | null = null;
   try {
     first.start("bee-dupe", 1);
     await drainUntil(first, (events) => ofKind(events, "turn_ended").length > 0);
@@ -576,7 +570,7 @@ test("recovery replay after the completion fold is idempotent", async () => {
 test("recovery preserves journal order when completion is followed by a newer turn start", async () => {
   const dir = mkdtempSync(join(tmpdir(), "hb-v2-runner-recovery-"));
   const first = makeDriver(dir);
-  let second: HsrDriver | null = null;
+  let second: RuntimeHost | null = null;
   try {
     first.start("bee-newer", 1);
     await drainUntil(first, (events) => ofKind(events, "turn_ended").length > 0);
@@ -618,7 +612,7 @@ test("missing or generation-corrupt recovery evidence fails closed without manuf
   for (const corruption of ["missing-journal", "wrong-generation"] as const) {
     const dir = mkdtempSync(join(tmpdir(), "hb-v2-runner-recovery-"));
     const first = makeDriver(dir);
-    let second: HsrDriver | null = null;
+    let second: RuntimeHost | null = null;
     try {
       const beeId = `bee-${corruption}`;
       first.start(beeId, 1);
@@ -659,7 +653,7 @@ test("missing or generation-corrupt recovery evidence fails closed without manuf
 test("a genuinely long-running silent turn stays running across adoption", async () => {
   const dir = mkdtempSync(join(tmpdir(), "hb-v2-runner-recovery-"));
   const first = makeDriver(dir);
-  let second: HsrDriver | null = null;
+  let second: RuntimeHost | null = null;
   try {
     first.start("bee-silent", 1);
     await drainUntil(first, (events) => ofKind(events, "turn_ended").length > 0);
@@ -696,7 +690,7 @@ test("a genuinely long-running silent turn stays running across adoption", async
 test("Codex thread/status idle plus turn/completed maps through adoption to one turn end", async () => {
   const dir = mkdtempSync(join(tmpdir(), "hb-v2-codex-recovery-"));
   const first = makeCodexDriver(dir);
-  let second: HsrDriver | null = null;
+  let second: RuntimeHost | null = null;
   try {
     first.start("bee-codex", 1);
     await drainUntil(first, (events) => ofKind(events, "turn_ended").length > 0);
@@ -728,8 +722,8 @@ test("Codex thread/status idle plus turn/completed maps through adoption to one 
 test("Codex adoption restores the durable thread and active turn, then confirms steer and idle delivery", async () => {
   const dir = mkdtempSync(join(tmpdir(), "hb-v2-codex-adopt-context-"));
   const first = makeCodexDriver(dir);
-  let second: HsrDriver | null = null;
-  let third: HsrDriver | null = null;
+  let second: RuntimeHost | null = null;
+  let third: RuntimeHost | null = null;
   try {
     first.start("bee-codex-adopt", 1);
     await drainUntil(first, (events) => ofKind(events, "turn_ended").length > 0);
@@ -813,7 +807,7 @@ test("adoption with dead host artifacts falls back to refusing, never a phantom 
 test("quiet final assistant evidence survives a restart before turn completion", async () => {
   const dir = mkdtempSync(join(tmpdir(), "hb-v2-quiet-recovery-"));
   const first = makeCodexDriver(dir);
-  let second: HsrDriver | null = null;
+  let second: RuntimeHost | null = null;
   try {
     first.start("bee-quiet", 1);
     await drainUntil(first, events => ofKind(events, "turn_ended").length > 0);
@@ -863,7 +857,7 @@ test("runtime confinement observes synthetic readiness and adopted runner childr
   const callback = (beeId: string, pid: number | null) => {observed.push({beeId, pid});};
   const adapter = {...stubAdapter, readyAtSpawn: true, parseLine: () => []} satisfies HarnessAdapter;
   const first = makeDriver(dir, adapter, callback);
-  let second: HsrDriver | undefined;
+  let second: RuntimeHost | undefined;
   try {
     first.start("bee-confinement", 1);
     await drainUntil(first, events => events.some(event => event.kind === "booted" && event.synthetic === true));

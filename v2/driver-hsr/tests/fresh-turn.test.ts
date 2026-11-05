@@ -5,14 +5,14 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DeliveryReceipts, type DeliveryStatus } from "../src/delivery-receipts.ts";
-import { HsrDriver } from "../src/driver.ts";
+import { RuntimeHost } from "../src/driver.ts";
 import { claudeAdapter, codexAdapter } from "../../adapters/src/index.ts";
 
 for (const adapter of [claudeAdapter, codexAdapter({ cwd: "/fixture" })]) {
   test(`${adapter.harness}: fresh delivery refuses known active without writing`, t => {
     const dir = mkdtempSync(join(tmpdir(), "fresh-turn-"));
     t.after(() => rmSync(dir, { recursive: true, force: true }));
-    const driver = new HsrDriver({ sessionLogDir: join(dir, "logs"), resolve: () => { throw new Error("no spawn"); } });
+    const driver = new RuntimeHost({ sessionLogDir: join(dir, "logs"), resolve: () => { throw new Error("no spawn"); } });
     const writes: string[] = [];
     const proc = {
       generation: 1, phase: "running", adapter, sessionId: "thread", turnId: "turn",
@@ -32,12 +32,12 @@ for (const adapter of [claudeAdapter, codexAdapter({ cwd: "/fixture" })]) {
 test("codex: fresh start refusal remains unconsumed and a stale steer plan cannot write", t => {
   const dir = mkdtempSync(join(tmpdir(), "fresh-refusal-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
-  const driver = new HsrDriver({ sessionLogDir: join(dir, "logs"), resolve: () => { throw new Error("no spawn"); } });
+  const driver = new RuntimeHost({ sessionLogDir: join(dir, "logs"), resolve: () => { throw new Error("no spawn"); } });
   const adapter = codexAdapter({ cwd: dir });
   const frames: string[] = [];
   const proc = {
     beeId: "bee", pid: 1, generation: 1, phase: "idle", adapter, sessionId: "thread", turnId: null,
-    realEvidence: true, hostStyle: true, outboundPending: [], pendingWrites: [],
+    realEvidence: true, pendingWrites: [],
     processIdentity: { pid: 1, birth: "fixture", bootId: "fixture" },
     deliveryProtocol: { authenticated: true, supported: true, legacy: false, replies: new Map<number, DeliveryStatus>(), pending: new Set<number>() },
     turn: { messageIds: [] as number[] },

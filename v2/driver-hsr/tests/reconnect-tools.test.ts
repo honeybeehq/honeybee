@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { HsrDriver } from "../src/index.ts";
+import { RuntimeHost } from "../src/index.ts";
 import { codexAdapter } from "../../adapters/src/index.ts";
 import { drainUntil } from "./helpers.ts";
 
@@ -16,8 +16,8 @@ test("reconnect uses the existing host/thread, fences send, and recovers receipt
     sessionLogDir: join(dir, "logs"),
     resolve: () => ({ adapter: codexAdapter({ cwd: dir }), command: process.execPath, args: [fakeCodex], cwd: dir, env: { ...process.env, FAKE_CODEX_RPC_LOG: log } }),
   };
-  const driver = new HsrDriver(config);
-  let adopted: HsrDriver | null = null;
+  const driver = new RuntimeHost(config);
+  let adopted: RuntimeHost | null = null;
   t.after(() => { adopted?.disposeAll(); driver.disposeAll(); rmSync(dir, { recursive: true, force: true }); });
   driver.start("bee", 1);
   await drainUntil(driver, events => events.some(e => e.kind === "turn_ended"), 60_000);
@@ -43,7 +43,7 @@ test("reconnect uses the existing host/thread, fences send, and recovers receipt
   driver.observe();
   const cursor = driver.observeRecoveryCursors().at(-1)?.cursor ?? 0;
   driver.detachAll();
-  adopted = new HsrDriver(config);
+  adopted = new RuntimeHost(config);
   assert.equal(adopted.adopt("bee", 1, identity.pid, identity.pidStartedAt, "idle", cursor, result.threadId), true);
   // The durable response settles even when adoption's socket is not usable yet.
   const recoveredProc = (adopted as unknown as { procs: Map<string, { socketBroken: boolean }> }).procs.get("bee")!;
@@ -59,7 +59,7 @@ test("reconnect uses the existing host/thread, fences send, and recovers receipt
 
 test("reconnect refuses a real active turn and legacy host recovery evidence", async t => {
   const dir = mkdtempSync(join(tmpdir(), "hb-reconnect-refuse-"));
-  const driver = new HsrDriver({ sessionLogDir: join(dir, "logs"), resolve: () => ({ adapter: codexAdapter({ cwd: dir }), command: process.execPath, args: [fakeCodex], cwd: dir }) });
+  const driver = new RuntimeHost({ sessionLogDir: join(dir, "logs"), resolve: () => ({ adapter: codexAdapter({ cwd: dir }), command: process.execPath, args: [fakeCodex], cwd: dir }) });
   t.after(() => { driver.disposeAll(); rmSync(dir, { recursive: true, force: true }); });
   driver.start("bee", 1);
   await drainUntil(driver, events => events.some(e => e.kind === "turn_ended"), 60_000);
@@ -79,7 +79,7 @@ test("reconnect refuses a real active turn and legacy host recovery evidence", a
 test("native config rejection fails explicitly without reload or session replacement", async t => {
   const dir = mkdtempSync(join(tmpdir(), "hb-reconnect-native-refusal-"));
   const log = join(dir, "rpc.jsonl");
-  const driver = new HsrDriver({ sessionLogDir: join(dir, "logs"), resolve: () => ({ adapter: codexAdapter({ cwd: dir }), command: process.execPath, args: [fakeCodex], cwd: dir, env: { ...process.env, FAKE_CODEX_REJECT_RECONNECT: "1", FAKE_CODEX_RPC_LOG: log } }) });
+  const driver = new RuntimeHost({ sessionLogDir: join(dir, "logs"), resolve: () => ({ adapter: codexAdapter({ cwd: dir }), command: process.execPath, args: [fakeCodex], cwd: dir, env: { ...process.env, FAKE_CODEX_REJECT_RECONNECT: "1", FAKE_CODEX_RPC_LOG: log } }) });
   t.after(() => { driver.disposeAll(); rmSync(dir, { recursive: true, force: true }); });
   driver.start("bee", 1);
   await drainUntil(driver, events => events.some(e => e.kind === "turn_ended"), 60_000);

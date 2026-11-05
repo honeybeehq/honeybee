@@ -5,7 +5,7 @@ import {openCoreStore,replayAudit} from '../../v2/core/src/index.ts';
 import {DaemonCore} from '../../v2/daemon/src/loops.ts';
 import {DeliveryFiles} from '../../v2/daemon/src/deliveryFile.ts';
 import {MultilineFallback} from '../../v2/daemon/src/multilineFallback.ts';
-import {HsrDriver} from '../../v2/driver-hsr/src/index.ts';
+import {RuntimeHost} from '../../v2/driver-hsr/src/index.ts';
 import {codexAdapter} from '../../v2/adapters/src/index.ts';
 import {fixtureRuntimeIdentity,sleep,pidAlive} from '../../v2/driver-hsr/tests/helpers.ts';
 assert(process.env.TMPDIR?.startsWith('/var/tmp/'));
@@ -17,7 +17,7 @@ for(const mode of ['child-umask','steer-refused','deterministic-refusal','oversi
  const work=join(root,'work-'+mode);mkdirSync(work,{mode:0o700});
  const store=openCoreStore(dir+'.sqlite',{now:()=>clock});
  const adapter=codexAdapter({cwd:work});if(mode==='oversize-nonconfirming')adapter.confirmsDelivery=false;
- const driver=new HsrDriver({now:()=>clock,random:()=>0.5,sessionLogDir:dir,runnersDir:join(dir,'runners'),runtimeIdentity:fixtureRuntimeIdentity(dir),resolve:()=>({adapter,command:process.execPath,args:[mode==='child-umask'?maskFake:fake],cwd:work,env:{...process.env,H1C_WRITES:writes,...(mode==='child-umask'?{H1C_MASK_PROBE:root}:{}),...(mode==='steer-refused'?{H1C_REFUSE_STEER:'yes',H1C_TURN_MS:'1000'}:{}),...(mode==='deterministic-refusal'?{H1C_REFUSE_ALL:'yes'}:{}),...(mode.startsWith('unknown-pointer')?{H1C_ACK:'never'}:{})}})});
+ const driver=new RuntimeHost({now:()=>clock,random:()=>0.5,sessionLogDir:dir,runnersDir:join(dir,'runners'),runtimeIdentity:fixtureRuntimeIdentity(dir),resolve:()=>({adapter,command:process.execPath,args:[mode==='child-umask'?maskFake:fake],cwd:work,env:{...process.env,H1C_WRITES:writes,...(mode==='child-umask'?{H1C_MASK_PROBE:root}:{}),...(mode==='steer-refused'?{H1C_REFUSE_STEER:'yes',H1C_TURN_MS:'1000'}:{}),...(mode==='deterministic-refusal'?{H1C_REFUSE_ALL:'yes'}:{}),...(mode.startsWith('unknown-pointer')?{H1C_ACK:'never'}:{})}})});
  const deliveryRoot=join(root,'delivery-'+mode);mkdirSync(deliveryRoot,{mode:0o700});
  const core=new DaemonCore({store,driver,now:()=>clock,random:()=>0.5,policy:{bootHangTimeoutSteps:500_000,commandsPerStep:8,i1DeadlineSteps:540_000},multilineFallback:{root:deliveryRoot,worktrees:()=>[work],files:new DeliveryFiles(undefined,root)},log:()=>{}});let pid;
  const tick=async()=>{clock+=100;core.step();await sleep(5);};

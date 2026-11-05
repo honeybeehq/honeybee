@@ -31,7 +31,7 @@ test("real unshare peer is refused by a disposable daemon while host CLI still s
     try { assert.equal((await relay.request<HealthResult>("health", {})).confinement?.strict, false); }
     finally { relay.close(); }
   }
-  for (const params of [{substrate: "hsr"}, {substrate: "tmux"}, {cwd: rig.dir}]) {
+  for (const params of [{substrate: "hsr"}, {cwd: rig.dir}]) {
     const result = await client.request<SpawnResult>("spawn", {name: `host-${Math.random()}`, agent: "stub", account: null, cwd: rig.dir, ...params});
     assert.equal(typeof result.commandId, "number");
   }
@@ -42,7 +42,6 @@ try {
  const requests = [
   ['spawn',{name:'escape',agent:'stub'}],
   ['spawn',{name:'escape',agent:'stub',substrate:'hsr'}],
-  ['spawn',{name:'escape',agent:'stub',substrate:'tmux'}],
   ['spawn',{name:'escape',agent:'stub',substrate:'cell',cell:{sandbox:false}}],
   ['spawn',{name:'escape',agent:'stub',substrate:'cell',cwd:'/tmp'}],
   ['spawn',{name:'escape',agent:'stub',substrate:'cell',node:'other'}],
@@ -56,7 +55,7 @@ try {
 } finally {c.close();}`;
   const {stdout} = await exec("unshare", ["-U", process.execPath, "--input-type=module", "-e", script], {timeout: 20000});
   const result = JSON.parse(stdout);
-  assert.deepEqual(result.codes, Array(10).fill("confined_peer_refused"));
+  assert.deepEqual(result.codes, Array(9).fill("confined_peer_refused"));
   assert.equal(result.inbox, "confined_peer_refused");
   const challenge = await client.request<import("../src/localRpcTrust.ts").LocalTrustChallenge>("rpc.localTrust.challenge", {});
   const secret = readFileSync(keyFile);

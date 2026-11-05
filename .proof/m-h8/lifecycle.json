@@ -1,0 +1,374 @@
+{
+  "timestamp": "2026-11-05T10:12:19.907Z",
+  "hostname": "trmd-metal-3",
+  "node": "v24.21.0",
+  "root": "/home/trmd/.hive/v2/cells/rebuild-m-h8-runtime-host-c762fb4c68c8/github-com-honeybeehq-honeybee-a9015b303498-space-c762fb4c68c8",
+  "dataDir": "/home/trmd/.hive/v2/tmp/3e7350d6-83fd-4961-bb8b-078a7d411c81/hb-v2-daemon-4c8UzZ",
+  "ok": true,
+  "steps": [
+    {
+      "at": 1005,
+      "harness": "stub",
+      "substrate": "hsr",
+      "step": "spawn",
+      "ok": true,
+      "generation": 1,
+      "pid": 2318473
+    },
+    {
+      "at": 1114,
+      "harness": "stub",
+      "substrate": "hsr",
+      "step": "send",
+      "ok": true,
+      "messageId": 1,
+      "lastOutputAt": 1793873532133
+    },
+    {
+      "at": 1220,
+      "harness": "stub",
+      "substrate": "hsr",
+      "step": "interrupt",
+      "ok": true,
+      "outcome": {
+        "beeId": "968ce856-cb50-4dcd-8908-302470925e0b",
+        "generation": 1,
+        "interrupted": true
+      }
+    },
+    {
+      "at": 1431,
+      "harness": "stub",
+      "substrate": "hsr",
+      "step": "stop",
+      "ok": true,
+      "exitCause": "stopped_by_user",
+      "pidGone": true
+    },
+    {
+      "at": 1899,
+      "harness": "stub",
+      "substrate": "hsr",
+      "step": "revive",
+      "ok": true,
+      "generation": 2,
+      "pid": 2318823
+    },
+    {
+      "at": 2002,
+      "harness": "stub",
+      "substrate": "hsr",
+      "step": "send-after-revive",
+      "ok": true,
+      "messageId": 3
+    },
+    {
+      "at": 2627,
+      "harness": "stub",
+      "substrate": "cell",
+      "step": "spawn",
+      "ok": true,
+      "generation": 1,
+      "pid": 2318991
+    },
+    {
+      "at": 2736,
+      "harness": "stub",
+      "substrate": "cell",
+      "step": "send",
+      "ok": true,
+      "messageId": 4,
+      "lastOutputAt": 1793873533752
+    },
+    {
+      "at": 2842,
+      "harness": "stub",
+      "substrate": "cell",
+      "step": "interrupt",
+      "ok": true,
+      "outcome": {
+        "beeId": "c201e007-4d17-4ff3-8145-16524eb0323e",
+        "generation": 1,
+        "interrupted": true
+      }
+    },
+    {
+      "at": 3055,
+      "harness": "stub",
+      "substrate": "cell",
+      "step": "stop",
+      "ok": true,
+      "exitCause": "stopped_by_user",
+      "pidGone": true
+    },
+    {
+      "at": 3539,
+      "harness": "stub",
+      "substrate": "cell",
+      "step": "revive",
+      "ok": true,
+      "generation": 2,
+      "pid": 2319273
+    },
+    {
+      "at": 3649,
+      "harness": "stub",
+      "substrate": "cell",
+      "step": "send-after-revive",
+      "ok": true,
+      "messageId": 6
+    },
+    {
+      "at": 3909,
+      "harness": "claude",
+      "substrate": "hsr",
+      "step": "spawn",
+      "ok": true,
+      "generation": 1,
+      "pid": 2319373
+    },
+    {
+      "at": 3974,
+      "harness": "claude",
+      "substrate": "hsr",
+      "step": "send",
+      "ok": true,
+      "messageId": 7,
+      "lastOutputAt": 1793873535013
+    },
+    {
+      "at": 4234,
+      "harness": "claude",
+      "substrate": "hsr",
+      "step": "interrupt",
+      "ok": true,
+      "outcome": {
+        "beeId": "4f27a43e-fc87-4620-85ee-b1b190469ed6",
+        "generation": 1,
+        "interrupted": true
+      }
+    },
+    {
+      "at": 4445,
+      "harness": "claude",
+      "substrate": "hsr",
+      "step": "stop",
+      "ok": true,
+      "exitCause": "stopped_by_user",
+      "pidGone": true
+    },
+    {
+      "at": 4858,
+      "harness": "claude",
+      "substrate": "hsr",
+      "step": "revive",
+      "ok": true,
+      "generation": 2,
+      "pid": 2319520
+    },
+    {
+      "at": 4911,
+      "harness": "claude",
+      "substrate": "hsr",
+      "step": "send-after-revive",
+      "ok": true,
+      "messageId": 9
+    },
+    {
+      "at": 5209,
+      "harness": "codex",
+      "substrate": "hsr",
+      "step": "spawn",
+      "ok": true,
+      "generation": 1,
+      "pid": 2319557
+    },
+    {
+      "at": 5262,
+      "harness": "codex",
+      "substrate": "hsr",
+      "step": "send",
+      "ok": true,
+      "messageId": 10,
+      "lastOutputAt": 1793873536289
+    },
+    {
+      "at": 5365,
+      "harness": "codex",
+      "substrate": "hsr",
+      "step": "interrupt",
+      "ok": true,
+      "outcome": {
+        "beeId": "91d3933d-a8cd-4bb0-bd78-213473535dc5",
+        "generation": 1,
+        "interrupted": true
+      }
+    },
+    {
+      "at": 5575,
+      "harness": "codex",
+      "substrate": "hsr",
+      "step": "stop",
+      "ok": true,
+      "exitCause": "stopped_by_user",
+      "pidGone": true
+    },
+    {
+      "at": 6020,
+      "harness": "codex",
+      "substrate": "hsr",
+      "step": "revive",
+      "ok": true,
+      "generation": 2,
+      "pid": 2319755
+    },
+    {
+      "at": 6073,
+      "harness": "codex",
+      "substrate": "hsr",
+      "step": "send-after-revive",
+      "ok": true,
+      "messageId": 12
+    },
+    {
+      "at": 6371,
+      "harness": "muse",
+      "substrate": "hsr",
+      "step": "spawn",
+      "ok": true,
+      "generation": 1,
+      "pid": 2319843
+    },
+    {
+      "at": 6426,
+      "harness": "muse",
+      "substrate": "hsr",
+      "step": "send",
+      "ok": true,
+      "messageId": 13,
+      "lastOutputAt": 1793873537453
+    },
+    {
+      "at": 6426,
+      "harness": "muse",
+      "substrate": "hsr",
+      "step": "interrupt",
+      "ok": true,
+      "skipped": "the fake muse replays recorded lines and has no slow turn to interrupt"
+    },
+    {
+      "at": 6633,
+      "harness": "muse",
+      "substrate": "hsr",
+      "step": "stop",
+      "ok": true,
+      "exitCause": "stopped_by_user",
+      "pidGone": true
+    },
+    {
+      "at": 7102,
+      "harness": "muse",
+      "substrate": "hsr",
+      "step": "revive",
+      "ok": true,
+      "generation": 2,
+      "pid": 2319971
+    },
+    {
+      "at": 7156,
+      "harness": "muse",
+      "substrate": "hsr",
+      "step": "send-after-revive",
+      "ok": true,
+      "messageId": 14
+    },
+    {
+      "at": 7501,
+      "harness": "daemon",
+      "substrate": "-",
+      "step": "daemon SIGKILL leaves every runtime alive",
+      "ok": true,
+      "pids": [
+        {
+          "harness": "stub",
+          "pid": 2318823,
+          "alive": true
+        },
+        {
+          "harness": "stub",
+          "pid": 2319273,
+          "alive": true
+        },
+        {
+          "harness": "claude",
+          "pid": 2319520,
+          "alive": true
+        },
+        {
+          "harness": "codex",
+          "pid": 2319755,
+          "alive": true
+        },
+        {
+          "harness": "muse",
+          "pid": 2319971,
+          "alive": true
+        }
+      ]
+    },
+    {
+      "at": 8047,
+      "harness": "daemon",
+      "substrate": "-",
+      "step": "successor adopts",
+      "ok": true,
+      "adopted": 5,
+      "expected": 5
+    },
+    {
+      "at": 8058,
+      "harness": "stub",
+      "substrate": "adopted",
+      "step": "send after daemon restart",
+      "ok": true,
+      "generation": 2,
+      "pid": 2318823
+    },
+    {
+      "at": 8165,
+      "harness": "stub",
+      "substrate": "adopted",
+      "step": "send after daemon restart",
+      "ok": true,
+      "generation": 2,
+      "pid": 2319273
+    },
+    {
+      "at": 8218,
+      "harness": "claude",
+      "substrate": "adopted",
+      "step": "send after daemon restart",
+      "ok": true,
+      "generation": 2,
+      "pid": 2319520
+    },
+    {
+      "at": 8272,
+      "harness": "codex",
+      "substrate": "adopted",
+      "step": "send after daemon restart",
+      "ok": true,
+      "generation": 2,
+      "pid": 2319755
+    },
+    {
+      "at": 8326,
+      "harness": "muse",
+      "substrate": "adopted",
+      "step": "send after daemon restart",
+      "ok": true,
+      "generation": 2,
+      "pid": 2319971
+    }
+  ]
+}

@@ -5,12 +5,12 @@ import type {DatabaseSync} from "node:sqlite";
 import {join} from "node:path";
 import {harness, makeBee} from "../../core/tests/helpers.ts";
 import {makeRig, drainUntil, sleep, AGENT_PATH} from "./helpers.ts";
-import {HsrDriver} from "../src/driver.ts";
+import {RuntimeHost} from "../src/driver.ts";
 import {stubAdapter} from "../../adapters/src/index.ts";
 
 for (const executionMatch of [false, true]) test(`legacy HSR birth requires authenticated CAS even with executionHost match=${executionMatch}`, {timeout: 15000}, async () => {
   const h = harness(), store = h.open(), rig = makeRig({runtimeIdentity: store.runtimeIdentityHooks()});
-  let successor: HsrDriver | null = null;
+  let successor: RuntimeHost | null = null;
   try {
     const {bee} = makeBee(store), generation = store.currentRuntime(bee.id)!.generation;
     rig.driver.start(bee.id, generation);
@@ -26,7 +26,7 @@ for (const executionMatch of [false, true]) test(`legacy HSR birth requires auth
       const status = JSON.parse(readFileSync(paths.status, "utf8"));
       writeFileSync(paths.status, JSON.stringify({...status, hostBirth: exactProcessBirth(proc.pid), executionIntentId: execution.intentId, executionDigest: canonicalDigest(execution as unknown as JsonValue)}));
     }
-    successor = new HsrDriver({...(executionMatch ? {execution: {} as import("../../core/src/executionStart.ts").ExecutionRuntimeHooks, executionStartFor: () => execution, executionHostFor: () => ({pid: proc.pid, birth: exactProcessBirth(proc.pid)!}), resolveExecutionAdapter: () => stubAdapter} : {}), runtimeIdentity: store.runtimeIdentityHooks(), sessionLogDir: join(rig.dir, "logs"), resolve: () => ({adapter: stubAdapter, command: process.execPath, args: [AGENT_PATH], cwd: rig.dir})});
+    successor = new RuntimeHost({...(executionMatch ? {execution: {} as import("../../core/src/executionStart.ts").ExecutionRuntimeHooks, executionStartFor: () => execution, executionHostFor: () => ({pid: proc.pid, birth: exactProcessBirth(proc.pid)!}), resolveExecutionAdapter: () => stubAdapter} : {}), runtimeIdentity: store.runtimeIdentityHooks(), sessionLogDir: join(rig.dir, "logs"), resolve: () => ({adapter: stubAdapter, command: process.execPath, args: [AGENT_PATH], cwd: rig.dir})});
     assert.equal(successor.adopt(bee.id, generation, proc.pid, proc.pidStartedAt), true);
     assert.equal(successor.procOf(bee.id, generation)?.processIdentity, undefined);
     assert.equal(store.runtimeProcessIdentity(bee.id, generation).kind, "legacy");
@@ -37,7 +37,7 @@ for (const executionMatch of [false, true]) test(`legacy HSR birth requires auth
     assert.equal(store.runtimeIdentityHooks().bindLegacy(bee.id, generation, proc.pidStartedAt, binding.identity, "authenticated-host-generation"), false);
     if (executionMatch) {
       successor.detachAll();
-      successor = new HsrDriver({runtimeIdentity: store.runtimeIdentityHooks(), sessionLogDir: join(rig.dir, "logs"), resolve: () => ({adapter: stubAdapter, command: process.execPath, args: [AGENT_PATH], cwd: rig.dir})});
+      successor = new RuntimeHost({runtimeIdentity: store.runtimeIdentityHooks(), sessionLogDir: join(rig.dir, "logs"), resolve: () => ({adapter: stubAdapter, command: process.execPath, args: [AGENT_PATH], cwd: rig.dir})});
       assert.equal(successor.adopt(bee.id, generation, proc.pid, proc.pidStartedAt), true);
     }
     successor.stop(bee.id, generation, "stopped_by_user");
@@ -52,7 +52,7 @@ test("execution host PID and ticks cannot override a bound token from another bo
     assert.equal(current.kind, "present");
     if (current.kind !== "present") throw new Error("Own identity unavailable");
     const contradictory = {pid: current.pid, birth: current.birth, bootId: current.bootId === "" ? "different" : "00000000-0000-4000-8000-000000000000"};
-    const driver = new HsrDriver({
+    const driver = new RuntimeHost({
       runtimeIdentity: {read: () => ({kind: "bound", identity: contradictory, pidStartedAt: 1}), bindLegacy: () => {throw new Error("Bound identity cannot rebind");}},
       execution: {} as import("../../core/src/executionStart.ts").ExecutionRuntimeHooks,
       executionStartFor: () => ({}) as import("../../core/src/executionStart.ts").ExecutionStart,

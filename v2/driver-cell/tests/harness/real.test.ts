@@ -1,7 +1,7 @@
 /**
  * The WP5 invariant gate, cell variant (`npm run v2:harness:real`, spec 05
  * test tier 3): the UNMODIFIED WP2 SimDaemon + six-invariant checker driving
- * the CellDriver — real OS child processes (the WP3 stub agent) running
+ * the Cell host — real OS child processes (the WP3 stub agent) running
  * inside real provisioned cells (fixture origin repo, per-bee spaces).
  *
  * Same fault schedules as the HSR gate: store-connection kills with
@@ -27,8 +27,7 @@ import {
 } from "../../../harness/src/invariants.ts";
 import { Prng } from "../../../harness/src/prng.ts";
 import { stubAdapter } from "../../../adapters/src/index.ts";
-import { CellDriver } from "../../src/driver.ts";
-import { makeOrigin } from "../helpers.ts";
+import { composeCellHost, makeOrigin } from "../helpers.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const AGENT_PATH = join(here, "..", "..", "..", "driver-hsr", "test-agent", "agent.mjs");
@@ -80,15 +79,9 @@ async function runCellSim(seed: number, cfg: RunConfig): Promise<{ violations: V
   const origin = makeOrigin(dir);
   const dbPath = join(dir, "core.sqlite3");
   const prng = new Prng(seed);
-  const driver = new CellDriver({
+  const driver = composeCellHost({
     cellsRoot: join(dir, "cells"),
     nodeKind: "workstation",
-    resolveHarness: () => ({
-      adapter: stubAdapter,
-      command: process.execPath,
-      args: [AGENT_PATH],
-      env: { ...(process.env as Record<string, string>), STUB_TURN_MS: "15", STUB_BOOT_DELAY_MS: "15" },
-    }),
     resolveCell: (beeId: string) => ({
       provision: {
         beeId,
@@ -100,7 +93,15 @@ async function runCellSim(seed: number, cfg: RunConfig): Promise<{ violations: V
       },
       sandbox: null,
     }),
-    hsr: { sessionLogDir: join(dir, "logs"), stopKillGraceMs: cfg.stopKillGraceMs },
+  }, {
+    sessionLogDir: join(dir, "logs"),
+    stopKillGraceMs: cfg.stopKillGraceMs,
+    resolveHarness: () => ({
+      adapter: stubAdapter,
+      command: process.execPath,
+      args: [AGENT_PATH],
+      env: { ...(process.env as Record<string, string>), STUB_TURN_MS: "15", STUB_BOOT_DELAY_MS: "15" },
+    }),
   });
   const injector = new FaultInjector(
     {

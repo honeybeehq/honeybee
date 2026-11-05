@@ -269,6 +269,45 @@ export async function restartDeployedDaemon(context: RestartDaemonContext, provi
   });
 }
 
+export type LiveTmuxRuntime = { id: string; name: string; generation: number; pid: number | null };
+
+export async function liveTmuxRuntimesFromDaemon(node: string, argv: string[], env: NodeJS.ProcessEnv): Promise<LiveTmuxRuntime[]> {
+  const { stdout } = await execFileAsync(node, argv, { timeout: 15_000, env, maxBuffer: 256 * 1024 * 1024 });
+  const parsed = JSON.parse(stdout) as { views?: Array<{ bee?: { id: string; name: string; substrate: string } | null; runtime?: { generation: number; state: string; pid: number | null } | null }> };
+  return (parsed.views ?? [])
+    .filter((row) => row.bee?.substrate === "tmux" && row.runtime != null && row.runtime.state !== "stopped")
+    .map((row) => ({ id: row.bee!.id, name: row.bee!.name, generation: row.runtime!.generation, pid: row.runtime!.pid ?? null }));
+}
+
+export function liveTmuxRuntimes(storePath: string): LiveTmuxRuntime[] {
+  if (!existsSync(storePath)) return [];
+  let db: DatabaseSync | null = null;
+  try {
+    db = new DatabaseSync(storePath, { readOnly: true });
+    db.exec("PRAGMA busy_timeout=2000");
+    if (!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name IN ('bees','runtimes')").all().length) return [];
+    return db.prepare(`SELECT b.id AS id, b.name AS name, r.generation AS generation, r.pid AS pid
+      FROM bees b JOIN runtimes r ON r.bee_id = b.id
+      WHERE b.substrate = 'tmux' AND r.state != 'stopped'
+        AND r.generation = (SELECT MAX(generation) FROM runtimes WHERE bee_id = b.id)
+      ORDER BY b.name, b.id`).all() as LiveTmuxRuntime[];
+  } catch (error) {
+    throw new Error(`deploy: the store is held by a running daemon that did not answer the tmux runtime check; retry once it answers (${error instanceof Error ? error.message : String(error)})`, { cause: error });
+  } finally {
+    db?.close();
+  }
+}
+
+export class DeployTmuxRuntimesLiveError extends Error {
+  readonly code = "DEPLOY_TMUX_RUNTIMES_LIVE";
+  readonly runtimes: LiveTmuxRuntime[];
+  constructor(runtimes: LiveTmuxRuntime[]) {
+    super(`deploy: DEPLOY_TMUX_RUNTIMES_LIVE: this build has no tmux substrate and will not adopt or signal a pane; stop these bees under the running daemon first (hive stop <bee>), then deploy again: ${runtimes.map(r => `${r.name} (${r.id}, generation ${r.generation}${r.pid != null ? `, pid ${r.pid}` : ""})`).join("; ")}`);
+    this.name = "DeployTmuxRuntimesLiveError";
+    this.runtimes = runtimes;
+  }
+}
+
 async function restartAdmittedDaemon({ root, installedDir, sha, log, restorePrevious, assertRollbackSafe }: RestartDaemonContext, provision: boolean): Promise<void> {
   const dataDir = join(root, "..", "v2");
   let daemonLogPath = join(dataDir, "hived.log");
@@ -277,6 +316,9 @@ async function restartAdmittedDaemon({ root, installedDir, sha, log, restorePrev
     if (typeof configured === "string" && isAbsolute(configured)) daemonLogPath = configured;
   } catch {}
   const pin = resolveNodePin(dataDir, process.env, undefined, true);
+  const tmuxRuntimes = await liveTmuxRuntimesFromDaemon(pin.path, [join(root, CURRENT_LINK_NAME, "dist", "cli.js"), "v2", "ls", "--json", "--all", "--data-dir", dataDir], { ...nativeNodeEnv(), ...nodePinEnv(pin) })
+    .catch(() => liveTmuxRuntimes(join(dataDir, "core.sqlite3")));
+  if (tmuxRuntimes.length > 0) throw new DeployTmuxRuntimesLiveError(tmuxRuntimes);
   if (process.platform !== "darwin" && process.platform !== "linux") throw new Error("deploy: unsupported service platform");
   const directory = serviceDirectory();
   const service = join(directory, `${process.env.HIVE_V2_SERVICE_LABEL ?? "dev.honeybee.hive.v2"}.${process.platform === "darwin" ? "plist" : "service"}`);

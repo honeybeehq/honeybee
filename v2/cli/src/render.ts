@@ -588,7 +588,6 @@ export function renderHealth(result: HealthResult): string[] {
     ]),
     joinParts([bold("i1"), `${i1} violations`]),
     ...(result.naming ? [namingHealthLine(result.naming)] : []),
-    ...tmuxCleanupDoctor(result).lines,
   ];
 }
 
@@ -643,9 +642,3 @@ export function taskLine(
   return `${stalePrefix(stale)}${magenta(t.id)}  ${colorTaskStatus(t.status)}  ${t.auto ? cyan("auto") : dim("manual")}  ${dim(`${t.originKind}:${t.originSender}`)}  ${t.title}`;
 }
 
-export function tmuxCleanupDoctor(health: Pick<HealthResult, "tmuxCleanupRetained" | "tmuxCleanupInformational">): {lines: string[]; failed: boolean} {
-  return {lines: [
-    ...(health.tmuxCleanupRetained ? [`warning: tmux_cleanup_retained count=${health.tmuxCleanupRetained}`] : []),
-    ...(health.tmuxCleanupInformational ? [`info: tmux_cleanup_socket_gone_unverifiable count=${health.tmuxCleanupInformational}`] : []),
-  ], failed: !!health.tmuxCleanupRetained};
-}

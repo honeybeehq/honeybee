@@ -177,27 +177,6 @@ test("recovery persists an owned late capture through the store and never replac
   } finally {store.close(); h.cleanup(); rig.cleanup();}
 });
 
-test("health omits zero cleanup counts and distinguishes retained from informational", () => {
-  const h = harness(), store = h.open(), rig = makeDaemonDir();
-  try {
-    const {bee} = makeBee(store);
-    const daemon = new HiveDaemon(loadNodeConfig(rig.dir));
-    const internal = daemon as unknown as {store: CoreStore; rpcHealth(): import("../src/protocol.ts").HealthResult};
-    internal.store = store;
-    const locator = {beeId: bee.id, generation: 1, reason: "ownership-unverified" as const, paneId: "%1", sessionId: "$1", windowId: "@1", socket: {dev: 1, ino: 2, parentDev: 1, parentIno: 3}};
-    assert.equal(Object.hasOwn(internal.rpcHealth(), "tmuxCleanupRetained"), false);
-    assert.equal(Object.hasOwn(internal.rpcHealth(), "tmuxCleanupInformational"), false);
-    store.tmuxCleanupHooks().update(locator, "retained");
-    assert.equal(internal.rpcHealth().tmuxCleanupRetained, 1);
-    assert.equal(Object.hasOwn(internal.rpcHealth(), "tmuxCleanupInformational"), false);
-    store.tmuxCleanupHooks().update(locator, "socket-gone-unverifiable");
-    assert.equal(internal.rpcHealth().tmuxCleanupInformational, 1);
-    assert.equal(Object.hasOwn(internal.rpcHealth(), "tmuxCleanupRetained"), false);
-    store.tmuxCleanupHooks().update(locator, "resolved");
-    assert.equal(Object.hasOwn(internal.rpcHealth(), "tmuxCleanupInformational"), false);
-  } finally {store.close(); h.cleanup(); rig.cleanup();}
-});
-
 for (const preserve of [true, false]) test(`shutdown preserves default ordering and confines early disposal (preserve=${preserve})`, async () => {
   const rig = makeDaemonDir();
   try {

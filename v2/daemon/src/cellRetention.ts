@@ -26,7 +26,7 @@ import { withoutRpcCaller } from "../../core/src/rpcAuditContext.ts";
  *
  * An evicted bee keeps its row, mailbox, transcript, cwd and Cell id. Its next
  * runtime start re-provisions the same path at the recorded HEAD and the row
- * returns to `active` (CellDriver.onCellMaterialized). Only CLEAN Cells are
+ * returns to `active` (CellService.onCellMaterialized). Only CLEAN Cells are
  * ever evicted automatically: no uncommitted changes, no commits the origin
  * lacks, origin reachable. Dirty Cells are listed as held, never evicted.
  * Ignored files that are not rebuildable move to `cell-keep/` on eviction and

@@ -9,7 +9,6 @@ export const RUNNER_SOCKET_SAMPLE = join(`hb-rh-${"0".repeat(16)}`, "stdin.sock"
 
 export interface SocketPlacement {
   socketPath: string;
-  tmuxSocketPath: string;
   runnerSocketDir: string;
   socketDir: string | null;
 }
@@ -41,18 +40,15 @@ export function placeDaemonSockets(
   const defaultSocket = join(dataDir, "hived.sock");
   const explicit = resolve(configuredSocketPath) !== resolve(defaultSocket);
   if (explicit) assertSocketPathFits(configuredSocketPath, "configured daemon");
-  const tmuxDefault = join(dataDir, "tmux.sock");
   const runnerDefault = options.runnerSocketDir ?? tmpdir();
   const socketFits = explicit || socketPathFits(defaultSocket);
-  const tmuxFits = socketPathFits(tmuxDefault);
   const runnerFits = socketPathFits(join(runnerDefault, RUNNER_SOCKET_SAMPLE));
-  if (socketFits && tmuxFits && runnerFits) {
-    return { socketPath: configuredSocketPath, tmuxSocketPath: tmuxDefault, runnerSocketDir: runnerDefault, socketDir: null };
+  if (socketFits && runnerFits) {
+    return { socketPath: configuredSocketPath, runnerSocketDir: runnerDefault, socketDir: null };
   }
   const dir = typed(() => persistentSocketDir(dataDir, RUNNER_SOCKET_SAMPLE, options.bases));
   return {
     socketPath: socketFits ? configuredSocketPath : assertSocketPathFits(join(dir, "hived.sock"), "daemon"),
-    tmuxSocketPath: tmuxFits ? tmuxDefault : assertSocketPathFits(join(dir, "tmux.sock"), "tmux"),
     runnerSocketDir: runnerFits ? runnerDefault : dir,
     socketDir: dir,
   };

@@ -6,7 +6,7 @@ import {join} from "node:path";
 import {test} from "node:test";
 import {openCoreStore} from "../../core/src/index.ts";
 import {stubAdapter} from "../../adapters/src/index.ts";
-import {HsrDriver} from "../src/index.ts";
+import {RuntimeHost} from "../src/index.ts";
 import {inspectProcess, sameProcess} from "../src/psutil.ts";
 import {AGENT_PATH, drainUntil, ofKind, sleep} from "./helpers.ts";
 
@@ -16,13 +16,13 @@ for (const scenario of ["recover", "stamp", "bee", "generation", "host", "journa
     const store = openCoreStore(join(dir, "core.sqlite3"), {ephemeral: true});
     const {bee} = store.createBee({name: "pending", agent: "stub", substrate: "hsr", cwd: dir});
     const hooks = store.runtimeIdentityHooks();
-    const driver = () => new HsrDriver({
+    const driver = () => new RuntimeHost({
       runtimeIdentity: scenario === "gone" ? {...hooks, bindPendingStart: () => false} : hooks,
       sessionLogDir: join(dir, "logs"),
       resolve: () => ({adapter: stubAdapter, command: process.execPath, args: [AGENT_PATH], cwd: dir, env: {STUB_TURN_MS: "5"}}),
     });
     const first = driver();
-    let second: HsrDriver | undefined;
+    let second: RuntimeHost | undefined;
     let impostor: ReturnType<typeof createServer> | undefined;
     let socketPath: string | undefined;
     try {

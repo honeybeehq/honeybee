@@ -102,7 +102,7 @@ for (const state of ["apiary-swap", "absent", "own-paired", "different-id", "dif
       } });
       if (proceeds) {
         await operation;
-        assert.deepEqual((await readFile(calls, "utf8")).trim().split("\n").map(line => JSON.parse(line)[2]), ["install", "stop", "start", "status"]);
+        assert.deepEqual((await readFile(calls, "utf8")).trim().split("\n").map(line => { const argv = JSON.parse(line); return argv[1] === "daemon" ? argv[2] : argv[1]; }), ["ls", "install", "stop", "start", "status"]);
         assert.equal(await currentDeployTarget(root), next.identity.sourceRevision);
       } else {
         await assert.rejects(operation, error => error instanceof DeployReservationHeldError

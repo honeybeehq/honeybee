@@ -18,7 +18,7 @@ import { copyFileSync, existsSync, mkdtempSync, mkdirSync, readFileSync } from "
 import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { HsrDriver, type SpawnSpec } from "./src/index.ts";
+import { RuntimeHost, type SpawnSpec } from "./src/index.ts";
 import { agyAdapter, claudeAdapter, codexAdapter, grokAdapter, grokSpawnPlan, museAdapter, museSpawnPlan, stubAdapter } from "../adapters/src/index.ts";
 import type { DeliverOutcome, DriverObservation } from "../harness/src/driver.ts";
 
@@ -118,7 +118,7 @@ function specFor(): SpawnSpec {
 }
 
 const spec = specFor();
-const driver = new HsrDriver({ sessionLogDir: logDir, resolve: () => specFor() });
+const driver = new RuntimeHost({ sessionLogDir: logDir, resolve: () => specFor() });
 const results: Array<[string, boolean, string]> = [];
 function check(name: string, ok: boolean, detail = ""): void {
   results.push([name, ok, detail]);

@@ -1,22 +1,22 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { join } from "node:path";
-import { CellDriver } from "../src/driver.ts";
 import { codexAdapter } from "../../adapters/src/index.ts";
-import { makeRig } from "./helpers.ts";
+import { composeCellHost, makeRig, type CellHost } from "./helpers.ts";
 import { fixtureRuntimeIdentity, persistFixtureProcess } from "../../driver-hsr/tests/helpers.ts";
 import { waitFor } from "../../daemon/tests/helpers.ts";
 
 test("detached Cell owner reconnects and re-adopts without reprovisioning or changing generation", { timeout: 90_000 }, async t => {
   const rig = makeRig();
-  const make = () => new CellDriver({
+  const make = () => composeCellHost({
     cellsRoot: rig.cellsRoot, nodeKind: "workstation", disableCow: true,
-    resolveHarness: () => ({ adapter: codexAdapter({ cwd: rig.root }), command: process.execPath, args: [new URL("../../driver-hsr/test-agent/fake-codex.mjs", import.meta.url).pathname], env: { ...process.env, CODEX_HOME: join(rig.root, "native") } }),
     resolveCell: beeId => ({ provision: { beeId, originRepo: rig.origin.repo, sha: rig.origin.sha, wrapper: beeId, repoName: "fixture", cellId: "c0ffee" }, sandbox: false }),
-    hsr: { runtimeIdentity: fixtureRuntimeIdentity(rig.root), sessionLogDir: join(rig.root, "logs"), stopKillGraceMs: 400 },
+  }, {
+    runtimeIdentity: fixtureRuntimeIdentity(rig.root), sessionLogDir: join(rig.root, "logs"), stopKillGraceMs: 400,
+    resolveHarness: () => ({ adapter: codexAdapter({ cwd: rig.root }), command: process.execPath, args: [new URL("../../driver-hsr/test-agent/fake-codex.mjs", import.meta.url).pathname], env: { ...process.env, CODEX_HOME: join(rig.root, "native") } }),
   });
   const driver = make();
-  let adopted: CellDriver | null = null;
+  let adopted: CellHost | null = null;
   t.after(() => { adopted?.disposeAll(); driver.disposeAll(); rig.cleanup(); });
   driver.start("bee-reconnect", 1);
   await waitFor(() => driver.observe().some(e => e.kind === "turn_ended"), "cell native idle", 60_000);

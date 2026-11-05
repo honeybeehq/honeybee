@@ -104,7 +104,7 @@ function daemonFixture() {
   return { store, bee, call: (verb: RpcVerb, params: Record<string, unknown>, conn = connection) => internal.dispatch(verb, params, conn), close() { store.close(); rmSync(root, { recursive: true, force: true }); } };
 }
 
-test("daemon keeps policy off by default, protects policy, and rejects tmux enable", () => {
+test("daemon keeps policy off by default and protects policy", () => {
   const r = daemonFixture();
   try {
     assert.equal((r.call("mail.batching.get", { beeId: r.bee.id }) as { enabled: boolean }).enabled, false);
@@ -117,9 +117,6 @@ test("daemon keeps policy off by default, protects policy, and rejects tmux enab
     assert.equal((r.call("mail.batching.set", { beeId: r.bee.id, enabled: true, idempotencyKey: "policy" }) as { deduped: boolean }).deduped, true);
     assert.equal((r.call("mail.batching.set", { beeId: r.bee.id, enabled: false, idempotencyKey: "policy" }) as { enabled: boolean }).enabled, true);
     assert.throws(() => r.call("mail.batching.set", { beeId: r.bee.id, enabled: "true" }), code("invalid_request"));
-    const tmux = r.store.createBee({ name: "legacy", agent: "stub", substrate: "tmux", cwd: r.bee.cwd }).bee;
-    assert.throws(() => r.call("mail.batching.set", { beeId: tmux.id, enabled: true }), code("mail_batching_unsupported"));
-    assert.equal((r.call("mail.batching.set", { beeId: tmux.id, enabled: false }) as { enabled: boolean }).enabled, false);
   } finally { r.close(); }
 });
 

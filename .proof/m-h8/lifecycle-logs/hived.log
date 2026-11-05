@@ -1,0 +1,242 @@
+{"ts":1793873531603,"op":"tmp.policy beeTmpRoot=/home/trmd/.hive/v2/tmp/3e7350d6-83fd-4961-bb8b-078a7d411c81/hb-v2-daemon-4c8UzZ/tmp source=data_dir_default daemonTmp=/home/trmd/.hive/v2/tmp/3e7350d6-83fd-4961-bb8b-078a7d411c81/hb-v2-daemon-4c8UzZ/tmp/daemon nodeCompileCache=/home/trmd/.hive/v2/tmp/3e7350d6-83fd-4961-bb8b-078a7d411c81/hb-v2-daemon-4c8UzZ/node-compile-cache"}
+{"ts":1793873531631,"op":"store.migration.rpc_idempotency_env seen=0 redacted=0 skipped_unparseable=0 skipped_unrecognised=0 complete=true ms=0"}
+{"ts":1793873531635,"op":"security.confinement strict=false bwrap={\"path\":\"/usr/bin/bwrap\",\"setuid\":false}"}
+{"ts":1793873531636,"op":"champions homes=/home/trmd/.hive/v2/tmp/3e7350d6-83fd-4961-bb8b-078a7d411c81/hb-v2-daemon-4c8UzZ/champions store=/home/trmd/.hive/v2/tmp/3e7350d6-83fd-4961-bb8b-078a7d411c81/hb-v2-daemon-4c8UzZ/transcript-objects"}
+{"ts":1793873531636,"op":"transcripts.segments store=/home/trmd/.hive/v2/tmp/3e7350d6-83fd-4961-bb8b-078a7d411c81/hb-v2-daemon-4c8UzZ/transcript-objects max_lines=1024 max_raw_bytes=1048576 projection=8"}
+{"ts":1793873531638,"op":"boot adopted=0 stopped=0 requeued=0 reaped=0 wakes=0"}
+{"ts":1793873531651,"op":"rpc.listen socket=/home/trmd/.hive/v2/tmp/3e7350d6-83fd-4961-bb8b-078a7d411c81/hb-v2-daemon-4c8UzZ/hived.sock"}
+{"ts":1793873531652,"op":"daemon.started pid=2318071 store=/home/trmd/.hive/v2/tmp/3e7350d6-83fd-4961-bb8b-078a7d411c81/hb-v2-daemon-4c8UzZ/core.sqlite3"}
+{"ts":1793873531653,"op":"transcripts.segment.catch_up scheduled=0"}
+{"ts":1793873531852,"op":"cmd.spawn id=1 bee=968ce856-cb50-4dcd-8908-302470925e0b start gen=1"}
+{"ts":1793873532052,"op":"spawn.evidence bee=968ce856-cb50-4dcd-8908-302470925e0b gen=1 kind=booted"}
+{"ts":1793873532053,"op":"obs.booted bee=968ce856-cb50-4dcd-8908-302470925e0b gen=1 pid=2318473"}
+{"ts":1793873532053,"op":"obs.turn_ended bee=968ce856-cb50-4dcd-8908-302470925e0b gen=1"}
+{"ts":1793873532056,"op":"session.recorded bee=968ce856-cb50-4dcd-8908-302470925e0b gen=1 id=stub-2318541"}
+{"ts":1793873532057,"op":"obs.checkpoint bee=968ce856-cb50-4dcd-8908-302470925e0b gen=1 cursor=45"}
+{"ts":1793873532080,"op":"deliver bee=968ce856-cb50-4dcd-8908-302470925e0b msg=1 gen=1 urgency=next"}
+{"ts":1793873532083,"op":"obs.turn_started bee=968ce856-cb50-4dcd-8908-302470925e0b gen=1 synthetic"}
+{"ts":1793873532083,"op":"obs.checkpoint bee=968ce856-cb50-4dcd-8908-302470925e0b gen=1 cursor=84"}
+{"ts":1793873532133,"op":"obs.turn_ended bee=968ce856-cb50-4dcd-8908-302470925e0b gen=1"}
+{"ts":1793873532133,"op":"obs.checkpoint bee=968ce856-cb50-4dcd-8908-302470925e0b gen=1 cursor=173"}
+{"ts":1793873532172,"op":"transcripts.segment.cut bee=968ce856-cb50-4dcd-8908-302470925e0b reason=turn_ended segments=1 lines=5 through=5"}
+{"ts":1793873532181,"op":"deliver bee=968ce856-cb50-4dcd-8908-302470925e0b msg=2 gen=1 urgency=next"}
+{"ts":1793873532182,"op":"obs.turn_started bee=968ce856-cb50-4dcd-8908-302470925e0b gen=1 synthetic"}
+{"ts":1793873532182,"op":"obs.checkpoint bee=968ce856-cb50-4dcd-8908-302470925e0b gen=1 cursor=212"}
+{"ts":1793873532200,"op":"transcripts.segment.cut bee=968ce856-cb50-4dcd-8908-302470925e0b reason=turn_ended segments=1 lines=2 through=7"}
+{"ts":1793873532229,"op":"bee.interrupt bee=968ce856-cb50-4dcd-8908-302470925e0b gen=1 interrupted=true"}
+{"ts":1793873532231,"op":"obs.turn_ended bee=968ce856-cb50-4dcd-8908-302470925e0b gen=1"}
+{"ts":1793873532232,"op":"obs.checkpoint bee=968ce856-cb50-4dcd-8908-302470925e0b gen=1 cursor=278"}
+{"ts":1793873532235,"op":"transcripts.segment.cut bee=968ce856-cb50-4dcd-8908-302470925e0b reason=turn_ended segments=1 lines=2 through=9"}
+{"ts":1793873532438,"op":"cmd.stop id=2 bee=968ce856-cb50-4dcd-8908-302470925e0b gen=1 cause=stopped_by_user hadProcess=true"}
+{"ts":1793873532469,"op":"obs.exited bee=968ce856-cb50-4dcd-8908-302470925e0b gen=1 cause=stopped_by_user"}
+{"ts":1793873532856,"op":"cmd.revive id=3 bee=968ce856-cb50-4dcd-8908-302470925e0b revive gen=2"}
+{"ts":1793873532946,"op":"spawn.evidence bee=968ce856-cb50-4dcd-8908-302470925e0b gen=2 kind=booted"}
+{"ts":1793873532946,"op":"obs.booted bee=968ce856-cb50-4dcd-8908-302470925e0b gen=2 pid=2318823"}
+{"ts":1793873532947,"op":"obs.turn_ended bee=968ce856-cb50-4dcd-8908-302470925e0b gen=2"}
+{"ts":1793873532947,"op":"session.recorded bee=968ce856-cb50-4dcd-8908-302470925e0b gen=2 id=stub-2318838"}
+{"ts":1793873532947,"op":"obs.checkpoint bee=968ce856-cb50-4dcd-8908-302470925e0b gen=2 cursor=45"}
+{"ts":1793873532951,"op":"transcripts.segment.cut bee=968ce856-cb50-4dcd-8908-302470925e0b reason=turn_ended segments=1 lines=1 through=10"}
+{"ts":1793873532962,"op":"deliver bee=968ce856-cb50-4dcd-8908-302470925e0b msg=3 gen=2 urgency=next"}
+{"ts":1793873532965,"op":"obs.turn_started bee=968ce856-cb50-4dcd-8908-302470925e0b gen=2 synthetic"}
+{"ts":1793873532965,"op":"obs.checkpoint bee=968ce856-cb50-4dcd-8908-302470925e0b gen=2 cursor=84"}
+{"ts":1793873533017,"op":"obs.turn_ended bee=968ce856-cb50-4dcd-8908-302470925e0b gen=2"}
+{"ts":1793873533018,"op":"obs.checkpoint bee=968ce856-cb50-4dcd-8908-302470925e0b gen=2 cursor=173"}
+{"ts":1793873533023,"op":"transcripts.segment.cut bee=968ce856-cb50-4dcd-8908-302470925e0b reason=turn_ended segments=1 lines=4 through=14"}
+{"ts":1793873533113,"op":"cell.reserve bee=c201e007-4d17-4ff3-8145-16524eb0323e origin=/home/trmd/.hive/v2/tmp/3e7350d6-83fd-4961-bb8b-078a7d411c81/hb-m-h8-lifecycle-enhzjN/origin sha=e036e94286f957c8a51ef7d58dfd064931058e39 base=head space=/home/trmd/.hive/v2/tmp/3e7350d6-83fd-4961-bb8b-078a7d411c81/hb-m-h8-lifecycle-enhzjN/cells/stub-cell-4a4acb66e034/origin-space-4a4acb66e034"}
+{"ts":1793873533118,"op":"cmd.spawn id=4 bee=c201e007-4d17-4ff3-8145-16524eb0323e start gen=1"}
+{"ts":1793873533669,"op":"spawn.evidence bee=c201e007-4d17-4ff3-8145-16524eb0323e gen=1 kind=booted"}
+{"ts":1793873533669,"op":"obs.booted bee=c201e007-4d17-4ff3-8145-16524eb0323e gen=1 pid=2318991"}
+{"ts":1793873533670,"op":"obs.turn_ended bee=c201e007-4d17-4ff3-8145-16524eb0323e gen=1"}
+{"ts":1793873533674,"op":"session.recorded bee=c201e007-4d17-4ff3-8145-16524eb0323e gen=1 id=stub-2319005"}
+{"ts":1793873533675,"op":"obs.checkpoint bee=c201e007-4d17-4ff3-8145-16524eb0323e gen=1 cursor=45"}
+{"ts":1793873533686,"op":"transcripts.segment.cut bee=c201e007-4d17-4ff3-8145-16524eb0323e reason=turn_ended segments=1 lines=1 through=1"}
+{"ts":1793873533697,"op":"deliver bee=c201e007-4d17-4ff3-8145-16524eb0323e msg=4 gen=1 urgency=next"}
+{"ts":1793873533705,"op":"obs.turn_started bee=c201e007-4d17-4ff3-8145-16524eb0323e gen=1 synthetic"}
+{"ts":1793873533706,"op":"obs.checkpoint bee=c201e007-4d17-4ff3-8145-16524eb0323e gen=1 cursor=84"}
+{"ts":1793873533752,"op":"obs.turn_ended bee=c201e007-4d17-4ff3-8145-16524eb0323e gen=1"}
+{"ts":1793873533753,"op":"obs.checkpoint bee=c201e007-4d17-4ff3-8145-16524eb0323e gen=1 cursor=173"}
+{"ts":1793873533757,"op":"transcripts.segment.cut bee=c201e007-4d17-4ff3-8145-16524eb0323e reason=turn_ended segments=1 lines=4 through=5"}
+{"ts":1793873533803,"op":"deliver bee=c201e007-4d17-4ff3-8145-16524eb0323e msg=5 gen=1 urgency=next"}
+{"ts":1793873533805,"op":"obs.turn_started bee=c201e007-4d17-4ff3-8145-16524eb0323e gen=1 synthetic"}
+{"ts":1793873533805,"op":"obs.checkpoint bee=c201e007-4d17-4ff3-8145-16524eb0323e gen=1 cursor=212"}
+{"ts":1793873533851,"op":"bee.interrupt bee=c201e007-4d17-4ff3-8145-16524eb0323e gen=1 interrupted=true"}
+{"ts":1793873533855,"op":"obs.turn_ended bee=c201e007-4d17-4ff3-8145-16524eb0323e gen=1"}
+{"ts":1793873533856,"op":"obs.checkpoint bee=c201e007-4d17-4ff3-8145-16524eb0323e gen=1 cursor=278"}
+{"ts":1793873533861,"op":"transcripts.segment.cut bee=c201e007-4d17-4ff3-8145-16524eb0323e reason=turn_ended segments=1 lines=4 through=9"}
+{"ts":1793873534062,"op":"cmd.stop id=5 bee=c201e007-4d17-4ff3-8145-16524eb0323e gen=1 cause=stopped_by_user hadProcess=true"}
+{"ts":1793873534081,"op":"obs.exited bee=c201e007-4d17-4ff3-8145-16524eb0323e gen=1 cause=stopped_by_user"}
+{"ts":1793873534285,"op":"cmd.revive id=6 bee=c201e007-4d17-4ff3-8145-16524eb0323e revive gen=2"}
+{"ts":1793873534579,"op":"spawn.evidence bee=c201e007-4d17-4ff3-8145-16524eb0323e gen=2 kind=booted"}
+{"ts":1793873534580,"op":"obs.booted bee=c201e007-4d17-4ff3-8145-16524eb0323e gen=2 pid=2319273"}
+{"ts":1793873534585,"op":"obs.turn_ended bee=c201e007-4d17-4ff3-8145-16524eb0323e gen=2"}
+{"ts":1793873534586,"op":"session.recorded bee=c201e007-4d17-4ff3-8145-16524eb0323e gen=2 id=stub-2319287"}
+{"ts":1793873534587,"op":"obs.checkpoint bee=c201e007-4d17-4ff3-8145-16524eb0323e gen=2 cursor=45"}
+{"ts":1793873534591,"op":"transcripts.segment.cut bee=c201e007-4d17-4ff3-8145-16524eb0323e reason=turn_ended segments=1 lines=1 through=10"}
+{"ts":1793873534611,"op":"deliver bee=c201e007-4d17-4ff3-8145-16524eb0323e msg=6 gen=2 urgency=next"}
+{"ts":1793873534618,"op":"obs.turn_started bee=c201e007-4d17-4ff3-8145-16524eb0323e gen=2 synthetic"}
+{"ts":1793873534618,"op":"obs.checkpoint bee=c201e007-4d17-4ff3-8145-16524eb0323e gen=2 cursor=84"}
+{"ts":1793873534665,"op":"obs.turn_ended bee=c201e007-4d17-4ff3-8145-16524eb0323e gen=2"}
+{"ts":1793873534666,"op":"obs.checkpoint bee=c201e007-4d17-4ff3-8145-16524eb0323e gen=2 cursor=173"}
+{"ts":1793873534671,"op":"transcripts.segment.cut bee=c201e007-4d17-4ff3-8145-16524eb0323e reason=turn_ended segments=1 lines=4 through=14"}
+{"ts":1793873534917,"op":"cmd.spawn id=7 bee=4f27a43e-fc87-4620-85ee-b1b190469ed6 start gen=1"}
+{"ts":1793873534964,"op":"obs.booted bee=4f27a43e-fc87-4620-85ee-b1b190469ed6 gen=1 pid=2319373 synthetic"}
+{"ts":1793873534964,"op":"obs.turn_ended bee=4f27a43e-fc87-4620-85ee-b1b190469ed6 gen=1 synthetic"}
+{"ts":1793873534986,"op":"deliver bee=4f27a43e-fc87-4620-85ee-b1b190469ed6 msg=7 gen=1 urgency=next"}
+{"ts":1793873535003,"op":"obs.turn_started bee=4f27a43e-fc87-4620-85ee-b1b190469ed6 gen=1 synthetic"}
+{"ts":1793873535003,"op":"spawn.evidence bee=4f27a43e-fc87-4620-85ee-b1b190469ed6 gen=1 kind=booted"}
+{"ts":1793873535003,"op":"obs.skip bee=4f27a43e-fc87-4620-85ee-b1b190469ed6 gen=1 kind=booted reason=already_running"}
+{"ts":1793873535004,"op":"session.recorded bee=4f27a43e-fc87-4620-85ee-b1b190469ed6 gen=1 id=db2efc15-86bf-4a2f-b397-e5dedc216f14"}
+{"ts":1793873535004,"op":"obs.checkpoint bee=4f27a43e-fc87-4620-85ee-b1b190469ed6 gen=1 cursor=231"}
+{"ts":1793873535013,"op":"obs.turn_ended bee=4f27a43e-fc87-4620-85ee-b1b190469ed6 gen=1"}
+{"ts":1793873535013,"op":"obs.checkpoint bee=4f27a43e-fc87-4620-85ee-b1b190469ed6 gen=1 cursor=526"}
+{"ts":1793873535017,"op":"transcripts.segment.cut bee=4f27a43e-fc87-4620-85ee-b1b190469ed6 reason=turn_ended segments=1 lines=4 through=4"}
+{"ts":1793873535039,"op":"deliver bee=4f27a43e-fc87-4620-85ee-b1b190469ed6 msg=8 gen=1 urgency=next"}
+{"ts":1793873535240,"op":"obs.turn_started bee=4f27a43e-fc87-4620-85ee-b1b190469ed6 gen=1 synthetic"}
+{"ts":1793873535243,"op":"bee.interrupt bee=4f27a43e-fc87-4620-85ee-b1b190469ed6 gen=1 interrupted=true"}
+{"ts":1793873535246,"op":"obs.turn_ended bee=4f27a43e-fc87-4620-85ee-b1b190469ed6 gen=1"}
+{"ts":1793873535246,"op":"obs.checkpoint bee=4f27a43e-fc87-4620-85ee-b1b190469ed6 gen=1 cursor=751"}
+{"ts":1793873535250,"op":"transcripts.segment.cut bee=4f27a43e-fc87-4620-85ee-b1b190469ed6 reason=turn_ended segments=1 lines=4 through=8"}
+{"ts":1793873535452,"op":"cmd.stop id=8 bee=4f27a43e-fc87-4620-85ee-b1b190469ed6 gen=1 cause=stopped_by_user hadProcess=true"}
+{"ts":1793873535472,"op":"obs.exited bee=4f27a43e-fc87-4620-85ee-b1b190469ed6 gen=1 cause=stopped_by_user"}
+{"ts":1793873535865,"op":"cmd.revive id=9 bee=4f27a43e-fc87-4620-85ee-b1b190469ed6 revive gen=2"}
+{"ts":1793873535914,"op":"obs.booted bee=4f27a43e-fc87-4620-85ee-b1b190469ed6 gen=2 pid=2319520 synthetic"}
+{"ts":1793873535915,"op":"obs.turn_ended bee=4f27a43e-fc87-4620-85ee-b1b190469ed6 gen=2 synthetic"}
+{"ts":1793873535923,"op":"deliver bee=4f27a43e-fc87-4620-85ee-b1b190469ed6 msg=9 gen=2 urgency=next"}
+{"ts":1793873535951,"op":"obs.turn_started bee=4f27a43e-fc87-4620-85ee-b1b190469ed6 gen=2 synthetic"}
+{"ts":1793873535951,"op":"spawn.evidence bee=4f27a43e-fc87-4620-85ee-b1b190469ed6 gen=2 kind=booted"}
+{"ts":1793873535951,"op":"obs.skip bee=4f27a43e-fc87-4620-85ee-b1b190469ed6 gen=2 kind=booted reason=already_running"}
+{"ts":1793873535951,"op":"obs.checkpoint bee=4f27a43e-fc87-4620-85ee-b1b190469ed6 gen=2 cursor=231"}
+{"ts":1793873535960,"op":"obs.turn_ended bee=4f27a43e-fc87-4620-85ee-b1b190469ed6 gen=2"}
+{"ts":1793873535961,"op":"obs.checkpoint bee=4f27a43e-fc87-4620-85ee-b1b190469ed6 gen=2 cursor=526"}
+{"ts":1793873535965,"op":"transcripts.segment.cut bee=4f27a43e-fc87-4620-85ee-b1b190469ed6 reason=turn_ended segments=1 lines=4 through=12"}
+{"ts":1793873536166,"op":"cmd.spawn id=10 bee=91d3933d-a8cd-4bb0-bd78-213473535dc5 start gen=1"}
+{"ts":1793873536267,"op":"spawn.evidence bee=91d3933d-a8cd-4bb0-bd78-213473535dc5 gen=1 kind=booted"}
+{"ts":1793873536268,"op":"obs.booted bee=91d3933d-a8cd-4bb0-bd78-213473535dc5 gen=1 pid=2319557"}
+{"ts":1793873536268,"op":"obs.turn_ended bee=91d3933d-a8cd-4bb0-bd78-213473535dc5 gen=1"}
+{"ts":1793873536269,"op":"session.recorded bee=91d3933d-a8cd-4bb0-bd78-213473535dc5 gen=1 id=566b3fd0-202f-47c7-a1a6-6583ff3fde8a"}
+{"ts":1793873536269,"op":"obs.checkpoint bee=91d3933d-a8cd-4bb0-bd78-213473535dc5 gen=1 cursor=273"}
+{"ts":1793873536275,"op":"deliver.refused bee=91d3933d-a8cd-4bb0-bd78-213473535dc5 msg=10 reason=not_ready"}
+{"ts":1793873536275,"op":"transcripts.segment.cut bee=91d3933d-a8cd-4bb0-bd78-213473535dc5 reason=turn_ended segments=1 lines=5 through=5"}
+{"ts":1793873536278,"op":"obs.turn_started bee=91d3933d-a8cd-4bb0-bd78-213473535dc5 gen=1 synthetic"}
+{"ts":1793873536278,"op":"obs.checkpoint bee=91d3933d-a8cd-4bb0-bd78-213473535dc5 gen=1 cursor=521"}
+{"ts":1793873536279,"op":"deliver.confirmed bee=91d3933d-a8cd-4bb0-bd78-213473535dc5 msg=10 gen=1"}
+{"ts":1793873536289,"op":"obs.turn_ended bee=91d3933d-a8cd-4bb0-bd78-213473535dc5 gen=1"}
+{"ts":1793873536290,"op":"obs.checkpoint bee=91d3933d-a8cd-4bb0-bd78-213473535dc5 gen=1 cursor=979"}
+{"ts":1793873536293,"op":"transcripts.segment.cut bee=91d3933d-a8cd-4bb0-bd78-213473535dc5 reason=turn_ended segments=1 lines=6 through=11"}
+{"ts":1793873536326,"op":"deliver.refused bee=91d3933d-a8cd-4bb0-bd78-213473535dc5 msg=11 reason=not_ready"}
+{"ts":1793873536329,"op":"obs.turn_started bee=91d3933d-a8cd-4bb0-bd78-213473535dc5 gen=1 synthetic"}
+{"ts":1793873536329,"op":"obs.checkpoint bee=91d3933d-a8cd-4bb0-bd78-213473535dc5 gen=1 cursor=1227"}
+{"ts":1793873536329,"op":"deliver.confirmed bee=91d3933d-a8cd-4bb0-bd78-213473535dc5 msg=11 gen=1"}
+{"ts":1793873536375,"op":"bee.interrupt bee=91d3933d-a8cd-4bb0-bd78-213473535dc5 gen=1 interrupted=true"}
+{"ts":1793873536377,"op":"obs.turn_ended bee=91d3933d-a8cd-4bb0-bd78-213473535dc5 gen=1"}
+{"ts":1793873536377,"op":"obs.checkpoint bee=91d3933d-a8cd-4bb0-bd78-213473535dc5 gen=1 cursor=1477"}
+{"ts":1793873536381,"op":"transcripts.segment.cut bee=91d3933d-a8cd-4bb0-bd78-213473535dc5 reason=turn_ended segments=1 lines=6 through=17"}
+{"ts":1793873536583,"op":"cmd.stop id=11 bee=91d3933d-a8cd-4bb0-bd78-213473535dc5 gen=1 cause=stopped_by_user hadProcess=true"}
+{"ts":1793873536602,"op":"obs.exited bee=91d3933d-a8cd-4bb0-bd78-213473535dc5 gen=1 cause=stopped_by_user"}
+{"ts":1793873536976,"op":"cmd.revive id=12 bee=91d3933d-a8cd-4bb0-bd78-213473535dc5 revive gen=2"}
+{"ts":1793873537064,"op":"spawn.evidence bee=91d3933d-a8cd-4bb0-bd78-213473535dc5 gen=2 kind=booted"}
+{"ts":1793873537064,"op":"obs.booted bee=91d3933d-a8cd-4bb0-bd78-213473535dc5 gen=2 pid=2319755"}
+{"ts":1793873537065,"op":"obs.turn_ended bee=91d3933d-a8cd-4bb0-bd78-213473535dc5 gen=2"}
+{"ts":1793873537065,"op":"obs.checkpoint bee=91d3933d-a8cd-4bb0-bd78-213473535dc5 gen=2 cursor=248"}
+{"ts":1793873537071,"op":"transcripts.segment.cut bee=91d3933d-a8cd-4bb0-bd78-213473535dc5 reason=turn_ended segments=1 lines=5 through=22"}
+{"ts":1793873537084,"op":"deliver.refused bee=91d3933d-a8cd-4bb0-bd78-213473535dc5 msg=12 reason=not_ready"}
+{"ts":1793873537087,"op":"obs.turn_started bee=91d3933d-a8cd-4bb0-bd78-213473535dc5 gen=2 synthetic"}
+{"ts":1793873537087,"op":"obs.checkpoint bee=91d3933d-a8cd-4bb0-bd78-213473535dc5 gen=2 cursor=496"}
+{"ts":1793873537088,"op":"deliver.confirmed bee=91d3933d-a8cd-4bb0-bd78-213473535dc5 msg=12 gen=2"}
+{"ts":1793873537099,"op":"obs.turn_ended bee=91d3933d-a8cd-4bb0-bd78-213473535dc5 gen=2"}
+{"ts":1793873537100,"op":"obs.checkpoint bee=91d3933d-a8cd-4bb0-bd78-213473535dc5 gen=2 cursor=954"}
+{"ts":1793873537103,"op":"transcripts.segment.cut bee=91d3933d-a8cd-4bb0-bd78-213473535dc5 reason=turn_ended segments=1 lines=6 through=28"}
+{"ts":1793873537139,"op":"account.add id=muse-sub harness=muse home=/home/trmd/.hive/v2/tmp/3e7350d6-83fd-4961-bb8b-078a7d411c81/hb-v2-daemon-4c8UzZ/homes/muse-sub importExisting=true status=ok credentialHealth=unverified imported=home:/home/trmd/.hive/v2/tmp/3e7350d6-83fd-4961-bb8b-078a7d411c81/hb-v2-daemon-4c8UzZ/homes/muse-sub files=muse/auth.json verification=credential_file"}
+{"ts":1793873537141,"op":"account.limits account=muse-sub readable=false error=\"muse has no limits source\""}
+{"ts":1793873537144,"op":"spawn.account bee=d3a5e21f-e9a1-49df-9dab-81e9b78b4836 account=muse-sub reason=\"explicit\""}
+{"ts":1793873537147,"op":"account.activate.gateways account=muse-sub skipped=\"no MCP config dialect for muse\""}
+{"ts":1793873537328,"op":"cmd.spawn id=13 bee=d3a5e21f-e9a1-49df-9dab-81e9b78b4836 start gen=1"}
+{"ts":1793873537417,"op":"spawn.evidence bee=d3a5e21f-e9a1-49df-9dab-81e9b78b4836 gen=1 kind=booted"}
+{"ts":1793873537418,"op":"obs.booted bee=d3a5e21f-e9a1-49df-9dab-81e9b78b4836 gen=1 pid=2319843"}
+{"ts":1793873537418,"op":"obs.turn_ended bee=d3a5e21f-e9a1-49df-9dab-81e9b78b4836 gen=1"}
+{"ts":1793873537419,"op":"session.recorded bee=d3a5e21f-e9a1-49df-9dab-81e9b78b4836 gen=1 id=01a133e2-6725-7481-a1f9-1b611f7748be"}
+{"ts":1793873537420,"op":"obs.checkpoint bee=d3a5e21f-e9a1-49df-9dab-81e9b78b4836 gen=1 cursor=393"}
+{"ts":1793873537426,"op":"transcripts.segment.cut bee=d3a5e21f-e9a1-49df-9dab-81e9b78b4836 reason=turn_ended segments=1 lines=5 through=5"}
+{"ts":1793873537438,"op":"deliver.refused bee=d3a5e21f-e9a1-49df-9dab-81e9b78b4836 msg=13 reason=not_ready"}
+{"ts":1793873537441,"op":"obs.turn_started bee=d3a5e21f-e9a1-49df-9dab-81e9b78b4836 gen=1 synthetic"}
+{"ts":1793873537441,"op":"obs.checkpoint bee=d3a5e21f-e9a1-49df-9dab-81e9b78b4836 gen=1 cursor=575"}
+{"ts":1793873537442,"op":"deliver.confirmed bee=d3a5e21f-e9a1-49df-9dab-81e9b78b4836 msg=13 gen=1"}
+{"ts":1793873537454,"op":"obs.turn_ended bee=d3a5e21f-e9a1-49df-9dab-81e9b78b4836 gen=1"}
+{"ts":1793873537457,"op":"account.limits account=muse-sub readable=true observed=usage plan=\"fixture-tier-from-provider\" weekly=12 5h=37 at=1793873471023"}
+{"ts":1793873537457,"op":"obs.checkpoint bee=d3a5e21f-e9a1-49df-9dab-81e9b78b4836 gen=1 cursor=1952"}
+{"ts":1793873537464,"op":"transcripts.segment.cut bee=d3a5e21f-e9a1-49df-9dab-81e9b78b4836 reason=turn_ended segments=1 lines=9 through=14"}
+{"ts":1793873537661,"op":"cmd.stop id=14 bee=d3a5e21f-e9a1-49df-9dab-81e9b78b4836 gen=1 cause=stopped_by_user hadProcess=true"}
+{"ts":1793873537680,"op":"obs.exited bee=d3a5e21f-e9a1-49df-9dab-81e9b78b4836 gen=1 cause=stopped_by_user"}
+{"ts":1793873537883,"op":"account.activate.gateways account=muse-sub skipped=\"no MCP config dialect for muse\""}
+{"ts":1793873538058,"op":"cmd.revive id=15 bee=d3a5e21f-e9a1-49df-9dab-81e9b78b4836 revive gen=2"}
+{"ts":1793873538147,"op":"spawn.evidence bee=d3a5e21f-e9a1-49df-9dab-81e9b78b4836 gen=2 kind=booted"}
+{"ts":1793873538147,"op":"obs.booted bee=d3a5e21f-e9a1-49df-9dab-81e9b78b4836 gen=2 pid=2319971"}
+{"ts":1793873538148,"op":"obs.turn_ended bee=d3a5e21f-e9a1-49df-9dab-81e9b78b4836 gen=2"}
+{"ts":1793873538148,"op":"obs.checkpoint bee=d3a5e21f-e9a1-49df-9dab-81e9b78b4836 gen=2 cursor=393"}
+{"ts":1793873538152,"op":"transcripts.segment.cut bee=d3a5e21f-e9a1-49df-9dab-81e9b78b4836 reason=turn_ended segments=1 lines=5 through=19"}
+{"ts":1793873538169,"op":"deliver.refused bee=d3a5e21f-e9a1-49df-9dab-81e9b78b4836 msg=14 reason=not_ready"}
+{"ts":1793873538172,"op":"obs.turn_started bee=d3a5e21f-e9a1-49df-9dab-81e9b78b4836 gen=2 synthetic"}
+{"ts":1793873538173,"op":"obs.checkpoint bee=d3a5e21f-e9a1-49df-9dab-81e9b78b4836 gen=2 cursor=575"}
+{"ts":1793873538174,"op":"deliver.confirmed bee=d3a5e21f-e9a1-49df-9dab-81e9b78b4836 msg=14 gen=2"}
+{"ts":1793873538184,"op":"obs.turn_ended bee=d3a5e21f-e9a1-49df-9dab-81e9b78b4836 gen=2"}
+{"ts":1793873538186,"op":"obs.checkpoint bee=d3a5e21f-e9a1-49df-9dab-81e9b78b4836 gen=2 cursor=1952"}
+{"ts":1793873538190,"op":"transcripts.segment.cut bee=d3a5e21f-e9a1-49df-9dab-81e9b78b4836 reason=turn_ended segments=1 lines=9 through=28"}
+{"ts":1793873539017,"op":"tmp.policy beeTmpRoot=/home/trmd/.hive/v2/tmp/3e7350d6-83fd-4961-bb8b-078a7d411c81/hb-v2-daemon-4c8UzZ/tmp source=data_dir_default daemonTmp=/home/trmd/.hive/v2/tmp/3e7350d6-83fd-4961-bb8b-078a7d411c81/hb-v2-daemon-4c8UzZ/tmp/daemon nodeCompileCache=/home/trmd/.hive/v2/tmp/3e7350d6-83fd-4961-bb8b-078a7d411c81/hb-v2-daemon-4c8UzZ/node-compile-cache"}
+{"ts":1793873539028,"op":"security.confinement strict=false bwrap={\"path\":\"/usr/bin/bwrap\",\"setuid\":false}"}
+{"ts":1793873539029,"op":"champions homes=/home/trmd/.hive/v2/tmp/3e7350d6-83fd-4961-bb8b-078a7d411c81/hb-v2-daemon-4c8UzZ/champions store=/home/trmd/.hive/v2/tmp/3e7350d6-83fd-4961-bb8b-078a7d411c81/hb-v2-daemon-4c8UzZ/transcript-objects"}
+{"ts":1793873539029,"op":"transcripts.segments store=/home/trmd/.hive/v2/tmp/3e7350d6-83fd-4961-bb8b-078a7d411c81/hb-v2-daemon-4c8UzZ/transcript-objects max_lines=1024 max_raw_bytes=1048576 projection=8"}
+{"ts":1793873539039,"op":"boot.adopt bee=4f27a43e-fc87-4620-85ee-b1b190469ed6 gen=2 pid=2319520 ok=true"}
+{"ts":1793873539044,"op":"boot.adopt bee=91d3933d-a8cd-4bb0-bd78-213473535dc5 gen=2 pid=2319755 ok=true"}
+{"ts":1793873539046,"op":"boot.adopt bee=968ce856-cb50-4dcd-8908-302470925e0b gen=2 pid=2318823 ok=true"}
+{"ts":1793873539050,"op":"boot.adopt bee=c201e007-4d17-4ff3-8145-16524eb0323e gen=2 pid=2319273 ok=true"}
+{"ts":1793873539055,"op":"boot.adopt bee=d3a5e21f-e9a1-49df-9dab-81e9b78b4836 gen=2 pid=2319971 ok=true"}
+{"ts":1793873539060,"op":"boot adopted=5 stopped=0 requeued=0 reaped=0 wakes=0"}
+{"ts":1793873539075,"op":"rpc.listen socket=/home/trmd/.hive/v2/tmp/3e7350d6-83fd-4961-bb8b-078a7d411c81/hb-v2-daemon-4c8UzZ/hived.sock"}
+{"ts":1793873539076,"op":"daemon.started pid=2320026 store=/home/trmd/.hive/v2/tmp/3e7350d6-83fd-4961-bb8b-078a7d411c81/hb-v2-daemon-4c8UzZ/core.sqlite3"}
+{"ts":1793873539083,"op":"transcripts.segment.catch_up scheduled=0"}
+{"ts":1793873539116,"op":"deliver bee=968ce856-cb50-4dcd-8908-302470925e0b msg=15 gen=2 urgency=next"}
+{"ts":1793873539120,"op":"obs.turn_started bee=968ce856-cb50-4dcd-8908-302470925e0b gen=2 synthetic"}
+{"ts":1793873539120,"op":"obs.skip bee=968ce856-cb50-4dcd-8908-302470925e0b gen=2 kind=booted reason=already_running"}
+{"ts":1793873539120,"op":"obs.checkpoint bee=968ce856-cb50-4dcd-8908-302470925e0b gen=2 cursor=213"}
+{"ts":1793873539125,"op":"deliver bee=c201e007-4d17-4ff3-8145-16524eb0323e msg=16 gen=2 urgency=next"}
+{"ts":1793873539127,"op":"obs.turn_started bee=c201e007-4d17-4ff3-8145-16524eb0323e gen=2 synthetic"}
+{"ts":1793873539127,"op":"obs.skip bee=c201e007-4d17-4ff3-8145-16524eb0323e gen=2 kind=booted reason=already_running"}
+{"ts":1793873539127,"op":"obs.checkpoint bee=c201e007-4d17-4ff3-8145-16524eb0323e gen=2 cursor=213"}
+{"ts":1793873539169,"op":"obs.turn_ended bee=968ce856-cb50-4dcd-8908-302470925e0b gen=2"}
+{"ts":1793873539172,"op":"obs.checkpoint bee=968ce856-cb50-4dcd-8908-302470925e0b gen=2 cursor=311"}
+{"ts":1793873539177,"op":"obs.turn_ended bee=c201e007-4d17-4ff3-8145-16524eb0323e gen=2"}
+{"ts":1793873539178,"op":"obs.checkpoint bee=c201e007-4d17-4ff3-8145-16524eb0323e gen=2 cursor=311"}
+{"ts":1793873539230,"op":"deliver bee=4f27a43e-fc87-4620-85ee-b1b190469ed6 msg=17 gen=2 urgency=next"}
+{"ts":1793873539242,"op":"obs.turn_started bee=4f27a43e-fc87-4620-85ee-b1b190469ed6 gen=2 synthetic"}
+{"ts":1793873539242,"op":"obs.skip bee=4f27a43e-fc87-4620-85ee-b1b190469ed6 gen=2 kind=booted reason=already_running"}
+{"ts":1793873539242,"op":"obs.turn_ended bee=4f27a43e-fc87-4620-85ee-b1b190469ed6 gen=2"}
+{"ts":1793873539243,"op":"obs.checkpoint bee=4f27a43e-fc87-4620-85ee-b1b190469ed6 gen=2 cursor=837"}
+{"ts":1793873539283,"op":"deliver.refused bee=91d3933d-a8cd-4bb0-bd78-213473535dc5 msg=18 reason=not_ready"}
+{"ts":1793873539285,"op":"transcripts.segment.cut bee=968ce856-cb50-4dcd-8908-302470925e0b reason=turn_ended segments=1 lines=4 through=18"}
+{"ts":1793873539286,"op":"obs.turn_started bee=91d3933d-a8cd-4bb0-bd78-213473535dc5 gen=2 synthetic"}
+{"ts":1793873539287,"op":"obs.skip bee=91d3933d-a8cd-4bb0-bd78-213473535dc5 gen=2 kind=booted reason=already_running"}
+{"ts":1793873539287,"op":"obs.checkpoint bee=91d3933d-a8cd-4bb0-bd78-213473535dc5 gen=2 cursor=1202"}
+{"ts":1793873539287,"op":"deliver.confirmed bee=91d3933d-a8cd-4bb0-bd78-213473535dc5 msg=18 gen=2"}
+{"ts":1793873539296,"op":"obs.turn_ended bee=91d3933d-a8cd-4bb0-bd78-213473535dc5 gen=2"}
+{"ts":1793873539297,"op":"obs.checkpoint bee=91d3933d-a8cd-4bb0-bd78-213473535dc5 gen=2 cursor=1660"}
+{"ts":1793873539300,"op":"transcripts.segment.cut bee=c201e007-4d17-4ff3-8145-16524eb0323e reason=turn_ended segments=1 lines=4 through=18"}
+{"ts":1793873539313,"op":"transcripts.segment.cut bee=4f27a43e-fc87-4620-85ee-b1b190469ed6 reason=turn_ended segments=1 lines=3 through=15"}
+{"ts":1793873539330,"op":"transcripts.segment.cut bee=91d3933d-a8cd-4bb0-bd78-213473535dc5 reason=turn_ended segments=1 lines=6 through=34"}
+{"ts":1793873539350,"op":"deliver.refused bee=d3a5e21f-e9a1-49df-9dab-81e9b78b4836 msg=19 reason=not_ready"}
+{"ts":1793873539353,"op":"obs.turn_started bee=d3a5e21f-e9a1-49df-9dab-81e9b78b4836 gen=2 synthetic"}
+{"ts":1793873539353,"op":"obs.skip bee=d3a5e21f-e9a1-49df-9dab-81e9b78b4836 gen=2 kind=booted reason=already_running"}
+{"ts":1793873539353,"op":"obs.checkpoint bee=d3a5e21f-e9a1-49df-9dab-81e9b78b4836 gen=2 cursor=2134"}
+{"ts":1793873539354,"op":"deliver.confirmed bee=d3a5e21f-e9a1-49df-9dab-81e9b78b4836 msg=19 gen=2"}
+{"ts":1793873539363,"op":"obs.turn_ended bee=d3a5e21f-e9a1-49df-9dab-81e9b78b4836 gen=2"}
+{"ts":1793873539364,"op":"obs.checkpoint bee=d3a5e21f-e9a1-49df-9dab-81e9b78b4836 gen=2 cursor=3229"}
+{"ts":1793873539368,"op":"transcripts.segment.cut bee=d3a5e21f-e9a1-49df-9dab-81e9b78b4836 reason=turn_ended segments=1 lines=8 through=36"}
+{"ts":1793873539571,"op":"cmd.stop id=16 bee=968ce856-cb50-4dcd-8908-302470925e0b gen=2 cause=stopped_by_user hadProcess=true"}
+{"ts":1793873539575,"op":"cmd.stop id=17 bee=c201e007-4d17-4ff3-8145-16524eb0323e gen=2 cause=stopped_by_user hadProcess=true"}
+{"ts":1793873539580,"op":"cmd.stop id=18 bee=4f27a43e-fc87-4620-85ee-b1b190469ed6 gen=2 cause=stopped_by_user hadProcess=true"}
+{"ts":1793873539584,"op":"cmd.stop id=19 bee=91d3933d-a8cd-4bb0-bd78-213473535dc5 gen=2 cause=stopped_by_user hadProcess=true"}
+{"ts":1793873539588,"op":"cmd.stop id=20 bee=d3a5e21f-e9a1-49df-9dab-81e9b78b4836 gen=2 cause=stopped_by_user hadProcess=true"}
+{"ts":1793873539594,"op":"obs.exited bee=968ce856-cb50-4dcd-8908-302470925e0b gen=2 cause=stopped_by_user"}
+{"ts":1793873539595,"op":"obs.exited bee=c201e007-4d17-4ff3-8145-16524eb0323e gen=2 cause=stopped_by_user"}
+{"ts":1793873539600,"op":"obs.exited bee=4f27a43e-fc87-4620-85ee-b1b190469ed6 gen=2 cause=stopped_by_user"}
+{"ts":1793873539802,"op":"obs.exited bee=91d3933d-a8cd-4bb0-bd78-213473535dc5 gen=2 cause=stopped_by_user"}
+{"ts":1793873539807,"op":"obs.exited bee=d3a5e21f-e9a1-49df-9dab-81e9b78b4836 gen=2 cause=stopped_by_user"}

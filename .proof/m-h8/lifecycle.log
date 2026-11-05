@@ -1,0 +1,39 @@
+ok  stub/hsr spawn {"generation":1,"pid":2318473}
+ok  stub/hsr send {"messageId":1,"lastOutputAt":1793873532133}
+ok  stub/hsr interrupt {"outcome":{"beeId":"968ce856-cb50-4dcd-8908-302470925e0b","generation":1,"interrupted":true}}
+ok  stub/hsr stop {"exitCause":"stopped_by_user","pidGone":true}
+ok  stub/hsr revive {"generation":2,"pid":2318823}
+ok  stub/hsr send-after-revive {"messageId":3}
+ok  stub/cell spawn {"generation":1,"pid":2318991}
+ok  stub/cell send {"messageId":4,"lastOutputAt":1793873533752}
+ok  stub/cell interrupt {"outcome":{"beeId":"c201e007-4d17-4ff3-8145-16524eb0323e","generation":1,"interrupted":true}}
+ok  stub/cell stop {"exitCause":"stopped_by_user","pidGone":true}
+ok  stub/cell revive {"generation":2,"pid":2319273}
+ok  stub/cell send-after-revive {"messageId":6}
+ok  claude/hsr spawn {"generation":1,"pid":2319373}
+ok  claude/hsr send {"messageId":7,"lastOutputAt":1793873535013}
+ok  claude/hsr interrupt {"outcome":{"beeId":"4f27a43e-fc87-4620-85ee-b1b190469ed6","generation":1,"interrupted":true}}
+ok  claude/hsr stop {"exitCause":"stopped_by_user","pidGone":true}
+ok  claude/hsr revive {"generation":2,"pid":2319520}
+ok  claude/hsr send-after-revive {"messageId":9}
+ok  codex/hsr spawn {"generation":1,"pid":2319557}
+ok  codex/hsr send {"messageId":10,"lastOutputAt":1793873536289}
+ok  codex/hsr interrupt {"outcome":{"beeId":"91d3933d-a8cd-4bb0-bd78-213473535dc5","generation":1,"interrupted":true}}
+ok  codex/hsr stop {"exitCause":"stopped_by_user","pidGone":true}
+ok  codex/hsr revive {"generation":2,"pid":2319755}
+ok  codex/hsr send-after-revive {"messageId":12}
+ok  muse/hsr spawn {"generation":1,"pid":2319843}
+ok  muse/hsr send {"messageId":13,"lastOutputAt":1793873537453}
+ok  muse/hsr interrupt {"skipped":"the fake muse replays recorded lines and has no slow turn to interrupt"}
+ok  muse/hsr stop {"exitCause":"stopped_by_user","pidGone":true}
+ok  muse/hsr revive {"generation":2,"pid":2319971}
+ok  muse/hsr send-after-revive {"messageId":14}
+ok  daemon/- daemon SIGKILL leaves every runtime alive {"pids":[{"harness":"stub","pid":2318823,"alive":true},{"harness":"stub","pid":2319273,"alive":true},{"harness":"claude","pid":2319520,"alive":true},{"harness":"codex","pid":2319755,"alive":true},{"harness":"muse","pid":2319971,"alive":true}]}
+ok  daemon/- successor adopts {"adopted":5,"expected":5}
+ok  stub/adopted send after daemon restart {"generation":2,"pid":2318823}
+ok  stub/adopted send after daemon restart {"generation":2,"pid":2319273}
+ok  claude/adopted send after daemon restart {"generation":2,"pid":2319520}
+ok  codex/adopted send after daemon restart {"generation":2,"pid":2319755}
+ok  muse/adopted send after daemon restart {"generation":2,"pid":2319971}
+{"out":"/home/trmd/.hive/v2/cells/rebuild-m-h8-runtime-host-c762fb4c68c8/github-com-honeybeehq-honeybee-a9015b303498-space-c762fb4c68c8/.proof/m-h8/lifecycle.json","ok":true,"failed":[]}
+exit=0

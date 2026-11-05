@@ -1,46 +1,11 @@
 import type { ExecutionStart } from "../../core/src/executionStart.ts";
 import { ExecutionFenceError } from "../../core/src/executionFence.ts";
 import { stateDirectory } from "../../harness/src/statePath.ts";
-/**
- * CellDriver — runtime encapsulation by PURE DELEGATION (WP5, spec 05).
- *
- * The cell driver is not a fork of the HSR driver; it composes one. Every
- * RuntimeDriver method delegates verbatim to the inner HsrDriver — process
- * parenthood, structured-event truth, exact-identity stops, re-adoption:
- * all of it is implemented exactly once (contract §2: "runtime state
- * extraction is implemented once, never per container").
- *
- * What the cell layer adds, and nothing more:
- *  - provisioning: on the first start of a (bee, generation) the cell is
- *    provisioned via the two-step primitive (provision.ts), keyed by an
- *    operation id derived from the start — replay-safe across crashes;
- *  - cwd: the runtime runs inside the cell's space checkout;
- *  - sandbox: when enabled (A4 node-kind default / per-cell override), the
- *    inner spawn command is wrapped in the platform confinement layer;
- *  - exit path: captureWork() (capture.ts) and deleteCell() (remove.ts) are
- *    exposed for the daemon/UI (WP6) — they never touch runtime driving.
- */
 import { existsSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { platform } from "node:os";
 import { Worker } from "node:worker_threads";
-import type {
-  DeliverOutcome,
-  DeliveryConfirmationPlan,
-  DriverObservation,
-  InterruptOutcome,
-  LiveProcess,
-  RuntimeDriver,
-  StopCause,
-} from "../../harness/src/driver.ts";
-import {
-  HsrDriver,
-  type FlagEvidence,
-  type HsrDriverConfig,
-  type ObservationCursorEvidence,
-  type SessionEvidence,
-  type UsageEvidence,
-  type SpawnSpec,
-} from "../../driver-hsr/src/index.ts";
+import type { DriverObservation, LiveProcess } from "../../harness/src/driver.ts";
+import type { FlagEvidence, PreparedStart, SpawnSpec } from "../../driver-hsr/src/index.ts";
 import { captureWork, type CaptureMode, type CaptureReport } from "./capture.ts";
 import { cellPaths, looksLikeCellWrapper, type CellPaths } from "./layout.ts";
 import { isProvisioned, readLedger, type CellLedger } from "./ledger.ts";
@@ -67,16 +32,11 @@ export interface CellSpec {
   sandbox?: boolean | null;
 }
 
-export interface CellDriverConfig {
+export interface CellServiceConfig {
   cellsRoot: string;
-  /** Node kind, from the daemon config — decides the sandbox default (A4). */
   nodeKind: NodeKind;
-  /** Resolve the harness half of a spawn (adapter/command/args/env). cwd is cell-owned. */
-  resolveHarness(beeId: string, generation?: number): SpawnSpec;
-  /** Resolve the cell half (origin repo, sha, warm config, sandbox override). */
   resolveCell(beeId: string): CellSpec;
-  /** Inner HSR driver settings (session logs, stop grace, …). */
-  hsr: Omit<HsrDriverConfig, "resolve">;
+  runtimeLive(beeId: string): boolean;
   /** Baseline sandbox-writable paths (defaults: harness homes + caches). */
   sandboxWritablePaths?: string[];
   sandboxKvm?: boolean;
@@ -141,6 +101,7 @@ interface PendingProvision {
   generation: number;
   worker: Worker;
   settled: boolean;
+  done: (failure?: string) => void;
 }
 
 interface ProvisionWorkerResult {
@@ -157,62 +118,40 @@ export class CellRuntimeLiveError extends Error {
   }
 }
 
-export class CellDriver implements RuntimeDriver {
-  private readonly cfg: CellDriverConfig;
-  private readonly inner: HsrDriver;
-  /** Provisioned cells by beeId — the driver-side allocation cache. */
+export class CellService {
+  private readonly cfg: CellServiceConfig;
   private readonly cells = new Map<string, ProvisionedCell>();
   private readonly pending = new Map<string, PendingProvision>();
-  /** Workers may keep refreshing a cache image after reporting Cell-ready. */
   private readonly maintenanceWorkers = new Set<Worker>();
-  /** Image maintenance waits until the first turn boundary (or worker fallback). */
   private readonly maintenanceByRuntime = new Map<string, Worker>();
-  /** In-flight warm-pool top-up workers (one per repoKey, single-flight). */
   private readonly poolWorkers = new Map<string, Worker>();
-  private readonly pendingObservations: DriverObservation[] = [];
   private sandboxTmp: SandboxTmpWatch | null = null;
   private sandboxCap: SandboxTmpfsCap | null = null;
   private readonly origins = new Map<string, TrackedOrigin>();
   private readonly upstreamPolicy: (UpstreamRefreshPolicy & { root: string }) | null;
   private upstreamTimer: ReturnType<typeof setInterval> | null = null;
 
-  constructor(cfg: CellDriverConfig) {
+  constructor(cfg: CellServiceConfig) {
     stateDirectory(cfg.cellsRoot, "cellsRoot");
     if (cfg.gitImagesRoot !== undefined) stateDirectory(cfg.gitImagesRoot, "gitImagesRoot");
     if (cfg.upstreamRefresh !== undefined) stateDirectory(cfg.upstreamRefresh.root, "upstreamRefresh.root");
     this.cfg = cfg;
     this.upstreamPolicy = cfg.upstreamRefresh == null ? null : { ...DEFAULT_UPSTREAM_REFRESH, ...cfg.upstreamRefresh };
-    this.inner = new HsrDriver({
-      ...cfg.hsr,
-      resolve: (beeId: string, generation?: number) => this.resolveCellSpawn(beeId, generation),
-    });
   }
 
-  // -------------------------------------------------------------------------
-  // RuntimeDriver — pure delegation
-  // -------------------------------------------------------------------------
-
-  start(beeId: string, generation: number, execution?: ExecutionStart | null): void {
-    const start = execution ?? this.cfg.hsr.executionStartFor?.(beeId,generation) ?? null;
-    if (start) throw new ExecutionFenceError("rpc_execution_fence_unsupported", "Fenced Cell preparation is NOT_COVERED until descendant containment is reviewed and proven");
-    // Provisioning is idempotent and ledger-keyed: a replayed spawn command
-    // (crash mid-provision, executor replay) resumes instead of redoing.
+  prepare(beeId: string, generation: number, execution: ExecutionStart | null, done: (failure?: string) => void): PreparedStart | null {
+    if (execution) throw new ExecutionFenceError("rpc_execution_fence_unsupported", "Fenced Cell preparation is NOT_COVERED until descendant containment is reviewed and proven");
     const opId = `start-${beeId}-g${generation}`;
-    // Warm pool: try to CLAIM a pre-provisioned member (rename + checkout delta)
-    // before any cold provisioning. A claim leaves the bee ledger provisioned,
-    // so both the sync and background provision paths short-circuit (replayed).
-    // Any spawn — hit or miss — tops the pool back up off the event loop.
     if (this.cfg.backgroundProvisioning !== true) {
       const claimed = this.warmPoolEnabled() ? this.tryClaimFromPool(beeId) : null;
       if (claimed) this.cells.set(beeId, claimed);
       else this.ensureCell(beeId, opId);
       this.cfg.onCellMaterialized?.(beeId);
-      this.inner.start(beeId, generation);
       this.refreshOriginOf(beeId);
-      return;
+      return null;
     }
     if (this.pending.has(beeId)) {
-      throw new Error(`cell driver: bee ${beeId} already has provisioning in flight`);
+      throw new Error(`cell service: bee ${beeId} already has provisioning in flight`);
     }
     const spec = this.cfg.resolveCell(beeId);
     const workerUrl = this.cfg.provisionWorkerUrl ?? (import.meta.url.endsWith(".ts")
@@ -230,15 +169,12 @@ export class CellDriver implements RuntimeDriver {
         claimFromPool: this.warmPoolEnabled(),
       },
     });
-    const pending: PendingProvision = { beeId, generation, worker, settled: false };
+    const pending: PendingProvision = { beeId, generation, worker, settled: false, done };
     this.pending.set(beeId, pending);
     worker.once("message", (message: ProvisionWorkerResult) => {
       this.refreshOriginOf(beeId);
       if (message.wipRestore) this.logWipRestore(beeId, message.wipRestore);
       if (message.ok) {
-        // provisionWorker reports Cell-ready before doing image maintenance.
-        // Keep it cancellable on driver disposal but do not keep the daemon
-        // process alive solely for an acceleration cache refresh.
         this.maintenanceWorkers.add(worker);
         this.maintenanceByRuntime.set(`${pending.beeId}:g${pending.generation}`, worker);
         worker.unref();
@@ -262,136 +198,29 @@ export class CellDriver implements RuntimeDriver {
         );
       }
     });
+    return {
+      cancel: () => {
+        if (pending.settled || this.pending.get(beeId) !== pending) return;
+        pending.settled = true;
+        this.pending.delete(beeId);
+        void pending.worker.terminate();
+      },
+    };
   }
 
-  deliveryReadiness(beeId: string, generation: number, messageId: number): string {
-    return this.inner.deliveryReadiness(beeId, generation, messageId);
+  observed(event: DriverObservation): void {
+    if (event.kind === "exited") this.sandboxTmp?.exited(event.beeId, event.generation);
+    if (event.kind !== "turn_ended" && event.kind !== "exited") return;
+    const key = `${event.beeId}:g${event.generation}`;
+    const worker = this.maintenanceByRuntime.get(key);
+    if (worker == null) return;
+    this.maintenanceByRuntime.delete(key);
+    worker.postMessage({ kind: "refresh_git_image" });
   }
 
-  deliveryIssue(beeId: string, generation: number, messageId: number, body?: string) {
-    return this.inner.deliveryIssue(beeId, generation, messageId, body);
-  }
-
-  deliveryLaneReady(beeId: string, generation: number): boolean {
-    return this.inner.deliveryLaneReady(beeId, generation);
-  }
-
-  planDeliveryConfirmation(beeId: string, generation: number, messageId: number, body: string, options?: { freshTurn?: boolean }) {
-    return this.inner.planDeliveryConfirmation(beeId, generation, messageId, body, options);
-  }
-
-  adoptedDeliveryUncertain(beeId: string, generation: number): boolean {
-    return this.inner.adoptedDeliveryUncertain(beeId, generation);
-  }
-
-  consumeDeliveryConfirmation(beeId: string, generation: number, messageId: number): boolean {
-    return this.inner.consumeDeliveryConfirmation(beeId, generation, messageId);
-  }
-
-  reconcileDeliveryConfirmation(beeId: string, generation: number, messageId: number, plan: DeliveryConfirmationPlan) {
-    return this.inner.reconcileDeliveryConfirmation(beeId, generation, messageId, plan);
-  }
-
-  deliver(beeId: string, generation: number, messageId: number, body: string, options?: { freshTurn?: boolean; singleAttempt?: boolean; confirmation?: DeliveryConfirmationPlan }): DeliverOutcome {
-    return this.inner.deliver(beeId, generation, messageId, body, options);
-  }
-
-  deliveryPane(_beeId: string, _generation: number): null { return null; }
-
-  deliveryReceipt(beeId: string, generation: number, messageId: number, body: string): "accepted" | "unknown" | "not_attempted" {
-    return this.inner.deliveryReceipt(beeId, generation, messageId, body);
-  }
-
-  stop(beeId: string, generation: number, cause: StopCause): { hadProcess: boolean } {
-    const pending = this.pending.get(beeId);
-    if (pending?.generation === generation) {
-      pending.settled = true;
-      this.pending.delete(beeId);
-      void pending.worker.terminate();
-      this.pendingObservations.push({ beeId, generation, kind: "exited", exitCause: cause });
-      return { hadProcess: true };
-    }
-    return this.inner.stop(beeId, generation, cause);
-  }
-
-  reconnectToolsSupport(beeId: string, generation: number) { return this.inner.reconnectToolsSupport(beeId, generation); }
-  reconnectTools(beeId: string, generation: number, commandId: number, prepare: (apply: (targets: string[]) => Promise<void>, home: string) => Promise<void>) {
-    return this.inner.reconnectTools(beeId, generation, commandId, prepare);
-  }
-
-  interrupt(beeId: string, generation: number, deliveryMessageId?: number): InterruptOutcome {
-    return this.inner.interrupt(beeId, generation, deliveryMessageId);
-  }
-
-  observe(): DriverObservation[] {
-    const pending = this.pendingObservations.splice(0);
-    const inner = this.inner.observe();
-    for (const event of inner) {
-      // Let the first prompt reach a real accept/idle boundary before the
-      // cache worker begins CPU/disk-heavy packing. An early runtime exit is
-      // also a safe point. The worker has its own bounded fallback if neither
-      // observation arrives.
-      if (event.kind === "exited") this.sandboxTmp?.exited(event.beeId, event.generation);
-      if (event.kind !== "turn_ended" && event.kind !== "exited") continue;
-      const key = `${event.beeId}:g${event.generation}`;
-      const worker = this.maintenanceByRuntime.get(key);
-      if (worker == null) continue;
-      this.maintenanceByRuntime.delete(key);
-      worker.postMessage({ kind: "refresh_git_image" });
-    }
-    return [...pending, ...inner];
-  }
-
-  hasProcess(beeId: string, generation: number): boolean {
-    return this.pending.get(beeId)?.generation === generation || this.inner.hasProcess(beeId, generation);
-  }
-
-  snapshotLive(): LiveProcess[] {
-    return this.inner.snapshotLive();
-  }
-
-  // -------------------------------------------------------------------------
-  // Extended driver surface (duck-typed by DaemonCore) — delegation
-  // -------------------------------------------------------------------------
-
-  adopt(
-    beeId: string,
-    generation: number,
-    pid: number,
-    pidStartedAt: number,
-    lastKnownState?: "booting" | "running" | "idle",
-    lastAppliedObservationCursor?: number | null,
-    providerSessionId?: string | null,
-  ): boolean {
-    return this.inner.adopt(
-      beeId,
-      generation,
-      pid,
-      pidStartedAt,
-      lastKnownState,
-      lastAppliedObservationCursor,
-      providerSessionId,
-    );
-  }
-
-  isDegraded(beeId: string, generation: number): boolean {
-    return this.inner.isDegraded(beeId, generation);
-  }
-
-  retryProcessIdentity(beeId: string, generation: number): void { this.inner.retryProcessIdentity(beeId, generation); }
-
-  procOf(
-    beeId: string,
-    generation: number,
-  ): { pid: number; pidStartedAt: number; observationCursor: number; processIdentity?: import("../../core/src/runtimeProcessIdentity.ts").RuntimeProcessIdentity } | null {
-    return this.inner.procOf(beeId, generation);
-  }
-
-  observeEvidence(): FlagEvidence[] {
-    const evidence = this.inner.observeEvidence();
-    if (this.sandboxTmp === null) return evidence;
-    const cleared = evidence.filter((ev) => ev.flag === "resource_blocked" && ev.action === "clear").map((ev) => ev.beeId);
-    return [...evidence, ...this.sandboxTmp.observe(this.inner.snapshotLive(), cleared)];
+  evidence(live: () => LiveProcess[], clearedBeeIds: string[]): FlagEvidence[] {
+    if (this.sandboxTmp === null) return [];
+    return this.sandboxTmp.observe(live(), clearedBeeIds);
   }
 
   private effectiveSandboxCap(): SandboxTmpfsCap {
@@ -402,46 +231,8 @@ export class CellDriver implements RuntimeDriver {
     return this.sandboxCap;
   }
 
-  observeSessions(): SessionEvidence[] {
-    return this.inner.observeSessions();
-  }
-
-  observeUsage(): UsageEvidence[] {
-    return this.inner.observeUsage();
-  }
-
-  observeRecoveryCursors(): ObservationCursorEvidence[] {
-    return this.inner.observeRecoveryCursors();
-  }
-
-  sessionLogPath(beeId: string): string {
-    return this.inner.sessionLogPath(beeId);
-  }
-
-  observationLogPath(beeId: string, generation: number): string {
-    return this.inner.observationLogPath(beeId, generation);
-  }
-
-  consumedGeneration(messageId: number): number | undefined {
-    return this.inner.consumedGeneration(messageId);
-  }
-
-  consumedCount(): number {
-    return this.inner.consumedCount();
-  }
-
-  liveProcesses(): LiveProcess[] {
-    return this.inner.liveProcesses();
-  }
-
-  detachAll(): void {
+  dispose(): void {
     this.cancelPending();
-    this.inner.detachAll();
-  }
-
-  disposeAll(): void {
-    this.cancelPending();
-    this.inner.disposeAll();
   }
 
   // -------------------------------------------------------------------------
@@ -532,7 +323,7 @@ export class CellDriver implements RuntimeDriver {
   }
 
   removeCell(beeId: string, opts: DirtyReportOptions & { force?: boolean } = {}): DeleteResult {
-    if (this.pending.has(beeId) || this.inner.hasRetainedProcess(beeId)) {
+    if (this.pending.has(beeId) || this.cfg.runtimeLive(beeId)) {
       throw new CellRuntimeLiveError(beeId);
     }
     const cell = this.cellOf(beeId);
@@ -585,33 +376,20 @@ export class CellDriver implements RuntimeDriver {
     pending.settled = true;
     this.pending.delete(pending.beeId);
     try {
-      // The worker completed the ledger-keyed operation. This replay only
-      // hydrates the parent driver's cache before the HSR process starts.
       this.ensureCell(pending.beeId, `start-${pending.beeId}-g${pending.generation}`);
       this.cfg.onCellMaterialized?.(pending.beeId);
-      this.inner.start(pending.beeId, pending.generation);
     } catch (error) {
-      this.pendingObservations.push({
-        beeId: pending.beeId,
-        generation: pending.generation,
-        kind: "exited",
-        exitCause: "crashed",
-        detail: error instanceof Error ? error.message : String(error),
-      });
+      pending.done(error instanceof Error ? error.message : String(error));
+      return;
     }
+    pending.done();
   }
 
   private failProvision(pending: PendingProvision, detail: string): void {
     if (pending.settled || this.pending.get(pending.beeId) !== pending) return;
     pending.settled = true;
     this.pending.delete(pending.beeId);
-    this.pendingObservations.push({
-      beeId: pending.beeId,
-      generation: pending.generation,
-      kind: "exited",
-      exitCause: "crashed",
-      detail: `cell provisioning failed: ${detail}`,
-    });
+    pending.done(detail);
   }
 
   private cancelPending(): void {
@@ -764,21 +542,12 @@ export class CellDriver implements RuntimeDriver {
     worker.unref();
   }
 
-  private resolveCellSpawn(beeId: string, generation?: number): SpawnSpec {
-    // The ledger (cell.json) is the durable allocation truth; `this.cells` is
-    // only a cache of it. The inner HSR driver resolves through here not just
-    // on start() (cache warm from ensureCell) but on boot re-adoption, when a
-    // successor daemon's cache is empty. Reading the cache alone made every
-    // daemon restart silently degrade every live cell runtime (adapter lost →
-    // no journal tail → the bee stayed "running" after its turn ended).
+  spawnSpec(beeId: string, harness: SpawnSpec, generation?: number): SpawnSpec {
     const cell = this.cellOf(beeId);
-    if (!cell) throw new Error(`cell driver: bee ${beeId} has no provisioned cell (start() provisions first)`);
-    const harness = this.cfg.resolveHarness(beeId, generation);
+    if (!cell) throw new Error(`cell service: bee ${beeId} has no provisioned cell (prepare provisions first)`);
     const spec = this.cfg.resolveCell(beeId);
     const env: Record<string, string> = {
       ...(harness.env ?? (process.env as Record<string, string>)),
-      // The old runner discipline: in-cell tools detect containment and the
-      // space identity through these stamps.
       HIVE_CELL: "1",
       HIVE_CELL_SPACE: cell.paths.spaceName,
       npm_config_yes: "false",

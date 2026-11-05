@@ -1,0 +1,15 @@
+{"type":"user","message":{"role":"user","content":[{"type":"text","text":"hello claude"}]}}
+{"type":"system","subtype":"init","session_id":"db2efc15-86bf-4a2f-b397-e5dedc216f14","cwd":"/home/trmd/.hive/v2/tmp/3e7350d6-83fd-4961-bb8b-078a7d411c81/hb-m-h8-lifecycle-enhzjN","model":"fake","claude_code_version":"0.0.0-fake"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"echo:hello claude"}]},"session_id":"db2efc15-86bf-4a2f-b397-e5dedc216f14"}
+{"type":"result","subtype":"success","is_error":false,"result":"echo:hello claude","session_id":"db2efc15-86bf-4a2f-b397-e5dedc216f14"}
+{"type":"user","message":{"role":"user","content":[{"type":"text","text":"@slow:4000 please"}]}}
+{"type":"control_request","request_id":"hive-interrupt-1","request":{"subtype":"interrupt"}}
+{"type":"control_response","response":{"subtype":"success","request_id":"hive-interrupt-1"}}
+{"type":"result","subtype":"success","is_error":false,"result":"[interrupted]","session_id":"db2efc15-86bf-4a2f-b397-e5dedc216f14"}
+{"type":"user","message":{"role":"user","content":[{"type":"text","text":"hello claude"}]}}
+{"type":"system","subtype":"init","session_id":"db2efc15-86bf-4a2f-b397-e5dedc216f14","cwd":"/home/trmd/.hive/v2/tmp/3e7350d6-83fd-4961-bb8b-078a7d411c81/hb-m-h8-lifecycle-enhzjN","model":"fake","claude_code_version":"0.0.0-fake"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"echo:hello claude"}]},"session_id":"db2efc15-86bf-4a2f-b397-e5dedc216f14"}
+{"type":"result","subtype":"success","is_error":false,"result":"echo:hello claude","session_id":"db2efc15-86bf-4a2f-b397-e5dedc216f14"}
+{"type":"user","message":{"role":"user","content":[{"type":"text","text":"after restart claude"}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"echo:after restart claude"}]},"session_id":"db2efc15-86bf-4a2f-b397-e5dedc216f14"}
+{"type":"result","subtype":"success","is_error":false,"result":"echo:after restart claude","session_id":"db2efc15-86bf-4a2f-b397-e5dedc216f14"}

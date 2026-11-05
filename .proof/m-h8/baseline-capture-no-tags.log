@@ -1,0 +1,36 @@
+✔ shared no-tags clone keeps tag-only objects available by OID through its alternate (113.635948ms)
+✖ packed source tags do not change clean merge, checkout-conflict, or rebase capture semantics (557.632591ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 1
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 820.830342
+
+✖ failing tests:
+
+test at v2/driver-cell/tests/capture-no-tags.test.ts:322:1
+✖ packed source tags do not change clean merge, checkout-conflict, or rebase capture semantics (557.632591ms)
+  AssertionError [ERR_ASSERTION]: clean-merge: expected exactly one scratch clone; traced 24 git starts: [["/usr/bin/git","-c","credential.https://github.com.helper="],["/usr/bin/git","-c","credential.https://github.com.helper="],["/usr/bin/git","-c","credential.https://github.com.helper="],["git-upload-pack","/home/trmd/.hive/v2/tmp/3e7350d6-83fd-4961-bb8b-078a7d411c81/hb-v2-cell-g2SNGn/cells/bee-1/fixture-space-c1"],["/usr/lib/git-core/git","pack-objects","--revs"],["/usr/lib/git-core/git","unpack-objects","-q"],["/usr/lib/git-core/git","rev-list","--objects"],["/usr/lib/git-core/git","maintenance","run"],["/usr/bin/git","-c","credential.https://github.com.helper="],["/usr/bin/git","-c","credential.https://github.com.helper="],["/usr/bin/git","-c","credential.https://github.com.helper="],["/usr/bin/git","-c","credential.https://github.com.helper="],["git-upload-pack","/home/trmd/.hive/v2/tmp/3e7350d6-83fd-4961-bb8b-078a7d411c81/hb-v2-cell-g2SNGn/origin/.git"],["/usr/bin/git","-c","credential.https://github.com.helper="],["/usr/bin/git","-c","credential.https://github.com.helper="],["/usr/bin/git","-c","credential.https://github.com.helper="],["/usr/bin/git","-c","credential.https://github.com.helper="],["git-upload-pack","/home/trmd/.hive/v2/tmp/3e7350d6-83fd-4961-bb8b-078a7d411c81/hive-capture-wfh3aK/repo"],["/usr/lib/git-core/git","pack-objects","--revs"],["/usr/lib/git-core/git","unpack-objects","-q"],["/usr/lib/git-core/git","rev-list","--objects"],["/usr/lib/git-core/git","maintenance","run"],["/usr/bin/git","-c","credential.https://github.com.helper="],["/usr/bin/git","-c","credential.https://github.com.helper="]]
+  
+  0 !== 1
+  
+      at assertScratchCloneTrace (file:///tmp/hb-main/v2/driver-cell/tests/capture-no-tags.test.ts:170:10)
+      at runCapture (file:///tmp/hb-main/v2/driver-cell/tests/capture-no-tags.test.ts:273:3)
+      at TestContext.<anonymous> (file:///tmp/hb-main/v2/driver-cell/tests/capture-no-tags.test.ts:341:31)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: 1,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+exit=1

@@ -1,15 +1,12 @@
-/**
- * Honeybee v2 HSR driver (WP3 of the reset).
- * Spec: docs/design/specs/reset-03-hsr-driver.md. Zero imports from old code.
- */
 export {
-  HsrDriver,
+  RuntimeHost,
   ReconnectToolsControlError,
   type FlagEvidence,
   type ObservationCursorEvidence,
+  type PreparedStart,
   type SessionEvidence,
   type UsageEvidence,
-  type HsrDriverConfig,
+  type RuntimeHostConfig,
   type SpawnSpec,
 } from "./driver.ts";
 export { parseEtimeMs, pidAlive, processStartTimeMs, verifyProcessIdentity } from "./psutil.ts";

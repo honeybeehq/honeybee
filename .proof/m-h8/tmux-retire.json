@@ -1,0 +1,78 @@
+{
+  "timestamp": "2026-11-05T10:12:23.690Z",
+  "hostname": "trmd-metal-3",
+  "node": "v24.21.0",
+  "root": "/home/trmd/.hive/v2/cells/rebuild-m-h8-runtime-host-c762fb4c68c8/github-com-honeybeehq-honeybee-a9015b303498-space-c762fb4c68c8",
+  "oldRoot": "/tmp/hb-main",
+  "ok": true,
+  "steps": [
+    {
+      "step": "old daemon: tmux bee runs in a pane",
+      "ok": true,
+      "state": "idle",
+      "generation": 1,
+      "pid": 2320203,
+      "panes": "hive-v2-b6094d76-1fcd-4a76-b427-6e30a62dc7ec-g1 2320203 0",
+      "identity": "bound"
+    },
+    {
+      "step": "hive deploy refuses typed while the pane runtime is live",
+      "ok": true,
+      "blocking": [
+        {
+          "id": "b6094d76-1fcd-4a76-b427-6e30a62dc7ec",
+          "name": "pane-bee",
+          "generation": 1,
+          "pid": 2320203
+        }
+      ],
+      "refusal": "deploy: DEPLOY_TMUX_RUNTIMES_LIVE: this build has no tmux substrate and will not adopt or signal a pane; stop these bees under the running daemon first (hive stop <bee>), then deploy again: pane-bee (b6094d76-1fcd-4a76-b427-6e30a62dc7ec, generation 1, pid 2320203)"
+    },
+    {
+      "step": "new daemon boots over the live pane: row settled, pane untouched, bee reachable",
+      "ok": true,
+      "logLine": "boot.tmux_retired bee=b6094d76-1fcd-4a76-b427-6e30a62dc7ec gen=1 pid=2320203 pane_left_running=true",
+      "substrate": "hsr",
+      "runtime": {
+        "beeId": "b6094d76-1fcd-4a76-b427-6e30a62dc7ec",
+        "generation": 1,
+        "state": "stopped",
+        "exitCause": "stopped_by_system",
+        "pid": 2320203,
+        "pidStartedAt": 1793873540226,
+        "bootEvidence": "real",
+        "startedAt": 1793873540220,
+        "updatedAt": 1793873540747
+      },
+      "panePidAlive": true,
+      "panesAfterBoot": "hive-v2-b6094d76-1fcd-4a76-b427-6e30a62dc7ec-g1 2320203 0",
+      "flags": []
+    },
+    {
+      "step": "hive deploy asks the running daemon and no longer refuses after retirement",
+      "ok": true,
+      "viaDaemon": [],
+      "storeReadWhileDaemonRuns": {
+        "error": "deploy: the store is held by a running daemon that did not answer the tmux runtime check; retry once it answers (databas"
+      }
+    },
+    {
+      "step": "mail wakes the bee under hsr; the old pane keeps running",
+      "ok": true,
+      "runtime": {
+        "beeId": "b6094d76-1fcd-4a76-b427-6e30a62dc7ec",
+        "generation": 2,
+        "state": "idle",
+        "exitCause": null,
+        "pid": 2322181,
+        "pidStartedAt": 1793873543150,
+        "bootEvidence": "real",
+        "startedAt": 1793873542979,
+        "updatedAt": 1793873543425
+      },
+      "panePidAlive": true,
+      "panesAfterMail": "hive-v2-b6094d76-1fcd-4a76-b427-6e30a62dc7ec-g1 2320203 0",
+      "delivered": 1
+    }
+  ]
+}

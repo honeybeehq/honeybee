@@ -1,0 +1,34 @@
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"clientInfo":{"name":"hive-hsr","title":null,"version":"0"},"capabilities":null}}
+{"jsonrpc":"2.0","id":1,"result":{"userAgent":"fake-codex/0"}}
+{"jsonrpc":"2.0","method":"initialized"}
+{"jsonrpc":"2.0","id":2,"method":"thread/start","params":{"cwd":"/home/trmd/.hive/v2/tmp/3e7350d6-83fd-4961-bb8b-078a7d411c81/hb-m-h8-lifecycle-enhzjN","approvalPolicy":"never","sandbox":"danger-full-access"}}
+{"jsonrpc":"2.0","id":2,"result":{"thread":{"id":"566b3fd0-202f-47c7-a1a6-6583ff3fde8a","cwd":"/home/trmd/.hive/v2/tmp/3e7350d6-83fd-4961-bb8b-078a7d411c81/hb-m-h8-lifecycle-enhzjN","status":{"type":"idle"}}}}
+{"jsonrpc":"2.0","id":1010,"method":"turn/start","params":{"threadId":"566b3fd0-202f-47c7-a1a6-6583ff3fde8a","input":[{"type":"text","text":"hello codex","text_elements":[]}]}}
+{"jsonrpc":"2.0","id":1010,"result":{"turn":{"id":"a4050032-a5d2-4ab3-b5b7-208c38b9e508"}}}
+{"jsonrpc":"2.0","method":"turn/started","params":{"threadId":"566b3fd0-202f-47c7-a1a6-6583ff3fde8a","turn":{"id":"a4050032-a5d2-4ab3-b5b7-208c38b9e508"}}}
+{"jsonrpc":"2.0","method":"item/agentMessage/delta","params":{"threadId":"566b3fd0-202f-47c7-a1a6-6583ff3fde8a","delta":"echo"}}
+{"jsonrpc":"2.0","method":"thread/status/changed","params":{"threadId":"566b3fd0-202f-47c7-a1a6-6583ff3fde8a","status":{"type":"idle"}}}
+{"jsonrpc":"2.0","method":"turn/completed","params":{"threadId":"566b3fd0-202f-47c7-a1a6-6583ff3fde8a","turn":{"id":"a4050032-a5d2-4ab3-b5b7-208c38b9e508","status":"completed","error":null}}}
+{"jsonrpc":"2.0","id":1011,"method":"turn/start","params":{"threadId":"566b3fd0-202f-47c7-a1a6-6583ff3fde8a","input":[{"type":"text","text":"@slow:4000 please","text_elements":[]}]}}
+{"jsonrpc":"2.0","id":1011,"result":{"turn":{"id":"d9acff39-13e5-4b32-9cf4-50aa44359efb"}}}
+{"jsonrpc":"2.0","method":"turn/started","params":{"threadId":"566b3fd0-202f-47c7-a1a6-6583ff3fde8a","turn":{"id":"d9acff39-13e5-4b32-9cf4-50aa44359efb"}}}
+{"jsonrpc":"2.0","id":3,"method":"turn/interrupt","params":{"threadId":"566b3fd0-202f-47c7-a1a6-6583ff3fde8a","turnId":"d9acff39-13e5-4b32-9cf4-50aa44359efb"}}
+{"jsonrpc":"2.0","id":3,"result":{}}
+{"jsonrpc":"2.0","method":"turn/completed","params":{"threadId":"566b3fd0-202f-47c7-a1a6-6583ff3fde8a","turn":{"id":"d9acff39-13e5-4b32-9cf4-50aa44359efb","status":"interrupted","error":null},"interrupted":true}}
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"clientInfo":{"name":"hive-hsr","title":null,"version":"0"},"capabilities":null}}
+{"jsonrpc":"2.0","id":1,"result":{"userAgent":"fake-codex/0"}}
+{"jsonrpc":"2.0","method":"initialized"}
+{"jsonrpc":"2.0","id":2,"method":"thread/resume","params":{"threadId":"566b3fd0-202f-47c7-a1a6-6583ff3fde8a","cwd":"/home/trmd/.hive/v2/tmp/3e7350d6-83fd-4961-bb8b-078a7d411c81/hb-m-h8-lifecycle-enhzjN","approvalPolicy":"never","sandbox":"danger-full-access","excludeTurns":true}}
+{"jsonrpc":"2.0","id":2,"result":{"thread":{"id":"566b3fd0-202f-47c7-a1a6-6583ff3fde8a","cwd":"/home/trmd/.hive/v2/tmp/3e7350d6-83fd-4961-bb8b-078a7d411c81/hb-m-h8-lifecycle-enhzjN"}}}
+{"jsonrpc":"2.0","id":1012,"method":"turn/start","params":{"threadId":"566b3fd0-202f-47c7-a1a6-6583ff3fde8a","input":[{"type":"text","text":"hello codex","text_elements":[]}]}}
+{"jsonrpc":"2.0","id":1012,"result":{"turn":{"id":"26d5b7bb-0195-46af-8a53-5bc8ed879419"}}}
+{"jsonrpc":"2.0","method":"turn/started","params":{"threadId":"566b3fd0-202f-47c7-a1a6-6583ff3fde8a","turn":{"id":"26d5b7bb-0195-46af-8a53-5bc8ed879419"}}}
+{"jsonrpc":"2.0","method":"item/agentMessage/delta","params":{"threadId":"566b3fd0-202f-47c7-a1a6-6583ff3fde8a","delta":"echo"}}
+{"jsonrpc":"2.0","method":"thread/status/changed","params":{"threadId":"566b3fd0-202f-47c7-a1a6-6583ff3fde8a","status":{"type":"idle"}}}
+{"jsonrpc":"2.0","method":"turn/completed","params":{"threadId":"566b3fd0-202f-47c7-a1a6-6583ff3fde8a","turn":{"id":"26d5b7bb-0195-46af-8a53-5bc8ed879419","status":"completed","error":null}}}
+{"jsonrpc":"2.0","id":1018,"method":"turn/start","params":{"threadId":"566b3fd0-202f-47c7-a1a6-6583ff3fde8a","input":[{"type":"text","text":"after restart codex","text_elements":[]}]}}
+{"jsonrpc":"2.0","id":1018,"result":{"turn":{"id":"28d2ed92-cbf2-4b1b-9555-b613102b71d4"}}}
+{"jsonrpc":"2.0","method":"turn/started","params":{"threadId":"566b3fd0-202f-47c7-a1a6-6583ff3fde8a","turn":{"id":"28d2ed92-cbf2-4b1b-9555-b613102b71d4"}}}
+{"jsonrpc":"2.0","method":"item/agentMessage/delta","params":{"threadId":"566b3fd0-202f-47c7-a1a6-6583ff3fde8a","delta":"echo"}}
+{"jsonrpc":"2.0","method":"thread/status/changed","params":{"threadId":"566b3fd0-202f-47c7-a1a6-6583ff3fde8a","status":{"type":"idle"}}}
+{"jsonrpc":"2.0","method":"turn/completed","params":{"threadId":"566b3fd0-202f-47c7-a1a6-6583ff3fde8a","turn":{"id":"28d2ed92-cbf2-4b1b-9555-b613102b71d4","status":"completed","error":null}}}

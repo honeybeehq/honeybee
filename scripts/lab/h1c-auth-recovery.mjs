@@ -7,11 +7,11 @@ process.env.H1C_AUTH_FAULT=join(root,'fault');
 await import('./h1c-peer-auth-fault.mjs');
 const {openCoreStore}=await import('../../v2/core/src/index.ts');
 const {DaemonCore}=await import('../../v2/daemon/src/loops.ts');
-const {HsrDriver}=await import('../../v2/driver-hsr/src/index.ts');
+const {RuntimeHost}=await import('../../v2/driver-hsr/src/index.ts');
 const {codexAdapter}=await import('../../v2/adapters/src/index.ts');
 const {fixtureRuntimeIdentity,sleep,pidAlive}=await import('../../v2/driver-hsr/tests/helpers.ts');
 let clock=Date.now();const store=openCoreStore(join(root,'core.sqlite'),{now:()=>clock});const writes=join(root,'writes');
-const driver=new HsrDriver({now:()=>clock,random:()=>0.5,sessionLogDir:join(root,'logs'),runnersDir:join(root,'runners'),runtimeIdentity:fixtureRuntimeIdentity(root),resolve:()=>({adapter:codexAdapter({cwd:root}),command:process.execPath,args:[new URL('./h1c-fake-codex.mjs',import.meta.url).pathname],cwd:root,env:{...process.env,H1C_WRITES:writes}})});
+const driver=new RuntimeHost({now:()=>clock,random:()=>0.5,sessionLogDir:join(root,'logs'),runnersDir:join(root,'runners'),runtimeIdentity:fixtureRuntimeIdentity(root),resolve:()=>({adapter:codexAdapter({cwd:root}),command:process.execPath,args:[new URL('./h1c-fake-codex.mjs',import.meta.url).pathname],cwd:root,env:{...process.env,H1C_WRITES:writes}})});
 const logs=[];const core=new DaemonCore({store,driver,now:()=>clock,random:()=>0.5,policy:{bootHangTimeoutSteps:500_000,commandsPerStep:8,i1DeadlineSteps:540_000},log:line=>logs.push(line)});let pid;
 try{
  core.boot();store.createBee({id:'bee',name:'owned-auth',agent:'codex',substrate:'hsr',cwd:root});store.enqueueCommand('spawn','bee');core.step();

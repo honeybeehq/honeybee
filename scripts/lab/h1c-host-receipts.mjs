@@ -3,7 +3,7 @@ import {mkdtempSync,readFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {createHash} from 'node:crypto';
-import {HsrDriver} from '../../v2/driver-hsr/src/index.ts';
+import {RuntimeHost} from '../../v2/driver-hsr/src/index.ts';
 import {codexAdapter} from '../../v2/adapters/src/index.ts';
 import {DeliveryReceipts} from '../../v2/driver-hsr/src/delivery-receipts.ts';
 import {drainUntil,sleep,pidAlive,fixtureRuntimeIdentity,persistFixtureProcess} from '../../v2/driver-hsr/tests/helpers.ts';
@@ -17,7 +17,7 @@ for(const mode of ['journal-full','missing-ack']){
  const config={sessionLogDir:join(root,mode),runnersDir:join(root,mode,'runners'),runtimeIdentity:fixtureRuntimeIdentity(root+mode),
   hostCommand:path=>({command:process.execPath,args:[...(mode==='journal-full'?['--import',fault]:[]),host,path]}),
   resolve:()=>({adapter:codexAdapter({cwd:root}),command:process.execPath,args:[fake],cwd:root,env:{...process.env,H1C_WRITES:writes,H1C_TURN_MS:'300',H1C_ACK:mode==='missing-ack'?'never':'yes'}})};
- let driver=new HsrDriver(config);let child;
+ let driver=new RuntimeHost(config);let child;
  try{
   driver.start('bee',1);
   for(let i=0;i<1000;i++){driver.observe();if(driver.procs.get('bee')?.phase==='idle'&&driver.procs.get('bee')?.deliveryProtocol?.authenticated)break;await sleep(5);}
@@ -31,7 +31,7 @@ for(const mode of ['journal-full','missing-ack']){
   assert.equal(p.phase,'idle');
   persistFixtureProcess(root+mode,'bee',1,driver.procOf('bee',1));
   driver.detachAll();
-  driver=new HsrDriver(config);assert(driver.adopt('bee',1,child,p.pidStartedAt));
+  driver=new RuntimeHost(config);assert(driver.adopt('bee',1,child,p.pidStartedAt));
   let result;
   for(let i=0;i<1000;i++){driver.observe();result=driver.reconcileDeliveryConfirmation('bee',1,24680,plan);if(result===(mode==='journal-full'?'accepted':'pending_ack')&&driver.procs.get('bee')?.deliveryProtocol?.authenticated){if(mode==='journal-full')break;}await sleep(2);if(mode==='missing-ack'&&i>50)break;}
   assert.equal(result,mode==='journal-full'?'accepted':'pending_ack');

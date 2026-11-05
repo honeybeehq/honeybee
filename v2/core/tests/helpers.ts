@@ -33,7 +33,7 @@ export function harness(): Harness {
 }
 
 export function makeBee(store: CoreStore, name = "worker") {
-  return store.createBee({ name, agent: "claude", substrate: "tmux", cwd: "/tmp/w" });
+  return store.createBee({ name, agent: "claude", substrate: "hsr", cwd: "/tmp/w" });
 }
 
 /** Drive a bee's current generation from booting into `running` with a pid identity. */

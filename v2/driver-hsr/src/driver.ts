@@ -12,50 +12,8 @@ import { canonicalDigest, type JsonValue } from "../../core/src/canonical.ts";
 import { TurnQuiet } from "../../driver-tmux/src/turn-quiet.ts";
 import { childNodePath, nativeNodeEnv } from "../../core/src/nodeRuntime.ts";
 import type { ReconnectToolsReceipt } from "../../core/src/reconnectTools.ts";
-/**
- * HsrDriver — the first real substrate driver (WP3 of the reset).
- *
- * Implements the RuntimeDriver interface EXACTLY as fixed by WP2
- * (v2/harness/src/driver.ts): the WP2 SimDaemon drives this driver unmodified.
- * Spec: docs/design/specs/reset-03-hsr-driver.md.
- *
- * Behavior mapping to the spec:
- *  1. Parenthood — `start` spawns a detached runner host in its OWN process
- *     group; that host owns the agent child and its pipes. The driver captures
- *     host pid + start-time AT SPAWN (`procOf`), so core can record and exactly
- *     re-adopt the durable runtime across daemon restarts.
- *  2. Truth = structured events — the driver consumes the child's stdout as an
- *     NDJSON line stream; no screen scraping. Every raw line is appended
- *     VERBATIM to the bee's session log (Q1: the log is the native stream;
- *     adapters re-derive observations); the harness adapter distills lines
- *     into DriverObservations and condition-flag evidence.
- *  3. Deliver — writes the adapter-encoded message to the child's stdin at its
- *     accept point. Deterministic: accepted, or refused with `no_process` /
- *     `not_ready` (Q2: a booting runtime refuses; the daemon's delivery loop
- *     retries — no hidden driver-side queue). Delivery doubt cannot exist.
- *  4. Stop — signals the exact spawned process: TERM to its process group,
- *     escalate to KILL after a bounded wait. A dead-already process is
- *     `hadProcess:false`, never an error.
- *  5. Exact identity everywhere — signal targets are only ever the pid the
- *     driver itself spawned and still holds the live ChildProcess handle for
- *     (parenthood: the pid cannot be recycled before the exit event fires,
- *     because the unreaped child holds it). pid + start-time are the durable
- *     identity handed to core for cross-restart re-adoption. No name, alias
- *     or pane is ever a signal target (the CO.a8d2 lesson).
- *  6. observe() never blocks — events drain from an internal buffer fed by
- *     the runner's output-only, generation-scoped journal and host-exit facts.
- *     The core checkpoints parsed journal bytes only after their effects, so
- *     undrained evidence survives daemon death without transcript guessing.
- *
- * WP4 addition — cross-restart re-adoption (contract §3.2): when the daemon
- * PROCESS restarts, ChildProcess handles are gone but the detached host and
- * agent survive. `adopt(...)` verifies exact pid/start-time, reconnects the
- * host socket, and resumes the exact generation journal at core's committed
- * cursor. Missing/corrupt proof falls back to a conservative degraded exact-
- * pid adoption; silence never manufactures idle.
- */
 import { spawn, type ChildProcess } from "node:child_process";
-import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, realpathSync, statSync, writeFileSync } from "node:fs";
+import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, realpathSync, statSync, watch, writeFileSync, type FSWatcher } from "node:fs";
 import { createHash, randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { connect, type Socket } from "node:net";
@@ -78,85 +36,61 @@ import { executableNotFoundDetail, type SpawnCommandResolution } from "../../cor
 import { inspectProcess, sameProcess, processDisposition, legacyProcessCandidate, ProcessIdentityUnavailableError, verifyProcessIdentity, type ProcessIdentity } from "./psutil.ts";
 import { persistentSocketDir, socketPathFits } from "../../core/src/socketPath.ts";
 
-// Pin the module's physical deployment before an immutable runtime's
-// `current` symlink can move. Node normally realpaths imported modules, but
-// --preserve-symlinks deliberately does not; doing it explicitly keeps a
-// daemon loaded from release A paired with release A's runner host in both
-// modes. This resolves only our own file, never the optional sibling.
-const PINNED_HSR_MODULE_PATH = realpathSync(fileURLToPath(import.meta.url));
-const PINNED_HSR_MODULE_DIR = dirname(PINNED_HSR_MODULE_PATH);
+const PINNED_HOST_MODULE_PATH = realpathSync(fileURLToPath(import.meta.url));
+const PINNED_HOST_MODULE_DIR = dirname(PINNED_HOST_MODULE_PATH);
 
-/** What `start` needs to know per bee: which agent, how to spawn it. */
+const SWEEP_PROBE_MS = 1000;
+const SWEEP_TAIL_MS = 5000;
+const SWEEP_UNWATCHED_MS = 200;
+
 export interface SpawnSpec {
   adapter: HarnessAdapter;
   command: string;
   args: string[];
   cwd?: string;
   env?: Record<string, string>;
-  /**
-   * How `command` was resolved (core resolveSpawnCommand — the one rule,
-   * F8). `not_found` means the resolver searched PATH + fallbacks and found
-   * nothing: the spawn proceeds with the bare name (honest ENOENT) and the
-   * exit detail names the missing executable for the operator.
-   */
   commandResolution?: SpawnCommandResolution;
 }
 
-export interface HsrDriverConfig {
+export interface PreparedStart {
+  cancel(): void;
+}
+
+export interface RuntimeHostConfig {
   onRuntimeReady?(beeId: string, pid: number | null): void;
   runtimeIdentity?: RuntimeIdentityHooks;
   execution?: ExecutionRuntimeHooks;
   executionStartFor?(beeId: string, generation: number): ExecutionStart | null;
   executionHostFor?(start: ExecutionStart): ExecutionProcess | null;
   resolveExecutionAdapter?(beeId: string): HarnessAdapter;
-  /** Resolve the spawn spec for a bee (agent binary + adapter). */
   resolve(beeId: string, generation?: number): SpawnSpec;
-  /** Directory for session logs; one `<beeId>.jsonl` per bee, verbatim native stream. */
+  prepare?(beeId: string, generation: number, execution: ExecutionStart | null, done: (failure?: string) => void): PreparedStart | null;
+  onObserved?(event: DriverObservation): void;
+  extraEvidence?(live: () => LiveProcess[], clearedBeeIds: string[]): FlagEvidence[];
   sessionLogDir: string;
-  /**
-   * v23: the bee's CURRENT session log file when the store has moved it (a
-   * handoff opens a new transcript segment with its own file so the target
-   * harness never appends to a log the source harness wrote). Null/absent =
-   * the default `<sessionLogDir>/<beeId>.jsonl`.
-   */
   sessionLogPathFor?: (beeId: string) => string | null;
-  /** Bounded wait between TERM and KILL escalation (spec point 4). Default 5000ms. */
   stopKillGraceMs?: number;
-  /** Start-time tolerance for cross-restart re-adoption identity checks. Default 5000ms. */
   adoptToleranceMs?: number;
   now?: () => number;
   random?: () => number;
-  /**
-   * Directory for runner-host artifacts (config/socket/status per runtime
-   * generation). Default: `<sessionLogDir>/../runners`.
-   */
   runnersDir?: string;
   socketDir?: string;
-  /**
-   * How to launch the runner host for a written config file. The default
-   * invokes the sibling TS entry under --experimental-strip-types in source
-   * checkouts and the dedicated sibling runner-host.js artifact from builds.
-   */
   hostCommand?: (configPath: string) => { command: string; args: string[] };
-  /** A runner write lane connected; mail refused `not_ready` can go now. */
-  onWriteLaneReady?: () => void;
+  wake?: () => void;
 }
 
 type HostLaunch =
-  | { kind: "override"; commandFor: NonNullable<HsrDriverConfig["hostCommand"]> }
+  | { kind: "override"; commandFor: NonNullable<RuntimeHostConfig["hostCommand"]> }
   | { kind: "source"; entry: string }
   | { kind: "artifact"; entry: string };
 
-/** Condition-flag evidence surfaced by adapters, stamped with process identity. */
 export interface FlagEvidence {
   beeId: string;
   generation: number;
   flag: "auth_needed" | "resource_blocked" | "spawn_failed";
   action: "set" | "clear";
   detail: string;
-  /** Provider-declared instant (epoch ms) the condition lifts, when stated. */
   resetsAt?: number;
-  /** The turn a `set` cut off: the mail delivered into it and whether the provider served any of it. */
   turn?: TurnEvidence;
   owner?: "sandbox_tmp";
   quota?: QuotaBoundary;
@@ -172,7 +106,6 @@ export interface TurnEvidence {
 interface TurnTrack {
   messageIds: number[];
   progressed: boolean;
-  /** False while the turn began before this daemon adopted the process. */
   observedFromStart: boolean;
 }
 
@@ -180,23 +113,12 @@ function freshTurn(): TurnTrack {
   return { messageIds: [], progressed: false, observedFromStart: true };
 }
 
-/**
- * Harness-native session identity reported by a runtime's booted signal
- * (claude system/init session_id, codex thread id). The daemon records it on
- * the bee so revive can resume the conversation (spec 07 §F).
- */
 export interface SessionEvidence {
   beeId: string;
   generation: number;
   sessionId: string;
 }
 
-/**
- * Subscription usage a runtime observed on its own provider responses
- * (adapter `usage_observed`), stamped with process identity. `observedAt` is
- * the driver clock when the line was parsed; a usage payload that carries its
- * own observation time wins.
- */
 export interface UsageEvidence {
   beeId: string;
   generation: number;
@@ -205,18 +127,13 @@ export interface UsageEvidence {
   quota?: Record<string, unknown>;
 }
 
-/**
- * Highest fully parsed runner-journal byte for one generation. The daemon
- * commits this only after every normalized effect emitted before it has
- * settled in the core store.
- */
 export interface ObservationCursorEvidence {
   beeId: string;
   generation: number;
   cursor: number;
 }
 
-interface ManagedProcess {
+interface Runtime {
   deliveryProtocol?: { authenticated: boolean; supported: boolean; legacy: boolean; pending: Set<number>; replies: Map<number, DeliveryStatus> };
   authFailureSince?: number;
   authFailures?: number;
@@ -232,84 +149,41 @@ interface ManagedProcess {
   generation: number;
   pid: number;
   pidStartedAt: number;
-  /** Null for a re-adopted (degraded) process — the handle died with the previous daemon. */
   child: ChildProcess | null;
-  /** Null for a re-adopted (degraded) process — there is no event stream to normalize. */
   adapter: HarnessAdapter | null;
-  /** True when this process was re-adopted across a daemon restart (no pipes). */
   degraded: boolean;
-  /** Driver-side accept-point phase; the store's state is derived downstream. */
   phase: "booting" | "running" | "idle";
   sessionId: string | null;
-  /** v6: the harness-native id of the turn in flight (codex turn/started), for turn/interrupt. */
   turnId: string | null;
-  /** Mail and provider progress of the turn in flight, for auth-interruption evidence. */
   turn: TurnTrack;
   quiet: TurnQuiet | null;
-  /** RPC deliveries written but not yet accepted by the harness. */
   pendingDeliveries: Set<number>;
-  /** Durable protocol acknowledgements waiting for the daemon to mark mailbox truth. */
   confirmedDeliveries: Set<number>;
   reconnectReplies: Map<string, string | null>;
-  /** First requested stop cause; fixes the exit cause of a signaled process. */
   stopCause: StopCause | null;
   killTimer: NodeJS.Timeout | null;
-  /** Incomplete final line from the output-only observation journal. */
   stdoutRest: Buffer;
   exited: boolean;
-  /**
-   * Runner-host runtime (WP5): `child` is the detached HOST process; the
-   * agent is the host's child in the same process group. The host owns the
-   * agent's pipes and writes the session log, so the runtime survives daemon
-   * restarts; the driver observes by tailing the log and delivers over the
-   * host's unix socket. False only for legacy degraded adoptions (runtimes
-   * spawned by a pre-host daemon).
-   */
-  hostStyle: boolean;
-  /** Agent pid learned from the host's status file (host pid is `pid`). */
   agentPid: number | null;
   socket: Socket | null;
   socketRetry: NodeJS.Timeout | null;
   socketPath: string | null;
   statusPath: string | null;
-  /** Output-only journal (v15+) or the legacy shared transcript fallback. */
   observationPath: string | null;
-  /** Byte offset consumed from observationPath by the observation tail. */
   logOffset: number;
-  /** Cursor exposed at spawn so core can durably establish the generation baseline. */
   initialObservationCursor: number;
-  /** Highest signal-bearing line parsed since the daemon last checkpointed. */
   pendingObservationCursor: number | null;
-  /** Legacy hosts only: their observation source is the bidirectional session log. */
-  legacySharedObservation: boolean;
-  /**
-   * Outbound lines the driver sent through the host (deliver/interrupt/
-   * respond/boot). The host appends them to the session log in write order;
-   * the tail matches-and-skips them so adapters only parse agent output.
-   */
-  outboundPending: string[];
-  /**
-   * Adapter-generated non-mail protocol lines awaiting a reconnect. Mail
-   * delivery and interrupts never enter this daemon-local queue: they refuse
-   * `not_ready` until the runner connection can accept them.
-   */
   pendingWrites: string[];
-  /** The host reported its stdin lane could not be established: refuse
-   * deliveries instead of queueing into a black hole. */
   socketBroken: boolean;
-  /** The OS spawn/process error message, when the child emitted `error` (e.g. ENOENT). */
   spawnError: string | null;
-  /** Resolution fact for the spawned command (own spawns only; null on adoption). */
   commandResolution: SpawnCommandResolution | null;
-  /**
-   * v9: whether the adapter has parsed at least one signal from this
-   * process's actual output. A readyAtSpawn runtime opens its accept point on
-   * a driver-minted synthetic booted; only real output upgrades it — the
-   * first parsed signal pushes a real `booted` observation so the daemon
-   * learns, in stream order, that the process demonstrably runs (the
-   * spawn-failure budget resets on that, never on the synthetic booted).
-   */
   realEvidence: boolean;
+}
+
+interface PendingStart {
+  generation: number;
+  execution?: ExecutionStart | null;
+  cancel?: () => void;
 }
 
 interface RecoveredAdapterContext {
@@ -321,12 +195,6 @@ interface RecoveredAdapterContext {
   quiet: TurnQuiet;
 }
 
-/**
- * Rebuild adapter-local delivery context from the exact generation journal
- * prefix already committed by core. This is not lifecycle inference from a
- * rendered transcript: every line is the native output-only protocol stream
- * and is normalized by the same pure adapter used live.
- */
 function recoverAdapterContext(
   adapter: HarnessAdapter,
   path: string,
@@ -384,8 +252,6 @@ function recoverAdapterContext(
       rest = Buffer.from(data.subarray(lineStart));
     }
   } catch {
-    // Supplemental context recovery fails closed: durable phase/session truth
-    // still adopts, while turn-addressed delivery refuses until new evidence.
   } finally {
     if (fd != null) closeSync(fd);
   }
@@ -397,34 +263,30 @@ export class ReconnectToolsControlError extends Error {
   constructor(code: string, message: string) { super(message); this.code = code; }
 }
 
-export class HsrDriver implements RuntimeDriver {
+export class RuntimeHost implements RuntimeDriver {
   private readonly reconnecting = new Set<string>();
   private detached = false;
-  private readonly cfg: HsrDriverConfig;
+  private readonly cfg: RuntimeHostConfig;
   private fallbackSocketDir: string | null = null;
   private readonly hostLaunch: HostLaunch;
   private readonly now: () => number;
   private readonly graceMs: number;
   private readonly adoptTolMs: number;
-  /** Keyed by beeId — at most one live process per bee (driver-level invariant). */
-  private readonly procs = new Map<string, ManagedProcess>();
-  /**
-   * Real-process asynchrony the SimDriver never had: a stop() leaves the old
-   * process *dying* (TERM sent, exit event pending) while the daemon may
-   * already start the next generation. `start` for a bee whose process is
-   * dying is deferred here and spawned from the old process's exit callback —
-   * still "returns immediately; boot progress arrives as observations".
-   */
-  private readonly pendingStarts = new Map<string, { generation: number; execution?: ExecutionStart | null }>();
+  private readonly procs = new Map<string, Runtime>();
+  private readonly pendingStarts = new Map<string, PendingStart>();
   private events: DriverObservation[] = [];
   private evidence: FlagEvidence[] = [];
   private sessions: SessionEvidence[] = [];
   private usage: UsageEvidence[] = [];
-  /** Delivery ground truth for the invariant checker: messageId → generation. */
   private readonly consumed = new Map<number, number>();
   private readonly pointerAttempts = new Map<number, { beeId: string; generation: number; digest: string; refused?: boolean }>();
+  private watcher: FSWatcher | null = null;
+  private watchFailed = false;
+  private readonly dirty = new Map<Runtime, boolean>();
+  private drainScheduled = false;
+  private sweepTimer: NodeJS.Timeout | null = null;
 
-  constructor(cfg: HsrDriverConfig) {
+  constructor(cfg: RuntimeHostConfig) {
     this.cfg = cfg;
     stateDirectory(cfg.sessionLogDir, "sessionLogDir");
     this.runnersDir();
@@ -435,6 +297,7 @@ export class HsrDriver implements RuntimeDriver {
     this.adoptTolMs = cfg.adoptToleranceMs ?? 5000;
     mkdirSync(cfg.sessionLogDir, { recursive: true });
     mkdirSync(this.runnersDir(), { recursive: true });
+    this.openWatcher();
   }
 
   private runnersDir(): string {
@@ -444,25 +307,21 @@ export class HsrDriver implements RuntimeDriver {
   }
 
   private selectHostLaunch(): HostLaunch {
-    // Overrides are a complete caller-owned launch policy. In particular,
-    // embedding/tests may intentionally provide one without packaging our
-    // default sibling, so do not even inspect the sibling on this branch.
     const override = this.cfg.hostCommand;
     if (override) return { kind: "override", commandFor: override };
-
-    const source = extname(PINNED_HSR_MODULE_PATH) === ".ts";
-    const entry = join(PINNED_HSR_MODULE_DIR, source ? "runner-host-main.ts" : "runner-host.js");
+    const source = extname(PINNED_HOST_MODULE_PATH) === ".ts";
+    const entry = join(PINNED_HOST_MODULE_DIR, source ? "runner-host-main.ts" : "runner-host.js");
     try {
       if (!statSync(entry).isFile()) throw new Error("not a regular file");
     } catch (cause) {
       if (source) {
         throw new Error(
-          `hsr driver: required runner-host source entry is unavailable at ${entry}; restore the source checkout or provide hostCommand`,
+          `runtime host: required runner-host source entry is unavailable at ${entry}; restore the source checkout or provide hostCommand`,
           { cause },
         );
       }
       throw new Error(
-        `hsr driver: required bundled runner-host artifact is unavailable at ${entry}; rebuild or reinstall Honeybee so runner-host.js is shipped beside the v2 bundle`,
+        `runtime host: required bundled runner-host artifact is unavailable at ${entry}; rebuild or reinstall Honeybee so runner-host.js is shipped beside the v2 bundle`,
         { cause },
       );
     }
@@ -487,11 +346,6 @@ export class HsrDriver implements RuntimeDriver {
     generation: number,
   ): { config: string; socket: string; status: string; observations: string } {
     const base = join(this.runnersDir(), `${beeId}.${generation}`);
-    // The unix socket CANNOT live beside the other artifacts: sun_path is
-    // capped (104 bytes on macOS) and runnersDir under a test tmpdir already
-    // blows it — listen fails silently and every delivery would black-hole.
-    // A short deterministic tmpdir name keeps the path tiny and derivable at
-    // adoption from the same identity inputs.
     const digest = createHash("sha256")
       .update(`${this.runnersDir()}\u0000${beeId}\u0000${generation}`)
       .digest("hex")
@@ -518,39 +372,177 @@ export class HsrDriver implements RuntimeDriver {
   }
 
   // -------------------------------------------------------------------------
-  // RuntimeDriver — the fixed WP2 contract
+  // Observation sources: runner-dir watch, child exit, host socket, one sweep
+  // -------------------------------------------------------------------------
+
+  private openWatcher(): void {
+    try {
+      const watcher = watch(this.runnersDir(), { persistent: false }, (_type, filename) => this.onRunnerFileChange(filename));
+      watcher.on("error", () => {
+        try { watcher.close(); } catch {}
+        if (this.watcher === watcher) this.watcher = null;
+        this.watchFailed = true;
+        this.armSweep();
+      });
+      this.watcher = watcher;
+    } catch {
+      this.watchFailed = true;
+    }
+  }
+
+  private onRunnerFileChange(filename: string | Buffer | null): void {
+    if (this.detached || filename == null) return;
+    const name = String(filename);
+    const status = name.endsWith(".status.json");
+    const journal = !status && name.endsWith(".observations.jsonl");
+    if (!status && !journal) return;
+    const base = name.slice(0, name.length - (status ? ".status.json".length : ".observations.jsonl".length));
+    const dot = base.lastIndexOf(".");
+    if (dot <= 0) return;
+    const p = this.procs.get(base.slice(0, dot));
+    if (!p || p.generation !== Number(base.slice(dot + 1)) || p.exited) return;
+    this.markDirty(p, status);
+  }
+
+  private markDirty(p: Runtime, status: boolean): void {
+    if (this.detached) return;
+    this.dirty.set(p, status || (this.dirty.get(p) ?? false));
+    if (this.drainScheduled) return;
+    this.drainScheduled = true;
+    setImmediate(() => this.drainDirty());
+  }
+
+  private drainDirty(): void {
+    this.drainScheduled = false;
+    const entries = [...this.dirty.entries()];
+    this.dirty.clear();
+    for (const [p, status] of entries) {
+      if (p.exited || this.procs.get(p.beeId) !== p) continue;
+      if (status) this.pumpStatus(p);
+      if (!p.exited) this.pumpHostTail(p);
+    }
+    this.notify();
+  }
+
+  private notify(): void {
+    if (this.detached) return;
+    if (this.events.length > 0 || this.evidence.length > 0 || this.sessions.length > 0 || this.usage.length > 0) this.cfg.wake?.();
+  }
+
+  private sweepDelay(): number | null {
+    let delay: number | null = null;
+    for (const p of this.procs.values()) {
+      if (p.exited) continue;
+      const probe = p.pendingStartIdentity !== undefined || p.degraded || p.readinessRecovery?.nextProbeAt !== undefined || (p.child == null && !p.socket);
+      const wanted = this.watchFailed ? SWEEP_UNWATCHED_MS : probe ? SWEEP_PROBE_MS : SWEEP_TAIL_MS;
+      delay = delay == null ? wanted : Math.min(delay, wanted);
+    }
+    return delay;
+  }
+
+  private armSweep(): void {
+    if (this.detached || this.sweepTimer) return;
+    const delay = this.sweepDelay();
+    if (delay == null) return;
+    this.sweepTimer = setTimeout(() => {
+      this.sweepTimer = null;
+      this.sweep();
+      this.armSweep();
+    }, delay);
+    this.sweepTimer.unref();
+  }
+
+  private sweep(): void {
+    for (const p of [...this.procs.values()]) {
+      if (p.exited) continue;
+      if (p.pendingStartIdentity) { this.probe(p); continue; }
+      if (p.degraded || (p.child == null && !p.socket)) this.probe(p);
+      if (p.exited) continue;
+      if (p.readinessRecovery?.nextProbeAt !== undefined && this.now() >= p.readinessRecovery.nextProbeAt) {
+        p.readinessRecovery.nextProbeAt = undefined;
+        p.readinessRecovery.started = false;
+        this.recoverAdoptedReadiness(p);
+      }
+      if (p.agentPid == null || (!p.socket && !p.socketBroken)) this.pumpStatus(p);
+      if (!p.exited) this.pumpHostTail(p);
+    }
+    this.notify();
+  }
+
+  private probe(p: Runtime): void {
+    if (p.exited) return;
+    if (p.pendingStartIdentity) {
+      const value = inspectProcess(p.pid);
+      if (value.kind === "gone" || value.kind === "present" && (value.state === "zombie" || !sameProcess(p.pendingStartIdentity, value))) {
+        this.releasePendingStart(p, value.kind === "gone" ? "gone" : value.state === "zombie" ? "zombie" : "birth-changed");
+      }
+      return;
+    }
+    this.captureProcessIdentity(p);
+    const disposition = processDisposition(p.processIdentity ?? null, inspectProcess(p.pid));
+    if (disposition === "unavailable") this.cfg.runtimeIdentity?.unavailable?.(p.beeId, p.generation);
+    if (disposition === "exited") this.finishHost(p);
+  }
+
+  // -------------------------------------------------------------------------
+  // RuntimeDriver
   // -------------------------------------------------------------------------
 
   start(beeId: string, generation: number, execution?: ExecutionStart | null): void {
     const start = execution ?? this.cfg.executionStartFor?.(beeId,generation) ?? null;
     if (start && (start.beeId !== beeId || start.runtimeGeneration !== generation)) throw new ExecutionFenceError("rpc_execution_history_unknown", "Start intent does not bind the requested bee and runtime generation");
-    if (start && !this.cfg.execution) throw new ExecutionFenceError("rpc_execution_fence_unsupported", "Fenced HSR start requires owner hooks");
+    if (start && !this.cfg.execution) throw new ExecutionFenceError("rpc_execution_fence_unsupported", "Fenced start requires owner hooks");
     if (start) this.cfg.execution!.check(start,"hsr_start");
+    if (this.detached) return;
+    const pending = this.pendingStarts.get(beeId);
+    if (pending?.cancel) throw new Error(`runtime host: bee ${beeId} already has a start in preparation (generation ${pending.generation})`);
+    const existing = this.procs.get(beeId);
+    if (existing && existing.stopCause == null && !pending) {
+      throw new Error(
+        `runtime host: bee ${beeId} already has a live process (generation ${existing.generation}, pid ${existing.pid})`,
+      );
+    }
+    const prepared = this.cfg.prepare?.(beeId, generation, start, failure => this.prepared(beeId, generation, failure)) ?? null;
+    if (prepared) {
+      this.pendingStarts.set(beeId, { generation, execution: start, cancel: prepared.cancel });
+      return;
+    }
+    this.launch(beeId, generation, start);
+  }
+
+  private prepared(beeId: string, generation: number, failure?: string): void {
+    const pending = this.pendingStarts.get(beeId);
+    if (!pending || pending.generation !== generation || !pending.cancel) return;
+    this.pendingStarts.delete(beeId);
+    if (failure !== undefined) {
+      this.events.push({ beeId, generation, kind: "exited", exitCause: "crashed", detail: `cell provisioning failed: ${failure}` });
+    } else {
+      try {
+        this.launch(beeId, generation, pending.execution ?? null);
+      } catch (error) {
+        this.events.push({ beeId, generation, kind: "exited", exitCause: "crashed", detail: error instanceof Error ? error.message : String(error) });
+      }
+    }
+    this.notify();
+  }
+
+  private launch(beeId: string, generation: number, start: ExecutionStart | null): void {
     if (this.detached) return;
     const existing = this.procs.get(beeId);
     if (existing) {
       if (existing.stopCause != null || this.pendingStarts.has(beeId)) {
-        // The previous generation is dying (exit event pending). Defer the
-        // spawn to its exit callback — one live process per bee, always.
         this.pendingStarts.set(beeId, { generation, execution: start });
         return;
       }
       throw new Error(
-        `hsr driver: bee ${beeId} already has a live process (generation ${existing.generation}, pid ${existing.pid})`,
+        `runtime host: bee ${beeId} already has a live process (generation ${existing.generation}, pid ${existing.pid})`,
       );
     }
     if (start) this.cfg.execution!.check(start,"spawn_spec");
     const spec = this.cfg.resolve(beeId, generation);
     if (process.env.HIVE_SPAWN_TRACE) {
-      // Diagnostics only: exact spawn shape for post-mortem replay.
       appendFileSync(process.env.HIVE_SPAWN_TRACE, JSON.stringify({ command: spec.command, args: spec.args, cwd: spec.cwd, envKeys: Object.keys(spec.env ?? {}).length, at: Date.now() }) + "\n");
     }
-    // WP5: spawn the runner HOST, not the agent. The host is detached in its
-    // own process group (spec point 1 — group signals reach host + agent and
-    // never a sibling of ours) and spawns the agent as ITS child in that same
-    // group, holding the agent's pipes. A daemon restart therefore takes no
-    // pipe down: the runtime survives, and boot re-adoption reconnects with
-    // full capability instead of the old degraded stop-on-mail rotation.
     const paths = this.runnerPaths(beeId, generation);
     const ownerBirth = start ? exactProcessBirth(process.pid) : null;
     if (start && !ownerBirth) throw new ExecutionFenceError("rpc_execution_history_unknown", "Owner process birth is unavailable");
@@ -579,13 +571,10 @@ export class HsrDriver implements RuntimeDriver {
       stdio: start ? ["ignore", "ignore", "ignore", "ipc"] : ["ignore", "ignore", "ignore"],
     });
     const hostBirth = start && child.pid ? exactProcessBirth(child.pid) : null;
-    const proc: ManagedProcess = {
+    const proc: Runtime = {
       ...(start ? { executionStart: start, ...(hostBirth && child.pid ? { executionHost: { pid: child.pid, birth: hostBirth } } : {}) } : {}),
       beeId,
       generation,
-      // pid captured AT SPAWN (WP2 amendment) — the HOST's pid: host liveness
-      // IS runtime liveness (the host exits when the agent exits), so the
-      // stored proc identity adopts across daemon restarts unchanged.
       pid: child.pid ?? -1,
       pidStartedAt: this.now(),
       child,
@@ -606,20 +595,15 @@ export class HsrDriver implements RuntimeDriver {
       spawnError: null,
       commandResolution: spec.commandResolution ?? null,
       realEvidence: false,
-      hostStyle: true,
       agentPid: null,
       socket: null,
       socketRetry: null,
       socketPath: paths.socket,
       statusPath: paths.status,
       observationPath: paths.observations,
-      // One output-only journal per generation starts at byte zero. Core
-      // persists this baseline with the pid identity before any fold.
       logOffset: 0,
       initialObservationCursor: 0,
       pendingObservationCursor: null,
-      legacySharedObservation: false,
-      outboundPending: [],
       pendingWrites: [],
       socketBroken: false,
     };
@@ -636,43 +620,21 @@ export class HsrDriver implements RuntimeDriver {
         } else if (frame.op === "execution_started") this.acceptExecutionStarted(proc, frame.agent as ExecutionProcess);
       } catch { this.appendSidecar(beeId,"execution handshake held; owner reconciliation required\n"); }
     });
-
-
-    // Host spawn failure (missing node/CLI — configuration, not the agent):
-    // surface as exited(crashed) through the daemon's spawn-retry path.
     child.on("error", (err) => {
       proc.spawnError = String(err?.message ?? err);
       this.appendSidecar(beeId, `runner host spawn error: ${proc.spawnError}\n`);
       this.finishHost(proc);
+      this.notify();
     });
-    // Host exit = runtime exit (the host outlives the agent by milliseconds
-    // to record the exit facts). Drain the tail before the exit observation
-    // so trailing output lands in stream order.
-    child.on("exit", () => this.finishHost(proc));
+    child.on("exit", () => { this.finishHost(proc); this.notify(); });
 
     this.connectSocket(proc);
 
-    if (!start && spec.adapter.readyAtSpawn) {
-      // claude stream-json emits nothing until the first stdin message: the
-      // harness accept point opens now. Delivery still waits for the runner
-      // socket, leaving startup mail durable instead of buffering it in the
-      // daemon. The synthetic `booted` OBSERVATION waits for the host's
-      // status file to confirm the AGENT process exists — the same
-      // "OS confirmed the spawn" semantics the direct child's `spawn` event
-      // carried (v9: synthetic,
-      // never boot evidence; an agent that fails to spawn reports spawnError
-      // and exits while still booting, counting against the spawn budget).
-      // The phase accept point is open immediately, but deliver() still
-      // refuses until the runner socket is connected: daemon-local buffering
-      // cannot justify a durable mailbox delivered mark across SIGKILL.
-      // The driver's phase is idle from here; the synthetic booted below is
-      // paired with a synthetic turn_ended so the store lands on the same
-      // idle (see pollHost) instead of a `running` no output will ever close.
-      proc.phase = "idle";
-    }
+    if (!start && spec.adapter.readyAtSpawn) proc.phase = "idle";
+    this.markDirty(proc, true);
+    this.armSweep();
   }
 
-  /** Current session-log size — the tail baseline for a new generation. */
   private sessionLogSize(beeId: string): number {
     try {
       return statSync(this.sessionLogPath(beeId)).size;
@@ -681,13 +643,7 @@ export class HsrDriver implements RuntimeDriver {
     }
   }
 
-  /**
-   * Connect (and keep reconnecting) the write lane to the runner host. The
-   * socket is fire-and-forget outbound only; deliver() refuses `not_ready`
-   * until it is connected and the daemon's delivery loop retries — the same
-   * bounded-refusal contract a booting runtime already has.
-   */
-  private acceptExecutionStarted(p: ManagedProcess, agent: ExecutionProcess): void {
+  private acceptExecutionStarted(p: Runtime, agent: ExecutionProcess): void {
     if (!p.executionStart || !p.executionHost || p.executionAccepted) return;
     if (!agent || exactProcessBirth(p.executionHost.pid) !== p.executionHost.birth || exactProcessBirth(agent.pid) !== agent.birth) throw new ExecutionFenceError("rpc_execution_history_unknown", "Agent-start identity is unavailable");
     this.cfg.execution!.started(p.executionStart,p.executionHost,agent);
@@ -695,7 +651,7 @@ export class HsrDriver implements RuntimeDriver {
     if (p.adapter?.readyAtSpawn) p.phase = "idle";
   }
 
-  private connectSocket(p: ManagedProcess): void {
+  private connectSocket(p: Runtime): void {
     if (this.detached || p.exited || p.socket || p.socketRetry || !p.socketPath) return;
     const attempt = connect(p.socketPath);
     attempt.setTimeout(2000, () => attempt.destroy());
@@ -759,7 +715,8 @@ export class HsrDriver implements RuntimeDriver {
         attempt.write(`${JSON.stringify({ op: "write", line })}\n`);
       }
       this.recoverAdoptedReadiness(p);
-      this.cfg.onWriteLaneReady?.();
+      this.markDirty(p, true);
+      this.cfg.wake?.();
     });
     attempt.on("error", () => undefined);
     let replyBuffer = "";
@@ -779,7 +736,7 @@ export class HsrDriver implements RuntimeDriver {
           || !["not_written", "written", "accepted", "refused", "unknown"].includes(receipt.state)) { attempt.destroy(); return; }
         if (p.deliveryProtocol.pending.delete(receipt.id)) {
           p.deliveryProtocol.replies.set(receipt.id, receipt);
-          this.cfg.onWriteLaneReady?.();
+          this.cfg.wake?.();
         }
       }
     });
@@ -792,6 +749,11 @@ export class HsrDriver implements RuntimeDriver {
         }
       }
       if (this.detached || p.exited) return;
+      if (p.child == null) {
+        this.probe(p);
+        this.notify();
+        if (p.exited) return;
+      }
       p.socketRetry = setTimeout(() => {
         p.socketRetry = null;
         this.connectSocket(p);
@@ -800,15 +762,15 @@ export class HsrDriver implements RuntimeDriver {
     });
   }
 
-  private rejectHostPeer(p: ManagedProcess, socket: Socket): void {
+  private rejectHostPeer(p: Runtime, socket: Socket): void {
     p.authFailureSince ??= this.now();
     p.authFailures = Math.min(8, (p.authFailures ?? 0) + 1);
     socket.destroy();
     if (p.pendingStartIdentity && p.authFailures >= 3) this.releasePendingStart(p, "peer-or-binding-rejected");
-    this.cfg.onWriteLaneReady?.();
+    this.cfg.wake?.();
   }
 
-  private releasePendingStart(p: ManagedProcess, reason: string): void {
+  private releasePendingStart(p: Runtime, reason: string): void {
     p.exited = true;
     if (p.socketRetry) clearTimeout(p.socketRetry);
     p.socket?.destroy();
@@ -816,9 +778,7 @@ export class HsrDriver implements RuntimeDriver {
     this.appendSidecar(p.beeId, `pending start recovery held: bee=${p.beeId} generation=${p.generation} pid=${p.pid} reason=${reason}\n`);
   }
 
-  /** Host-style runtime finished (host exit observed or pid gone): drain the
-   * observation tail, fold the host's recorded exit facts, emit exited. */
-  private finishHost(p: ManagedProcess): void {
+  private finishHost(p: Runtime): void {
     if (p.exited) return;
     this.pumpHostTail(p);
     const status = p.statusPath ? readRunnerStatus(p.statusPath) : null;
@@ -835,8 +795,6 @@ export class HsrDriver implements RuntimeDriver {
     this.onExit(p, status?.exited ? (status.exitCode ?? null) : null, null);
   }
 
-  deliveryPane(_beeId: string, _generation: number): null { return null; }
-
   deliveryReceipt(beeId: string, generation: number, messageId: number, body: string): "accepted" | "unknown" | "not_attempted" {
     const p = this.procs.get(beeId);
     const attempt = this.pointerAttempts.get(messageId);
@@ -852,7 +810,6 @@ export class HsrDriver implements RuntimeDriver {
       p.sessionId, p.turnId, this.reconnecting.has(`${beeId}:${generation}`),
       p.pendingDeliveries.has(messageId), p.confirmedDeliveries.has(messageId),
       p.socketBroken, p.socket?.destroyed, p.socket?.writable, p.authFailureSince,
-      p.child?.stdin?.destroyed, p.child?.stdin?.writable,
       p.deliveryProtocol?.replies.get(messageId)?.state === "written" ? null : p.deliveryProtocol?.replies.get(messageId)]);
   }
 
@@ -866,7 +823,7 @@ export class HsrDriver implements RuntimeDriver {
     return this.deliveryFrameOversized(p, messageId, line) ? "message_too_large" : null;
   }
 
-  private deliveryFrameOversized(p: ManagedProcess, messageId: number, line: string): boolean {
+  private deliveryFrameOversized(p: Runtime, messageId: number, line: string): boolean {
     const delivery = p.adapter?.confirmsDelivery ? { id: messageId, digest: createHash("sha256").update(line).digest("hex"), beeId: p.beeId, generation: p.generation } : undefined;
     return Buffer.byteLength(line) > DELIVERY_CONFIRMATION_MAX_WIRE_BYTES || Buffer.byteLength(JSON.stringify({ op: "write", line, ...(delivery ? { delivery } : {}) }) + "\n") > DELIVERY_FRAME_MAX_BYTES;
   }
@@ -892,7 +849,7 @@ export class HsrDriver implements RuntimeDriver {
     return true;
   }
 
-  private refreshDeliveryProtocol(p: ManagedProcess): void {
+  private refreshDeliveryProtocol(p: Runtime): void {
     const protocol = p.deliveryProtocol;
     if (!protocol || !p.statusPath) return;
     const status = readRunnerStatus(p.statusPath);
@@ -906,7 +863,7 @@ export class HsrDriver implements RuntimeDriver {
     if (!p || p.generation !== generation || !p.adapter?.confirmsDelivery) return null;
     if (options?.freshTurn && p.phase === "running") return "not_ready";
     this.refreshDeliveryProtocol(p);
-    if (p.exited || !p.hostStyle || !p.processIdentity || !p.deliveryProtocol?.authenticated || p.socketBroken
+    if (p.exited || !p.processIdentity || !p.deliveryProtocol?.authenticated || p.socketBroken
       || !p.socket || p.socket.destroyed || !p.socket.writable || !p.deliveryProtocol.supported && !p.deliveryProtocol.legacy
       || p.phase === "booting" || p.stopCause || p.phase === "running" && !p.adapter.acceptsMidTurn) return "not_ready";
     const wireLine = p.adapter.encodeMessage(body, { sessionId: p.sessionId, messageId, turnActive: p.phase === "running", turnId: p.turnId, freshTurn: options?.freshTurn });
@@ -952,18 +909,9 @@ export class HsrDriver implements RuntimeDriver {
     }
     if (p.pendingStartIdentity || p.executionStart && !p.executionAccepted) return refused("not_ready");
     if (this.reconnecting.has(`${beeId}:${generation}`)) return refused("not_ready");
-    // A re-adopted process has no stdin (pipes died with the previous daemon).
-    // Refuse deterministically; the daemon's degraded-runtime policy rotates
-    // the generation so the mailbox record reaches a fresh runtime.
     if (p.degraded || p.adapter == null) return refused("not_ready");
-    // Q2 resolution: a booting runtime refuses; the daemon retries.
     if (p.phase === "booting") return refused("not_ready");
-    // A dying (TERM'd) process has no accept point: it might still read stdin
-    // but will never work the turn — accepting would mark the mailbox row
-    // delivered and doom the message. Refuse; the exit observation follows
-    // and the next generation consumes it (delivery doubt cannot exist).
     if (p.stopCause != null) return refused("not_ready");
-    // A harness without a mid-turn accept point refuses until idle.
     if (p.phase === "running" && !p.adapter.acceptsMidTurn) {
       return refused("not_ready");
     }
@@ -974,14 +922,8 @@ export class HsrDriver implements RuntimeDriver {
       }
       if (p.pendingDeliveries.has(messageId) && !options?.confirmation) return { accepted: false, reason: "not_ready", ...(options?.singleAttempt ? {pendingConfirmation: true} : {}) };
     }
-    if (p.hostStyle && (p.socketBroken || !p.socket || p.socket.destroyed || !p.socket.writable)) {
-      // pendingWrites dies with this daemon. Refuse until the runner's socket
-      // is connected so the mailbox row remains durable and retries next tick.
+    if (p.socketBroken || !p.socket || p.socket.destroyed || !p.socket.writable) {
       return refused("not_ready");
-    }
-    if (!p.hostStyle && (!p.child?.stdin || p.child.stdin.destroyed || !p.child.stdin.writable)) {
-      // stdin gone means the process is dying; its exit observation follows.
-      return refused("no_process");
     }
     if (options?.freshTurn && p.phase === "running") return refused("not_ready");
     const currentEncoding = options?.confirmation && !options.freshTurn ? options.confirmation.wireLine : p.adapter.encodeMessage(body, {
@@ -995,9 +937,6 @@ export class HsrDriver implements RuntimeDriver {
     const encoded = options?.confirmation?.wireLine ?? currentEncoding;
     if (encoded == null) return refused("not_ready");
     if (this.deliveryFrameOversized(p, messageId, encoded)) return { accepted: false, reason: "not_ready", detail: "message_too_large" };
-    // Host-style reaches here only with a connected write lane. Node's
-    // socket.write(false) means accepted with backpressure, not rejected; the
-    // write remains one delivery and must never trigger a duplicate retry.
     if (options?.confirmation && (options.confirmation.host.pid !== p.pid || options.confirmation.host.birth !== p.processIdentity?.birth
       || options.confirmation.host.bootId !== p.processIdentity?.bootId || createHash("sha256").update(encoded).digest("hex") !== options.confirmation.digest)) return refused("not_ready");
     if (options?.confirmation && !p.deliveryProtocol?.authenticated) return refused("not_ready");
@@ -1009,11 +948,6 @@ export class HsrDriver implements RuntimeDriver {
     if (p.adapter.confirmsDelivery) p.pendingDeliveries.add(messageId);
     else this.consumed.set(messageId, generation);
     if (p.phase === "idle") {
-      // The driver owns the turn_started edge: input was injected into an
-      // idle runtime (claude emits no explicit turn-start line; adapters that
-      // do emit one are deduplicated by phase in onSignal). v9: synthetic —
-      // writing to stdin proves nothing about the process; only parsed
-      // output is boot evidence for the spawn-failure budget.
       p.phase = "running";
       this.events.push({ beeId, generation, kind: "turn_started", synthetic: true, messageId });
     }
@@ -1022,12 +956,11 @@ export class HsrDriver implements RuntimeDriver {
       : { accepted: true };
   }
 
-  /** Existing v15+ hosts already support the fixed adapter request and durable reply evidence. */
   reconnectToolsSupport(beeId: string, generation: number): { supported: boolean; reason?: string } {
     const p = this.procs.get(beeId);
     if (!p || p.generation !== generation || p.exited) return { supported: false, reason: "runtime_unavailable" };
     if (!p.adapter?.encodeReconnectTools || !p.adapter?.encodeReconnectToolsNonce) return { supported: false, reason: "unsupported_harness" };
-    if (p.degraded || !p.hostStyle || p.legacySharedObservation || !p.observationPath) return { supported: false, reason: "unsupported_runner_host" };
+    if (p.degraded || !p.observationPath) return { supported: false, reason: "unsupported_runner_host" };
     const status = p.statusPath ? readRunnerStatus(p.statusPath) : null;
     if (!status || status.beeId !== beeId || status.generation !== generation || status.observationError) return { supported: false, reason: "unsupported_runner_host" };
     return { supported: true };
@@ -1045,14 +978,10 @@ export class HsrDriver implements RuntimeDriver {
       if (p.phase !== "idle" || p.pendingDeliveries.size > 0 || !p.sessionId || !p.socket?.writable || p.socket.destroyed || p.socketBroken) throw new ReconnectToolsControlError("not_ready", "Waiting for the owning turn to end and its control connection to be ready");
     };
     this.pumpHostTail(p);
-    // A durable acknowledgement is sufficient for recovery even before the
-    // adopted socket reconnects. Readiness is required only for a new effect.
     if (!p.reconnectReplies.has(reloadId)) ready();
     if (this.reconnecting.has(`${beeId}:${generation}`)) throw new ReconnectToolsControlError("not_ready", "Reconnect already in progress");
     this.reconnecting.add(`${beeId}:${generation}`);
     try {
-      // Replies before the committed cursor are recovered on adoption, so a
-      // daemon crash after the effect never requires another reload.
       let targetsApplied: string[] = [];
       if (!p.reconnectReplies.has(reloadId)) {
         const config = JSON.parse(readFileSync(this.runnerPaths(beeId, generation).config, "utf8")) as RunnerHostConfig;
@@ -1093,9 +1022,8 @@ export class HsrDriver implements RuntimeDriver {
   stop(beeId: string, generation: number, cause: StopCause): { hadProcess: boolean } {
     const pending = this.pendingStarts.get(beeId);
     if (pending && pending.generation === generation) {
-      // A deferred spawn that never happened: cancel it and report the stop
-      // as an immediate exit fact (there is nothing to signal).
       this.pendingStarts.delete(beeId);
+      pending.cancel?.();
       this.events.push({ beeId, generation, kind: "exited", exitCause: cause });
       return { hadProcess: true };
     }
@@ -1105,9 +1033,6 @@ export class HsrDriver implements RuntimeDriver {
     if (processDisposition(p.processIdentity ?? null, inspectProcess(p.pid)) === "exited") { this.finishHost(p); return {hadProcess: false}; }
     if (!verifyProcessIdentity(p.pid, p.processIdentity ?? null)) throw new ProcessIdentityUnavailableError();
     if (p.stopCause == null) p.stopCause = cause;
-    // Exact identity (spec points 4–5): we signal only the pid we spawned and
-    // still hold the un-exited handle for — parenthood guarantees the pid has
-    // not been recycled (the child is unreaped until the exit event fires).
     this.signalGroup(p, "SIGTERM");
     if (p.killTimer == null) {
       p.killTimer = setTimeout(() => {
@@ -1118,14 +1043,6 @@ export class HsrDriver implements RuntimeDriver {
     return { hadProcess: true };
   }
 
-  /**
-   * v6 interrupt: hand the harness's in-band "stop the current turn" line to
-   * a live, mid-turn runtime's stdin (claude control_request interrupt, codex
-   * turn/interrupt, stub {"type":"interrupt"}). The turn_ended that follows
-   * is observed like any other; the process stays live. Idle / booting /
-   * dying / degraded / no channel: a reasoned no-op, never an error. SIGINT
-   * is never used — it kills a headless child outright.
-   */
   interrupt(beeId: string, generation: number, deliveryMessageId?: number): InterruptOutcome {
     const p = this.procs.get(beeId);
     if (!p || p.generation !== generation || p.exited) return { interrupted: false, reason: "no_process" };
@@ -1139,147 +1056,74 @@ export class HsrDriver implements RuntimeDriver {
       return { interrupted: false, reason: "not_ready" };
     }
     if (typeof p.adapter.encodeInterrupt !== "function") return { interrupted: false, reason: "unsupported" };
-    if (p.hostStyle && (p.socketBroken || !p.socket || p.socket.destroyed || !p.socket.writable)) {
+    if (p.socketBroken || !p.socket || p.socket.destroyed || !p.socket.writable) {
       return { interrupted: false, reason: "not_ready" };
     }
     const encoded = p.adapter.encodeInterrupt({ sessionId: p.sessionId, turnId: p.turnId });
     if (encoded == null) return { interrupted: false, reason: "not_ready" };
-    if (!p.hostStyle && (!p.child?.stdin || p.child.stdin.destroyed || !p.child.stdin.writable)) {
-      return { interrupted: false, reason: "no_process" };
-    }
     this.writeLine(p, encoded);
     p.quiet?.invalidate();
     return { interrupted: true };
   }
 
   observe(): DriverObservation[] {
-    this.pumpAll();
     const out = this.events;
     this.events = [];
+    if (this.cfg.onObserved) for (const event of out) this.cfg.onObserved(event);
     return out;
   }
 
-  /**
-   * Parse everything new before any drain: host-style runtimes are observed
-   * by files (status facts + session-log tail), so observations, flag
-   * evidence, and session evidence all materialize HERE — every observe*()
-   * surface pumps first, keeping the pipe-era semantics where evidence
-   * accumulated without an observe() call.
-   */
-  private lastPumpAt = 0;
-
-  private pumpAll(): void {
-    // The daemon drains all three observe surfaces inside one step(); pumping
-    // per surface tripled the per-tick stat/read pass over every runtime
-    // (2026-08-21 telemetry: step 200-480ms with a large fleet). One pump per
-    // 50ms keeps observation latency under any real tick while making the
-    // extra drains free.
-    const now = this.now();
-    if (now - this.lastPumpAt < 50) return;
-    this.lastPumpAt = now;
-    for (const p of [...this.procs.values()]) {
-      if (!p.hostStyle || p.exited) continue;
-      this.pumpHost(p);
-    }
-    // Adopted (degraded) processes have no exit callback — their death is a
-    // fact recovered by polling the exact pid (cheap signal-0 probe).
-    this.pollDegraded();
-  }
-
-  /** One observation pass over a host-style runtime: status facts, log tail,
-   * and (for adopted hosts with no exit callback) pid-liveness. */
-  private pumpHost(p: ManagedProcess): void {
-    if (p.pendingStartIdentity) {
-      const value = inspectProcess(p.pid);
-      if (value.kind === "gone" || value.kind === "present" && (value.state === "zombie" || !sameProcess(p.pendingStartIdentity, value))) {
-        this.releasePendingStart(p, value.kind === "gone" ? "gone" : value.state === "zombie" ? "zombie" : "birth-changed");
+  private pumpStatus(p: Runtime): void {
+    if (p.exited || p.pendingStartIdentity || !p.statusPath) return;
+    const status = readRunnerStatus(p.statusPath);
+    if (!status) return;
+    if (p.executionStart) {
+      if (status.hostPid !== p.pid || status.hostBirth !== p.executionHost?.birth || status.executionIntentId !== p.executionStart.intentId || status.executionDigest !== canonicalDigest(p.executionStart as unknown as JsonValue)) return;
+      if (!p.executionAccepted && status.agentPid && status.agentBirth) {
+        try { this.acceptExecutionStarted(p,{pid:status.agentPid,birth:status.agentBirth}); } catch { return; }
       }
-      return;
+      if (!p.executionAccepted) return;
     }
-    this.captureProcessIdentity(p);
-    const disposition = processDisposition(p.processIdentity ?? null, inspectProcess(p.pid));
-    if (disposition === "unavailable") this.cfg.runtimeIdentity?.unavailable?.(p.beeId, p.generation);
-    // Read the status file only while it can still teach us something: the
-    // agent pid / spawnError before the OS confirms the spawn, and the
-    // socketError witness until the write lane is proven (connected). After
-    // that, exits arrive via the child callback (own spawns) or the pid probe
-    // + finishHost's status read (adopted hosts) — no per-tick read needed.
-    if (p.statusPath && (p.agentPid == null || (!p.socket && !p.socketBroken))) {
-      const status = readRunnerStatus(p.statusPath);
-      if (status) {
-        if (p.executionStart) {
-          if (status.hostPid !== p.pid || status.hostBirth !== p.executionHost?.birth || status.executionIntentId !== p.executionStart.intentId || status.executionDigest !== canonicalDigest(p.executionStart as unknown as JsonValue)) return;
-          if (!p.executionAccepted && status.agentPid && status.agentBirth) {
-            try { this.acceptExecutionStarted(p,{pid:status.agentPid,birth:status.agentBirth}); } catch { return; }
-          }
-          if (!p.executionAccepted) return;
-        }
-        if (status.socketError && !p.socketBroken) {
-          p.socketBroken = true;
-          this.appendSidecar(p.beeId, `runner host socket failed: ${status.socketError}\n`);
-        }
-        if (p.agentPid == null && typeof status.agentPid === "number") {
-          p.agentPid = status.agentPid;
-          // The host has progressed since the initial connection failed. Wake
-          // its pending retry once, instead of sleeping through the rest of
-          // the 200ms backoff. Delivery still requires a connected socket;
-          // reconnect failures retain the normal bounded retry cadence.
-          if (p.socketRetry) {
-            clearTimeout(p.socketRetry);
-            p.socketRetry = null;
-            this.connectSocket(p);
-          }
-          if (p.adapter?.readyAtSpawn) {
-            this.cfg.onRuntimeReady?.(p.beeId, p.agentPid);
-            // The OS confirmed the AGENT spawn (v9: synthetic, never boot
-            // evidence) — the same edge the direct child's `spawn` event was.
-            this.events.push({
-              beeId: p.beeId,
-              generation: p.generation,
-              kind: "booted",
-              pid: p.pid,
-              pidStartedAt: p.pidStartedAt,
-              synthetic: true,
-            });
-            if (p.phase === "idle") {
-              // Nothing has been injected yet: the agent sits at its prompt
-              // (claude emits no line until the first stdin message). booted
-              // alone leaves the store `running` — a turn no output will ever
-              // close, since the driver's own phase is idle and drops the
-              // late init/result edges. Field finding 2026-09-02: a swap of an
-              // idle bee (stop → revive, empty mailbox) showed "working" for
-              // hours (CL.60c9, CL.e72f). Mint the "boots straight to ready"
-              // turn_ended the adapter would have parsed — synthetic: never
-              // boot evidence, never an output fact. A delivery that already
-              // opened the turn (phase running) suppresses it: the real
-              // result closes that turn.
-              this.events.push({
-                beeId: p.beeId,
-                generation: p.generation,
-                kind: "turn_ended",
-                synthetic: true,
-              });
-            }
-          }
-        }
-        if (status.exited && disposition === "exited") {
-          this.finishHost(p);
-          return;
+    if (status.socketError && !p.socketBroken) {
+      p.socketBroken = true;
+      this.appendSidecar(p.beeId, `runner host socket failed: ${status.socketError}\n`);
+    }
+    if (p.agentPid == null && typeof status.agentPid === "number") {
+      p.agentPid = status.agentPid;
+      if (p.socketRetry) {
+        clearTimeout(p.socketRetry);
+        p.socketRetry = null;
+        this.connectSocket(p);
+      }
+      if (p.adapter?.readyAtSpawn) {
+        this.cfg.onRuntimeReady?.(p.beeId, p.agentPid);
+        this.events.push({
+          beeId: p.beeId,
+          generation: p.generation,
+          kind: "booted",
+          pid: p.pid,
+          pidStartedAt: p.pidStartedAt,
+          synthetic: true,
+        });
+        if (p.phase === "idle") {
+          this.events.push({
+            beeId: p.beeId,
+            generation: p.generation,
+            kind: "turn_ended",
+            synthetic: true,
+          });
         }
       }
     }
-    if (p.readinessRecovery?.nextProbeAt !== undefined && this.now() >= p.readinessRecovery.nextProbeAt) {
-      p.readinessRecovery.nextProbeAt = undefined;
-      p.readinessRecovery.started = false;
-      this.recoverAdoptedReadiness(p);
+    if (status.exited) {
+      this.captureProcessIdentity(p);
+      const disposition = processDisposition(p.processIdentity ?? null, inspectProcess(p.pid));
+      if (disposition === "unavailable") this.cfg.runtimeIdentity?.unavailable?.(p.beeId, p.generation);
+      if (disposition === "exited") this.finishHost(p);
     }
-    this.pumpHostTail(p);
-    // An adopted host has no ChildProcess exit callback; recover its death by
-    // polling the exact identity, then fold the recorded exit facts.
-    if (p.child == null && disposition === "exited") this.finishHost(p);
   }
 
-  private recoveryAgentIsLive(p: ManagedProcess): boolean {
+  private recoveryAgentIsLive(p: Runtime): boolean {
     const recovery = p.readinessRecovery;
     if (!recovery || !p.processIdentity || !p.deliveryProtocol?.authenticated || !p.socket?.writable || p.socket.destroyed || !p.statusPath) return false;
     const host = inspectProcess(p.pid), status = readRunnerStatus(p.statusPath);
@@ -1291,23 +1135,23 @@ export class HsrDriver implements RuntimeDriver {
     return true;
   }
 
-  private refuseReadinessRecovery(p: ManagedProcess): void {
+  private refuseReadinessRecovery(p: Runtime): void {
     if (!p.readinessRecovery || p.readinessRecovery.refused) return;
     p.readinessRecovery.refused = true;
     this.appendSidecar(p.beeId, `readiness recovery held bee=${p.beeId} generation=${p.generation} pid=${p.pid}\n`);
   }
 
-  private recoverAdoptedReadiness(p: ManagedProcess): void {
+  private recoverAdoptedReadiness(p: Runtime): void {
     const recovery = p.readinessRecovery;
     if (!recovery || recovery.started || recovery.refused) return;
-    if (!this.recoveryAgentIsLive(p)) { recovery.nextProbeAt = this.now() + 1000; return; }
+    if (!this.recoveryAgentIsLive(p)) { recovery.nextProbeAt = this.now() + 1000; this.armSweep(); return; }
     this.pumpHostTail(p);
     if (!p.readinessRecovery || p.phase !== "booting" && !p.executionStart) return;
     recovery.started = true;
     if (p.adapter?.readyAtSpawn) {
       try {
-        if (!p.observationPath || p.logOffset < statSync(p.observationPath).size || p.stdoutRest.length > 0) { recovery.nextProbeAt = this.now() + 1000; return; }
-      } catch { recovery.nextProbeAt = this.now() + 1000; return; }
+        if (!p.observationPath || p.logOffset < statSync(p.observationPath).size || p.stdoutRest.length > 0) { recovery.nextProbeAt = this.now() + 1000; this.armSweep(); return; }
+      } catch { recovery.nextProbeAt = this.now() + 1000; this.armSweep(); return; }
       const context = p.observationPath ? recoverAdapterContext(p.adapter, p.observationPath, p.logOffset, p.sessionId) : null;
       this.applyRecoveredReadiness(p, {kind: "ready", sessionId: context?.sessionId ?? p.sessionId ?? "", state: context?.phase ?? "idle", ...(context?.turnId ? {turnId: context.turnId} : {}), synthetic: true});
     } else {
@@ -1316,23 +1160,23 @@ export class HsrDriver implements RuntimeDriver {
     }
   }
 
-  private applyRecoveredReadiness(p: ManagedProcess, result: ReadinessRecovery): void {
+  private applyRecoveredReadiness(p: Runtime, result: ReadinessRecovery): void {
     const recovery = p.readinessRecovery;
     if (!recovery || recovery.refused) return;
-    if (!this.recoveryAgentIsLive(p)) { recovery.nextProbeAt = this.now() + 1000; return; }
+    if (!this.recoveryAgentIsLive(p)) { recovery.nextProbeAt = this.now() + 1000; this.armSweep(); return; }
     if (result.kind === "refused") { this.refuseReadinessRecovery(p); return; }
     if (result.kind === "query") {
       if (!this.writeLine(p, result.line, undefined, true)) this.refuseReadinessRecovery(p);
       return;
     }
     if (result.kind === "start") {
-      if (recovery.bootstrapSent) { recovery.nextProbeAt = this.now() + 1000; return; }
-      if (!this.cfg.runtimeIdentity?.claimReadinessRecovery?.(p.beeId, p.generation, p.processIdentity!, recovery.requestId)) { recovery.nextProbeAt = this.now() + 1000; return; }
+      if (recovery.bootstrapSent) { recovery.nextProbeAt = this.now() + 1000; this.armSweep(); return; }
+      if (!this.cfg.runtimeIdentity?.claimReadinessRecovery?.(p.beeId, p.generation, p.processIdentity!, recovery.requestId)) { recovery.nextProbeAt = this.now() + 1000; this.armSweep(); return; }
       recovery.bootstrapSent = true;
       for (const line of result.lines) if (!this.writeLine(p, line, undefined, true)) { this.refuseReadinessRecovery(p); return; }
       return;
     }
-    if (result.state === "running") { recovery.nextProbeAt = this.now() + 1000; return; }
+    if (result.state === "running") { recovery.nextProbeAt = this.now() + 1000; this.armSweep(); return; }
     if (p.adapter?.recoveryProbe && !this.cfg.runtimeIdentity?.recordReadinessRecovery?.(p.beeId, p.generation, p.processIdentity!, {requestId: recovery.requestId, threadId: result.sessionId, state: result.state, ...(result.threadCwd !== undefined ? {threadCwd: result.threadCwd} : {}), ...(result.adapterCwd !== undefined ? {adapterCwd: result.adapterCwd} : {})})) { this.refuseReadinessRecovery(p); return; }
     if (p.adapter?.recoveryProbe) p.recoveredSessionId = result.sessionId;
     p.readinessRecovery = undefined;
@@ -1347,26 +1191,23 @@ export class HsrDriver implements RuntimeDriver {
     if (result.state === "idle") this.events.push({beeId: p.beeId, generation: p.generation, kind: "turn_ended", synthetic: result.synthetic});
   }
 
-  /** Read new output-only journal bytes and normalize complete agent lines. */
-  private pumpHostTail(p: ManagedProcess): void {
-    if (!p.adapter || !p.observationPath) return;
+  private pumpHostTail(p: Runtime): void {
+    if (!p.adapter || !p.observationPath || p.pendingStartIdentity) return;
     if (p.adapter.recoveryProbe && !p.deliveryProtocol?.authenticated) return;
     const path = p.observationPath;
     let size: number;
     try {
       size = statSync(path).size;
     } catch {
-      return; // no log yet
+      return;
     }
     if (size < p.logOffset) {
-      // A generation journal is append-only. Truncation destroys the replay
-      // proof; fail closed and let degraded-mail policy rotate this exact live
-      // process when work arrives. Never rewind and synthesize lifecycle edges.
       p.degraded = true;
       p.adapter = null;
       p.observationPath = null;
       p.stdoutRest = Buffer.alloc(0);
       this.appendSidecar(p.beeId, `runner observation journal truncated for generation ${p.generation}\n`);
+      this.armSweep();
       return;
     }
     if (size === p.logOffset) return;
@@ -1400,13 +1241,6 @@ export class HsrDriver implements RuntimeDriver {
       const lineEndCursor = dataStart + newline + 1;
       lineStart = newline + 1;
       if (line.trim().length === 0) continue;
-      // v15 journals contain runner output only. Legacy adopted hosts tail the
-      // shared bidirectional transcript from their adoption EOF and still need
-      // exact-match suppression for commands sent by THIS daemon generation.
-      if (p.outboundPending.length > 0 && p.outboundPending[0] === line) {
-        p.outboundPending.shift();
-        continue;
-      }
       p.quiet?.pushLine(line, p.sessionId);
       const recovery = p.readinessRecovery;
       const recovered = recovery?.started && !recovery.refused ? p.adapter.parseRecovery?.(line, recovery.requestId, p.sessionId) : null;
@@ -1440,14 +1274,12 @@ export class HsrDriver implements RuntimeDriver {
   retryProcessIdentity(beeId: string, generation: number): void {
     const p = this.procs.get(beeId);
     if (!p || p.generation !== generation || p.processIdentity || p.child) return;
-    if (p.hostStyle) { this.connectSocket(p); return; }
-    this.procs.delete(beeId);
-    this.adopt(beeId, generation, p.pid, p.pidStartedAt, p.phase);
+    this.connectSocket(p);
   }
 
   hasProcess(beeId: string, generation: number): boolean {
     const pending = this.pendingStarts.get(beeId);
-    if (pending && pending.generation === generation) return true; // spawn in flight
+    if (pending && pending.generation === generation) return true;
     const p = this.procs.get(beeId);
     return p !== undefined && p.generation === generation && !p.exited;
   }
@@ -1468,15 +1300,9 @@ export class HsrDriver implements RuntimeDriver {
   }
 
   // -------------------------------------------------------------------------
-  // Beyond the WP2 interface — what the real daemon needs
+  // Beyond the WP2 interface
   // -------------------------------------------------------------------------
 
-  /**
-   * Cross-restart re-adoption (contract §3.2, spec 04 boot sequence): claim a
-   * surviving process from a previous daemon generation by exact identity.
-   * Returns false — never throws — when the pid is gone, unreadable, recycled
-   * (start-time mismatch) or the bee already has a live process.
-   */
   adopt(
     beeId: string,
     generation: number,
@@ -1503,32 +1329,21 @@ export class HsrDriver implements RuntimeDriver {
     const pendingStartIdentity = pendingStart && value.kind === "present" ? {pid, birth: value.birth, bootId: value.bootId} : undefined;
     let processIdentity: ProcessIdentity | undefined = storedIdentity.kind === "bound" ? storedIdentity.identity : undefined;
     if (processIdentity ? !verifyProcessIdentity(pid, processIdentity) : !legacyProcessCandidate(pid, pidStartedAt, value)) return false;
-    // WP5: a runtime with runner-host artifacts for this exact (pid ==
-    // host pid) re-adopts at FULL capability — reconnect the write socket,
-    // resume the log tail, keep delivering. The degraded stop-on-mail
-    // rotation below remains only for runtimes spawned by a pre-host daemon.
     const paths = this.runnerPaths(beeId, generation);
     const status = readRunnerStatus(paths.status);
     if (execution && (!status || status.hostBirth !== executionHost?.birth || status.executionIntentId !== execution.intentId || status.executionDigest !== canonicalDigest(execution as unknown as JsonValue))) return false;
     if (status && status.hostPid === pid && !status.exited) {
-      const hasGenerationIdentity = status.beeId !== undefined || status.generation !== undefined;
       const exactGenerationIdentity = status.beeId === beeId && status.generation === generation;
       if (pendingStart && !exactGenerationIdentity) return false;
       let adapter: HarnessAdapter | null = null;
       try {
         adapter = execution ? this.cfg.resolveExecutionAdapter?.(beeId) ?? null : this.cfg.resolve(beeId).adapter;
       } catch {
-        adapter = null; // unresolvable harness: fall through to degraded
+        adapter = null;
       }
-      // A v15 host proves its output-only journal belongs to this exact
-      // generation. A pre-v15 host has neither identity field: keep the old
-      // full-capability EOF behavior for NEW bytes, but do not replay its
-      // bidirectional transcript. A mismatched/partial identity is corrupt
-      // recovery evidence and falls through to conservative degraded adoption.
-      if (adapter && (!hasGenerationIdentity || exactGenerationIdentity)) {
+      if (adapter && exactGenerationIdentity) {
         let observationPath: string | null;
         let observationOffset: number;
-        let legacySharedObservation: boolean;
         let recovered: RecoveredAdapterContext = {
           quiet: new TurnQuiet(adapter.harness),
           sessionId: providerSessionId ?? null,
@@ -1536,44 +1351,32 @@ export class HsrDriver implements RuntimeDriver {
           confirmedDeliveries: new Set(),
           reconnectReplies: new Map(),
         };
-        if (exactGenerationIdentity) {
-          let journalSize: number | null = null;
-          try {
-            journalSize = statSync(paths.observations).size;
-          } catch {
-            journalSize = null;
-          }
-          const cursor = lastAppliedObservationCursor ?? 0;
-          const validCursor = Number.isSafeInteger(cursor) && cursor >= 0 && journalSize !== null && cursor <= journalSize;
-          if (status.observationError || !validCursor) {
-            adapter = null; // fail closed below: never guess an idle edge
-            observationPath = null;
-            observationOffset = 0;
-            legacySharedObservation = false;
-          } else {
-            observationPath = paths.observations;
-            observationOffset = cursor;
-            legacySharedObservation = false;
-            if (
-              recovered.sessionId == null
-              || lastKnownState === "running"
-              || adapter.confirmsDelivery === true
-            ) {
-              recovered = recoverAdapterContext(adapter, observationPath, observationOffset, recovered.sessionId);
-            }
-          }
-        } else {
-          observationPath = this.sessionLogPath(beeId);
-          observationOffset = this.sessionLogSize(beeId);
-          legacySharedObservation = true;
+        let journalSize: number | null = null;
+        try {
+          journalSize = statSync(paths.observations).size;
+        } catch {
+          journalSize = null;
         }
-        if (!adapter) {
-          // The exact process is still adopted below, but without a trustworthy
-          // evidence/delivery lane. Pending mail rotates it through the normal
-          // degraded-runtime policy; silence never changes its phase.
+        const cursor = lastAppliedObservationCursor ?? 0;
+        const validCursor = Number.isSafeInteger(cursor) && cursor >= 0 && journalSize !== null && cursor <= journalSize;
+        if (status.observationError || !validCursor) {
+          adapter = null;
+          observationPath = null;
+          observationOffset = 0;
         } else {
+          observationPath = paths.observations;
+          observationOffset = cursor;
+          if (
+            recovered.sessionId == null
+            || lastKnownState === "running"
+            || adapter.confirmsDelivery === true
+          ) {
+            recovered = recoverAdapterContext(adapter, observationPath, observationOffset, recovered.sessionId);
+          }
+        }
+        if (adapter) {
           const recoveredSessionId = adapter.recoveryProbe ? this.cfg.runtimeIdentity?.readinessSessionId?.(beeId, generation) ?? null : null;
-          const proc: ManagedProcess = {
+          const proc: Runtime = {
             ...(recoveredSessionId ? {recoveredSessionId} : {}),
             ...(execution && executionHost ? { executionStart: execution, executionHost } : {}),
             processIdentity,
@@ -1587,20 +1390,7 @@ export class HsrDriver implements RuntimeDriver {
             child: null,
             adapter,
             degraded: false,
-            // The store's persisted runtime state is the phase truth at the
-            // moment the old daemon stopped (rows-are-truth): an idle runtime
-            // adopts with its accept point OPEN. The 2026-08-21 deploy soak
-            // showed why the blanket "running" claim was wrong for known-idle
-            // bees: it promised a turn_ended that could never come. Without a
-            // hint, "running" remains the conservative claim; the next tailed
-            // edge corrects it, and elapsed time alone never changes it.
-            // Preserve booting too: otherwise pumpHostOutput treats the first
-            // completed handshake as late boot and discards its idle edge.
             phase: lastKnownState ?? "running",
-            // The durable provider thread is a bee fact. Adapter-local active
-            // turn and accepted-request evidence are replayed from the exact
-            // generation journal so a daemon deploy cannot strand either a
-            // mid-turn steer or an acknowledgement in the crash gap.
             quiet: recovered.quiet,
             sessionId: recoveredSessionId ?? recovered.sessionId,
             turnId: lastKnownState === "running" ? recovered.turnId : null,
@@ -1615,21 +1405,15 @@ export class HsrDriver implements RuntimeDriver {
             spawnError: null,
             commandResolution: null,
             realEvidence: false,
-            hostStyle: true,
             agentPid: typeof status.agentPid === "number" ? status.agentPid : null,
             socket: null,
             socketRetry: null,
             socketPath: paths.socket,
             statusPath: paths.status,
             observationPath,
-            // v15 resumes at the core's generation-scoped applied cursor. Legacy
-            // hosts have no separated journal, so only their post-adoption bytes
-            // are observable; history is never rewound heuristically.
             logOffset: observationOffset,
             initialObservationCursor: observationOffset,
             pendingObservationCursor: null,
-            legacySharedObservation,
-            outboundPending: [],
             pendingWrites: [],
             socketBroken: false,
           };
@@ -1637,6 +1421,8 @@ export class HsrDriver implements RuntimeDriver {
           this.procs.set(beeId,proc);
           this.cfg.onRuntimeReady?.(beeId, proc.agentPid);
           this.connectSocket(proc);
+          this.markDirty(proc, true);
+          this.armSweep();
           return true;
         }
       }
@@ -1654,9 +1440,6 @@ export class HsrDriver implements RuntimeDriver {
       adapter: null,
       quiet: null,
       degraded: true,
-      // Unknown phase — the event stream died with the old daemon. "running"
-      // is the conservative claim. Mail-driven degraded-runtime rotation
-      // replaces it when work arrives; silence alone never authorizes a stop.
       phase: "running",
       sessionId: null,
       turnId: null,
@@ -1670,11 +1453,7 @@ export class HsrDriver implements RuntimeDriver {
       exited: false,
       spawnError: null,
       commandResolution: null,
-      // Degraded: no event stream, so no evidence can ever be parsed. The
-      // store's persisted boot_evidence for the row (from before the daemon
-      // restart) governs its exit accounting; this field is driver-local.
       realEvidence: false,
-      hostStyle: receiptHost,
       agentPid: null,
       socket: null,
       socketRetry: null,
@@ -1684,36 +1463,21 @@ export class HsrDriver implements RuntimeDriver {
       logOffset: 0,
       initialObservationCursor: 0,
       pendingObservationCursor: null,
-      legacySharedObservation: false,
-      outboundPending: [],
       pendingWrites: [],
       socketBroken: false,
     });
     this.cfg.onRuntimeReady?.(beeId, status?.agentPid ?? null);
     if (receiptHost) this.connectSocket(this.procs.get(beeId)!);
+    this.armSweep();
     return true;
   }
 
-  /** Whether (bee, generation) is a live re-adopted process with no event stream. */
   isDegraded(beeId: string, generation: number): boolean {
     const p = this.procs.get(beeId);
     return p !== undefined && p.generation === generation && p.degraded && !p.exited;
   }
 
-  private pollDegraded(): void {
-    for (const p of [...this.procs.values()]) {
-      if (!p.degraded || p.exited) continue;
-      const disposition = processDisposition(p.processIdentity ?? null, inspectProcess(p.pid));
-      if (disposition === "exited") this.onExit(p, null, null);
-      else if (disposition === "unavailable") this.cfg.runtimeIdentity?.unavailable?.(p.beeId, p.generation);
-    }
-  }
-
-  /**
-   * Process identity captured at spawn, for core's createBee/reviveBee `proc`
-   * (the WP2 amendment). Available immediately after start() returns.
-   */
-  private captureProcessIdentity(p: ManagedProcess): void {
+  private captureProcessIdentity(p: Runtime): void {
     if (p.processIdentity || !p.child || p.child.exitCode !== null || p.child.signalCode !== null) return;
     const value = inspectProcess(p.pid);
     if (value.kind === "present" && value.state === "live") p.processIdentity = {pid: p.pid, birth: value.birth, bootId: value.bootId};
@@ -1734,42 +1498,27 @@ export class HsrDriver implements RuntimeDriver {
     };
   }
 
-  /** Drain condition-flag evidence (adapters report; the daemon acts). */
   observeEvidence(): FlagEvidence[] {
-    this.pumpAll();
     const out = this.evidence;
     this.evidence = [];
-    return out;
+    if (!this.cfg.extraEvidence) return out;
+    const cleared = out.filter((ev) => ev.flag === "resource_blocked" && ev.action === "clear").map((ev) => ev.beeId);
+    return [...out, ...this.cfg.extraEvidence(() => this.snapshotLive(), cleared)];
   }
 
-  /**
-   * Drain harness session ids learned from booted signals (including the late
-   * init a readyAtSpawn harness emits after its first message). The daemon
-   * records them on the bee row (spec 07 §F continuity).
-   */
   observeSessions(): SessionEvidence[] {
-    this.pumpAll();
     const out = this.sessions;
     this.sessions = [];
     return out;
   }
 
-  /** Drain observed subscription usage (the daemon folds it into account limits). */
   observeUsage(): UsageEvidence[] {
-    this.pumpAll();
     const out = this.usage;
     this.usage = [];
     return out;
   }
 
-  /**
-   * Drain the latest signal-bearing journal cursor per live generation. The
-   * daemon calls this after applying observations/evidence/session ids; if it
-   * crashes before the core-store checkpoint, the successor replays from the
-   * previous cursor and the idempotent projections settle again.
-   */
   observeRecoveryCursors(): ObservationCursorEvidence[] {
-    this.pumpAll();
     const out: ObservationCursorEvidence[] = [];
     for (const p of this.procs.values()) {
       if (p.pendingObservationCursor == null) continue;
@@ -1779,17 +1528,13 @@ export class HsrDriver implements RuntimeDriver {
     return out;
   }
 
-  /** Verbatim native-stream session log path for a bee (Q1; v23: the current transcript segment's file). */
   sessionLogPath(beeId: string): string {
     return stateFile(this.cfg.sessionLogPathFor?.(beeId) ?? join(stateDirectory(this.cfg.sessionLogDir,"sessionLogDir"), `${beeId}.jsonl`), "sessionLogPath");
   }
 
-  /** Output-only recovery journal for exactly one runtime generation. */
   observationLogPath(beeId: string, generation: number): string {
     return this.runnerPaths(beeId, generation).observations;
   }
-
-  // --- DeliveryGroundTruth (invariant checker, spec test tier 3) -----------
 
   consumedGeneration(messageId: number): number | undefined {
     return this.consumed.get(messageId);
@@ -1803,16 +1548,11 @@ export class HsrDriver implements RuntimeDriver {
     return this.snapshotLive();
   }
 
-  /**
-   * Daemon shutdown: release every event-loop reference to the children
-   * WITHOUT signaling them — runtimes deliberately survive a daemon stop and
-   * the next boot re-adopts them (contract §3.2). The OS closes our pipe ends
-   * when the process exits; agents that exit on stdin EOF stop then, agents
-   * that survive it stay adoptable.
-   */
   detachAll(): void {
     this.detached = true;
+    for (const pending of this.pendingStarts.values()) pending.cancel?.();
     this.pendingStarts.clear();
+    this.closeObservationSources();
     for (const p of this.procs.values()) {
       if (p.killTimer) {
         clearTimeout(p.killTimer);
@@ -1822,22 +1562,20 @@ export class HsrDriver implements RuntimeDriver {
         clearTimeout(p.socketRetry);
         p.socketRetry = null;
       }
-      // The write lane belongs to THIS daemon process; the next daemon
-      // reconnects its own. Destroying it never touches the agent.
       p.socket?.destroy();
       p.socket = null;
       if (p.executionStart && p.child?.connected) p.child.disconnect();
       p.child?.unref();
-      // stdio pipes are net.Socket instances (unref exists at runtime).
       for (const stream of [p.child?.stdin, p.child?.stdout, p.child?.stderr]) {
         (stream as unknown as { unref?: () => void } | null | undefined)?.unref?.();
       }
     }
   }
 
-  /** Test/teardown only: SIGKILL every child group and drop pending events. */
   disposeAll(): void {
+    for (const pending of this.pendingStarts.values()) pending.cancel?.();
     this.pendingStarts.clear();
+    this.closeObservationSources();
     for (const p of this.procs.values()) {
       if (p.killTimer) clearTimeout(p.killTimer);
       if (!p.exited) {
@@ -1850,61 +1588,44 @@ export class HsrDriver implements RuntimeDriver {
     this.sessions = [];
   }
 
+  private closeObservationSources(): void {
+    if (this.sweepTimer) {
+      clearTimeout(this.sweepTimer);
+      this.sweepTimer = null;
+    }
+    this.dirty.clear();
+    try { this.watcher?.close(); } catch {}
+    this.watcher = null;
+  }
+
   // -------------------------------------------------------------------------
   // internals
   // -------------------------------------------------------------------------
 
-  private writeLine(p: ManagedProcess, line: string, delivery?: TaggedDelivery, confirmationWrite = false): boolean {
+  private writeLine(p: Runtime, line: string, delivery?: TaggedDelivery, confirmationWrite = false): boolean {
     if (Buffer.byteLength(JSON.stringify({ op: "write", line, ...(delivery ? { delivery } : {}) }) + "\n") > DELIVERY_FRAME_MAX_BYTES) return false;
     if (process.env.HIVE_SPAWN_TRACE) {
       appendFileSync(process.env.HIVE_SPAWN_TRACE, JSON.stringify({ write: line.slice(0, 160), at: Date.now(), stack: new Error().stack?.split("\n").slice(2, 6).join(" | ") }) + "\n");
     }
-    // Bidirectional JSON-RPC (codex/grok ACP) and claude stream-json user
-    // lines live on stdin; the session log is the verbatim native stream in
-    // BOTH directions so panes can render the operator's prompt.
-    if (p.hostStyle) {
-      // The HOST is the transcript's single writer. v15 observation journals
-      // are output-only, so outbound suppression is needed only while talking
-      // to an adopted legacy host that still tails the shared transcript.
-      const outboundLength = p.outboundPending.length;
-      try {
-        if (p.legacySharedObservation) p.outboundPending.push(line);
-        if (p.socket && !p.socket.destroyed && p.socket.writable) {
-          // Ignore the boolean result: false reports backpressure after Node
-          // accepted the bytes into its write buffer, not a rejected write.
-          p.socket.write(`${JSON.stringify({ op: "write", line, ...(delivery ? { delivery } : {}) })}\n`);
-          return true;
-        } else {
-          if (confirmationWrite) return false;
-          p.pendingWrites.push(line);
-          this.connectSocket(p);
-          return false;
-        }
-      } catch {
-        // A write race against a dying host; its exit observation follows.
-        p.outboundPending.length = outboundLength;
-        return false;
-      }
-    }
-    this.appendSessionLog(p.beeId, line);
     try {
-      p.child?.stdin?.write(`${line}\n`);
-      return true;
+      if (p.socket && !p.socket.destroyed && p.socket.writable) {
+        p.socket.write(`${JSON.stringify({ op: "write", line, ...(delivery ? { delivery } : {}) })}\n`);
+        return true;
+      }
+      if (confirmationWrite) return false;
+      p.pendingWrites.push(line);
+      this.connectSocket(p);
+      return false;
     } catch {
-      // A write race against a dying child; its exit observation follows.
       return false;
     }
   }
 
-  private signalGroup(p: ManagedProcess, signal: "SIGTERM" | "SIGKILL"): void {
+  private signalGroup(p: Runtime, signal: "SIGTERM" | "SIGKILL"): void {
     if (p.pid <= 0) return;
     this.captureProcessIdentity(p);
     if (!verifyProcessIdentity(p.pid, p.processIdentity ?? null)) return;
     if (p.degraded) {
-      // Adopted pid: parenthood does not protect it from recycling, so the
-      // exact identity (pid + start-time) is re-verified immediately before
-      // every signal. A failed check means the process is gone; the poll in
-      // observe() owns the exit bookkeeping.
       if (!verifyProcessIdentity(p.pid, p.processIdentity ?? null)) return;
       try {
         process.kill(-p.pid, signal);
@@ -1912,48 +1633,31 @@ export class HsrDriver implements RuntimeDriver {
         try {
           process.kill(p.pid, signal);
         } catch {
-          // Already gone.
         }
       }
       return;
     }
     try {
-      // Negative pid = the child's own process group (created by detached).
       process.kill(-p.pid, signal);
     } catch {
       try {
         p.child?.kill(signal);
       } catch {
-        // Already gone; the exit callback owns the bookkeeping.
       }
     }
   }
 
-
-  private onSignal(p: ManagedProcess, signal: ReturnType<HarnessAdapter["parseLine"]>[number], sourceId: string, rawLine: string): void | boolean {
+  private onSignal(p: Runtime, signal: ReturnType<HarnessAdapter["parseLine"]>[number], sourceId: string, rawLine: string): void | boolean {
     if (
       (signal.kind === "turn_started" || signal.kind === "turn_ended")
       && signal.threadId
       && p.sessionId
       && signal.threadId !== p.sessionId
     ) {
-      // codex app-server multiplexes the root thread and native subagent
-      // threads onto one stdout stream. Only the provider session learned at
-      // boot owns this bee's lifecycle: a child completion must not idle the
-      // root, and a child start must not replace the root turn id used by
-      // interrupt. Unscoped signals remain valid for older/non-codex adapters.
       return;
     }
     if (!p.realEvidence) {
       p.realEvidence = true;
-      // v9: the first ADAPTER-PARSED signal from a process whose phase left
-      // "booting" without real output (the readyAtSpawn synthetic path) is
-      // the proof the agent actually runs. Push a real `booted` observation
-      // so the daemon learns it in stream order — downstream it is a state
-      // no-op (the store is already past booting) but it carries the boot
-      // evidence that resets the spawn-failure budget. While the phase is
-      // still "booting" the signal below drives the real booted itself, and
-      // an exit before that stays an ordinary boot failure.
       if (p.phase !== "booting") {
         this.events.push({
           beeId: p.beeId,
@@ -1971,16 +1675,12 @@ export class HsrDriver implements RuntimeDriver {
       case "booted": {
         this.cfg.onRuntimeReady?.(p.beeId, p.agentPid ?? (p.statusPath ? readRunnerStatus(p.statusPath)?.agentPid : null) ?? null);
         if (signal.sessionId) {
-          // Late init still carries it (claude emits system/init only after the
-          // first user message); the id is a bee fact whenever it is learned.
           if (p.sessionId !== signal.sessionId) {
             this.sessions.push({ beeId: p.beeId, generation: p.generation, sessionId: signal.sessionId });
           }
           p.sessionId = signal.sessionId;
         }
-        if (p.phase !== "booting") return; // duplicate readiness — normalize away
-        // booted = "live and working its initial turn" (running). The adapter
-        // follows with turn_ended when the harness boots straight to ready.
+        if (p.phase !== "booting") return;
         p.phase = "running";
         p.readinessRecovery = undefined;
         this.events.push({
@@ -1993,10 +1693,8 @@ export class HsrDriver implements RuntimeDriver {
         return;
       }
       case "turn_started": {
-        // The harness-native turn id (codex) is learned even when the driver
-        // already opened the turn at deliver() — interrupt needs it.
         if (signal.turnId) p.turnId = signal.turnId;
-        if (p.phase !== "idle") return; // driver already opened this turn (deliver)
+        if (p.phase !== "idle") return;
         p.phase = "running";
         this.events.push({ beeId: p.beeId, generation: p.generation, kind: "turn_started" });
         return;
@@ -2064,7 +1762,7 @@ export class HsrDriver implements RuntimeDriver {
     }
   }
 
-  private turnEvidence(p: ManagedProcess): TurnEvidence {
+  private turnEvidence(p: Runtime): TurnEvidence {
     const proven = p.turn.observedFromStart && p.adapter?.reportsTurnProgress === true;
     return {
       messageIds: [...p.turn.messageIds],
@@ -2072,7 +1770,7 @@ export class HsrDriver implements RuntimeDriver {
     };
   }
 
-  private onExit(p: ManagedProcess, code: number | null, _signal: NodeJS.Signals | null): void {
+  private onExit(p: Runtime, code: number | null, _signal: NodeJS.Signals | null): void {
     if (p.exited) return;
     p.exited = true;
     if (p.killTimer) {
@@ -2085,14 +1783,9 @@ export class HsrDriver implements RuntimeDriver {
     }
     p.socket?.destroy();
     p.socket = null;
+    this.dirty.delete(p);
     this.procs.delete(p.beeId);
-    // Cause: a requested stop fixes its cause; otherwise exit code 0 is clean
-    // and anything else (non-zero, signal, spawn error) is a crash — death is
-    // a fact reported to the parent, never a hypothesis (contract §3.2).
     const cause = p.stopCause ?? (code === 0 ? "clean" : "crashed");
-    // F8: when the spawn config already knew the executable resolved nowhere,
-    // the exit detail names it — this text reaches the operator through the
-    // mirror. The crashed/spawn_failed mechanics themselves are untouched.
     const notFound = p.spawnError && p.commandResolution?.source === "not_found"
       ? ` — ${executableNotFoundDetail(p.commandResolution.executable)}`
       : "";
@@ -2103,24 +1796,22 @@ export class HsrDriver implements RuntimeDriver {
       exitCause: cause,
       ...(p.spawnError ? { detail: `spawn error: ${p.spawnError}${notFound}` } : {}),
     });
-    // A start deferred behind this death can now actually spawn.
     const pending = this.pendingStarts.get(p.beeId);
-    if (pending) {
+    if (pending && !pending.cancel) {
       this.pendingStarts.delete(p.beeId);
-      if (pending.execution) { try { this.start(p.beeId,pending.generation,pending.execution); } catch { this.appendSidecar(p.beeId,"deferred execution start held; reconcile original binding\n"); } }
-      else this.start(p.beeId, pending.generation);
+      try {
+        this.launch(p.beeId, pending.generation, pending.execution ?? null);
+      } catch (error) {
+        if (pending.execution) this.appendSidecar(p.beeId,"deferred execution start held; reconcile original binding\n");
+        else throw error;
+      }
     }
-  }
-
-  private appendSessionLog(beeId: string, line: string): void {
-    appendFileSync(this.sessionLogPath(beeId), `${line}\n`);
   }
 
   private appendSidecar(beeId: string, text: string): void {
     try {
       appendFileSync(join(this.cfg.sessionLogDir, `${beeId}.stderr.log`), text);
     } catch {
-      // Diagnostics only; never let stderr plumbing break the driver.
     }
   }
 }

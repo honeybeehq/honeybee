@@ -8,6 +8,8 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { gitEnv } from "../src/git.ts";
+import { RuntimeHost, type RuntimeHostConfig, type SpawnSpec } from "../../driver-hsr/src/index.ts";
+import { CellService, type CellServiceConfig } from "../src/driver.ts";
 
 export function sh(cwd: string, cmd: string, args: string[]): string {
   const res = spawnSync(cmd, args, { cwd, encoding: "utf8", env: gitEnv() });
@@ -105,4 +107,39 @@ export function makeRig(): CellTestRig {
     origin: makeOrigin(root),
     cleanup: () => rmSync(root, { recursive: true, force: true }),
   };
+}
+
+export type CellHost = RuntimeHost & {
+  cells: CellService;
+  cellOf: CellService["cellOf"];
+  capture: CellService["capture"];
+  removeCell: CellService["removeCell"];
+  forgetCell: CellService["forgetCell"];
+};
+
+export function composeCellHost(
+  cells: Omit<CellServiceConfig, "runtimeLive">,
+  host: Omit<RuntimeHostConfig, "resolve" | "prepare" | "onObserved" | "extraEvidence"> & { resolveHarness(beeId: string, generation?: number): SpawnSpec },
+): CellHost {
+  let runtime: RuntimeHost | null = null;
+  const service = new CellService({ ...cells, runtimeLive: (beeId) => runtime?.hasRetainedProcess(beeId) ?? false });
+  const { resolveHarness, ...rest } = host;
+  runtime = new RuntimeHost({
+    ...rest,
+    resolve: (beeId, generation) => service.spawnSpec(beeId, resolveHarness(beeId, generation), generation),
+    prepare: (beeId, generation, execution, done) => service.prepare(beeId, generation, execution, done),
+    onObserved: (event) => service.observed(event),
+    extraEvidence: (live, cleared) => service.evidence(live, cleared),
+  });
+  const disposeAll = runtime.disposeAll.bind(runtime);
+  const detachAll = runtime.detachAll.bind(runtime);
+  return Object.assign(runtime, {
+    cells: service,
+    cellOf: (beeId: string) => service.cellOf(beeId),
+    capture: service.capture.bind(service),
+    removeCell: service.removeCell.bind(service),
+    forgetCell: service.forgetCell.bind(service),
+    disposeAll: () => { service.dispose(); disposeAll(); },
+    detachAll: () => { service.dispose(); detachAll(); },
+  });
 }

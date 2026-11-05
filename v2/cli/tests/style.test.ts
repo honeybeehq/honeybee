@@ -200,7 +200,6 @@ test("helpText keeps the grouped v1-style overview tokens", () => {
     "here [",
     "usage [",
     "set-model <bee>",
-    "attach <bee>",
     "swap-account <bee>",
   ]) {
     assert.ok(text.includes(verb), `help mentions ${verb}`);

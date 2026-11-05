@@ -13,7 +13,7 @@ import type { ReconnectToolsReceipt } from "../../core/src/reconnectTools.ts";
  *    code under a virtual clock / fault injector via the SimDaemon wrapper
  *    (v2/harness/src/daemon.ts), so every WP2 invariant keeps proving the
  *    production loops;
- *  - the real daemon (daemon.ts) drives it over wall time with the HsrDriver.
+ *  - the real daemon (daemon.ts) drives it over wall time with the RuntimeHost.
  *
  * Responsibilities per step (spec 04 "Daemon behavior" 1, 3, 4, 5):
  *  1. drain driver observations into the store's four-state model
@@ -142,7 +142,7 @@ export interface BootReport {
   wakesEnqueued: number;
 }
 
-/** Condition-flag evidence, structurally matching HsrDriver's FlagEvidence. */
+/** Condition-flag evidence, structurally matching RuntimeHost's FlagEvidence. */
 export interface FlagEvidenceLike {
   beeId: string;
   generation: number;
@@ -159,7 +159,7 @@ export interface FlagEvidenceLike {
   sourceId?: string;
 }
 
-/** Observed subscription usage, structurally matching HsrDriver's UsageEvidence. */
+/** Observed subscription usage, structurally matching RuntimeHost's UsageEvidence. */
 export interface UsageEvidenceLike {
   beeId: string;
   generation: number;
@@ -168,7 +168,7 @@ export interface UsageEvidenceLike {
   quota?: Record<string, unknown>;
 }
 
-/** Harness session identity, structurally matching HsrDriver's SessionEvidence. */
+/** Harness session identity, structurally matching RuntimeHost's SessionEvidence. */
 export interface SessionEvidenceLike {
   beeId: string;
   generation: number;
@@ -188,18 +188,18 @@ export interface ObservationCursorEvidenceLike {
  * compatible with the WP2 harness behavior when they are absent.
  */
 interface ExtendedDriver {
-  /** Drain adapter flag evidence (HsrDriver.observeEvidence). */
+  /** Drain adapter flag evidence (RuntimeHost.observeEvidence). */
   observeEvidence?(): FlagEvidenceLike[];
-  /** Process identity captured at spawn (HsrDriver.procOf) — the WP2 pid-at-spawn amendment. */
+  /** Process identity captured at spawn (RuntimeHost.procOf) — the WP2 pid-at-spawn amendment. */
   procOf?(
     beeId: string,
     generation: number,
   ): { pid: number; pidStartedAt: number; observationCursor?: number; processIdentity?: import("../../core/src/runtimeProcessIdentity.ts").RuntimeProcessIdentity } | null;
   /** Whether (bee, generation) is a re-adopted degraded process (no event stream). */
   isDegraded?(beeId: string, generation: number): boolean;
-  /** Drain harness session ids learned from booted signals (HsrDriver.observeSessions). */
+  /** Drain harness session ids learned from booted signals (RuntimeHost.observeSessions). */
   observeSessions?(): SessionEvidenceLike[];
-  /** Drain subscription usage runtimes observed (HsrDriver.observeUsage). */
+  /** Drain subscription usage runtimes observed (RuntimeHost.observeUsage). */
   observeUsage?(): UsageEvidenceLike[];
   /** Drain runner-journal cursors only after all earlier normalized effects commit. */
   observeRecoveryCursors?(): ObservationCursorEvidenceLike[];
@@ -280,7 +280,7 @@ export interface DaemonCoreOptions {
   summarizeHandoff?: (input: { handoff: BeeHandoffRow; bee: BeeRow; base: HandoffContext }) => Promise<HandoffContext>;
   /**
    * v24 actions: the Cell landing owner behind `land` actions (the daemon
-   * composes it over CellDriver + the cells registry). Absent: `land` actions
+   * composes it over CellService + the cells registry). Absent: `land` actions
    * wait with reason `executor` instead of pretending to run.
    */
   cellCaptureExecutor?: CellCaptureExecutor;
@@ -1961,12 +1961,7 @@ export class DaemonCore {
           this.hot.add(rt.beeId);
           const pane = row.fallback!.paneInput!;
           if (pane.generation !== rt.generation) {this.store.clearMultilinePaneQuarantine(row.messageId, rt.generation); continue;}
-          const identity = this.driver.deliveryPane?.(rt.beeId, rt.generation);
-          if (identity && identity.socketPath === pane.socketPath && identity.paneId === pane.paneId && identity.serverIdentity === pane.serverIdentity
-            && row.fallback?.state === "delivered" && row.fallback.pointer && this.driver.reconcileDeliveryPane?.(rt.beeId, rt.generation, row.messageId, row.fallback.pointer)) {
-            this.store.clearAcceptedMultilinePaneQuarantine(row.messageId); continue;
-          }
-          if (!identity || identity.socketPath === pane.socketPath && identity.paneId === pane.paneId && identity.serverIdentity === pane.serverIdentity) quarantined = true;
+          quarantined = true;
         }
         if (quarantined) continue;
         const quotaGate = this.store.quotaDeliveryGate(rt.beeId);
@@ -2080,7 +2075,6 @@ export class DaemonCore {
         // delivery-time rendering only.
         if (msg.deliveryHold?.detail === "delivery_hold_state_unknown") {this.store.reconcileUnknownMultilineHold(msg.id); continue;}
         const freshTurn = (humanFirst || batching) && msg.humanChat !== undefined && msg.urgency !== "now" || batch !== null || batching && (msg.automationKind !== undefined || this.store.mailBatchControl(msg.id));
-        if (freshTurn && this.store.getBee(rt.beeId)?.substrate === "tmux") continue;
         const peer = isPeerSender(msg.sender, (id) => this.store.getBee(id) != null);
         const interruptedTurn = msg.urgency === "now" && this.store.deliveryInterruptedTurn(rt.beeId, msg.id, rt.generation);
         const reorderNotice = this.store.multilineReorderNotice(rt.beeId, msg.id);

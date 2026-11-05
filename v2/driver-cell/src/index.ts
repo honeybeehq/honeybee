@@ -2,7 +2,7 @@
  * Honeybee v2 cell driver (WP5 of the reset).
  * Spec: docs/design/specs/reset-05-cell-tmux.md. Zero imports from old code.
  */
-export { CellDriver, CellRuntimeLiveError, DEFAULT_UPSTREAM_REFRESH, type CellDriverConfig, type CellSpec, type UpstreamRefreshPolicy } from "./driver.ts";
+export { CellService, CellRuntimeLiveError, DEFAULT_UPSTREAM_REFRESH, type CellServiceConfig, type CellSpec, type UpstreamRefreshPolicy } from "./driver.ts";
 export {
   provisionCell,
   provisionRequestOf,

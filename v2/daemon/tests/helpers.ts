@@ -83,7 +83,7 @@ export class FakeDriver implements RuntimeDriver {
   /**
    * v9 — a readyAtSpawn harness that DOES produce real output before dying
    * (claude emits its late init, then crashes): booted{synthetic}, then the
-   * real booted the HsrDriver pushes when the adapter parses the first line,
+   * real booted the RuntimeHost pushes when the adapter parses the first line,
    * then exited(crashed). Real evidence makes this a normal post-running
    * crash — never a spawn failure. Loses to bootCrash/synthBootCrash.
    */
@@ -140,7 +140,7 @@ export class FakeDriver implements RuntimeDriver {
     if (this.synthBootCrash || this.synthBootEvidenceCrash) {
       this.events.push({ beeId, generation, kind: "booted", pid, pidStartedAt: proc.pidStartedAt, synthetic: true });
       if (this.synthBootEvidenceCrash) {
-        // The HsrDriver pushes a real booted the moment the adapter parses
+        // The RuntimeHost pushes a real booted the moment the adapter parses
         // the first actual output line of a readyAtSpawn process.
         this.events.push({ beeId, generation, kind: "booted", pid, pidStartedAt: proc.pidStartedAt });
       }

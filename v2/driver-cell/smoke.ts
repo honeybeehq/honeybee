@@ -6,7 +6,7 @@
  *   npm run v2:smoke:cell -- claude [--model m]   # real claude CLI from PATH (HSR mode)
  *
  * One bee, one cell, the whole lifecycle: provision (CoW expected on APFS —
- * copy_mode printed honestly) → spawn via the CellDriver with sandbox ON
+ * copy_mode printed honestly) → spawn via the RuntimeHost and CellService with sandbox ON
  * explicitly (Seatbelt on darwin) → the agent WRITES a file in its cwd (proves
  * cwd + write access inside confinement) → smoke-side sandbox probe (the
  * profile must deny a write outside the cell) → the agent COMMITS its change →
@@ -38,8 +38,8 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { claudeAdapter, stubAdapter } from "../adapters/src/index.ts";
 import type { DeliverOutcome, DriverObservation } from "../harness/src/driver.ts";
-import { verifyProcessIdentity, type SpawnSpec } from "../driver-hsr/src/index.ts";
-import { CellDriver } from "./src/driver.ts";
+import { RuntimeHost, verifyProcessIdentity, type SpawnSpec } from "../driver-hsr/src/index.ts";
+import { CellService } from "./src/driver.ts";
 import { currentBranch, git, porcelainStatus, refSet, revParse, tryGit } from "./src/git.ts";
 import { CELL_SPACE_DIRECTORY } from "./src/layout.ts";
 import { isProvisioned, readLedger } from "./src/ledger.ts";
@@ -168,10 +168,11 @@ function harnessSpec(): SpawnSpec {
   };
 }
 
-const driver = new CellDriver({
+let driver: RuntimeHost;
+const cells = new CellService({
   cellsRoot,
   nodeKind: "workstation", // default OFF — the per-cell override below turns it ON explicitly
-  resolveHarness: () => harnessSpec(),
+  runtimeLive: (beeId: string): boolean => driver.hasRetainedProcess(beeId),
   resolveCell: () => ({
     provision: {
       beeId: BEE,
@@ -183,7 +184,14 @@ const driver = new CellDriver({
     },
     sandbox: true, // explicit per-cell ON (Seatbelt on darwin, bwrap on linux)
   }),
-  hsr: { sessionLogDir: logDir, stopKillGraceMs: 2_000 },
+});
+driver = new RuntimeHost({
+  sessionLogDir: logDir,
+  stopKillGraceMs: 2_000,
+  resolve: (beeId: string, generation?: number): SpawnSpec => cells.spawnSpec(beeId, harnessSpec(), generation),
+  prepare: (beeId, generation, execution, done) => cells.prepare(beeId, generation, execution, done),
+  onObserved: (event) => cells.observed(event),
+  extraEvidence: (live, cleared) => cells.evidence(live, cleared),
 });
 
 // ---------------------------------------------------------------------------
@@ -289,7 +297,7 @@ try {
   // ---- provision + spawn --------------------------------------------------
   section("provision + spawn");
   const provT0 = Date.now();
-  const cell = driver.ensureCell(BEE, "smoke-provision-1");
+  const cell = cells.ensureCell(BEE, "smoke-provision-1");
   const provMs = Date.now() - provT0;
   console.log(`  copy_mode: ${cell.copyMode} (CoW expected on APFS; clone = honest fallback) — provisioned in ${(provMs / 1000).toFixed(2)}s`);
 
@@ -319,7 +327,7 @@ try {
   );
 
   driver.start(BEE, 1);
-  const live = driver.snapshotLive().find((p) => p.beeId === BEE);
+  const live = driver.snapshotLive().find((p: { beeId: string }) => p.beeId === BEE);
   const identityOk = live != null && verifyProcessIdentity(live.pid, driver.procOf(BEE, 1)?.processIdentity ?? null);
   let cwdDetail = "";
   let cwdOk = true;
@@ -443,7 +451,7 @@ try {
   } else {
     section("capture — land onto a new branch in the throwaway origin");
     const before = fingerprintOrigin(origin.repo);
-    const report = driver.capture(BEE, { targetBranch: "smoke/landed", mode: "merge", opId: "smoke-capture-1" });
+    const report = cells.capture(BEE, { targetBranch: "smoke/landed", mode: "merge", opId: "smoke-capture-1" });
     check(
       CAPTURE_CHECKS[0] as string,
       report.status === "landed",
@@ -480,7 +488,7 @@ try {
     let liveBlocked = false;
     let liveDetail = "";
     try {
-      driver.removeCell(BEE);
+      cells.removeCell(BEE);
     } catch (err) {
       liveBlocked = err instanceof Error && /live runtime/.test(err.message);
       liveDetail = (err as Error).message;
@@ -510,14 +518,14 @@ try {
   let refused = false;
   let refuseDetail = "";
   try {
-    driver.removeCell(BEE);
+    cells.removeCell(BEE);
   } catch (err) {
     refused = err instanceof CellDeleteRefused && err.report.uncommitted;
     refuseDetail = (err as Error).message;
   }
   check("dirty delete refused without force (A2)", refused, refuseDetail);
 
-  const removal = driver.removeCell(BEE, { force: true });
+  const removal = cells.removeCell(BEE, { force: true });
   check(
     "forced removal deletes the cell wrapper",
     removal.deleted && removal.forced && !existsSync(cell.paths.wrapperDir),

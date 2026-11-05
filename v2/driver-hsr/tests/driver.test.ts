@@ -15,7 +15,7 @@ import { readFileSync, existsSync, mkdtempSync, rmSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openCoreStore } from "../../core/src/index.ts";
-import { HsrDriver } from "../src/index.ts";
+import { RuntimeHost } from "../src/index.ts";
 import { agyAdapter, claudeAdapter, stubAdapter } from "../../adapters/src/index.ts";
 import type { AdapterSignal } from "../../adapters/src/types.ts";
 import type { DriverObservation } from "../../harness/src/driver.ts";
@@ -30,7 +30,7 @@ import {
 } from "./helpers.ts";
 
 async function deliverUntilAccepted(
-  driver: HsrDriver,
+  driver: RuntimeHost,
   beeId: string,
   generation: number,
   messageId: number,
@@ -222,7 +222,7 @@ test("boot crash (exit before ready) and unspawnable binary → exited(crashed),
   }
 
   const rig2 = makeRig();
-  const driver = new HsrDriver({
+  const driver = new RuntimeHost({
     sessionLogDir: join(rig2.dir, "logs2"),
     resolve: () => ({
       adapter: stubAdapter,
@@ -242,7 +242,7 @@ test("boot crash (exit before ready) and unspawnable binary → exited(crashed),
 
 test("F8: a bare command the resolver found nowhere crashes with a detail naming the executable", async () => {
   const rig = makeRig();
-  const driver = new HsrDriver({
+  const driver = new RuntimeHost({
     sessionLogDir: join(rig.dir, "logs-f8"),
     resolve: () => ({
       adapter: stubAdapter,
@@ -453,7 +453,7 @@ test("readyAtSpawn: silent-until-input runtime becomes deliverable when its runn
       }
     });
   `);
-  const driver = new HsrDriver({
+  const driver = new RuntimeHost({
     sessionLogDir: join(dir, "logs"),
     resolve: () => ({
       adapter: claudeAdapter,
@@ -511,7 +511,7 @@ test("readyAtSpawn with NOTHING to deliver: the synthetic booted is paired with 
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const fake = join(dir, "silent-claude.mjs");
   writeSilentClaude(fake);
-  const driver = new HsrDriver({
+  const driver = new RuntimeHost({
     sessionLogDir: join(dir, "logs"),
     resolve: () => ({ adapter: claudeAdapter, command: process.execPath, args: [fake] }),
   });
@@ -545,11 +545,11 @@ test("readyAtSpawn status poll (deterministic, no spawn): synthetic booted pairs
   // holds under any machine load.
   const dir = mkdtempSync(join(tmpdir(), "hive-drv-ras-poll-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
-  const driver = new HsrDriver({
+  const driver = new RuntimeHost({
     sessionLogDir: join(dir, "logs"),
     resolve: () => { throw new Error("this poll-edge test does not spawn"); },
   });
-  const pump = (driver as unknown as { pumpHost(p: unknown): void }).pumpHost.bind(driver);
+  const pump = (driver as unknown as { pumpStatus(p: unknown): void }).pumpStatus.bind(driver);
   const proc = (beeId: string, phase: "idle" | "running") => {
     const statusPath = join(dir, `${beeId}.status.json`);
     writeFileSync(statusPath, JSON.stringify({ hostPid: process.pid, beeId, generation: 1, at: Date.now(), agentPid: 4242 }));
@@ -575,7 +575,6 @@ test("readyAtSpawn status poll (deterministic, no spawn): synthetic booted pairs
       spawnError: null,
       commandResolution: null,
       realEvidence: false,
-      hostStyle: true,
       agentPid: null,
       socket: null as import("node:net").Socket | null,
       socketRetry: null as ReturnType<typeof setTimeout> | null,
@@ -585,8 +584,6 @@ test("readyAtSpawn status poll (deterministic, no spawn): synthetic booted pairs
       logOffset: 0,
       initialObservationCursor: 0,
       pendingObservationCursor: null,
-      legacySharedObservation: false,
-      outboundPending: [],
       pendingWrites: [],
       socketBroken: false,
     };
@@ -623,7 +620,7 @@ test("runner status cannot turn an unavailable identity into an exit", t => {
   const dir = mkdtempSync(join(tmpdir(), "hive-drv-status-identity-"));
   t.after(() => rmSync(dir, {recursive: true, force: true}));
   const unavailable: string[] = [];
-  const driver = new HsrDriver({
+  const driver = new RuntimeHost({
     sessionLogDir: join(dir, "logs"),
     runtimeIdentity: {read: () => ({kind: "unavailable"}), bindLegacy: () => false, unavailable: (beeId, generation) => unavailable.push(`${beeId}:${generation}`)},
     resolve: () => {throw new Error("no spawn");},
@@ -634,7 +631,7 @@ test("runner status cannot turn an unavailable identity into an exit", t => {
   assert.equal(value.kind, "present");
   if (value.kind !== "present") throw new Error("Fixture observation unavailable");
   const base = {beeId: "held", generation: 1, pid: process.pid, child: null, statusPath, agentPid: null, socket: null, socketBroken: false, adapter: null, exited: false};
-  const pump = (driver as unknown as {pumpHost(p: unknown): void}).pumpHost.bind(driver);
+  const pump = (driver as unknown as {pumpStatus(p: unknown): void}).pumpStatus.bind(driver);
   for (const processIdentity of [null, {pid: process.pid, birth: value.birth, bootId: value.bootId + "-mismatch"}]) {
     const retained = {...base, processIdentity};
     pump(retained);
@@ -672,7 +669,7 @@ test("readyAtSpawn refuses delivery until the runner socket connects, then opens
       return claudeAdapter.encodeMessage(body, context);
     },
   };
-  const driver = new HsrDriver({
+  const driver = new RuntimeHost({
     sessionLogDir: join(dir, "logs"),
     resolve: () => ({ adapter, command: process.execPath, args: [fake] }),
   });
@@ -688,11 +685,12 @@ test("readyAtSpawn refuses delivery until the runner socket connects, then opens
     await deliverUntilAccepted(driver, "ras-race", 1, 1, "hello");
     assert.equal(driver.consumedGeneration(1), 1);
     assert.equal(encodeCalls, 1, "only the accepted attempt is encoded");
-    const events = await drainUntil(driver, (e) => ofKind(e, "turn_ended").length > 0, 15_000);
+    const events = await drainUntil(driver, (e) => ofKind(e, "turn_ended").some((x) => x.synthetic !== true), 15_000);
     assert.equal(ofKind(events, "booted")[0]!.synthetic, true, "spawn-event booted is synthetic");
-    const ended = ofKind(events, "turn_ended");
-    assert.equal(ended.length, 1, "one turn_ended: the parsed result");
-    assert.notEqual(ended[0]!.synthetic, true, "no synthetic turn_ended under an open turn");
+    const ended = ofKind(events, "turn_ended").filter((x) => x.synthetic !== true);
+    assert.equal(ended.length, 1, "one real turn_ended: the parsed result");
+    const opened = events.findIndex((x) => x.kind === "turn_started");
+    assert.ok(events.every((x, i) => !(x.kind === "turn_ended" && x.synthetic === true) || i < opened), "no synthetic turn_ended under an open turn");
     assert.equal(ofKind(events, "turn_started").length, 1, "the deliver-opened turn");
   } finally {
     driver.stop("ras-race", 1, "stopped_by_system");
@@ -708,7 +706,7 @@ test("readyAtSpawn: a spawn that fails outright (missing cwd / binary) is exited
   // in booting, the exit counts against the bee's spawn-failure budget.
   const dir = mkdtempSync(join(tmpdir(), "hive-drv-ras-fail-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
-  const missingCwd = new HsrDriver({
+  const missingCwd = new RuntimeHost({
     sessionLogDir: join(dir, "logs-cwd"),
     resolve: () => ({
       adapter: claudeAdapter,
@@ -726,7 +724,7 @@ test("readyAtSpawn: a spawn that fails outright (missing cwd / binary) is exited
   } finally {
     missingCwd.disposeAll();
   }
-  const missingBinary = new HsrDriver({
+  const missingBinary = new RuntimeHost({
     sessionLogDir: join(dir, "logs-bin"),
     resolve: () => ({
       adapter: claudeAdapter,
@@ -760,7 +758,7 @@ test("readyAtSpawn v9: the spawn booted is SYNTHETIC; zero-output instant death 
   // daemon could mistake for boot evidence.
   const dir = mkdtempSync(join(tmpdir(), "hive-drv-synth-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
-  const driver = new HsrDriver({
+  const driver = new RuntimeHost({
     sessionLogDir: join(dir, "logs"),
     resolve: () => ({
       adapter: { ...stubAdapter, readyAtSpawn: true },
@@ -789,7 +787,7 @@ test("readyAtSpawn v9: the spawn booted is SYNTHETIC; zero-output instant death 
 test("readyAtSpawn v9: the first parsed output pushes a REAL booted (boot evidence); the deliver-opened turn_started is synthetic", async (t) => {
   const dir = mkdtempSync(join(tmpdir(), "hive-drv-synth-ev-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
-  const driver = new HsrDriver({
+  const driver = new RuntimeHost({
     sessionLogDir: join(dir, "logs"),
     resolve: () => ({
       adapter: { ...stubAdapter, readyAtSpawn: true },
@@ -843,7 +841,7 @@ test("late init must not close an in-flight turn (cell smoke 2026-08-17 phantom 
       }
     });
   `);
-  const driver = new HsrDriver({
+  const driver = new RuntimeHost({
     sessionLogDir: join(dir, "logs"),
     resolve: () => ({ adapter: claudeAdapter, command: process.execPath, args: [fake] }),
   });
@@ -856,6 +854,7 @@ test("late init must not close an in-flight turn (cell smoke 2026-08-17 phantom 
     const seen: string[] = [];
     while (Date.now() - t0 < 3000) {
       for (const e of driver.observe()) {
+        if (e.synthetic === true) continue;
         seen.push(e.kind);
         if (e.kind === "turn_ended" && endedAt == null) endedAt = Date.now() - t0;
       }
@@ -885,7 +884,7 @@ test("agy auth before init is flag evidence, not real boot evidence", async (t) 
     }) + "\\n");
     setTimeout(() => process.exit(0), 50);
   `);
-  const driver = new HsrDriver({
+  const driver = new RuntimeHost({
     sessionLogDir: join(dir, "logs"),
     resolve: () => ({ adapter: agyAdapter, command: process.execPath, args: [fake] }),
   });
@@ -976,7 +975,7 @@ test("v6 interrupt: a harness without an in-band interrupt answers unsupported (
     const noInterrupt = { ...stubAdapter };
     delete (noInterrupt as { encodeInterrupt?: unknown }).encodeInterrupt;
     const dir = rig.dir;
-    const driver = new HsrDriver({
+    const driver = new RuntimeHost({
       sessionLogDir: join(dir, "logs2"),
       stopKillGraceMs: 400,
       resolve: () => ({ adapter: noInterrupt, command: process.execPath, args: [AGENT_PATH], cwd: dir, env: { ...process.env, STUB_TURN_MS: "5" } }),
@@ -1017,7 +1016,7 @@ test("self-woken turn: unprompted assistant output on an IDLE runtime opens a tu
     }, 300);
     setInterval(() => {}, 1000);
   `);
-  const driver = new HsrDriver({
+  const driver = new RuntimeHost({
     sessionLogDir: join(dir, "logs"),
     resolve: () => ({ adapter: claudeAdapter, command: process.execPath, args: [fake], cwd: dir }),
   });
@@ -1042,7 +1041,7 @@ test("codex native subagent lifecycle cannot start or end the root bee turn", (t
   // into Inbox while the root kept running (CO.b4b3, 2026-08-23).
   const dir = mkdtempSync(join(tmpdir(), "hive-drv-codex-threads-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
-  const driver = new HsrDriver({
+  const driver = new RuntimeHost({
     sessionLogDir: join(dir, "logs"),
     resolve: () => { throw new Error("this state-machine regression does not spawn"); },
   });

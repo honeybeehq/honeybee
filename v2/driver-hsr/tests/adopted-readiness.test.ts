@@ -5,7 +5,7 @@ import {tmpdir} from "node:os";
 import {join} from "node:path";
 import {openCoreStore} from "../../core/src/index.ts";
 import {codexAdapter, claudeAdapter} from "../../adapters/src/index.ts";
-import {HsrDriver} from "../src/index.ts";
+import {RuntimeHost} from "../src/index.ts";
 import {inspectProcess, sameProcess, type ProcessIdentity} from "../src/psutil.ts";
 import {drainUntil, ofKind, sleep} from "./helpers.ts";
 
@@ -16,8 +16,8 @@ for (const mode of ["idle", "active", "transient-status", "agent-birth", "unowne
   const store = openCoreStore(join(dir, "core.sqlite3"), {ephemeral: true});
   const {bee} = store.createBee({name: "quiet", agent: "codex", substrate: "hsr", cwd: dir});
   const log = join(dir, "rpc.jsonl");
-  const makeDriver = () => new HsrDriver({runtimeIdentity: store.runtimeIdentityHooks(), sessionLogDir: join(dir, "logs"), resolve: () => ({adapter: codexAdapter({cwd: dir}), command: process.execPath, args: [fakeCodex], cwd: dir, env: {FAKE_CODEX_RPC_LOG: log}})});
-  const first = makeDriver(); let second: HsrDriver | undefined, third: HsrDriver | undefined;
+  const makeDriver = () => new RuntimeHost({runtimeIdentity: store.runtimeIdentityHooks(), sessionLogDir: join(dir, "logs"), resolve: () => ({adapter: codexAdapter({cwd: dir}), command: process.execPath, args: [fakeCodex], cwd: dir, env: {FAKE_CODEX_RPC_LOG: log}})});
+  const first = makeDriver(); let second: RuntimeHost | undefined, third: RuntimeHost | undefined;
   try {
     first.start(bee.id, 1);
     await drainUntil(first, events => ofKind(events, "booted").length > 0);
@@ -79,8 +79,8 @@ test("Claude adopted readiness waits for the complete journal before deriving id
   const dir = mkdtempSync(join(tmpdir(), "hb-claude-tail-"));
   const store = openCoreStore(join(dir, "core.sqlite3"), {ephemeral: true});
   const {bee} = store.createBee({name: "quiet", agent: "claude", substrate: "hsr", cwd: dir});
-  const makeDriver = () => new HsrDriver({runtimeIdentity: store.runtimeIdentityHooks(), sessionLogDir: join(dir, "logs"), resolve: () => ({adapter: claudeAdapter, command: process.execPath, args: ["-e", "setInterval(() => {}, 1000)"], cwd: dir})});
-  const first = makeDriver(); let second: HsrDriver | undefined;
+  const makeDriver = () => new RuntimeHost({runtimeIdentity: store.runtimeIdentityHooks(), sessionLogDir: join(dir, "logs"), resolve: () => ({adapter: claudeAdapter, command: process.execPath, args: ["-e", "setInterval(() => {}, 1000)"], cwd: dir})});
+  const first = makeDriver(); let second: RuntimeHost | undefined;
   try {
     first.start(bee.id, 1);
     await drainUntil(first, events => ofKind(events, "booted").length > 0);
@@ -124,8 +124,8 @@ createInterface({input: process.stdin}).on('line', line => {
   setTimeout(()=>emit({method:'turn/completed',params:{threadId:'chosen',turn:{id:'turn',status:'completed'}}}),50);
  }
 });`);
-  const makeDriver = () => new HsrDriver({runtimeIdentity: store.runtimeIdentityHooks(), sessionLogDir: join(dir, "logs"), resolve: () => ({adapter: codexAdapter({cwd: dir}), command: process.execPath, args: [script, requests], cwd: dir})});
-  const first = makeDriver(); let second: HsrDriver | undefined, third: HsrDriver | undefined;
+  const makeDriver = () => new RuntimeHost({runtimeIdentity: store.runtimeIdentityHooks(), sessionLogDir: join(dir, "logs"), resolve: () => ({adapter: codexAdapter({cwd: dir}), command: process.execPath, args: [script, requests], cwd: dir})});
+  const first = makeDriver(); let second: RuntimeHost | undefined, third: RuntimeHost | undefined;
   try {
     first.start(bee.id, 1);
     let cursor = 0;

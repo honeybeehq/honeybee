@@ -1,5 +1,5 @@
 /**
- * CellDriver integration — pure delegation to the HSR driver with real OS
+ * Cell host integration — the runtime host with the Cell service, real OS
  * child processes (the WP3 stub agent), running inside provisioned cells.
  * Proves: provisioning on start, cwd = space checkout, sandboxed spawn
  * (darwin), full observation round-trip and the cell surface (capture,
@@ -13,7 +13,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { stubAdapter } from "../../adapters/src/index.ts";
 import type { DriverObservation } from "../../harness/src/driver.ts";
-import { CellDriver, CellRuntimeLiveError } from "../src/driver.ts";
+import { CellRuntimeLiveError } from "../src/driver.ts";
 import { gitImagesRootForCells, readCurrentGitImage } from "../src/gitImage.ts";
 import { reserveCell } from "../src/provision.ts";
 import { probeCow } from "../src/cow.ts";
@@ -23,7 +23,7 @@ import {
   type NodeKind,
   type SandboxWritableDirectory,
 } from "../src/sandbox.ts";
-import { commitInCell, makeRig, type CellTestRig } from "./helpers.ts";
+import { commitInCell, composeCellHost, makeRig, type CellHost, type CellTestRig } from "./helpers.ts";
 import { fixtureRuntimeIdentity, persistFixtureProcess, pidAlive } from "../../driver-hsr/tests/helpers.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -45,16 +45,10 @@ function makeDriver(
     harnessEnv?: Record<string, string>;
     hostCommand?: (configPath: string) => { command: string; args: string[] };
   } = {},
-): CellDriver {
-  return new CellDriver({
+): CellHost {
+  return composeCellHost({
     cellsRoot: rig.cellsRoot,
     nodeKind: opts.nodeKind ?? "workstation",
-    resolveHarness: () => ({
-      adapter: stubAdapter,
-      command: process.execPath,
-      args: [AGENT_PATH],
-      env: { ...(process.env as Record<string, string>), STUB_TURN_MS: "5", ...(opts.harnessEnv ?? {}) },
-    }),
     resolveCell: (beeId: string) => ({
       provision: {
         beeId,
@@ -66,26 +60,28 @@ function makeDriver(
       },
       sandbox: opts.sandbox ?? null,
     }),
-    hsr: {
-      runtimeIdentity: fixtureRuntimeIdentity(rig.root),
-      sessionLogDir: join(rig.root, "logs"),
-      stopKillGraceMs: 400,
-      ...(opts.hostCommand ? { hostCommand: opts.hostCommand } : {}),
-    },
-    // Sandboxed runs must still reach the OS tmp + the node binary; the
-    // default scratch list covers it. Harness "home" writes go to the logs
-    // dir via the driver, outside the sandboxed child.
     sandboxWritablePaths: opts.sandboxWritablePaths ?? defaultScratchPaths(),
     resolveSandboxWritablePaths: opts.resolveSandboxWritablePaths,
     disableCow: opts.disableCow ?? true,
     backgroundProvisioning: opts.backgroundProvisioning,
     provisionWorkerUrl: opts.provisionWorkerUrl,
     gitImagesRoot: opts.gitImagesRoot,
+  }, {
+    runtimeIdentity: fixtureRuntimeIdentity(rig.root),
+    sessionLogDir: join(rig.root, "logs"),
+    stopKillGraceMs: 400,
+    ...(opts.hostCommand ? { hostCommand: opts.hostCommand } : {}),
+    resolveHarness: () => ({
+      adapter: stubAdapter,
+      command: process.execPath,
+      args: [AGENT_PATH],
+      env: { ...(process.env as Record<string, string>), STUB_TURN_MS: "5", ...(opts.harnessEnv ?? {}) },
+    }),
   });
 }
 
 async function drainUntil(
-  driver: CellDriver,
+  driver: CellHost,
   pred: (events: DriverObservation[]) => boolean,
   timeoutMs = 5000,
 ): Promise<DriverObservation[]> {
@@ -102,7 +98,7 @@ async function drainUntil(
 // A boot observation can precede the detached runner socket accepting input.
 // Retry only that transient refusal; every other refusal remains a test failure.
 async function deliverUntilAccepted(
-  driver: CellDriver,
+  driver: CellHost,
   beeId: string,
   generation: number,
   messageId: number,
@@ -470,7 +466,7 @@ test("cell-driver.account-home: the bee resolver adds one exact sandbox grant an
 test("cell-driver.restart: a successor daemon re-adopts a live cell runtime from the ledger at full capability", async () => {
   const rig = makeRig();
   const first = makeDriver(rig);
-  let second: CellDriver | null = null;
+  let second: CellHost | null = null;
   try {
     first.start("bee-1", 1);
     await drainUntil(first, (e) => e.some((x) => x.kind === "booted"));
@@ -526,7 +522,7 @@ test("cell-driver.restart: a successor daemon re-adopts a live cell runtime from
   }
 });
 
-function checkpointOf(driver: CellDriver, beeId: string): number {
+function checkpointOf(driver: CellHost, beeId: string): number {
   const evidence = driver.observeRecoveryCursors().find((row) => row.beeId === beeId);
   assert.ok(evidence, `missing recovery cursor for ${beeId}`);
   return evidence.cursor;

@@ -151,19 +151,6 @@ test("a newer explicit now interrupts without overtaking the oldest human", () =
   } finally { r.close(); }
 });
 
-test("a policy enabled before a substrate change holds fresh human delivery on tmux", () => {
-  const r = rig();
-  try {
-    const human = r.human("fresh");
-    const actual = r.store.getBee.bind(r.store);
-    r.store.getBee = id => { const bee = actual(id); return bee ? { ...bee, substrate: "tmux" } : null; };
-    r.core.step();
-    assert.deepEqual(r.driver.deliveredIds, []);
-    assert.equal(r.store.getMessage(human.id)?.deliveredAt, null);
-  } finally { r.close(); }
-});
-
-
 test("schema 47 migration adds human policy without upgrading legacy senderKind provenance", () => {
   const root = mkdtempSync(join(tmpdir(), "human-migration-"));
   const path = join(root, "core.sqlite");

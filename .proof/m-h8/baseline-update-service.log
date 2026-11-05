@@ -1,0 +1,50 @@
+✔ service environment records native pin and drops Electron mode (307.628477ms)
+✖ service entry follows selected node current, independent of ambient home (155.340288ms)
+✔ fresh service install requires a pin and validates explicit argv overrides (455.997002ms)
+✔ daemon start, restart and status expose a held pin without opening the store (476.354912ms)
+✔ daemon service verbs reach the service manager only for the unit's own data dir under the account home (955.527389ms)
+✔ hive daemon stop on a scratch data dir signals only that daemon, by its own pid (699.120112ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 5
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3211.990953
+
+✖ failing tests:
+
+test at v2/cli/tests/update-service.test.ts:17:1
+✖ service entry follows selected node current, independent of ambient home (155.340288ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+  
+    [
+      '/home/trmd/.local/share/apiary-satellite/node-v24.21.0-linux-x64/bin/node',
+      '/home/trmd/.hive/v2/tmp/3e7350d6-83fd-4961-bb8b-078a7d411c81/hon8-service-6ub9nR/runtime/current/dist/cli.js',
+  -   'v2',
+      'daemon',
+      'run',
+      '--data-dir',
+      '/home/trmd/.hive/v2/tmp/3e7350d6-83fd-4961-bb8b-078a7d411c81/hon8-service-6ub9nR/v2'
+    ]
+  
+      at TestContext.<anonymous> (file:///tmp/hb-main/v2/cli/tests/update-service.test.ts:23:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: [ '/home/trmd/.local/share/apiary-satellite/node-v24.21.0-linux-x64/bin/node', '/home/trmd/.hive/v2/tmp/3e7350d6-83fd-4961-bb8b-078a7d411c81/hon8-service-6ub9nR/runtime/current/dist/cli.js', 'daemon', 'run', '--data-dir', '/home/trmd/.hive/v2/tmp/3e7350d6-83fd-4961-bb8b-078a7d411c81/hon8-service-6ub9nR/v2' ],
+    expected: [ '/home/trmd/.local/share/apiary-satellite/node-v24.21.0-linux-x64/bin/node', '/home/trmd/.hive/v2/tmp/3e7350d6-83fd-4961-bb8b-078a7d411c81/hon8-service-6ub9nR/runtime/current/dist/cli.js', 'v2', 'daemon', 'run', '--data-dir', '/home/trmd/.hive/v2/tmp/3e7350d6-83fd-4961-bb8b-078a7d411c81/hon8-service-6ub9nR/v2' ],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+fixture-warden: reaped leaked fixture pid 2317198: /usr/bin/git -c safe.bareRepository=explicit ls-remote https://github.com/openai/plugins.git HEAD
+fixture-warden: reaped leaked fixture pid 2317202: /usr/lib/git-core/git remote-https https://github.com/openai/plugins.git https://github.com/openai/plugins.git
+fixture-warden: reaped leaked fixture pid 2317211: /usr/lib/git-core/git-remote-https https://github.com/openai/plugins.git https://github.com/openai/plugins.git
+exit=1

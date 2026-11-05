@@ -136,10 +136,7 @@ export interface RuntimeDriver {
   deliveryIssue?(beeId: string, generation: number, messageId: number, body?: string): "host_auth_failed" | "message_too_large" | null;
   deliveryLaneReady?(beeId: string, generation: number): boolean;
   reconcileDeliveryConfirmation?(beeId: string, generation: number, messageId: number, plan: DeliveryConfirmationPlan): DeliveryConfirmationResult;
-  deliver(beeId: string, generation: number, messageId: number, body: string, options?: { freshTurn?: boolean; confirmation?: DeliveryConfirmationPlan; multilineWaitExpired?: boolean; singleAttempt?: boolean; expectedPane?: {socketPath: string; paneId: string; serverIdentity: string} }): DeliverOutcome;
-  deliveryPaneClear?(beeId: string, generation: number): boolean;
-  reconcileDeliveryPane?(beeId: string, generation: number, messageId: number, body: string): boolean;
-  deliveryPane?(beeId: string, generation: number): {socketPath: string; paneId: string; serverIdentity: string} | null;
+  deliver(beeId: string, generation: number, messageId: number, body: string, options?: { freshTurn?: boolean; confirmation?: DeliveryConfirmationPlan; multilineWaitExpired?: boolean; singleAttempt?: boolean }): DeliverOutcome;
   deliveryReceipt?(beeId: string, generation: number, messageId: number, body: string): "accepted" | "unknown" | "not_attempted";
 
   /**

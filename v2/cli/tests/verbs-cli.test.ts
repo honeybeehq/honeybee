@@ -910,114 +910,6 @@ test("verbs.usage: renders the cached account_limits rows (stale, read-only) wit
   }
 });
 
-const tmuxAvailable = spawnSync("tmux", ["-V"], { stdio: "ignore" }).status === 0;
-
-test("verbs.xa: v1 shape is <agent> (not a bee name); refuses pane-less substrates; tmux spawn + --print", async () => {
-  const { dir, cleanup } = makeDaemonDir();
-  let daemon: DaemonHandle | null = null;
-  const spawned: string[] = [];
-  try {
-    daemon = await startDaemon(dir);
-    const usage = capture();
-    assert.equal(await runV2Cli(["xa", "--data-dir", dir], usage.io), 1);
-    assert.ok(usage.err[0]?.includes("usage: hive xa"), usage.err[0]);
-
-    const clash = capture();
-    assert.equal(await runV2Cli(["xa", "stub", "--agent", "claude", "--data-dir", dir], clash.io), 1);
-    assert.ok(clash.err[0]?.includes("disagree"), clash.err[0]);
-
-    const hsr = capture();
-    assert.equal(await runV2Cli(["xa", "stub", "--substrate", "hsr", "--data-dir", dir], hsr.io), 1);
-    const hsrMsg = hsr.err.join("\n");
-    assert.ok(hsrMsg.includes("hsr bees don't have"), hsrMsg);
-    assert.ok(hsrMsg.includes("hive x"), hsrMsg);
-
-    const cell = capture();
-    assert.equal(await runV2Cli(["xa", "stub", "--substrate", "cell", "--data-dir", dir], cell.io), 1);
-    assert.ok(cell.err.join("\n").includes("cell bees don't have"), cell.err.join("\n"));
-
-    if (!tmuxAvailable) return;
-
-    const printed = capture();
-    assert.equal(
-      await runV2Cli(
-        ["xa", "stub", "--name", "screenful", "--cwd", "/tmp", "--print", "--timeout", "10000", "--data-dir", dir, "--json"],
-        printed.io,
-      ),
-      0,
-    );
-    const attach = JSON.parse(printed.out[0] ?? "{}") as { beeId: string; session: string; socket: string; command: string };
-    spawned.push(attach.beeId);
-    assert.ok(attach.beeId.length > 0);
-    assert.equal(attach.socket, join(dir, "tmux.sock"));
-    assert.equal(attach.session, `hive-v2-${attach.beeId}-g1`);
-    assert.equal(attach.command, `tmux -S '${attach.socket}' attach-session -t '=${attach.session}'`);
-
-    const view = capture();
-    assert.equal(await runV2Cli(["view", "screenful", "--data-dir", dir, "--json"], view.io), 0);
-    const listed = JSON.parse(view.out[0] ?? "{}") as { bee?: { name: string; agent: string; substrate: string } };
-    assert.equal(listed.bee?.name, "screenful");
-    assert.equal(listed.bee?.agent, "stub");
-    assert.equal(listed.bee?.substrate, "tmux");
-
-    const selected = capture();
-    assert.equal(
-      await runV2Cli(
-        ["xa", "stub-auto", "--name", "auto-screen", "--cwd", "/tmp", "--print", "--timeout", "10000", "--data-dir", dir, "--json"],
-        selected.io,
-      ),
-      0,
-    );
-    spawned.push((JSON.parse(selected.out[0] ?? "{}") as {beeId: string}).beeId);
-    const selectedView = capture();
-    assert.equal(await runV2Cli(["view", "auto-screen", "--data-dir", dir, "--json"], selectedView.io), 0);
-    assert.equal((JSON.parse(selectedView.out[0] ?? "{}") as { bee?: { agent: string } }).bee?.agent, "stub");
-  } finally {
-    try {
-      for (const beeId of spawned) {
-        assert.equal(await runV2Cli(["stop", beeId, "--data-dir", dir], capture().io), 0);
-        await waitFor(async () => {
-          const result = capture();
-          await runV2Cli(["view", beeId, "--data-dir", dir, "--json"], result.io);
-          return (JSON.parse(result.out[0] ?? "{}") as {view?: {runtimeState: string}}).view?.runtimeState === "stopped";
-        }, "tmux fixture stopped", 10000);
-      }
-    } finally {
-      await daemon?.stop().catch(() => {});
-      cleanup();
-    }
-  }
-});
-
-test("verbs.attach: refuses hsr/cell bees with the v2 guidance; tmux bees get the recorded session (via --print)", async () => {
-  const { dir, cleanup } = makeDaemonDir({ bootHangTimeoutMs: 60_000 });
-  let daemon: DaemonHandle | null = null;
-  try {
-    daemon = await startDaemon(dir);
-    assert.equal(await runV2Cli(["spawn", "paneless", "--agent", "stub", "--cwd", "/tmp", "--data-dir", dir], capture().io), 0);
-    await idleBee(dir, "paneless");
-    const a = capture();
-    assert.equal(await runV2Cli(["attach", "paneless", "--data-dir", dir], a.io), 1);
-    const message = a.err.join("\n");
-    assert.ok(message.includes("pane-less"), message);
-    assert.ok(message.includes("hive tail paneless --follow"), message);
-    assert.ok(message.includes("transcript paneless --follow"), message);
-    await daemon.stop();
-    daemon = null;
-
-    // a tmux-substrate bee resolves to the driver's session-name convention
-    const store = openCoreStore(join(dir, "core.sqlite3"));
-    store.createBee({ id: "tm-1", name: "screenful", agent: "claude", substrate: "tmux", cwd: "/tmp" });
-    store.close();
-    const p = capture();
-    assert.equal(await runV2Cli(["attach", "screenful", "--print", "--data-dir", dir], p.io), 0);
-    assert.equal(p.out[0], `tmux -S '${join(dir, "tmux.sock")}' attach-session -t '=hive-v2-tm-1-g1'`);
-  } finally {
-    await daemon?.stop().catch(() => {});
-    cleanup();
-  }
-});
-
 test("verbs.help: the grouped v1-style overview lists the new verbs under their sections", async () => {
   const a = capture();
   assert.equal(await runV2Cli(["help"], a.io), 0);
@@ -1025,7 +917,7 @@ test("verbs.help: the grouped v1-style overview lists the new verbs under their 
   for (const section of ["Spawn & run:", "Message:", "Observe:", "Manage bees:", "Accounts:", "Daemon:"]) {
     assert.ok(text.includes(section), `help has section ${section}`);
   }
-  for (const verb of ["x <name>", "xa <agent>", "run <name> -p", "transcript <bee>", "tail <bee>", "last <bee>", "wait <bee>", "events [", "here [", "usage [", "set-model <bee>", "attach <bee>", "account capture <selector>", "swap-account <bee>"]) {
+  for (const verb of ["x <name>", "run <name> -p", "transcript <bee>", "tail <bee>", "last <bee>", "wait <bee>", "events [", "here [", "usage [", "set-model <bee>", "account capture <selector>", "swap-account <bee>"]) {
     assert.ok(text.includes(verb), `help mentions ${verb}`);
   }
 });

@@ -8,9 +8,9 @@ const root=mkdtempSync(join(process.env.TMPDIR,'h1c-peer-parity-')),writes=join(
 const peerOnly=process.argv.includes('--peer-only');
 if(peerOnly){assert.equal(harness,'claude');process.env.H1C_AUTH_FAULT=join(root,'peer-fault');writeFileSync(process.env.H1C_AUTH_FAULT,'owned peer-only fault');await import('./h1c-peer-auth-fault.mjs');}
 else await import('./h1c-missing-peer-artifact.mjs');
-const {HsrDriver}=await import(pathToFileURL(join(source,'v2/driver-hsr/src/driver.ts')).href);
+const {RuntimeHost}=await import(pathToFileURL(join(source,'v2/driver-hsr/src/driver.ts')).href);
 const {claudeAdapter,codexAdapter}=await import(pathToFileURL(join(source,'v2/adapters/src/index.ts')).href);
-const driver=new HsrDriver({sessionLogDir:join(root,'logs'),runnersDir:join(root,'runners'),resolve:()=>({adapter:harness==='codex'?codexAdapter({cwd:root}):claudeAdapter,command:process.execPath,args:[new URL('./h1c-fake-codex.mjs',import.meta.url).pathname],cwd:root,env:{...process.env,H1C_WRITES:writes}})});
+const driver=new RuntimeHost({sessionLogDir:join(root,'logs'),runnersDir:join(root,'runners'),resolve:()=>({adapter:harness==='codex'?codexAdapter({cwd:root}):claudeAdapter,command:process.execPath,args:[new URL('./h1c-fake-codex.mjs',import.meta.url).pathname],cwd:root,env:{...process.env,H1C_WRITES:writes}})});
 driver.start('bee',1);const p=driver.procs.get('bee');
 try{
  for(let i=0;i<100;i++){driver.observe();await new Promise(resolve=>setTimeout(resolve,5));}

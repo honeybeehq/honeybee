@@ -1,0 +1,108 @@
+✔ retained capture resolves the registry after daemon restart (2848.978826ms)
+✔ legacy Cell removal refuses a stopped bee's retained allocation (1805.687746ms)
+✔ capture is fenced while retained exec can still modify the Cell (4314.449416ms)
+✔ an attempted exec without saved process identity is unknown and keeps the Cell gate (2239.7601ms)
+✔ interrupted retained removal reconciles its directory instead of exec process identity (2222.119428ms)
+✔ interrupted retained removal with wrapper present refuses the original key and lets a fresh key delete (2321.441007ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 15982.6774
+✔ real unshare peer is refused by a disposable daemon while host CLI still spawns (1744.466485ms)
+✔ sandbox-off host keeps unregistered host callers unconfined and still confines child-userns peers (1984.902219ms)
+✔ an explicitly unsandboxed Cell does not put a sandboxed satellite into strict host refusal (1137.493484ms)
+✔ strict host with trust disabled cannot treat an unattributed host peer as registered (466.502539ms)
+✔ missing Linux peer credentials fail closed with a diagnostic error: degraded (113.361847ms)
+✔ missing Linux peer credentials fail closed with a diagnostic error: lookup_failed (1.843912ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 5587.65739
+✔ handoff.rpc.replay-defaults: omitted target defaults stay bound to the original source after later switches (1583.242433ms)
+✔ handoff.rpc: capability, validation, idempotency, typed refusals, and unavailable target accounts (1304.046989ms)
+✔ handoff.rpc.cross-family: claude → codex on an idle hsr bee keeps identity, mailbox order, and publishes parseable segments (1384.414075ms)
+✔ handoff.rpc.same-family: a context reset keeps args unless replaced, opens a fresh thread, and stays on the account (1672.946257ms)
+✔ handoff.rpc.working+stopped: stopAt=idle waits for the running turn, stopAt=now stops a hung turn, a stopped source hands off (5144.918417ms)
+✔ handoff.rpc.disconnect+crash: a lost response replays to the same operation; SIGKILL during stopping and starting resumes (2228.500934ms)
+✔ handoff.rpc.cell: a Cell bee hands off in place — same Cell, cwd, dirty files, one runtime in the checkout (1864.370731ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 15385.230835
+✔ cell-retention.0: verbs and capability are published (0.865572ms)
+✔ cell-retention.1: plan holds young and dirty Cells, keeps live ones; apply evicts a clean archived Cell; a message revives it in place (4053.687249ms)
+✔ cell-retention.2: cell.evict on one bee — refused dirty, forced parks, live runtime is typed-refused, idempotent replay (1485.425256ms)
+✔ cell-retention.3: the automatic pass runs on its interval and evicts a clean stopped Cell past the age floor (2233.855847ms)
+✔ cell-retention.4: a clean retained Cell (its bee moved away) is removed by the pass; the moved bee is untouched (2161.394741ms)
+✔ cell-retention.5: ignored env files survive eviction and come back on revive; stashes and side branches hold the Cell (4312.814963ms)
+✔ cell-retention.6: idle Cells lose build output and keep everything else; eviction moves kept files aside and revive brings them back (3903.858634ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 18291.409283
+✔ cell move RPC preserves conversation, source work, mail and retained operations (1954.117368ms)
+✔ cell move refuses its Cell worktree as a regular-checkout destination before fencing (1364.032967ms)
+✔ retained Cell RPCs reject invalid optional parameter types before binding idempotency keys (1822.953957ms)
+✔ cell move survives daemon loss after durable admission (2154.560313ms)
+✔ retained exec after daemon loss never replays and releases its gate after process absence (4875.426709ms)
+✔ cell move completes on dest idle with no mail for Codex (1674.735041ms)
+✔ cell move carries Claude transcript and completes with no mail (1769.3318ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 15771.227151
+✔ identity recovery is bounded, fair, retries failures and warns at ten minutes (2.041606ms)
+✔ stop intent remains queued and deduplicated across restart until proof, without signaling (48.201605ms)
+✔ archive intent remains queued and deduplicated across restart until proof, without signaling (33.290546ms)
+✔ proven gone still reconciles to stopped while unresolved rows stay reachable (24.419051ms)
+✔ resolved RPC results omit diagnostics; overdue unresolved rows carry doctor and CLI text (29.273902ms)
+✔ identity loss during stop holds the same durable command without a signal or retry exhaustion (27.905424ms)
+✔ a queued unresolved stop settles after restart when the process is proven gone (27.648435ms)
+✔ boot absence cannot settle a malformed or unbound persisted identity (26.070118ms)
+✔ recovery persists an owned late capture through the store and never replaces malformed content (27.45558ms)
+✔ health omits zero cleanup counts and distinguishes retained from informational (26.519491ms)
+✔ shutdown preserves default ordering and confines early disposal (preserve=true) (1.128622ms)
+✔ shutdown preserves default ordering and confines early disposal (preserve=false) (0.808821ms)
+ℹ tests 12
+ℹ suites 0
+ℹ pass 12
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 563.994463
+✔ cells.0: the verb list + error list carry the cell verbs Apiary calls, and only closed-list codes (0.86997ms)
+✔ cells.1: spawn {substrate:cell} → row + seed ledger → provisioned on start → agent works INSIDE the cell → capture lands onto a throwaway branch (origin untouched otherwise) (2377.902905ms)
+✔ cells.2: cell.remove — runtime_refused while live; refused-dirty leaves everything; forced deletes cell + enqueues delete; replay keeps its own status; absent path (3098.362557ms)
+✔ cells.3: daemon SIGKILL → restart re-adopts a live cell bee at full capability: the missed completion folds from the journal and mail reaches the SAME generation (4047.236752ms)
+✔ cells.4: spawn param validation (typed invalid_request), explicit sha/warm/sandbox land in the seed ledger, and a provisioning failure is a bounded spawn_failed — never a wedged command (1594.16463ms)
+✔ cells.5: an unpinned spawn from a stale origin triggers an upstream fetch; the next Cell starts at the upstream tip with origin = the real remote (4670.616757ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 15955.564109
+exit=0

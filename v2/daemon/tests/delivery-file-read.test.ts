@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 import { openCoreStore } from "../../core/src/store.ts";
 import { DaemonCore } from "../src/loops.ts";
 import { codexAdapter, museAdapter, stubAdapter } from "../../adapters/src/index.ts";
-import { HsrDriver } from "../../driver-hsr/src/driver.ts";
+import { RuntimeHost } from "../../driver-hsr/src/driver.ts";
 import { defaultScratchPaths, sandboxDefaultFor, seatbeltProfile, wrapWithSandbox } from "../../driver-cell/src/sandbox.ts";
 import { DeliveryFiles } from "../src/deliveryFile.ts";
 import { defaultDataDir } from "../src/config.ts";
@@ -53,7 +53,7 @@ for (const substrate of ["hsr", "cell-sandbox", "satellite-default"] as const) t
     writeFileSync(profilePath, command.profile, {mode: 0o600});
     await waitForGateProfile(t.name, root);
   }
-  const driver = new HsrDriver({sessionLogDir: join(root, "logs"), stopKillGraceMs: 100, socketDir: join(root, "s"), resolve: () => ({...command, cwd: work, env: {...process.env, FILE_READ_ROOT: data, ...(sandboxed ? {FILE_EXPECT_READONLY: "1"} : {})}, adapter: stubAdapter})});
+  const driver = new RuntimeHost({sessionLogDir: join(root, "logs"), stopKillGraceMs: 100, socketDir: join(root, "s"), resolve: () => ({...command, cwd: work, env: {...process.env, FILE_READ_ROOT: data, ...(sandboxed ? {FILE_EXPECT_READONLY: "1"} : {})}, adapter: stubAdapter})});
   t.after(async () => {
     const child = (driver as unknown as {procs: Map<string, {child: ChildProcess | null}>}).procs.get("bee")?.child;
     await disposeAndAwaitOwnedChild(child, () => driver.disposeAll(), () => rmSync(root, {recursive: true, force: true}));
@@ -117,7 +117,7 @@ for (const loseAttempt of [false, true]) test(`real HSR asynchronous confirmatio
   const root = realpathSync(mkdtempSync(join(tmpdir(), "hc-"))), data = join(root, "data"), work = join(root, "work");
   for (const path of [data, work, join(root, "s")]) mkdirSync(path, {mode: 0o700});
   const fixture = fileURLToPath(new URL("../../driver-hsr/test-agent/fake-codex.mjs", import.meta.url)), rpcLog = join(root, "rpc.jsonl");
-  const driver = new HsrDriver({sessionLogDir: join(root, "logs"), socketDir: join(root, "s"), stopKillGraceMs: 100, resolve: () => ({command: process.execPath, args: [fixture], cwd: work, env: {...process.env, FAKE_CODEX_RPC_LOG: rpcLog}, adapter: codexAdapter({cwd: work})})});
+  const driver = new RuntimeHost({sessionLogDir: join(root, "logs"), socketDir: join(root, "s"), stopKillGraceMs: 100, resolve: () => ({command: process.execPath, args: [fixture], cwd: work, env: {...process.env, FAKE_CODEX_RPC_LOG: rpcLog}, adapter: codexAdapter({cwd: work})})});
   let now = 1000;
   const store = openCoreStore(join(data, "core.sqlite3"), {now: () => now, ephemeral: true});
   t.after(() => {driver.disposeAll(); store.close(); rmSync(root, {recursive: true, force: true});});
@@ -160,7 +160,7 @@ for (const harness of ["codex", "muse"] as const) for (const refuse of [false, t
   const root = realpathSync(mkdtempSync(join(tmpdir(), "pc-"))), data = join(root, "data"), work = join(root, "work");
   for (const path of [data, work, join(root, "s")]) mkdirSync(path, {mode: 0o700});
   const fixture = fileURLToPath(new URL(`../../driver-hsr/test-agent/fake-${harness}.mjs`, import.meta.url));
-  const driver = new HsrDriver({sessionLogDir: join(root, "logs"), socketDir: join(root, "s"), stopKillGraceMs: 100, resolve: () => ({command: process.execPath, args: [fixture, ...(harness === "muse" ? ["serve"] : [])], cwd: work,
+  const driver = new RuntimeHost({sessionLogDir: join(root, "logs"), socketDir: join(root, "s"), stopKillGraceMs: 100, resolve: () => ({command: process.execPath, args: [fixture, ...(harness === "muse" ? ["serve"] : [])], cwd: work,
     env: {...process.env, ...(refuse ? {FAKE_DELIVERY_REFUSE_ONCE: "1"} : {}), ...(harness === "muse" ? {FAKE_MUSE_NATIVE: "1", MUSE_NO_AUTO_UPDATE: "1"} : {})}, adapter: harness === "codex" ? codexAdapter({cwd: work}) : museAdapter({cwd: work})})});
   let now = 1000;
   const store = openCoreStore(join(data, "core.sqlite3"), {now: () => now, ephemeral: true});
@@ -192,9 +192,9 @@ test("SIGKILL after in_flight on a surviving HSR generation becomes UNKNOWN and 
   const code = `import {openCoreStore} from ${JSON.stringify(modulePath("../../core/src/store.ts"))};
 import {DaemonCore} from ${JSON.stringify(modulePath("../src/loops.ts"))};
 import {DeliveryFiles} from ${JSON.stringify(modulePath("../src/deliveryFile.ts"))};
-import {HsrDriver} from ${JSON.stringify(modulePath("../../driver-hsr/src/driver.ts"))};
+import {RuntimeHost} from ${JSON.stringify(modulePath("../../driver-hsr/src/driver.ts"))};
 import {codexAdapter} from ${JSON.stringify(modulePath("../../adapters/src/index.ts"))};
-const store=openCoreStore(${JSON.stringify(db)}),driver=new HsrDriver({runtimeIdentity:store.runtimeIdentityHooks(),sessionLogDir:${JSON.stringify(logs)},socketDir:${JSON.stringify(socketDir)},resolve:()=>({command:process.execPath,args:[${JSON.stringify(fixture)}],cwd:${JSON.stringify(work)},env:process.env,adapter:codexAdapter({cwd:${JSON.stringify(work)}})})});
+const store=openCoreStore(${JSON.stringify(db)}),driver=new RuntimeHost({runtimeIdentity:store.runtimeIdentityHooks(),sessionLogDir:${JSON.stringify(logs)},socketDir:${JSON.stringify(socketDir)},resolve:()=>({command:process.execPath,args:[${JSON.stringify(fixture)}],cwd:${JSON.stringify(work)},env:process.env,adapter:codexAdapter({cwd:${JSON.stringify(work)}})})});
 const core=new DaemonCore({store,driver,now:Date.now,log:()=>{},policy:{commandsPerStep:8,idleWindowSteps:null,bootHangTimeoutSteps:100000}});core.boot();
 const bee=store.createBee({name:"crash",agent:"stub",substrate:"hsr",cwd:${JSON.stringify(work)}}).bee;store.enqueueCommand("spawn",bee.id);
 for(let i=0;store.currentRuntime(bee.id)?.state!=="idle";i++){if(i>500)throw Error("boot timeout");core.step();await new Promise(r=>setTimeout(r,10));}
@@ -203,7 +203,7 @@ const f=store.prepareMultilineFallback(message.id,${JSON.stringify(data)},[${JSO
 store.transitionMultilineFallback(message.id,"preparing","ready",{...p,pointer:"full text: "+p.path});store.transitionMultilineFallback(message.id,"ready","in_flight",{generation:1,attempts:1});
 process.stdout.write(JSON.stringify({beeId:bee.id,messageId:message.id,proc:driver.procOf(bee.id,1)})+"\\n");setInterval(()=>{},1000);`;
   const child = spawn(process.execPath, ["--input-type=module", "-e", code], {cwd: root, env: process.env, stdio: ["ignore", "pipe", "pipe"]});
-  let driver: HsrDriver | undefined, store: ReturnType<typeof openCoreStore> | undefined;
+  let driver: RuntimeHost | undefined, store: ReturnType<typeof openCoreStore> | undefined;
   t.after(() => {if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL"); driver?.disposeAll(); store?.close(); rmSync(root, {recursive: true, force: true});});
   const saved = await new Promise<{beeId: string; messageId: number; proc: {pid: number; pidStartedAt: number; observationCursor: number}}>((resolve, reject) => {
     let out = "", error = "";
@@ -215,7 +215,7 @@ process.stdout.write(JSON.stringify({beeId:bee.id,messageId:message.id,proc:driv
   const exited = new Promise(resolve => child.once("exit", (_code, signal) => resolve(signal)));
   child.kill("SIGKILL"); assert.equal(await exited, "SIGKILL");
   store = openCoreStore(db);
-  driver = new HsrDriver({runtimeIdentity: store.runtimeIdentityHooks(), sessionLogDir: logs, socketDir, stopKillGraceMs: 100, resolve: () => ({command: process.execPath, args: [fixture], cwd: work, env: process.env as Record<string, string>, adapter: codexAdapter({cwd: work})})});
+  driver = new RuntimeHost({runtimeIdentity: store.runtimeIdentityHooks(), sessionLogDir: logs, socketDir, stopKillGraceMs: 100, resolve: () => ({command: process.execPath, args: [fixture], cwd: work, env: process.env as Record<string, string>, adapter: codexAdapter({cwd: work})})});
   assert.equal(driver.adopt(saved.beeId, 1, saved.proc.pid, saved.proc.pidStartedAt, "idle", saved.proc.observationCursor), true);
   const core = new DaemonCore({store, driver, now: Date.now, log: () => {}, policy: {commandsPerStep: 8, idleWindowSteps: null, bootHangTimeoutSteps: 100000}, multilineFallback: {root: data, worktrees: () => [work], files: new DeliveryFiles(undefined, root)}});
   assert.equal(core.boot().adopted, 1);
