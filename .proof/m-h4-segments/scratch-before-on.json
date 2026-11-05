@@ -1,0 +1,71 @@
+{
+  "mode": "before-on",
+  "bees": 20,
+  "turns": {
+    "wallMs": 5866,
+    "daemonCpuSeconds": 9.99,
+    "totalSegments": 180,
+    "turnEnds": 100
+  },
+  "dir": "/home/trmd/.hive/v2/tmp/8908fc47-a985-455e-acc5-7ab34da68b91/hb-v2-daemon-lxAGIG",
+  "startedAt": "2026-11-05T06:47:47.468Z",
+  "pid": 704878,
+  "capabilities": {
+    "v1": true,
+    "v2": false
+  },
+  "status": {
+    "enabled": true,
+    "store": {
+      "kind": "directory",
+      "root": "/home/trmd/.hive/v2/tmp/8908fc47-a985-455e-acc5-7ab34da68b91/hb-v2-daemon-lxAGIG/transcript-objects"
+    },
+    "projectionVersion": 8,
+    "maxLines": 3,
+    "maxRawBytes": 1048576,
+    "backlog": 0,
+    "objects": null
+  },
+  "configHasEnabledKey": true,
+  "deltas": {
+    "readyRows": 0,
+    "readyReasons": [],
+    "readyAnnouncesEverySegmentInOrder": false,
+    "putRows": 180,
+    "readyLatencyMs": {
+      "p50": null,
+      "p95": null,
+      "max": null
+    },
+    "putLatencyMs": {
+      "p50": 660,
+      "p95": 1333,
+      "max": 1575
+    }
+  },
+  "objects": {
+    "dirExists": true,
+    "count": 360,
+    "bytes": 59483,
+    "rawAndProjectedByteExact": true
+  },
+  "stoppedBeforeKill": 10,
+  "killedDaemon": {
+    "signal": "SIGKILL",
+    "pid": 704878,
+    "cliExit": 0,
+    "stale": true,
+    "linesFromObjects": 21,
+    "readBackMatchesLogToLastSegment": true,
+    "sampleBee": "94a5dd35-4971-4b99-be94-0ae439d3006d"
+  },
+  "restart": {
+    "stoppedBees": 10,
+    "catchUpLine": "transcripts.segment.catch_up scheduled=10",
+    "cutsLoggedAfterBoot": 0,
+    "wallMsToDrained": 3067,
+    "daemonCpuSecondsAfterBoot": 1.61,
+    "bootReadyRows": 0,
+    "putRowsAfterBoot": 0
+  }
+}

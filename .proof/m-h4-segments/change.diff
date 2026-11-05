@@ -1,0 +1,598 @@
+diff --git a/docs/design/transcript-segments-contract.md b/docs/design/transcript-segments-contract.md
+index bc376228..d01d7d09 100644
+--- a/docs/design/transcript-segments-contract.md
++++ b/docs/design/transcript-segments-contract.md
+@@ -1,21 +1,23 @@
+-# Transcript segment objects — Honeybee contract (H4, 2026-10-30)
++# Transcript segment objects — Honeybee contract (H4, 2026-10-30; v2 2026-11-05)
+ 
+-Capability `transcript.segments.v1`. Schema **v52** (additive: `transcript_segment_objects`, `transcript_segment_cursors`). Protocol stays `v2/2`. Flag `transcripts.segments.enabled` (default **false**; the flag is the rollback: off, nothing is cut and the session log stays the only copy, exactly as before).
++Capabilities `transcript.segments.v1` and `transcript.segments.v2`. Schema **v52** (additive: `transcript_segment_objects`, `transcript_segment_cursors`). Protocol stays `v2/2`. Segments are always on (2026-11-05, migration step M-H4): there is no flag; the rollback is `git revert`.
+ 
+-Honeybee cuts each bee's session log into **segments** at the source, projects each segment once, and pushes raw plus projected objects to the workspace object store, content-addressed. Home keeps pointers; clients never parse. This is the producer half of Apiary's S4 (`services/apiaryd/src/domains/hive/transcriptSegments.ts`); once a node advertises the capability with `deployInfo.transcriptSegments.enabled = true`, Apiary stops cutting that node's logs itself and mirrors Honeybee's pointer rows.
++Honeybee cuts each bee's session log into **segments** at the source, projects each segment once, and pushes raw plus projected objects to the local object store, content-addressed. Home keeps pointers; clients never parse. This is the producer half of Apiary's S4 (`services/apiaryd/src/domains/hive/transcriptSegments.ts`); a node advertising the capability reports `deployInfo.transcriptSegments.enabled = true` (always, kept for the current Apiary build and deleted with the v1 tag at cutover C4), so Apiary stops cutting that node's logs itself and mirrors Honeybee's pointer rows.
++
++**v2 (`transcript.segments.v2`).** Every cut that produced segments commits one `transcript.segment.ready { reason, fromOrdinal, toOrdinal, segments: TranscriptSegmentObjectRow[], cursor: { path, lineNo, byteOffset, epoch } }` audit row in the same transaction as its pointer rows (at most 100 segments per row; a longer cut announces in order, one row per batch). `reason` is `turn_ended`, `exited`, `boot` or `manual`. Boot catch-up cuts announce too, so a watcher following deltas sees every segment, including the ones a crash left uncut. The per-row `transcript_segment_object.put` deltas of v1 stay (non-boot cuts only) until C4 deletes them with the v1 tag.
+ 
+ ## When a segment is cut
+ 
+ - **Turn end.** Every non-synthetic `turn_ended` observation and every runtime `exited` observation schedules a cut for that bee (one in flight per bee; a request during a cut re-runs once it ends). The cut takes every complete line appended since the cursor and emits segments of at most `maxLines` (1024) lines or `maxRawBytes` (1 MiB) raw bytes; the remainder is always emitted too, so nothing waits for a size threshold. A torn last line (no newline yet) waits for the next cut.
+ - **Rotation.** When the bee's `sessionLogPath` differs from the cursor's path (a handoff opened a new v23 log file), the old file's remainder is cut first, then the cursor moves to the new file with `byteOffset 0` and a fresh projector; line numbering continues.
+-- **Boot.** The daemon schedules a cut for every bee whose runtime is stopped (catch-up after a crash or a deploy). Boot cuts write pointer rows without `transcript_segment_object.put` audit rows, so a 31k-segment catch-up does not flood the audit log or the watch stream; consumers read them through `transcript.segments`.
++- **Boot.** The daemon schedules a cut for every bee whose runtime is stopped and whose log is not already cut to its end (catch-up after a crash or a deploy; a bee whose cursor sits at the end of its current log file schedules nothing). Boot cuts write pointer rows without `transcript_segment_object.put` audit rows, so a 31k-segment catch-up does not flood the audit log or the watch stream with per-row deltas; they announce through `transcript.segment.ready` (one row per 100 segments) and consumers can also read them through `transcript.segments`.
+ - Never mid-turn: a cut needs a `turn_ended` or `exited` fact. A live runtime's tail stays in the session log only, where `hive tail -f` and Apiary's live stream read it.
+ 
+ Deviation from Apiary's S4 cutter, which cut by size and a 10-minute idle timer: Honeybee cuts at turn boundaries (plus size caps inside a long turn). Readers see the same thing — dense ordinals, monotone line numbers, byte-exact raw ranges.
+ 
+ ## How a cut runs
+ 
+-Every cut runs in a worker thread (`transcriptSegmentWorker.ts`, bundled as `dist/v2/transcript-segment-worker.js`): it streams the file in 1 MiB reads (growing to at most 64 MiB when a single line is longer than the window), hashes and projects each complete line, groups lines across reads up to the caps, compresses and writes the objects, and returns the pointer rows plus the cursor after each segment. The daemon thread only inserts the rows. At most one cut runs at a time (`maxWorkers`, default 1) and the queue is paced 25 ms between bees, so a catch-up over thousands of stopped bees is a background trickle, not a burst on the RPC lane. A rejected projector checkpoint replays the file prefix in the same chunked way; a prefix over 64 MiB starts a fresh projector and logs `transcripts.segment.projector_reset`.
++Every cut runs in a persistent worker thread (`transcriptSegmentWorker.ts`, bundled as `dist/v2/transcript-segment-worker.js`, started once with `{ kind: "server" }` and answering cut and sweep requests over messages; a crashed worker fails its in-flight request and the next request starts a new one): it streams the file in 1 MiB reads (growing to at most 64 MiB when a single line is longer than the window), hashes and projects each complete line, groups lines across reads up to the caps, compresses and writes the objects, and returns the pointer rows plus the cursor after each segment. The daemon thread only inserts the rows. At most one cut runs at a time (`maxWorkers`, default 1) and the queue is paced 25 ms between bees, so a catch-up over thousands of stopped bees is a background trickle, not a burst on the RPC lane. A rejected projector checkpoint replays the file prefix in the same chunked way; a prefix over 64 MiB starts a fresh projector and logs `transcripts.segment.projector_reset`.
+ 
+ ## What a segment is
+ 
+@@ -41,11 +43,11 @@ Projection version: Honeybee writes `TRANSCRIPT_PROJECTION_VERSION` **8**. Versi
+ 
+ ## Pointers
+ 
+-`transcript_segment_objects` rows (one per segment, `UNIQUE (bee_id, ordinal)`, dense ordinals enforced by `putTranscriptSegmentObject`), written in one transaction with the advanced cursor; every row is also an informational `transcript_segment_object.put { segment }` audit row, so the watch stream carries it as a delta. The rows are **not** in the snapshot (a bee accrues thousands); read them with:
++`transcript_segment_objects` rows (one per segment, `UNIQUE (bee_id, ordinal)`, dense ordinals enforced by `putTranscriptSegmentObject`), written in one transaction with the advanced cursor and the cut's `transcript.segment.ready` row; every non-boot row is also an informational `transcript_segment_object.put { segment }` audit row (v1), so the watch stream carries both as deltas. The rows are **not** in the snapshot (a bee accrues thousands); read them with:
+ 
+ ```
+ transcript.segments { beeId, afterOrdinal?, limit? } → { beeId, segments: TranscriptSegmentObjectRow[], store: { kind: "directory", root } | null, cursor }
+-deployInfo.transcriptSegments → { enabled, store, projectionVersion, maxLines, maxRawBytes }
++deployInfo.transcriptSegments → { enabled: true, store, projectionVersion, maxLines, maxRawBytes, backlog, objects }
+ ```
+ 
+ CLI: `hive transcript <bee> --segments` lists the pointers; `hive transcript <bee> --from-objects [--raw]` renders the transcript from the object store alone (daemon down → the read-only store plus the configured store directory, labeled STALE). That is the gate: a killed executor's bees read to their last segment from the objects alone. A final line without a trailing newline is not cut until the newline lands, so `--from-objects` lags the session log by that one torn line while a turn is being written.
+@@ -55,7 +57,7 @@ CLI: `hive transcript <bee> --segments` lists the pointers; `hive transcript <be
+ ## Config
+ 
+ ```
+-transcripts: { segments: { enabled: false, storeDir: "<data-dir>/transcript-objects", maxLines: 1024, maxRawBytes: 1048576 } }
++transcripts: { segments: { storeDir: "<data-dir>/transcript-objects", maxLines: 1024, maxRawBytes: 1048576 } }
+ ```
+ 
+ Invalid values warn (`config.transcripts.invalid`) and fall back to the default; they never refuse boot.
+diff --git a/v2/core/src/audit.ts b/v2/core/src/audit.ts
+index d9c18657..eedca92a 100644
+--- a/v2/core/src/audit.ts
++++ b/v2/core/src/audit.ts
+@@ -696,6 +696,7 @@ export function replayAudit(rows: AuditRow[]): StateDump {
+       case "cell.parked":
+       case "node.capacity":
+       case "transcript_segment_object.put":
++      case "transcript.segment.ready":
+       case "cell.retention.pass":
+       case "cell.pressure.floor_unmet":
+       case "cell.retention.daily_cap":
+diff --git a/v2/core/src/mirror.ts b/v2/core/src/mirror.ts
+index 4bff6a70..09e52935 100644
+--- a/v2/core/src/mirror.ts
++++ b/v2/core/src/mirror.ts
+@@ -264,7 +264,7 @@ export const MIRROR_BEE_HANDOFF_AUDIT_KINDS = [
+   "bee.handoff_failed",
+ ] as const;
+ export const MIRROR_TRANSCRIPT_SEGMENT_AUDIT_KINDS = ["transcript_segment.put", "bee.deleted"] as const;
+-export const MIRROR_TRANSCRIPT_SEGMENT_OBJECT_AUDIT_KINDS = ["transcript_segment_object.put", "bee.deleted"] as const;
++export const MIRROR_TRANSCRIPT_SEGMENT_OBJECT_AUDIT_KINDS = ["transcript_segment_object.put", "transcript.segment.ready", "bee.deleted"] as const;
+ export const MIRROR_TRANSCRIPT_SEGMENT_OBJECT_KEYS = ["id", "beeId", "ordinal", "firstLine", "lastLine", "byteStart", "byteEnd", "harness", "rawRef", "rawSize", "rawBytes", "projectedRef", "projectedSize", "projectedBytes", "projectionVersion", "digest", "closedAt", "epoch", "path", "logSegmentId"] as const;
+ export const MIRROR_ACTION_AUDIT_KINDS = ["action.put", "bee.deleted"] as const;
+ export const MIRROR_ACTION_QUEUE_AUDIT_KINDS = ["action_queue.put", "bee.deleted"] as const;
+diff --git a/v2/core/src/store.ts b/v2/core/src/store.ts
+index a3c7bb69..b2a0b773 100644
+--- a/v2/core/src/store.ts
++++ b/v2/core/src/store.ts
+@@ -8,6 +8,7 @@ import { createHash } from "node:crypto";
+ import { DELIVERY_CONFIRMATION_SQL, publicDeliveryConfirmation, readDeliveryConfirmations } from "./deliveryConfirmation.ts";
+ import { DELIVERY_CONFIRMATION_MAX_WIRE_BYTES, DELIVERY_CONFIRMATION_AUDIT_RESERVE_BYTES, deliveryConfirmationIntentFits, MAX_DELIVERY_CONFIRMATION_BYTES, type NeverWrittenDeliveryHoldReason, DELIVERY_CONFIRMATION_REASONS, type DeliveryConfirmation, type DeliveryConfirmationIntent, type KnownDeliveryConfirmationIntent, type PrepareDeliveryConfirmationIntent, type PrepareUnknownDeliveryConfirmationIntent, type DeliveryConfirmationReason, type ResolveDeliveryConfirmation, type DeliveryConfirmationResolution, type DeliveryConfirmationDecision } from "./deliveryConfirmationTypes.ts";
+ import { DeliveryNotHeldError } from "./types.ts";
++import type { TranscriptSegmentReadyReason } from "./types.ts";
+ import type { QuotaRecoveryRow, QuotaRecoveryReasonDetail } from "./types.ts";
+ import { QUOTA_RECOVERIES_TABLE_SQL } from "./schema.ts";
+ import { automaticQuotaRecovery, quotaRecoveryMatches, type QuotaObservedEvent } from "./quota.ts";
+@@ -9954,12 +9955,22 @@ export class CoreStore {
+ 
+   putTranscriptSegmentObjects(
+     entries: ReadonlyArray<{ segment: Omit<TranscriptSegmentObjectRow, "id" | "ordinal">; cursor: Omit<TranscriptSegmentCursorRow, "beeId" | "updatedAt"> }>,
+-    opts: { audit?: boolean } = {},
++    opts: { reason: TranscriptSegmentReadyReason; rowAudit?: boolean },
+   ): TranscriptSegmentObjectRow[] {
+-    return this.tx(() => entries.map(({ segment, cursor }) => {
+-      const ordinal = (this.lastTranscriptSegmentObject(segment.beeId)?.ordinal ?? -1) + 1;
+-      return this.putTranscriptSegmentObject({ ...segment, ordinal }, cursor, opts);
+-    }));
++    return this.tx(() => {
++      const rows = entries.map(({ segment, cursor }) => {
++        const ordinal = (this.lastTranscriptSegmentObject(segment.beeId)?.ordinal ?? -1) + 1;
++        return this.putTranscriptSegmentObject({ ...segment, ordinal }, cursor, { audit: opts.rowAudit !== false });
++      });
++      if (rows.length === 0) return rows;
++      const beeId = rows[0]!.beeId;
++      const cursor = this.getTranscriptSegmentCursor(beeId)!;
++      this.audit("transcript.segment.ready", beeId, {
++        reason: opts.reason, fromOrdinal: rows[0]!.ordinal, toOrdinal: rows[rows.length - 1]!.ordinal, segments: rows,
++        cursor: { path: cursor.path, lineNo: cursor.lineNo, byteOffset: cursor.byteOffset, epoch: cursor.epoch },
++      });
++      return rows;
++    });
+   }
+ 
+   putTranscriptSegmentObject(
+diff --git a/v2/core/src/types.ts b/v2/core/src/types.ts
+index 5436d55d..98038318 100644
+--- a/v2/core/src/types.ts
++++ b/v2/core/src/types.ts
+@@ -1395,6 +1395,8 @@ export interface TranscriptSegmentObjectRow {
+   logSegmentId: string | null;
+ }
+ 
++export type TranscriptSegmentReadyReason = "turn_ended" | "exited" | "boot" | "manual";
++
+ export interface TranscriptSegmentCursorRow {
+   beeId: string;
+   path: string;
+diff --git a/v2/daemon/src/config.ts b/v2/daemon/src/config.ts
+index 3ad4daac..12e39d9a 100644
+--- a/v2/daemon/src/config.ts
++++ b/v2/daemon/src/config.ts
+@@ -340,14 +340,12 @@ export interface NodeConfigFile {
+ }
+ 
+ export interface TranscriptSegmentsConfig {
+-  enabled?: boolean;
+   storeDir?: string;
+   maxLines?: number;
+   maxRawBytes?: number;
+ }
+ 
+ export interface ResolvedTranscriptSegments {
+-  enabled: boolean;
+   storeDir: string;
+   maxLines: number;
+   maxRawBytes: number;
+@@ -355,7 +353,7 @@ export interface ResolvedTranscriptSegments {
+ }
+ 
+ export function transcriptSegmentsOf(raw: unknown, dataDir: string): ResolvedTranscriptSegments {
+-  const out: ResolvedTranscriptSegments = { enabled: false, storeDir: join(dataDir, "transcript-objects"), maxLines: 1024, maxRawBytes: 1024 * 1024, warnings: [] };
++  const out: ResolvedTranscriptSegments = { storeDir: join(dataDir, "transcript-objects"), maxLines: 1024, maxRawBytes: 1024 * 1024, warnings: [] };
+   const section = raw !== null && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>).segments : undefined;
+   if (section === undefined) return out;
+   if (section === null || typeof section !== "object" || Array.isArray(section)) {
+@@ -364,10 +362,6 @@ export function transcriptSegmentsOf(raw: unknown, dataDir: string): ResolvedTra
+   }
+   const c = section as Record<string, unknown>;
+   const warn = (key: string, expected: string) => out.warnings.push(`transcripts.segments.${key} must be ${expected}, got ${JSON.stringify(c[key])}; using the default`);
+-  if (c.enabled !== undefined) {
+-    if (typeof c.enabled === "boolean") out.enabled = c.enabled;
+-    else warn("enabled", "a boolean");
+-  }
+   if (c.storeDir !== undefined) {
+     if (typeof c.storeDir === "string" && (isAbsolute(c.storeDir) || c.storeDir.startsWith("~/"))) out.storeDir = c.storeDir.startsWith("~/") ? join(homedir(), c.storeDir.slice(2)) : c.storeDir;
+     else warn("storeDir", "an absolute path or a ~/ path");
+diff --git a/v2/daemon/src/daemon.ts b/v2/daemon/src/daemon.ts
+index 352d0c79..26dc0a2b 100644
+--- a/v2/daemon/src/daemon.ts
++++ b/v2/daemon/src/daemon.ts
+@@ -1127,21 +1127,17 @@ export class HiveDaemon {
+         ...(this.deps.championStaleHomeRetentionMs !== undefined ? { staleHomeRetentionMs: this.deps.championStaleHomeRetentionMs } : {}),
+       });
+     }
+-    if (this.cfg.transcriptSegments.enabled) {
+-      this.transcriptObjects = createDirectoryTranscriptObjectStore(this.cfg.transcriptSegments.storeDir);
+-      this.segmenter = new TranscriptSegmenter({
+-        store: () => this.mustStore(),
+-        objectStore: this.transcriptObjects,
+-        now: () => Date.now(),
+-        log: (op) => this.log(op),
+-        maxLines: this.cfg.transcriptSegments.maxLines,
+-        maxRawBytes: this.cfg.transcriptSegments.maxRawBytes,
+-        ...(this.deps.transcriptMaxWorkers !== undefined ? { maxWorkers: this.deps.transcriptMaxWorkers } : {}),
+-      });
+-      this.log(`transcripts.segments enabled store=${this.cfg.transcriptSegments.storeDir} max_lines=${this.cfg.transcriptSegments.maxLines} max_raw_bytes=${this.cfg.transcriptSegments.maxRawBytes} projection=${TRANSCRIPT_PROJECTION_VERSION}`);
+-    } else {
+-      this.log("transcripts.segments disabled (transcripts.segments.enabled)");
+-    }
++    this.transcriptObjects = createDirectoryTranscriptObjectStore(this.cfg.transcriptSegments.storeDir);
++    this.segmenter = new TranscriptSegmenter({
++      store: () => this.mustStore(),
++      objectStore: this.transcriptObjects,
++      now: () => Date.now(),
++      log: (op) => this.log(op),
++      maxLines: this.cfg.transcriptSegments.maxLines,
++      maxRawBytes: this.cfg.transcriptSegments.maxRawBytes,
++      ...(this.deps.transcriptMaxWorkers !== undefined ? { maxWorkers: this.deps.transcriptMaxWorkers } : {}),
++    });
++    this.log(`transcripts.segments store=${this.cfg.transcriptSegments.storeDir} max_lines=${this.cfg.transcriptSegments.maxLines} max_raw_bytes=${this.cfg.transcriptSegments.maxRawBytes} projection=${TRANSCRIPT_PROJECTION_VERSION}`);
+     this.core = new DaemonCore({
+       store,
+       driver,
+@@ -6273,7 +6269,7 @@ export class HiveDaemon {
+    */
+   private transcriptSegmentsStatus(): TranscriptSegmentsStatus {
+     const cfg = this.cfg.transcriptSegments;
+-    return { enabled: cfg.enabled, store: this.transcriptObjects?.locator ?? null, projectionVersion: TRANSCRIPT_PROJECTION_VERSION, maxLines: cfg.maxLines, maxRawBytes: cfg.maxRawBytes, backlog: this.segmenter?.backlog() ?? 0, objects: this.segmenter?.objects() ?? null };
++    return { enabled: true, store: this.transcriptObjects?.locator ?? null, projectionVersion: TRANSCRIPT_PROJECTION_VERSION, maxLines: cfg.maxLines, maxRawBytes: cfg.maxRawBytes, backlog: this.segmenter?.backlog() ?? 0, objects: this.segmenter?.objects() ?? null };
+   }
+ 
+   private lastObjectSweepAt: number | null = null;
+diff --git a/v2/daemon/src/protocol.ts b/v2/daemon/src/protocol.ts
+index 49b2c806..2e11758e 100644
+--- a/v2/daemon/src/protocol.ts
++++ b/v2/daemon/src/protocol.ts
+@@ -207,6 +207,7 @@ export const DAEMON_CAPABILITIES = [
+   "cell.park.v1",
+   "node.capacity.v1",
+   "transcript.segments.v1",
++  "transcript.segments.v2",
+   "champions.v1",
+   "bee.resume_bundle.v1",
+   /**
+@@ -1840,7 +1841,7 @@ export interface AuditTailResult {
+ }
+ 
+ export interface TranscriptSegmentsStatus {
+-  enabled: boolean;
++  enabled: true;
+   store: { kind: "directory"; root: string } | null;
+   projectionVersion: number;
+   maxLines: number;
+diff --git a/v2/daemon/src/transcriptSegmentWorker.ts b/v2/daemon/src/transcriptSegmentWorker.ts
+index 01813cc8..e75107ba 100644
+--- a/v2/daemon/src/transcriptSegmentWorker.ts
++++ b/v2/daemon/src/transcriptSegmentWorker.ts
+@@ -261,7 +261,35 @@ export async function cutTranscript(request: TranscriptCutRequest): Promise<Tran
+   return result;
+ }
+ 
+-if (parentPort && workerData && (workerData as { kind?: unknown }).kind === "bundleResume") {
++export interface WorkerServerRequest {
++  id: number;
++  request: TranscriptCutRequest | TranscriptSweepRequest;
++}
++
++export interface WorkerServerReply {
++  id: number;
++  result: TranscriptCutResult | TranscriptSweepResult;
++}
++
++function failedCut(request: TranscriptCutRequest, error: unknown): TranscriptCutResult {
++  return { segments: [], cursor: request.cursor, written: { objects: 0, bytes: 0 }, shrunk: false, missing: false, checkpointRejected: null, projectorReset: false, error: error instanceof Error ? error.message : String(error) };
++}
++
++function failedSweep(error: unknown): TranscriptSweepResult {
++  return { objects: 0, bytes: 0, swept: 0, error: error instanceof Error ? error.message : String(error) };
++}
++
++async function serve(request: TranscriptCutRequest | TranscriptSweepRequest): Promise<TranscriptCutResult | TranscriptSweepResult> {
++  if ((request as TranscriptSweepRequest).kind === "sweep") return sweepTranscriptObjects(request as TranscriptSweepRequest).catch((error: unknown) => failedSweep(error));
++  return cutTranscript(request as TranscriptCutRequest).catch((error: unknown) => failedCut(request as TranscriptCutRequest, error));
++}
++
++if (parentPort && workerData && (workerData as { kind?: unknown }).kind === "server") {
++  const port = parentPort;
++  port.on("message", (message: WorkerServerRequest) => {
++    void serve(message.request).then((result) => port.postMessage({ id: message.id, result } satisfies WorkerServerReply));
++  });
++} else if (parentPort && workerData && (workerData as { kind?: unknown }).kind === "bundleResume") {
+   const request = workerData as ResumeBundleRequest;
+   Promise.resolve()
+     .then(() => bundleResumeState(request.state, request.storeRoot, readResumeKey(request.keyFile), request.beeId, request.epoch))
+@@ -282,9 +310,9 @@ if (parentPort && workerData && (workerData as { kind?: unknown }).kind === "bun
+ } else if (parentPort && workerData && (workerData as { kind?: unknown }).kind === "sweep") {
+   sweepTranscriptObjects(workerData as TranscriptSweepRequest)
+     .then((result) => parentPort!.postMessage(result))
+-    .catch((error: unknown) => parentPort!.postMessage({ objects: 0, bytes: 0, swept: 0, error: error instanceof Error ? error.message : String(error) } satisfies TranscriptSweepResult));
++    .catch((error: unknown) => parentPort!.postMessage(failedSweep(error)));
+ } else if (parentPort && workerData && typeof (workerData as { beeId?: unknown }).beeId === "string") {
+   cutTranscript(workerData as TranscriptCutRequest)
+     .then((result) => parentPort!.postMessage(result))
+-    .catch((error: unknown) => parentPort!.postMessage({ segments: [], cursor: (workerData as TranscriptCutRequest).cursor, written: { objects: 0, bytes: 0 }, shrunk: false, missing: false, checkpointRejected: null, projectorReset: false, error: error instanceof Error ? error.message : String(error) } satisfies TranscriptCutResult));
++    .catch((error: unknown) => parentPort!.postMessage(failedCut(workerData as TranscriptCutRequest, error)));
+ }
+diff --git a/v2/daemon/src/transcriptSegmenter.ts b/v2/daemon/src/transcriptSegmenter.ts
+index d8f6691e..b7f9e1ce 100644
+--- a/v2/daemon/src/transcriptSegmenter.ts
++++ b/v2/daemon/src/transcriptSegmenter.ts
+@@ -1,10 +1,11 @@
++import { statSync } from "node:fs";
+ import { Worker } from "node:worker_threads";
+-import type { CoreStore } from "../../core/src/index.ts";
++import type { CoreStore, TranscriptSegmentReadyReason } from "../../core/src/index.ts";
+ import { SEGMENT_MAX_LINES, SEGMENT_MAX_RAW_BYTES } from "../../driver-tmux/src/transcript-segment-format.ts";
+ import type { TranscriptObjectStore } from "./transcriptObjectStore.ts";
+-import { transcriptSegmentWorkerUrl, type SegmentCursor, type TranscriptCutRequest, type TranscriptCutResult, type TranscriptSweepRequest, type TranscriptSweepResult } from "./transcriptSegmentWorker.ts";
++import { transcriptSegmentWorkerUrl, type SegmentCursor, type TranscriptCutRequest, type TranscriptCutResult, type TranscriptSweepRequest, type TranscriptSweepResult, type WorkerServerReply, type WorkerServerRequest } from "./transcriptSegmentWorker.ts";
+ 
+-export type TranscriptCutReason = "turn_ended" | "exited" | "boot" | "manual";
++export type TranscriptCutReason = TranscriptSegmentReadyReason;
+ 
+ export interface TranscriptCutOutcome {
+   status: "cut" | "nothing" | "no_log" | "no_bee" | "failed";
+@@ -43,18 +44,35 @@ const DEFAULT_PACING_MS = 25;
+ const DEFAULT_ORPHAN_GRACE_MS = 60 * 60_000;
+ const ROW_BATCH = 100;
+ 
++function logSize(path: string): number | null {
++  try {
++    return statSync(path).size;
++  } catch (error) {
++    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
++    throw error;
++  }
++}
++
+ interface Pending {
+   beeId: string;
+   reason: TranscriptCutReason;
+   settle: Array<(outcome: TranscriptCutOutcome) => void>;
+ }
+ 
++interface Seat {
++  worker: Worker;
++  inFlight: { id: number; resolve: (reply: unknown) => void; reject: (err: Error) => void } | null;
++}
++
+ export class TranscriptSegmenter {
+   private readonly deps: TranscriptSegmenterDeps;
+   private readonly queue: Pending[] = [];
+   private readonly queued = new Map<string, Pending>();
+   private readonly running = new Map<string, Pending>();
+-  private readonly workers = new Set<Worker>();
++  private readonly seats: Seat[] = [];
++  private readonly idle: Seat[] = [];
++  private readonly waiting: Array<(seat: Seat) => void> = [];
++  private nextRequestId = 1;
+   private stopping = false;
+   private objectsStatus: TranscriptObjectsStatus | null = null;
+   private sweepInFlight: Promise<TranscriptObjectsStatus> | null = null;
+@@ -67,10 +85,7 @@ export class TranscriptSegmenter {
+ 
+   stop(): void {
+     this.stopping = true;
+-    for (const worker of this.workers) {
+-      worker.unref();
+-      void worker.terminate();
+-    }
++    for (const seat of [...this.seats]) this.retire(seat, new Error("transcript segmenter stopped"));
+     for (const pending of [...this.queue, ...this.running.values()]) for (const settle of pending.settle) settle({ status: "nothing", segments: 0, lines: 0 });
+     this.queue.length = 0;
+     this.queued.clear();
+@@ -103,6 +118,11 @@ export class TranscriptSegmenter {
+       if (bee.lifecycle === "deleted" || !bee.sessionLogPath) continue;
+       const runtime = store.currentRuntime(bee.id);
+       if (runtime && runtime.state !== "stopped") continue;
++      const cursor = store.getTranscriptSegmentCursor(bee.id);
++      if (cursor && cursor.path === bee.sessionLogPath) {
++        const size = logSize(cursor.path);
++        if (size === null || size === cursor.byteOffset) continue;
++      }
+       void this.requestCut(bee.id, "boot");
+       scheduled += 1;
+     }
+@@ -199,7 +219,7 @@ export class TranscriptSegmenter {
+     let inserted = 0;
+     for (let at = 0; at < result.segments.length && !this.stopping; at += ROW_BATCH) {
+       const batch = result.segments.slice(at, at + ROW_BATCH);
+-      store.putTranscriptSegmentObjects(batch, { audit: reason !== "boot" });
++      store.putTranscriptSegmentObjects(batch, { reason, rowAudit: reason !== "boot" });
+       inserted += batch.length;
+       for (const entry of batch) lines += entry.segment.lastLine - entry.segment.firstLine + 1;
+       if (at + ROW_BATCH < result.segments.length) await new Promise<void>((r) => setImmediate(r));
+@@ -207,27 +227,59 @@ export class TranscriptSegmenter {
+     return { segments: inserted, lines, cursor: inserted > 0 ? result.segments[inserted - 1]!.cursor : result.cursor };
+   }
+ 
+-  private runWorker<T>(request: TranscriptCutRequest | TranscriptSweepRequest): Promise<T> {
+-    return new Promise((resolve, reject) => {
+-      const worker = new Worker(this.deps.workerUrl ?? transcriptSegmentWorkerUrl(), { execArgv: [], workerData: request });
+-      this.workers.add(worker);
+-      let settled = false;
+-      worker.on("message", (message: T) => {
+-        if (settled) return;
+-        settled = true;
+-        resolve(message);
+-      });
+-      worker.once("error", (err) => {
+-        if (settled) return;
+-        settled = true;
+-        reject(err);
+-      });
+-      worker.once("exit", (code) => {
+-        this.workers.delete(worker);
+-        if (settled) return;
+-        settled = true;
+-        reject(new Error(`transcript segment worker exited with code ${code} without a result`));
+-      });
++  private seat(): Seat {
++    const worker = new Worker(this.deps.workerUrl ?? transcriptSegmentWorkerUrl(), { execArgv: [], workerData: { kind: "server" } });
++    worker.unref();
++    const seat: Seat = { worker, inFlight: null };
++    this.seats.push(seat);
++    worker.on("message", (message: WorkerServerReply) => {
++      const inFlight = seat.inFlight;
++      if (!inFlight || inFlight.id !== message.id) return;
++      seat.inFlight = null;
++      inFlight.resolve(message.result);
++      this.release(seat);
++    });
++    worker.once("error", (err: Error) => this.retire(seat, err));
++    worker.once("exit", (code) => this.retire(seat, new Error(`transcript segment worker exited with code ${code}`)));
++    return seat;
++  }
++
++  private retire(seat: Seat, err: Error): void {
++    const at = this.seats.indexOf(seat);
++    if (at < 0) return;
++    this.seats.splice(at, 1);
++    const idleAt = this.idle.indexOf(seat);
++    if (idleAt >= 0) this.idle.splice(idleAt, 1);
++    seat.worker.removeAllListeners();
++    void seat.worker.terminate();
++    const inFlight = seat.inFlight;
++    seat.inFlight = null;
++    inFlight?.reject(err);
++    if (this.stopping) return;
++    const next = this.waiting.shift();
++    if (next) next(this.seat());
++  }
++
++  private release(seat: Seat): void {
++    const next = this.waiting.shift();
++    if (next) next(seat);
++    else this.idle.push(seat);
++  }
++
++  private acquire(): Promise<Seat> {
++    const idle = this.idle.pop();
++    if (idle) return Promise.resolve(idle);
++    if (this.seats.length < (this.deps.maxWorkers ?? 1)) return Promise.resolve(this.seat());
++    return new Promise((resolve) => this.waiting.push(resolve));
++  }
++
++  private async runWorker<T>(request: TranscriptCutRequest | TranscriptSweepRequest): Promise<T> {
++    if (this.stopping) throw new Error("transcript segmenter stopped");
++    const seat = await this.acquire();
++    const id = this.nextRequestId++;
++    return new Promise<T>((resolve, reject) => {
++      seat.inFlight = { id, resolve: (reply) => resolve(reply as T), reject };
++      seat.worker.postMessage({ id, request } satisfies WorkerServerRequest);
+     });
+   }
+ 
+diff --git a/v2/daemon/tests/config.test.ts b/v2/daemon/tests/config.test.ts
+index d091f2a9..9c079efc 100644
+--- a/v2/daemon/tests/config.test.ts
++++ b/v2/daemon/tests/config.test.ts
+@@ -524,17 +524,16 @@ test("config.9b: satellites default to a 3-day archive floor, half the Cells vol
+   });
+ });
+ 
+-test("transcripts.segments: off by default with a data-dir store, every key validated with a warning fallback", () => {
++test("transcripts.segments: a data-dir store by default, every key validated with a warning fallback", () => {
+   const defaults = transcriptSegmentsOf(undefined, "/d/v2");
+-  assert.deepEqual(defaults, { enabled: false, storeDir: "/d/v2/transcript-objects", maxLines: 1024, maxRawBytes: 1024 * 1024, warnings: [] });
+-  const custom = transcriptSegmentsOf({ segments: { enabled: true, storeDir: "~/objects", maxLines: 10, maxRawBytes: 4096 } }, "/d/v2");
+-  assert.equal(custom.enabled, true);
++  assert.deepEqual(defaults, { storeDir: "/d/v2/transcript-objects", maxLines: 1024, maxRawBytes: 1024 * 1024, warnings: [] });
++  const custom = transcriptSegmentsOf({ segments: { storeDir: "~/objects", maxLines: 10, maxRawBytes: 4096 } }, "/d/v2");
+   assert.ok(custom.storeDir.endsWith("/objects") && !custom.storeDir.startsWith("~"));
+   assert.equal(custom.maxLines, 10);
+   assert.equal(custom.maxRawBytes, 4096);
+-  const invalid = transcriptSegmentsOf({ segments: { enabled: "yes", storeDir: "relative/dir", maxLines: 0, maxRawBytes: 10 } }, "/d/v2");
+-  assert.deepEqual([invalid.enabled, invalid.storeDir, invalid.maxLines, invalid.maxRawBytes], [false, "/d/v2/transcript-objects", 1024, 1024 * 1024]);
+-  assert.equal(invalid.warnings.length, 4);
++  const invalid = transcriptSegmentsOf({ segments: { storeDir: "relative/dir", maxLines: 0, maxRawBytes: 10 } }, "/d/v2");
++  assert.deepEqual([invalid.storeDir, invalid.maxLines, invalid.maxRawBytes], ["/d/v2/transcript-objects", 1024, 1024 * 1024]);
++  assert.equal(invalid.warnings.length, 3);
+   assert.equal(transcriptSegmentsOf({ segments: 5 }, "/d/v2").warnings.length, 1);
+ });
+ 
+diff --git a/v2/daemon/tests/resume-reseed.test.ts b/v2/daemon/tests/resume-reseed.test.ts
+index ad656309..646fb319 100644
+--- a/v2/daemon/tests/resume-reseed.test.ts
++++ b/v2/daemon/tests/resume-reseed.test.ts
+@@ -25,7 +25,7 @@ function makeRig(root: string, keyFile: string, durability: Record<string, unkno
+   const { dir, cleanup } = makeDaemonDir({
+     bootHangTimeoutMs: 60_000,
+     durability: { resumeBundle: { enabled: true, keyFile }, ...durability },
+-    transcripts: { segments: { enabled: true, storeDir: join(root, "objects") } },
++    transcripts: { segments: { storeDir: join(root, "objects") } },
+     agents: { cellstub: { command: process.execPath, args: [CELL_AGENT_PATH], adapter: "stub", env: { STUB_SESSION_ID: "stub-session-1" } } },
+   });
+   return { dir, cleanup };
+diff --git a/v2/daemon/tests/transcript-segments.test.ts b/v2/daemon/tests/transcript-segments.test.ts
+index c62fda73..1474a7c1 100644
+--- a/v2/daemon/tests/transcript-segments.test.ts
++++ b/v2/daemon/tests/transcript-segments.test.ts
+@@ -1,9 +1,10 @@
+ /**
+  * H4 transcript segment objects in the REAL daemon: turn ends cut the session
+  * log into dense, byte-exact raw + projected objects in the directory store with
+- * pointer rows and audit deltas; a killed daemon's bee still reads to its last
+- * segment from the objects alone (read-only store + store directory); a restart
+- * resumes the cursor without gaps or duplicates; the flag off cuts nothing.
++ * pointer rows, per-row deltas and one `transcript.segment.ready` delta per cut;
++ * a killed daemon's bee still reads to its last segment from the objects alone
++ * (read-only store + store directory); a restart resumes the cursor without gaps
++ * or duplicates and schedules no boot cut for a log that did not grow.
+  * Temp dirs and stub agents only.
+  */
+ import { test } from "node:test";
+@@ -47,13 +48,14 @@ function nonBlankLines(path: string, upTo?: number): string[] {
+   return text.split("\n").map((l) => l.replace(/\r$/, "")).filter((l) => l.trim().length > 0);
+ }
+ 
+-test("transcript-segments.0: verb and capability are published", () => {
++test("transcript-segments.0: verb and capabilities are published", () => {
+   assert.ok(RPC_VERBS.includes("transcript.segments"));
+   assert.ok((DAEMON_CAPABILITIES as readonly string[]).includes("transcript.segments.v1"));
++  assert.ok((DAEMON_CAPABILITIES as readonly string[]).includes("transcript.segments.v2"));
+ });
+ 
+-test("transcript-segments.1: turn ends cut dense byte-exact segments; a killed daemon's bee reads to its last segment from the objects alone; a restart resumes without gaps", { timeout: 180_000 }, async () => {
+-  const { dir, cleanup } = makeDaemonDir({ transcripts: { segments: { enabled: true, maxLines: 3 } } });
++test("transcript-segments.1: turn ends cut dense byte-exact segments and announce them; a killed daemon's bee reads to its last segment from the objects alone; a restart resumes without gaps", { timeout: 180_000 }, async () => {
++  const { dir, cleanup } = makeDaemonDir({ transcripts: { segments: { maxLines: 3 } } });
+   let daemon: DaemonHandle | null = null;
+   try {
+     const blobs = join(dir, "transcript-objects", "blobs", "transcript-archives");
+@@ -110,8 +112,16 @@ test("transcript-segments.1: turn ends cut dense byte-exact segments; a killed d
+         assert.ok(Array.isArray(JSON.parse(line.events)));
+       }
+     }
+-    const audits = (await client.request<AuditTailResult>("audit.tail", { limit: 500 })).rows.filter((r) => r.kind === "transcript_segment_object.put");
++    const auditRows = (await client.request<AuditTailResult>("audit.tail", { limit: 500 })).rows;
++    const audits = auditRows.filter((r) => r.kind === "transcript_segment_object.put");
+     assert.equal(audits.length, rows.length, "one pointer delta per segment");
++    const ready = auditRows.filter((r) => r.kind === "transcript.segment.ready");
++    assert.ok(ready.length >= 1 && ready.length <= rows.length, "one ready delta per cut, never more than one per segment");
++    assert.ok(ready.every((r) => r.beeId === beeId && r.payload.reason === "turn_ended"));
++    const announced = ready.flatMap((r) => (r.payload.segments as Array<{ ordinal: number }>).map((s) => s.ordinal));
++    assert.deepEqual(announced, rows.map((r) => r.ordinal), "ready deltas announce every segment once, in order");
++    assert.deepEqual(ready.map((r) => [r.payload.fromOrdinal, r.payload.toOrdinal]), ready.map((r) => { const o = (r.payload.segments as Array<{ ordinal: number }>).map((s) => s.ordinal); return [o[0], o[o.length - 1]]; }));
++    assert.equal((ready[ready.length - 1]!.payload.cursor as { byteOffset: number }).byteOffset, rows[rows.length - 1]!.byteEnd, "the ready delta carries the advanced cursor");
+     const swept = await waitFor(async () => {
+       const status = (await client.request<DeployInfoResult>("deployInfo")).transcriptSegments;
+       return status?.objects && !existsSync(orphan) ? status : null;
+@@ -141,7 +151,10 @@ test("transcript-segments.1: turn ends cut dense byte-exact segments; a killed d
+ 
+     daemon = await startDaemon(dir);
+     client = await daemon.client();
+-    await waitFor(async () => (await segments(client, beeId)).segments.length === rows.length ? true : null, "boot catch-up cuts nothing new when the log did not grow", 30_000);
++    const hivedLog = () => readFileSync(join(dir, "hived.log"), "utf8");
++    await waitFor(() => hivedLog().includes("transcripts.segment.catch_up scheduled=") ? true : null, "boot catch-up ran", 30_000);
++    assert.ok(hivedLog().includes("transcripts.segment.catch_up scheduled=0"), "a log that did not grow schedules no boot cut");
++    assert.equal((await segments(client, beeId)).segments.length, rows.length);
+     await talk(client, beeId, "four");
+     const after = await waitFor(async () => {
+       const r = await segments(client, beeId);
+@@ -159,27 +172,3 @@ test("transcript-segments.1: turn ends cut dense byte-exact segments; a killed d
+     cleanup();
+   }
+ });
+-
+-test("transcript-segments.2: with the flag off nothing is cut and no store appears; the status says so", { timeout: 120_000 }, async () => {
+-  const { dir, cleanup } = makeDaemonDir();
+-  let daemon: DaemonHandle | null = null;
+-  try {
+-    daemon = await startDaemon(dir);
+-    const client = await daemon.client();
+-    const info = await client.request<DeployInfoResult>("deployInfo");
+-    assert.equal(info.transcriptSegments?.enabled, false);
+-    assert.equal(info.transcriptSegments?.store, null);
+-    const spawned = await client.request<SpawnResult>("spawn", { name: "quiet", agent: "stub", cwd: dir });
+-    await idle(client, spawned.beeId);
+-    await talk(client, spawned.beeId, "hello");
+-    await new Promise((r) => setTimeout(r, 500));
+-    const r = await segments(client, spawned.beeId);
+-    assert.deepEqual(r.segments, []);
+-    assert.equal(r.store, null);
+-    assert.equal(existsSync(join(dir, "transcript-objects")), false);
+-    client.close();
+-  } finally {
+-    await daemon?.stop().catch(() => {});
+-    cleanup();
+-  }
+-});

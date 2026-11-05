@@ -1,0 +1,68 @@
+{
+  "mode": "before-off",
+  "bees": 20,
+  "turns": {
+    "wallMs": 5825,
+    "daemonCpuSeconds": 3.3,
+    "totalSegments": 0,
+    "turnEnds": 100
+  },
+  "dir": "/home/trmd/.hive/v2/tmp/8908fc47-a985-455e-acc5-7ab34da68b91/hb-v2-daemon-R87tYS",
+  "startedAt": "2026-11-05T06:48:03.967Z",
+  "pid": 705513,
+  "capabilities": {
+    "v1": true,
+    "v2": false
+  },
+  "status": {
+    "enabled": false,
+    "store": null,
+    "projectionVersion": 8,
+    "maxLines": 3,
+    "maxRawBytes": 1048576,
+    "backlog": 0,
+    "objects": null
+  },
+  "configHasEnabledKey": true,
+  "deltas": {
+    "readyRows": 0,
+    "readyReasons": [],
+    "readyAnnouncesEverySegmentInOrder": false,
+    "putRows": 0,
+    "readyLatencyMs": {
+      "p50": null,
+      "p95": null,
+      "max": null
+    },
+    "putLatencyMs": {
+      "p50": null,
+      "p95": null,
+      "max": null
+    }
+  },
+  "objects": {
+    "dirExists": false,
+    "count": 0,
+    "bytes": 0,
+    "rawAndProjectedByteExact": false
+  },
+  "stoppedBeforeKill": 10,
+  "killedDaemon": {
+    "signal": "SIGKILL",
+    "pid": 705513,
+    "cliExit": 0,
+    "stale": true,
+    "linesFromObjects": 0,
+    "readBackMatchesLogToLastSegment": null,
+    "sampleBee": "f2524e88-0310-4712-8966-d4889c9d2779"
+  },
+  "restart": {
+    "stoppedBees": 10,
+    "catchUpLine": null,
+    "cutsLoggedAfterBoot": 0,
+    "wallMsToDrained": 32179,
+    "daemonCpuSecondsAfterBoot": 6.55,
+    "bootReadyRows": 0,
+    "putRowsAfterBoot": 0
+  }
+}

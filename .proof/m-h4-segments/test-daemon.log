@@ -1,0 +1,82 @@
+✔ node state roots refuse missing or relative paths before filesystem effects (12.344463ms)
+✔ config.1: absent file resolves to pure defaults (the file may be absent) (0.922715ms)
+✔ config.2: file values override defaults; unknown keys are ignored (0.959116ms)
+✔ config.3: I1 deadline covers bounded boot recovery; the legacy turn timeout is ignored (0.775891ms)
+✔ config.4: an above-floor deadline override is honored (0.738909ms)
+✔ config.5: malformed json and wrongly-typed values fail loudly (1.46894ms)
+✔ config.6: HIVE_V2_DATA_DIR overrides the default data dir (test isolation hook) (0.240227ms)
+✔ config.7: nodeKind (WP5) defaults to workstation and validates the closed list (1.323176ms)
+✔ config.8: cells (WP5) — root default, sandbox override tri-state, warm map validation (1.684825ms)
+✔ config.6 (spec 08): accounts settings default (vault/homes under ~/.hive, 1h stale, 15 min sweep, 5h cool-off, no tmux socket) and validate; agents.<a>.login parses (5.080047ms)
+✔ config.naming: absent file defaults to a warm Codex GPT-6 Luna app-server at effort none (0.576426ms)
+✔ config.naming: file values override; patchNamingConfig merges and preserves unknown keys (1.236624ms)
+✔ config.naming: OpenAI key is required for API mode, persisted privately, and redacted publicly (1.218903ms)
+✔ config.naming: a hem apiKeyRef replaces the plaintext key and is reported publicly (1.85226ms)
+✔ config.naming: an invalid naming block disables naming with a reason instead of failing config load (2.384384ms)
+✔ config.warmPool: off on workstations, one member on satellites; file values parse; env HIVE_CELL_WARMPOOL_FREE overrides (2.151128ms)
+✔ config.warmPool: invalid values fail loudly (0.794182ms)
+✔ config.9: cells.retention (v31) — defaults on, day/hour units, null disables an axis, invalid values fall back without refusing boot (10.296138ms)
+✔ config.9b: satellites default to a 3-day archive floor, half the Cells volume as byte budget, the pressure floor and the upstream mirror; workstations only by opt-in (1.808279ms)
+✔ transcripts.segments: a data-dir store by default, every key validated with a warning fallback (0.288997ms)
+✔ config: champions resolves defaults, paths and invalid values (0.278127ms)
+✔ config: durability resolves defaults and invalid values (0.334889ms)
+ℹ tests 22
+ℹ suites 0
+ℹ pass 22
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 82.415364
+✔ cut: small chunks stream a log into dense byte-exact segments, a torn tail waits, and the cursor resumes without re-reading (40.729719ms)
+✔ cut: a line longer than the chunk grows the read window up to the cap; one longer than the cap is left for a later cut (11.216793ms)
+✔ cut: a shrunk log starts a new epoch at byte 0 while line numbers keep climbing; a missing log cuts nothing (9.135456ms)
+✔ cut: a rejected checkpoint replays the prefix in chunks and projects the same events as an uninterrupted projector (14.534353ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 252.828001
+✔ transcript-segments.0: verb and capabilities are published (1.14545ms)
+✔ transcript-segments.1: turn ends cut dense byte-exact segments and announce them; a killed daemon's bee reads to its last segment from the objects alone; a restart resumes without gaps (2818.912054ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3015.160509
+✔ resume-reseed.1: an import without a usable bundle re-seeds the bee from its projected transcript (2782.110814ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2916.985572
+✔ champions.0: verbs and capability are published; everything but list/get refuses while the flag is off (653.440567ms)
+✔ champions.1: put prepares the home, start spawns in it with the Apiary tags, the incarnation is resident, a turn end bundles the home, a second daemon restores it before its first runtime, archive and delete keep the home (4485.87295ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 5321.10866
+✔ resume-bundles.0: capability published; flag off bundles nothing and reports no status (2229.939793ms)
+✔ resume-bundles.1: turn ends bundle the harness state encrypted with the epoch; unchanged state writes no row; rows are capped (3363.410365ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 5794.694968
+exit=0
