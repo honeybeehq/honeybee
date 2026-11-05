@@ -1,0 +1,282 @@
+✔ select.1: candidate rules — none registered / all paused / none credentialed are typed refusals; a lone candidate short-circuits without a limits read (36.305575ms)
+✔ select.2: the operator's case over ROWS — 30% weekly with 3h to reset beats 25% with 6 days; stale rows are used and logged as stale (27.731494ms)
+✔ allocation.1: active owner admissions are durable, proportional, and fail closed without complete fleet activity (52.852667ms)
+✔ allocation.2: all protected accounts return a typed wait; there is no singleton or least-bad fallback (29.546262ms)
+✔ allocation.3: authoritative local activity charges long sessions and lets idle history age out (29.649361ms)
+✔ allocation.4: only fresh provider evidence after exhaustion reopens headroom (25.951896ms)
+✔ allocation.5: a remotely observed claim replaces its owner hold without a gap or double count (25.694808ms)
+✔ allocation.6: node activity reports authoritative pending work, freshness, and observed claims (27.523571ms)
+✔ select.3: auth_needed accounts are skipped while a healthy one exists (named in the reason) and refused (typed) otherwise; paused never (27.789828ms)
+✔ select.4: live-bee commitments steer around a busy account; the winner's in-flight load and penalty are named (29.15405ms)
+✔ select.5: near-ties rotate through the per-harness cursor ROW (a same-instant burst spreads); a Fable model reaches the scoring (31.156259ms)
+✔ select.6: rr cycles in registration order, skips auth failures, and does not disturb auto's near-tie cursor (32.907162ms)
+✔ select.7: pick debits expire; measured velocity from consecutive refreshes ages and projects the hot account out; exhaustion evidence is a down-tier class until the cool-off (36.268553ms)
+✔ select.8: exhaustion evidence down-tiers an account for the cool-off, then it competes again (26.049396ms)
+✔ select.9: an account at or past its weekly ceiling leaves auto, rr and admission until its window resets (29.763163ms)
+✔ limits.0:the real Codex app-server transport returns typed success and authentication failures (116.589594ms)
+✔ reset limits: passes one key through consume, accepts only closed outcomes, refreshes, and preserves count-only credits (40.946954ms)
+✔ reset transport: sends the supplied key, refreshes after redemption, and rejects unknown outcomes (313.439139ms)
+✔ limits.1: fetch writes the table (claude via the home token + injected usage transport, codex via the injected app-server transport); failures = unreadable rows; auth failure → auth_needed, recovery → ok (63.273355ms)
+✔ limits.agy: an imported HOME-scoped token clears auth_needed while provider limits remain unsupported (33.12221ms)
+✔ limits.muse: the XDG-pair home and auth.json expiry decide credential state; provider limits stay unsupported and expiry drives auth_needed (26.159641ms)
+✔ limits.muse.observed: usage a Muse runtime observed becomes the readable limits row, dated by observedAtMs; the probe keeps it, a credential loss replaces it (27.153171ms)
+✔ muse.darwin: one Keychain login per macOS user — a Muse account is held, captured and leased there but never ready, selected or activated into a home (27.112362ms)
+✔ muse.expiry: an OAuth login whose access token passed expires_at is expired where nothing can refresh it (darwin), and the limits probe then marks it auth_needed (24.453155ms)
+✔ muse.keychain: an auth.json that only points at the OS keychain is a present login that is never captured, imported or leased (24.839966ms)
+✔ muse.native: This Mac — on darwin the machine's own Muse login is the one runnable Muse account; it runs with no home env and is never activated, copied, leased or written (28.947697ms)
+✔ muse.native.stranded: a native account whose daemon now resolves another muse home stays native and fails closed, never an ordinary account (25.364646ms)
+✔ accounts.foreign-home: capture, config import, backup restore and adoption are refused for a home outside homesDir; homes inside it are unaffected (26.96224ms)
+✔ accounts.foreign-home.activation: the vault is never copied into an empty home outside homesDir; auto selection skips it and homes inside it still activate (25.877222ms)
+✔ accounts.foreign-home.gateways: gateway MCP config is never seeded into a populated home outside homesDir; a populated home inside it still converges (24.069499ms)
+✔ muse.native.env: a native bee's own env cannot redirect where Muse finds its login or config; other accounts keep theirs (23.046001ms)
+✔ limits.1a: Codex probes are per-home single-flight; transient failure keeps the last good row while auth failure invalidates it (29.126686ms)
+✔ limits.1aa: concurrent active admissions join one fresh quota probe per account (40.829165ms)
+✔ limits.1b: expired Claude chains refresh once, persist home + keychain + vault, and a rejected refresh is typed auth_failed (45.936439ms)
+✔ hive2.1: two sessions sharing one account that both failed auth do NOT strand refresh — the daemon takes it over and recovers (29.269272ms)
+✔ hive2.2: a single HEALTHY session still owns refresh even when an unhealthy sibling is present (no regression on rotating tokens) (25.450563ms)
+✔ hive2.3: rejected refresh requests login; temporary/timeout refresh keeps last-good and never requests login (27.79091ms)
+✔ hive2.4: daemon-restart recovery re-attempts every auth_needed Claude account and leaves other harnesses alone (39.697356ms)
+✔ hive2.5: reauthentication landing DURING recovery is used without a network refresh (check newer credentials first) (24.07497ms)
+✔ hive2.6: claudeCredentialFresh preserves a still-valid on-disk token against a delayed error (24.243337ms)
+✔ limits.1c: Grok, Kimi, Cursor, MiniMax, and z.ai use their real provider windows; rotating OAuth chains persist (32.2576ms)
+✔ limits.1d: the daemon never races a live Grok runtime's rotating refresh token (24.082865ms)
+✔ limits.2: freshness policy schedules stale candidates off the caller path, deduplicates the lane, and skips fresh/lone candidates (57.757818ms)
+✔ limits.3: the periodic in-daemon sweep runs every limitsRefreshMs, never overlaps itself, and is bounded by the fetch timeout (86.350526ms)
+✔ activation.1: an EMPTY home is activated from the vault (+ home defaults, mirrors); a POPULATED home is untouched byte for byte; the vault is never written by a spawn; claude keychain seeded via the injected writer (41.759172ms)
+✔ activation.2: a populated account waits for the common gateway seeder, preserves operator config, and stores only forwarded names (29.731721ms)
+✔ capture.1: explicit recovery captures an unchanged valid Claude credential from the external store (dotted account id) (25.035076ms)
+✔ capture.2: explicit recovery refuses an invalid current credential without touching the vault or login state (22.666322ms)
+✔ import.1: the old registry → rows (dry-run plans, real applies, re-run skips); the operator's ids/penalty/pause/addedAt come across; env-only bees backfill by home path (27.992032ms)
+﹣ import.2 (READ-ONLY): a dry-run of the importer against the REAL ~/.hive plans the operator's accounts without writing anything (0.06702ms) # no ~/.hive/vault/accounts.json on this machine
+✔ health.1: credentialHealthOf — absent without a primary credential; a file alone is unverified; login or a readable limits probe verify (24.346969ms)
+✔ import.v18.1: importExisting copies the vendor home's credential (+ config) into the vault — the home env var when set, else the recipe default under $HOME; nothing anywhere is a typed refusal listing every path checked (26.670723ms)
+✔ import.v18.2: relocated vendor files — Claude's ~/.claude.json + Keychain item (external), opencode's XDG data store — land under the recipe's vault layout (27.067745ms)
+✔ status.v18: honestStatus never returns ok without a credential (auth_needed instead); paused / auth_needed pass through; a recipe-less harness is always credentialed (23.672117ms)
+✔ verify.v18: the real limits probe settles an import — readable → verified (and the row is re-published for the mirror), auth failure → auth_needed; no probe → unverified; nothing → absent; a Codex probe activates the EMPTY home from the vault first (48.920026ms)
+✔ import.v18.3: the old-registry importer creates a credential-less record as auth_needed, never as a usable-looking ok row (23.99787ms)
+Grok busy probes: enrolling/disabling/refreshing operation_in_progress=provider_error; account auth remains ok
+✔ Grok central busy limits probes preserve account auth during ownership changes (25.208944ms)
+✔ lease unknown stays raw across reopen, refuses readiness and admission, and names the account (145.947409ms)
+✔ lease unknown background refresh cannot activate a home or probe credentials (120.830665ms)
+ℹ tests 59
+ℹ suites 0
+ℹ pass 58
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 1
+ℹ todo 0
+ℹ duration_ms 2663.528671
+✔ rpc account config: fixed preview/import contract, typed refusals, serialized imports, and durable exact retry (964.143966ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1097.530879
+✔ leased export RPC: scoped original artifact is transient, local-only, uncached, restart-safe and revoke-fenced (1126.365105ms)
+✔ hb-lease-fix: trusted-caller gate, owner-signed authority, node-bound payloads, key bound to items/principal, audited replays, redacted CLI (1231.769794ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2468.468308
+claude local Unix facts only: node_relay/remote hellos refuse identity/peer/key facts and parameter spoofing; explicit --replace voids unclaimed export/prepared shadow, persists restart; post-shadow/pre-pin SIGKILL retry completes; source refresh works
+claude 1/4 export fence survives A SIGKILL/restart; refresh/mint/enable/disable refused; timers skip
+claude 2/4/7 prepared B survives SIGKILL before rotation; adopt rotates exactly once; replay no-op; same leased row becomes local, bee account preserved; home access-only; old token consumed
+claude 3 confirm: authority removed, homes/vault/mirrors refresh-byte hits=0; source provider calls=0; old row accepts new authority lease in place
+claude terminal adopted peer protected: typed signed refusal preserves chain byte-for-byte; issuer cancels unapplied takeover and confirms original adoption, no provider
+claude crash after rotated authority file save before publish: SIGKILL/restart/retry publishes saved generation, total rotations=1
+claude preparation crash: durable preparing state exposes no receipt before material fsync; replay completes then one rotation
+claude 5 abort restores A; delayed prepare cannot commit; signed abort cleans B; unprepared source refuses/cancels takeover with signed abort; delayed adopt refused
+claude key rotation: unclaimed export durably aborted; old pinned key verifies abort; prepared claims refuse; peer node mismatch refused; 0700/0600; duplicate/restart replay no-op; key-replacement SIGKILL keeps exports aborted; no provider call
+claude TTL unprepared export auto-aborts, survives restart, signed abort receipt available; late preparation cannot commit; source alone judges TTL
+claude 6 invalid_grant typed; B not enabled/no authority; malformed settings untouched, B restart/RPC healthy; A committed_fenced, explicit operator takeover required
+claude failed destination operator take-over: retained leased row becomes local/native-login-required; both sides scrub, no provider
+claude pending cleanup: typed rejection survives unreadable material; restart serves RPC; affected account fenced; repair triggers background scrub
+claude known rotated chain with missing access: retained_unusable, public saved generation/eligibility; adopt replay no provider
+claude live member initial retained recovery: explicit generation in protected CLI payload rotates saved chain once, identical payload replay no provider, signed normal completion
+claude unknown response: durable uncertain destination, private material retained, source committed fence held
+claude response-before-save SIGKILL: outcome unknown, source committed, destination retained privately; retry calls provider zero times; explicit native takeover required
+claude explicit take-over CLI: confirm required, signed self/higher epoch; both sides scrubbed without provider; local login fenced until verified peer acknowledgment; restart/replay no-op; issuer same row local/auth_needed
+claude standDown running-bee fence: refusal before scrub/epoch/operation changes, no provider; explicit stop permits retry
+claude signed standDown: unauthenticated/mismatched receipt refused; scrub failure preserves phase, durable operation fences; restart/repair and post-demotion SIGKILL same-receipt retry complete without provider
+claude 8 standDown scrubs without provider call
+claude release-peer destination preparing SIGKILL: missing primary and temporary received material voided, terminal claim, zero provider
+claude release-peer destination prepared: zero provider; terminal claim survives restart and refuses late commit/prepare; holder preserved or shadow voided; epoch+1
+claude release-peer destination failed: zero provider; terminal claim survives restart and refuses late commit/prepare; holder preserved or shadow voided; epoch+1
+claude release-peer destination adopted: zero provider; terminal claim survives restart and refuses late commit/prepare; holder preserved or shadow voided; epoch+1
+claude release-peer destination uncertain: zero provider; terminal claim survives restart and refuses late commit/prepare; holder preserved or shadow voided; epoch+1
+claude source settlement refuses newer native login: native and authority byte-identical, source fence held, no provider call
+claude live-member cap: exactly three unusable rotations, no fourth; source signed settlement/restart replay, response-save SIGKILL cap kept, cleanup failure/restart/repair replay, explicit discard on same row native-login-required, epoch+1, zero extra provider
+grok release-peer explicit retained chain rotated once/published authority: one call, terminal replay no provider, epoch+1
+grok release-peer explicit retained chain invalid_grant proven dead/scrubbed: one call, terminal replay no provider, epoch+1
+grok retained_unusable: saved chain/generation returned, previous request no provider; fresh bound generation rotates once and publishes; older generation replay no provider, holder reports no scrub
+grok retained_unusable cap: three explicit bound failures -> login_required/reason; capped discard refused below limit, real CLI explicitly discards with provider-session warning, same row local/native-login-required, zero provider
+claude release-peer prepared: no commit/provider in abort, chain byte-identical until scheduled next-tick normal rotation; epoch+1; signed abort clears returning shadow and same row accepts higher lease
+claude release-peer restored: removed roster fact persisted, CLI confirmed, one rotation, ready/access-only, epoch+1, replay no provider; old destination copy rejected
+claude release-peer repeated account: current claim inferred over terminal history; resolved private marker permits only new higher-generation claim
+claude release-peer rejected: destination already rotated, source scrubbed/native-login-required, named-account warning retains removed peer login, replay no provider
+claude release-peer release-before SIGKILL: durable fact/attempt; retry outcome=uncertain, total provider calls=0, no blind repeat
+claude release-peer response SIGKILL: durable fact/attempt; retry outcome=uncertain, total provider calls=1, no blind repeat
+claude release-peer release-save SIGKILL: durable fact/attempt; retry outcome=restored, total provider calls=1, no blind repeat
+claude release-peer known 429: unconsumed proof persisted, explicit retry after SIGKILL spends original chain once; native recovery refused while retryable
+claude release-peer running bee refused without attempt/provider; explicit stop allows release
+claude release-peer audit: one secret-free outcome ledger row, authenticated roster version/author counter persisted
+claude 9 secret scan logs/SQLite/ledgers/RPC metadata=0; owned daemon PIDs 1985160,1985051 stopped; stub closed in cleanup
+✔ credential handoff claude: two isolated daemons, durable prepare/commit, rotation, scrub, abort, TTL, replay and failures (27286.729563ms)
+codex local Unix facts only: node_relay/remote hellos refuse identity/peer/key facts and parameter spoofing; explicit --replace voids unclaimed export/prepared shadow, persists restart; post-shadow/pre-pin SIGKILL retry completes; source refresh works
+codex 1/4 export fence survives A SIGKILL/restart; refresh/mint/enable/disable refused; timers skip
+codex 2/4/7 prepared B survives SIGKILL before rotation; adopt rotates exactly once; replay no-op; same leased row becomes local, bee account preserved; home access-only; old token consumed
+codex 3 confirm: authority removed, homes/vault/mirrors refresh-byte hits=0; source provider calls=0; old row accepts new authority lease in place
+codex terminal adopted peer protected: typed signed refusal preserves chain byte-for-byte; issuer cancels unapplied takeover and confirms original adoption, no provider
+codex crash after rotated authority file save before publish: SIGKILL/restart/retry publishes saved generation, total rotations=1
+codex preparation crash: durable preparing state exposes no receipt before material fsync; replay completes then one rotation
+codex 5 abort restores A; delayed prepare cannot commit; signed abort cleans B; unprepared source refuses/cancels takeover with signed abort; delayed adopt refused
+codex key rotation: unclaimed export durably aborted; old pinned key verifies abort; prepared claims refuse; peer node mismatch refused; 0700/0600; duplicate/restart replay no-op; key-replacement SIGKILL keeps exports aborted; no provider call
+codex TTL unprepared export auto-aborts, survives restart, signed abort receipt available; late preparation cannot commit; source alone judges TTL
+codex 6 invalid_grant typed; B not enabled/no authority; malformed settings untouched, B restart/RPC healthy; A committed_fenced, explicit operator takeover required
+codex failed destination operator take-over: retained leased row becomes local/native-login-required; both sides scrub, no provider
+codex pending cleanup: typed rejection survives unreadable material; restart serves RPC; affected account fenced; repair triggers background scrub
+codex known rotated chain with missing access: retained_unusable, public saved generation/eligibility; adopt replay no provider
+codex live member initial retained recovery: explicit generation in protected CLI payload rotates saved chain once, identical payload replay no provider, signed normal completion
+codex unknown response: durable uncertain destination, private material retained, source committed fence held
+codex response-before-save SIGKILL: outcome unknown, source committed, destination retained privately; retry calls provider zero times; explicit native takeover required
+codex explicit take-over CLI: confirm required, signed self/higher epoch; both sides scrubbed without provider; local login fenced until verified peer acknowledgment; restart/replay no-op; issuer same row local/auth_needed
+codex standDown running-bee fence: refusal before scrub/epoch/operation changes, no provider; explicit stop permits retry
+codex signed standDown: unauthenticated/mismatched receipt refused; scrub failure preserves phase, durable operation fences; restart/repair and post-demotion SIGKILL same-receipt retry complete without provider
+codex 8 standDown scrubs without provider call
+codex release-peer destination preparing SIGKILL: missing primary and temporary received material voided, terminal claim, zero provider
+codex release-peer destination prepared: zero provider; terminal claim survives restart and refuses late commit/prepare; holder preserved or shadow voided; epoch+1
+codex release-peer destination failed: zero provider; terminal claim survives restart and refuses late commit/prepare; holder preserved or shadow voided; epoch+1
+codex release-peer destination adopted: zero provider; terminal claim survives restart and refuses late commit/prepare; holder preserved or shadow voided; epoch+1
+codex release-peer destination uncertain: zero provider; terminal claim survives restart and refuses late commit/prepare; holder preserved or shadow voided; epoch+1
+codex source settlement refuses newer native login: native and authority byte-identical, source fence held, no provider call
+codex live-member cap: exactly three unusable rotations, no fourth; source signed settlement/restart replay, response-save SIGKILL cap kept, cleanup failure/restart/repair replay, explicit discard on same row native-login-required, epoch+1, zero extra provider
+grok release-peer explicit retained chain rotated once/published authority: one call, terminal replay no provider, epoch+1
+grok release-peer explicit retained chain invalid_grant proven dead/scrubbed: one call, terminal replay no provider, epoch+1
+grok retained_unusable: saved chain/generation returned, previous request no provider; fresh bound generation rotates once and publishes; older generation replay no provider, holder reports no scrub
+grok retained_unusable cap: three explicit bound failures -> login_required/reason; capped discard refused below limit, real CLI explicitly discards with provider-session warning, same row local/native-login-required, zero provider
+codex release-peer prepared: no commit/provider in abort, chain byte-identical until scheduled next-tick normal rotation; epoch+1; signed abort clears returning shadow and same row accepts higher lease
+codex release-peer restored: removed roster fact persisted, CLI confirmed, one rotation, ready/access-only, epoch+1, replay no provider; old destination copy rejected
+codex release-peer repeated account: current claim inferred over terminal history; resolved private marker permits only new higher-generation claim
+codex release-peer rejected: destination already rotated, source scrubbed/native-login-required, named-account warning retains removed peer login, replay no provider
+codex release-peer release-before SIGKILL: durable fact/attempt; retry outcome=uncertain, total provider calls=0, no blind repeat
+codex release-peer response SIGKILL: durable fact/attempt; retry outcome=uncertain, total provider calls=1, no blind repeat
+codex release-peer release-save SIGKILL: durable fact/attempt; retry outcome=restored, total provider calls=1, no blind repeat
+codex release-peer known 429: unconsumed proof persisted, explicit retry after SIGKILL spends original chain once; native recovery refused while retryable
+codex release-peer running bee refused without attempt/provider; explicit stop allows release
+codex release-peer audit: one secret-free outcome ledger row, authenticated roster version/author counter persisted
+codex 9 secret scan logs/SQLite/ledgers/RPC metadata=0; owned daemon PIDs 1986281,1986076 stopped; stub closed in cleanup
+✔ credential handoff codex: two isolated daemons, durable prepare/commit, rotation, scrub, abort, TTL, replay and failures (30498.811376ms)
+grok local Unix facts only: node_relay/remote hellos refuse identity/peer/key facts and parameter spoofing; explicit --replace voids unclaimed export/prepared shadow, persists restart; post-shadow/pre-pin SIGKILL retry completes; source refresh works
+grok 1/4 export fence survives A SIGKILL/restart; refresh/mint/enable/disable refused; timers skip
+grok 2/4/7 prepared B survives SIGKILL before rotation; adopt rotates exactly once; replay no-op; same leased row becomes local, bee account preserved; home access-only; old token consumed
+grok 3 confirm: authority removed, homes/vault/mirrors refresh-byte hits=0; source provider calls=0; old row accepts new authority lease in place
+grok terminal adopted peer protected: typed signed refusal preserves chain byte-for-byte; issuer cancels unapplied takeover and confirms original adoption, no provider
+grok crash after rotated authority file save before publish: SIGKILL/restart/retry publishes saved generation, total rotations=1
+grok preparation crash: durable preparing state exposes no receipt before material fsync; replay completes then one rotation
+grok 5 abort restores A; delayed prepare cannot commit; signed abort cleans B; unprepared source refuses/cancels takeover with signed abort; delayed adopt refused
+grok key rotation: unclaimed export durably aborted; old pinned key verifies abort; prepared claims refuse; peer node mismatch refused; 0700/0600; duplicate/restart replay no-op; key-replacement SIGKILL keeps exports aborted; no provider call
+grok TTL unprepared export auto-aborts, survives restart, signed abort receipt available; late preparation cannot commit; source alone judges TTL
+grok 6 invalid_grant typed; B not enabled/no authority; malformed settings untouched, B restart/RPC healthy; A committed_fenced, explicit operator takeover required
+grok failed destination operator take-over: retained leased row becomes local/native-login-required; both sides scrub, no provider
+grok pending cleanup: typed rejection survives unreadable material; restart serves RPC; affected account fenced; repair triggers background scrub
+grok known rotated chain with missing access: retained_unusable, public saved generation/eligibility; adopt replay no provider
+grok live member initial retained recovery: explicit generation in protected CLI payload rotates saved chain once, identical payload replay no provider, signed normal completion
+grok terminal malformed expiry: replacement chain kept privately, login_required_retained, zero further rotations on retry
+grok unknown response: durable uncertain destination, private material retained, source committed fence held
+grok response-before-save SIGKILL: outcome unknown, source committed, destination retained privately; retry calls provider zero times; explicit native takeover required
+grok explicit take-over CLI: confirm required, signed self/higher epoch; both sides scrubbed without provider; local login fenced until verified peer acknowledgment; restart/replay no-op; issuer same row local/auth_needed
+grok signed standDown: unauthenticated/mismatched receipt refused; scrub failure preserves phase, durable operation fences; restart/repair and post-demotion SIGKILL same-receipt retry complete without provider
+grok 8 standDown scrubs without provider call
+grok release-peer destination preparing SIGKILL: missing primary and temporary received material voided, terminal claim, zero provider
+grok release-peer destination prepared: zero provider; terminal claim survives restart and refuses late commit/prepare; holder preserved or shadow voided; epoch+1
+grok release-peer destination failed: zero provider; terminal claim survives restart and refuses late commit/prepare; holder preserved or shadow voided; epoch+1
+grok release-peer destination adopted: zero provider; terminal claim survives restart and refuses late commit/prepare; holder preserved or shadow voided; epoch+1
+grok release-peer destination uncertain: zero provider; terminal claim survives restart and refuses late commit/prepare; holder preserved or shadow voided; epoch+1
+grok source settlement refuses newer native login: native and authority byte-identical, source fence held, no provider call
+grok live-member cap: exactly three unusable rotations, no fourth; source signed settlement/restart replay, response-save SIGKILL cap kept, cleanup failure/restart/repair replay, explicit discard on same row native-login-required, epoch+1, zero extra provider
+grok release-peer explicit retained chain rotated once/published authority: one call, terminal replay no provider, epoch+1
+grok release-peer explicit retained chain invalid_grant proven dead/scrubbed: one call, terminal replay no provider, epoch+1
+grok release-peer retained-chain release-before SIGKILL: durable attempt, saved replacement publication or unknown stop, zero blind retry
+grok release-peer retained-chain response SIGKILL: durable attempt, saved replacement publication or unknown stop, zero blind retry
+grok release-peer retained-chain release-save SIGKILL: durable attempt, saved replacement publication or unknown stop, zero blind retry
+grok retained_unusable: saved chain/generation returned, previous request no provider; fresh bound generation rotates once and publishes; older generation replay no provider, holder reports no scrub
+grok retained_unusable cap: three explicit bound failures -> login_required/reason; capped discard refused below limit, real CLI explicitly discards with provider-session warning, same row local/native-login-required, zero provider
+grok release-peer prepared: no commit/provider in abort, chain byte-identical until scheduled next-tick normal rotation; epoch+1; signed abort clears returning shadow and same row accepts higher lease
+grok source retained_unusable: committed refresh retains chain and names recovery; real CLI fresh generation rotates once, signed abort cleans returning shadow, replay no provider
+grok source retained_unusable cap: three defined failures, no fourth rotation; explicit capped discard leaves same row native-login-required with provider-session warning
+grok release-peer restored: removed roster fact persisted, CLI confirmed, one rotation, ready/access-only, epoch+1, replay no provider; old destination copy rejected
+grok release-peer repeated account: current claim inferred over terminal history; resolved private marker permits only new higher-generation claim
+grok release-peer rejected: destination already rotated, source scrubbed/native-login-required, named-account warning retains removed peer login, replay no provider
+grok release-peer release-before SIGKILL: durable fact/attempt; retry outcome=uncertain, total provider calls=0, no blind repeat
+grok release-peer response SIGKILL: durable fact/attempt; retry outcome=uncertain, total provider calls=1, no blind repeat
+grok release-peer release-save SIGKILL: durable fact/attempt; retry outcome=restored, total provider calls=1, no blind repeat
+grok release-peer known 429: unconsumed proof persisted, explicit retry after SIGKILL spends original chain once; native recovery refused while retryable
+grok release-peer audit: one secret-free outcome ledger row, authenticated roster version/author counter persisted
+grok 9 secret scan logs/SQLite/ledgers/RPC metadata=0; owned daemon PIDs 1987185,1987068 stopped; stub closed in cleanup
+✔ credential handoff grok: two isolated daemons, durable prepare/commit, rotation, scrub, abort, TTL, replay and failures (28025.26221ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 85932.171448
+both roles x ten phases; held adoption evidence only, settled/legacy false; retained/capped summaries redacted; missing is not_found
+actual owning lane+claim visible, historical claim null, refused admission cannot overwrite owner; completed lane null
+live identity replacement visible with held source lane and empty wrapper; no self/identity/signing on summary read
+startup held/failing stays reconciled:false; completed cleanup sets true after lane release
+✔ handoff status: both roles/all durable phases, confirmation evidence and retained summaries (51.560084ms)
+✔ handoff status: actual matching lane remains visible across a refused competing operation (28.848273ms)
+✔ handoff status: identity replacement observable during its real lane and with zero rows (63.881915ms)
+✔ handoff status: startup reconciliation stays unknown while held or failing (55.112506ms)
+expired export startup held past1s; tick cannot steal first pass; readiness true without restart
+✔ handoff status: expired export boot pass owns reconciliation past the tick throttle (1132.041057ms)
+✔ handoff status: an unregistered harness remains an unknown row beside known rows (41.24469ms)
+isolated Unix daemon/CLI list, capability, missing-not_found, remote/relay refused; durable state survives restart, no stale lane
+✔ handoff status: isolated daemon capability, CLI list, missing/relay refusals and restart (2664.373938ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 4263.811989
+handoff ingress: physical TCP and relayed hello refuse facts; local_unix hello/parameter cannot upgrade; unknown provenance refuses
+✔ handoff ingress: remote TCP cannot claim local Unix authority and missing provenance fails closed (17.723919ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 232.925214
+darwin security shim: default and symlink guards; per-home refresh blank; enrolment refuses Keychain refresh untouched then publishes access-only; default unchanged; no provider
+✔ handoff scrub: darwin security shim preserves default item and scrubs only a private per-home item (622.484535ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 742.028284
+✔ central credential feature starts normally with a ready authority row (464.999374ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 656.019244
+exit 0

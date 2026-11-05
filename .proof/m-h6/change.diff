@@ -1,0 +1,771 @@
+diff --git a/.agents/skills/verify-lease-verbs/LeaseVerbs.tla b/.agents/skills/verify-lease-verbs/LeaseVerbs.tla
+index ebf7f07b..c0751524 100644
+--- a/.agents/skills/verify-lease-verbs/LeaseVerbs.tla
++++ b/.agents/skills/verify-lease-verbs/LeaseVerbs.tla
+@@ -18,7 +18,7 @@ Windows == 1..W
+ Epochs == 1..MaxEpoch
+ OwnerOf(e) == IF e % 2 = 1 THEN "A" ELSE "C"   \* A owns odd epochs, C owns even ones (take-over)
+ 
+-VARIABLES ownerEpoch,   \* the share epoch Apiary's authority record carries now
++VARIABLES ownerEpoch,   \* the share's authority epoch on the owner's account row (accounts.share_epoch, H6)
+           payloads,     \* install payloads minted so far: Apiary may deliver any of them, late or twice
+           epoch,        \* satellite row: 0 = no row yet, else the installed epoch
+           window,       \* satellite row: the installed lease window (expiresAt)
+@@ -50,14 +50,15 @@ Init ==
+   /\ replayWindow = 0 /\ replayAsked = 0
+   /\ mints = 0 /\ audits = 0
+ 
+-\* account.lease.grant on the owner: mint for the current share epoch with a chosen window.
++\* account.lease.grant on the owner: mint for the row's share epoch (deriveShareFacts) with a chosen window.
+ \* The owner stamps its own node id; with OwnerSignsAuthority off, the caller's authorityNodeId is copied in.
+ GrantWindow(w) ==
+   /\ payloads' = payloads \cup {Payload(ownerEpoch, w)} \cup (IF OwnerSignsAuthority THEN {} ELSE {ForgedPayload(ownerEpoch, w)})
+   /\ mints' = mints + 1 /\ audits' = audits + 1
+   /\ UNCHANGED <<ownerEpoch, epoch, window, authority, revoked, accepted, keyState, receipt, installRuns, replayWindow, replayAsked>>
+ 
+-\* Apiary's take-over commits a new authority record: epoch + 1, authored by the new owner.
++\* A take-over through the credential handoff plane: the new owner's row adopts at epoch + 1
++\* (credentialHandoff.ts export derives it from the row; store.putCredentialAuthorityEpoch raises share_epoch).
+ TakeOver ==
+   /\ ownerEpoch < MaxEpoch
+   /\ ownerEpoch' = ownerEpoch + 1
+diff --git a/.agents/skills/verify-lease-verbs/SKILL.md b/.agents/skills/verify-lease-verbs/SKILL.md
+index a16ffc75..d9389bde 100644
+--- a/.agents/skills/verify-lease-verbs/SKILL.md
++++ b/.agents/skills/verify-lease-verbs/SKILL.md
+@@ -8,7 +8,7 @@ description: Check the account-lease ordering rules and the bulk-key replay of a
+ ## What is verified, in one sentence each
+ 
+ - **A lease window never shrinks within an epoch.** Harm if broken: a stale or replayed payload shortens a live lease on a satellite, and bees there lose their account before the grid says they will.
+-- **Epochs only rise and the row's authority is the epoch's owner.** Harm: after a take-over, an old authority's payload resurrects itself on a satellite and two machines renew the same login.
++- **Epochs only rise and the row's authority is the epoch's owner.** Harm: after a take-over, an old authority's payload resurrects itself on a satellite and two machines renew the same login. Since H6 the epoch and share id live on the authority's account row (`accounts.share_id`, `accounts.share_epoch`); a grant derives them and a caller-supplied value must agree.
+ - **A replayed bulk key is quiet.** Harm: a retried `account.lease.batch` installs or releases twice, or opens a second lease window for the same grant.
+ - **A replayed key answers only its own items, and every mint is audited.** Harm if broken: anyone holding a key (it appears in the `rpc.dedup` log line) pulls fresh credential material for other items, unaudited.
+ - **The owner signs the authority.** Harm if broken: a caller names another node as `authorityNodeId`, and node X's material renews node Q's lease on a satellite while the audit blames Q.
+@@ -22,9 +22,9 @@ The model describes these places. If a diff touches any of them, run the check a
+ | `Admits(p)` | `v2/daemon/src/accountsService.ts`, `installLease`, the `throw new RpcError("account_lease_conflict", "Lease origin conflicts with the installed lease.")` rule (shareId / epoch / authorityNodeId / expiresAt comparison) |
+ | `Apply(p)` | same function: `this.store.setAccountLease(id, origin)` with `revokedAt: null` |
+ | `Release` | `v2/daemon/src/accountsService.ts`, `removeLease` (disposition `revoked`, row kept) |
+-| `GrantWindow(w)` | `v2/daemon/src/daemon.ts`, `leaseGrantParams` (authorityNodeId must be `ownNodeIds()`) and `mintLeaseGrant` (window = `grantedAt + ttlMs`, carried as `install.expiresAt`; audits `account.lease.granted`) |
++| `GrantWindow(w)` | `v2/daemon/src/daemon.ts`, `leaseGrantParams` (authorityNodeId must be `ownNodeIds()`; `shareId`/`epoch` optional) and `mintLeaseGrant` (share facts from `deriveShareFacts`: the account row's `shareId`/`shareEpoch`, seeded once; window = `grantedAt + ttlMs`, carried as `install.expiresAt`; audits `account.lease.granted`) |
+ | caller gate (not modelled) | `v2/daemon/src/rpc.ts`, the `account.lease.grant` / `account.lease.batch` branch (registered local authority only) and `v2/daemon/src/confinedPeer.ts`, `assertConfinedVerb` |
+-| `TakeOver` | Apiary's authority record epoch bump (not Honeybee code); the model only assumes epoch+1 with a new owner |
++| `TakeOver` | the credential handoff plane: `v2/daemon/src/credentialHandoff.ts` `export` derives epoch = row epoch + 1 when the caller gives none, and `v2/core/src/store.ts` `putCredentialAuthorityEpoch` raises the row's `share_epoch` on adoption, release and stand-down (never lowers it); the model assumes epoch+1 with a new owner |
+ | `BatchFirstWindow` / `BatchReplayWindow` | `v2/daemon/src/daemon.ts`, `rpcAccountLeaseBatch`: receipt `{principal, itemsDigest, entries}` reserved under the key before items run, replay refused on another principal / other items / an unfinished first run, grants re-minted under the recorded window with `replay: true` audits |
+ 
+ Sync commit: the commit that added this skill (`git log -1 --format=%H -- .agents/skills/verify-lease-verbs/SKILL.md`) describes the code at the time of the last confirmation. After a change to the files above, re-read the model, rerun, and only then move this line forward by committing the updated skill.
+diff --git a/v2/cli/src/main.ts b/v2/cli/src/main.ts
+index 560bae44..59c975a0 100644
+--- a/v2/cli/src/main.ts
++++ b/v2/cli/src/main.ts
+@@ -32,6 +32,7 @@ import {
+   RpcError,
+   LEASE_FENCE_FIELDS,
+   type AccountAddResult,
++  type AccountImportResult,
+   type AccountConfigImportResult,
+   type AccountConfigPreviewResult,
+   type AccountBackfillResult,
+@@ -864,9 +865,10 @@ const ACCOUNT_USAGE =
+   "       hive account credentials handoff-status [--file payload.json]\n" +
+   "       hive account credentials <export|adopt-prepare|export-prepare|export-commit|adopt|adopt-abort|export-abort|export-confirm|export-settle|stand-down|handoff-status|handoff-key-rotate|handoff-identity-set|stand-down-receipt|take-over-apply|take-over-complete|take-over-cancel> --file protected-payload.json [--out protected-material.json] [--replace] [--retained-generation N] [--discard-retained-chain --confirm]\n" +
+   "       hive account lease install [--enrol] --file payload.json | lease remove <id> [--check-only | --discard-native --confirm] | lease export <id> --json\n" +
+-  "       hive account lease grant <id> --node <nodeId> --share <shareId> --epoch <n> [--ttl-ms <ms>] [--authority <nodeId>] [--out material.json] [--register] --json | lease batch --file items.json [--idempotency-key key] [--out material.json] [--register] --json\n" +
++  "       hive account lease grant <id> --node <nodeId> [--share <shareId>] [--epoch <n>] [--ttl-ms <ms>] [--authority <nodeId>] [--out material.json] [--register] --json | lease batch --file items.json [--idempotency-key key] [--out material.json] [--register] --json\n" +
+   "       hive account capture <selector> | verify <selector> | limits [<selector>] | reset <selector> [--credit-id id] --idempotency-key key\n" +
+   "       hive account restored <selector> | interruptions [<selector>]\n" +
++  "       hive account import <harness> [--label l] [--id id] [--penalty n]   (adopt this computer's own harness login; it stays signed in)\n" +
+   "       hive account import [--root ~/.hive] [--dry-run] | backfill [--dry-run]";
+ 
+ const ACCOUNT_LIMITS_RPC_TIMEOUT_MS = 120_000;
+@@ -1001,12 +1003,12 @@ async function cmdAccount(ctx: CliContext, parsed: Parsed): Promise<number> {
+         return 0;
+       }
+       if (action === "grant" || action === "batch") {
+-        if (!ctx.json) throw new Error(`usage: hive account lease ${action === "grant" ? "grant <id> --node <nodeId> --share <shareId> --epoch <n> [--ttl-ms <ms>] [--authority <nodeId>]" : "batch --file items.json [--idempotency-key key]"} --json`);
++        if (!ctx.json) throw new Error(`usage: hive account lease ${action === "grant" ? "grant <id> --node <nodeId> [--share <shareId>] [--epoch <n>] [--ttl-ms <ms>] [--authority <nodeId>]" : "batch --file items.json [--idempotency-key key]"} --json`);
+         let params: Record<string, unknown>;
+         if (action === "grant") {
+           const id = parsed.positional[3], nodeId = parsed.flags.get("--node"), shareId = parsed.flags.get("--share"), epoch = parsed.flags.get("--epoch");
+-          if (!id || typeof nodeId !== "string" || typeof shareId !== "string" || typeof epoch !== "string") throw new Error("usage: hive account lease grant <id> --node <nodeId> --share <shareId> --epoch <n> [--ttl-ms <ms>] [--authority <nodeId>] --json");
+-          params = { id, nodeId, shareId, epoch: Number(epoch), ...(parsed.flags.has("--ttl-ms") ? { ttlMs: Number(parsed.flags.get("--ttl-ms")) } : {}), ...(typeof parsed.flags.get("--authority") === "string" ? { authorityNodeId: parsed.flags.get("--authority") } : {}) };
++          if (!id || typeof nodeId !== "string" || shareId !== undefined && typeof shareId !== "string" || epoch !== undefined && typeof epoch !== "string") throw new Error("usage: hive account lease grant <id> --node <nodeId> [--share <shareId>] [--epoch <n>] [--ttl-ms <ms>] [--authority <nodeId>] --json");
++          params = { id, nodeId, ...(typeof shareId === "string" ? { shareId } : {}), ...(typeof epoch === "string" ? { epoch: Number(epoch) } : {}), ...(parsed.flags.has("--ttl-ms") ? { ttlMs: Number(parsed.flags.get("--ttl-ms")) } : {}), ...(typeof parsed.flags.get("--authority") === "string" ? { authorityNodeId: parsed.flags.get("--authority") } : {}) };
+         } else {
+           const file = parsed.flags.get("--file");
+           if (typeof file !== "string") throw new Error("usage: hive account lease batch --file items.json [--idempotency-key key] --json");
+@@ -1428,6 +1430,22 @@ async function cmdAccount(ctx: CliContext, parsed: Parsed): Promise<number> {
+       return r.outcome === "reset" || r.outcome === "alreadyRedeemed" ? 0 : 1;
+     }
+     case "import": {
++      const harness = parsed.positional[2];
++      if (harness) {
++        const penaltyFlag = parsed.flags.get("--penalty") as string | undefined;
++        const r = await withClient(ctx, (c) => {
++          if (!c.capabilities.includes("account.share.v1")) throw new RpcError("capability_missing", "Update Honeybee: account.share.v1 is required.");
++          return c.request<AccountImportResult>("account.import", {
++            harness,
++            ...(typeof parsed.flags.get("--label") === "string" ? { label: parsed.flags.get("--label") as string } : {}),
++            ...(typeof parsed.flags.get("--id") === "string" ? { id: parsed.flags.get("--id") as string } : {}),
++            ...(penaltyFlag !== undefined ? { penalty: Number(penaltyFlag) } : {}),
++            idempotencyKey: key,
++          });
++        });
++        emit(ctx, [confirm("ok", r.created ? "adopted" : "already adopted", `account ${r.account.id} (${r.account.harness}; ${r.account.nativeLogin ?? `home ${r.account.homePath}`}) — ${r.source.files.join(", ")} in ${tildify(r.source.home)} stay as they are; status ${r.account.status}`, r.deduped)], r, false);
++        return 0;
++      }
+       const root = parsed.flags.get("--root") as string | undefined;
+       const dryRun = parsed.flags.get("--dry-run") === true;
+       const r = await withClient(ctx, (c) => c.request<AccountImportRegistryResult>("account.importRegistry", { ...(root ? { root: resolve(root) } : {}), dryRun, idempotencyKey: key }));
+diff --git a/v2/cli/src/readonly.ts b/v2/cli/src/readonly.ts
+index 730b491e..ac9b54c4 100644
+--- a/v2/cli/src/readonly.ts
++++ b/v2/cli/src/readonly.ts
+@@ -112,6 +112,8 @@ function mapAccountRow(r: Row): ReturnType<typeof presentAccountLease> {
+     pausedOwner: r.paused_owner == null ? null : String(r.paused_owner),
+     pausedAt: r.paused_at == null ? null : Number(r.paused_at),
+     native: Number((r.native as number | null | undefined) ?? 0) === 1,
++    shareId: r.share_id == null ? null : String(r.share_id),
++    shareEpoch: r.share_epoch == null ? null : Number(r.share_epoch),
+     addedAt: Number(r.added_at),
+     updatedAt: Number(r.updated_at),
+   });
+diff --git a/v2/core/src/accountRecipes.ts b/v2/core/src/accountRecipes.ts
+index 5ea9a5b1..5efa053a 100644
+--- a/v2/core/src/accountRecipes.ts
++++ b/v2/core/src/accountRecipes.ts
+@@ -902,9 +902,23 @@ export function accountIsolationRefusal(harness: string, platform: string): stri
+   return recipeFor(harness)?.unisolatedOn?.[platform] ?? null;
+ }
+ 
+-/** The machine's-own-login account `harness` offers on `platform` (the recipe's `nativeOn`), else null. */
++/**
++ * The machine's-own-login account `harness` offers on `platform`: the recipe's
++ * `nativeOn` entry where it names one, else (H6) the generic native account
++ * every recipe with a vendor home offers: the harness runs on the machine's
++ * own home with no home env, and Honeybee never signs it in, copies, leases
++ * or changes it. A recipe that declares `nativeOn` chose its platforms.
++ */
+ export function nativeAccountRecipe(harness: string, platform: string): NativeAccountRecipe | null {
+-  return recipeFor(harness)?.nativeOn?.[platform] ?? null;
++  const recipe = recipeFor(harness);
++  if (!recipe) return null;
++  if (recipe.nativeOn) return recipe.nativeOn[platform] ?? null;
++  return {
++    label: "This computer",
++    description: `This computer: uses your own ${harness} sign-in (\`${recipe.login.command} ${recipe.login.args.join(" ")}\`) on this computer. Honeybee never copies or changes it.`,
++    signIn: `Run \`${recipe.login.command} ${recipe.login.args.join(" ")}\` on this computer, then mark the account restored.`,
++    redirectEnv: ["HOME", ...(HARNESS_HOME_ENV[harness] ? [HARNESS_HOME_ENV[harness]] : []), ...Object.keys(recipe.extraEnv ?? {})],
++  };
+ }
+ 
+ export function recipeFor(harness: string): IdentityRecipe | undefined {
+diff --git a/v2/core/src/schema.ts b/v2/core/src/schema.ts
+index 28415408..4c3dd934 100644
+--- a/v2/core/src/schema.ts
++++ b/v2/core/src/schema.ts
+@@ -162,8 +162,10 @@
+  * v54 — H5 Champions: `champions` (identity, home, template binding, current incarnation) and
+  * `champion_home_objects` (home bundles in the object store); additive CREATE TABLE IF NOT EXISTS.
+  * v55 — H6a bee durability: `bee_resume_bundles` (encrypted harness-state bundles in the object store)
+- * and `bee_epochs` (import fence); additive CREATE TABLE IF NOT EXISTS. */
+-export const SCHEMA_VERSION = 55;
++ * and `bee_epochs` (import fence); additive CREATE TABLE IF NOT EXISTS.
++ * v56 — H6 account authority: `accounts.share_id` and `accounts.share_epoch` (the credential share
++ * and its authority epoch, owned by Honeybee); additive; migration = ALTER TABLE ADD COLUMN ×2. */
++export const SCHEMA_VERSION = 56;
+ 
+ export const QUESTIONS_TABLE_SQL = `
+ CREATE TABLE IF NOT EXISTS questions (
+@@ -622,6 +624,8 @@ CREATE TABLE IF NOT EXISTS accounts (
+   paused_owner  TEXT,
+   paused_at     INTEGER,
+   native        INTEGER NOT NULL DEFAULT 0 CHECK (native IN (0,1)),
++  share_id      TEXT,
++  share_epoch   INTEGER CHECK (share_epoch IS NULL OR share_epoch >= 1),
+   added_at      INTEGER NOT NULL,
+   updated_at    INTEGER NOT NULL
+ ) STRICT;
+diff --git a/v2/core/src/store.ts b/v2/core/src/store.ts
+index a3c7bb69..05c682ec 100644
+--- a/v2/core/src/store.ts
++++ b/v2/core/src/store.ts
+@@ -1025,6 +1025,8 @@ function mapAccount(r: Row): AccountRow {
+     pausedOwner: r.paused_owner == null ? null : String(r.paused_owner),
+     pausedAt: r.paused_at == null ? null : Number(r.paused_at),
+     native: Number(r.native ?? 0) === 1,
++    shareId: r.share_id == null ? null : String(r.share_id),
++    shareEpoch: r.share_epoch == null ? null : Number(r.share_epoch),
+     addedAt: Number(r.added_at),
+     updatedAt: Number(r.updated_at),
+   };
+@@ -2085,6 +2087,11 @@ export class CoreStore {
+       // v34 → v35: why the status last changed and when the login itself ends.
+       if (!accountCols.has("status_reason")) this.db.exec("ALTER TABLE accounts ADD COLUMN status_reason TEXT");
+       if (!accountCols.has("refresh_token_expires_at")) this.db.exec("ALTER TABLE accounts ADD COLUMN refresh_token_expires_at INTEGER");
++      // v55 → v56: the credential share and its authority epoch live on the account row.
++      if (!accountCols.has("share_id")) {
++        this.db.exec("ALTER TABLE accounts ADD COLUMN share_id TEXT");
++        this.db.exec("ALTER TABLE accounts ADD COLUMN share_epoch INTEGER CHECK (share_epoch IS NULL OR share_epoch >= 1)");
++      }
+       // v34 → v35: the authority phase CHECK gains 'login_required' and the
+       // row gains two nullable columns. SQLite cannot widen a CHECK in place,
+       // so rebuild and carry the v27 columns across by name.
+@@ -7311,7 +7318,7 @@ export class CoreStore {
+   completeCredentialAdoptionDiscard(record: CredentialHandoffRecord, epoch: number): void {
+     this.credentialHandoffTx(() => {
+       this.applyAccountUpdate(record.account, { source: "local", leasedFrom: null, status: this.mustGetAccount(record.account).status === "paused" ? "paused" : "auth_needed", statusReason: "Explicit capped retained discard; native login required" }, "explicit signed retained recovery");
+-      this.stmt("INSERT INTO credential_authority_epochs(account,epoch,demoted) VALUES(?,?,1) ON CONFLICT(account) DO UPDATE SET epoch=excluded.epoch,demoted=1").run(record.account, epoch);
++      this.putCredentialAuthorityEpoch(record.account, epoch, true);
+       this.putCredentialHandoff(record);
+     });
+   }
+@@ -7320,7 +7327,7 @@ export class CoreStore {
+     const release = record.releasePeer!;
+     this.credentialHandoffTx(() => {
+       if (release.mode !== "destination_void") this.applyAccountUpdate(record.account, { source: "local", leasedFrom: null, status: this.mustGetAccount(record.account).status === "paused" ? "paused" : release.outcome === "restored" ? "ok" : "auth_needed", statusReason: release.outcome === "restored" ? "Removed peer released; central authority restored" : "Removed peer retains a working login; native login required here" }, "explicit removed peer recovery");
+-      this.stmt("INSERT INTO credential_authority_epochs(account,epoch,demoted) VALUES(?,?,?) ON CONFLICT(account) DO UPDATE SET epoch=excluded.epoch,demoted=excluded.demoted").run(record.account, release.requiredEpoch, release.outcome === "restored" ? 0 : 1);
++      this.putCredentialAuthorityEpoch(record.account, release.requiredEpoch, release.outcome !== "restored");
+       this.putCredentialHandoff(record, authority);
+     });
+   }
+@@ -7345,7 +7352,7 @@ export class CoreStore {
+   demoteCredentialAuthority(account: string, epoch: number): void {
+     this.tx(() => {
+       if (this.credentialAuthorityIsDemoted(account) && this.credentialAuthorityEpoch(account) === epoch) return;
+-      this.stmt("INSERT INTO credential_authority_epochs(account,epoch,demoted) VALUES(?,?,1) ON CONFLICT(account) DO UPDATE SET epoch=excluded.epoch,demoted=1").run(account, epoch);
++      this.putCredentialAuthorityEpoch(account, epoch, true);
+       this.stmt("INSERT INTO credential_handoff_events(handoff_id,role,state,at) VALUES(?,?,?,?)").run(`stand-down:${account}:${epoch}`, "source", "stood_down", this.now());
+       if (this.mustGetAccount(account).source !== "leased") this.setAccountStatus(account, "auth_needed", "Authority transferred; install a lease from the new authority or explicitly take over.");
+     });
+@@ -7355,7 +7362,8 @@ export class CoreStore {
+   completeCredentialAdoption(record: CredentialHandoffRecord): void {
+     this.tx(() => {
+       this.applyAccountUpdate(record.account, { source: "local", leasedFrom: null, statusReason: "Central credential authority adopted" }, "central credential authority adopted");
+-      this.stmt("INSERT INTO credential_authority_epochs(account,epoch,demoted) VALUES(?,?,0) ON CONFLICT(account) DO UPDATE SET epoch=excluded.epoch,demoted=0").run(record.account, record.binding.epoch);
++      this.putCredentialAuthorityEpoch(record.account, record.binding.epoch, false);
++      if (record.binding.shareId !== undefined && this.mustGetAccount(record.account).shareId === null) this.setAccountShare(record.account, { shareId: record.binding.shareId, epoch: record.binding.epoch });
+       this.putCredentialHandoff(record);
+     });
+     this.db.exec("PRAGMA wal_checkpoint(FULL)");
+@@ -7583,7 +7591,7 @@ export class CoreStore {
+     });
+   }
+ 
+-  private applyAccountUpdate(id: string, patch: Partial<Pick<AccountRow, "status" | "statusReason" | "refreshTokenExpiresAt" | "penalty" | "weeklyCeiling" | "lastLoginAt" | "exhaustedAt" | "homePath" | "label" | "pausedBy" | "pausedOwner" | "pausedAt" | "source" | "leasedFrom">>, reason: string | null): { account: AccountRow; applied: boolean } {
++  private applyAccountUpdate(id: string, patch: Partial<Pick<AccountRow, "status" | "statusReason" | "refreshTokenExpiresAt" | "penalty" | "weeklyCeiling" | "lastLoginAt" | "exhaustedAt" | "homePath" | "label" | "pausedBy" | "pausedOwner" | "pausedAt" | "source" | "leasedFrom" | "shareId" | "shareEpoch">>, reason: string | null): { account: AccountRow; applied: boolean } {
+     const before = this.mustGetAccount(id);
+     knownAccountLease(before);
+     const at = this.now();
+@@ -7600,9 +7608,9 @@ export class CoreStore {
+     }
+     this.db
+       .prepare(
+-        "UPDATE accounts SET status = ?, status_reason = ?, refresh_token_expires_at = ?, penalty = ?, weekly_ceiling = ?, last_login_at = ?, exhausted_at = ?, home_path = ?, label = ?, paused_by = ?, paused_owner = ?, paused_at = ?, source = ?, leased_from = ?, updated_at = ? WHERE id = ?",
++        "UPDATE accounts SET status = ?, status_reason = ?, refresh_token_expires_at = ?, penalty = ?, weekly_ceiling = ?, last_login_at = ?, exhausted_at = ?, home_path = ?, label = ?, paused_by = ?, paused_owner = ?, paused_at = ?, source = ?, leased_from = ?, share_id = ?, share_epoch = ?, updated_at = ? WHERE id = ?",
+       )
+-      .run(next.status, next.statusReason, next.refreshTokenExpiresAt, next.penalty, next.weeklyCeiling, next.lastLoginAt, next.exhaustedAt, next.homePath, next.label, next.pausedBy, next.pausedOwner, next.pausedAt, next.source, knownAccountLease(next) === null ? null : JSON.stringify(knownAccountLease(next)), at, id);
++      .run(next.status, next.statusReason, next.refreshTokenExpiresAt, next.penalty, next.weeklyCeiling, next.lastLoginAt, next.exhaustedAt, next.homePath, next.label, next.pausedBy, next.pausedOwner, next.pausedAt, next.source, knownAccountLease(next) === null ? null : JSON.stringify(knownAccountLease(next)), next.shareId, next.shareEpoch, at, id);
+     const account = this.mustGetAccount(id);
+     this.audit("account.put", null, { account, outcome: "updated", changed, previous: Object.fromEntries(changed.map((k) => [k, before[k]])), reason });
+     return { account, applied: true };
+@@ -7625,11 +7633,36 @@ export class CoreStore {
+   setAccountLease(id: string, leasedFrom: NonNullable<ReturnType<typeof knownAccountLease>>): AccountRow {
+     return this.tx(() => {
+       const before = this.mustGetAccount(id);
+-      if (before.source === "leased" && JSON.stringify(knownAccountLease(before)) === JSON.stringify(leasedFrom)) return before;
+-      return this.applyAccountUpdate(id, { source: "leased", leasedFrom }, "lease installed").account;
++      const share = { shareId: leasedFrom.shareId, shareEpoch: Math.max(before.shareEpoch ?? 0, leasedFrom.epoch, 1) };
++      if (before.source === "leased" && JSON.stringify(knownAccountLease(before)) === JSON.stringify(leasedFrom) && before.shareId === share.shareId && before.shareEpoch === share.shareEpoch) return before;
++      return this.applyAccountUpdate(id, { source: "leased", leasedFrom, ...share }, "lease installed").account;
++    });
++  }
++
++  /**
++   * H6: the credential share and its authority epoch on the row. The share
++   * id is set once and never replaced here (a lease install may move a row to
++   * its lessor's share); the epoch never falls.
++   */
++  setAccountShare(id: string, share: { shareId: string; epoch: number }): AccountRow {
++    if (typeof share.shareId !== "string" || share.shareId.length === 0) throw new CoreError("setAccountShare: shareId must be a non-empty string");
++    if (!Number.isSafeInteger(share.epoch) || share.epoch < 1) throw new CoreError("setAccountShare: epoch must be a positive integer");
++    return this.tx(() => {
++      const before = this.mustGetAccount(id);
++      if (before.shareId !== null && before.shareId !== share.shareId) throw new CoreError(`setAccountShare: account ${id} already belongs to share ${before.shareId}`);
++      const shareEpoch = Math.max(before.shareEpoch ?? 0, share.epoch);
++      if (before.shareId === share.shareId && before.shareEpoch === shareEpoch) return before;
++      return this.applyAccountUpdate(id, { shareId: share.shareId, shareEpoch }, "share recorded").account;
+     });
+   }
+ 
++  /** The handoff plane moved the share's authority epoch: the row's epoch follows it (never falls). */
++  private putCredentialAuthorityEpoch(account: string, epoch: number, demoted: boolean): void {
++    this.stmt("INSERT INTO credential_authority_epochs(account,epoch,demoted) VALUES(?,?,?) ON CONFLICT(account) DO UPDATE SET epoch=excluded.epoch,demoted=excluded.demoted").run(account, epoch, demoted ? 1 : 0);
++    const row = this.mustGetAccount(account);
++    if (epoch >= 1 && (row.shareEpoch ?? 0) < epoch) this.applyAccountUpdate(account, { shareEpoch: epoch }, demoted ? "authority epoch raised; this node stood down" : "authority epoch raised");
++  }
++
+   /**
+    * v7 — set the account status (ok | auth_needed | paused). `reason` is the
+    * evidence; v35 keeps it on the row as `statusReason` whenever the status
+diff --git a/v2/core/src/types.ts b/v2/core/src/types.ts
+index 5436d55d..8f7d98ad 100644
+--- a/v2/core/src/types.ts
++++ b/v2/core/src/types.ts
+@@ -690,6 +690,10 @@ export interface AccountRow {
+   pausedOwner: string | null;
+   pausedAt: number | null;
+   native: boolean;
++  /** The credential share this row belongs to: minted on the authority at its first grant, carried by every lease of it; null until then. */
++  shareId: string | null;
++  /** The share's authority epoch on this row (genesis 1; raised by a take-over); null until the share exists. */
++  shareEpoch: number | null;
+   addedAt: number;
+   updatedAt: number;
+ }
+@@ -2027,6 +2031,8 @@ export interface CredentialHandoffBinding {
+   retainedGeneration?: number;
+   retainedUnusableCount?: number;
+   recoveryEpoch?: number;
++  /** H6: the source row's credential share, carried so the new authority keeps granting under the same share id. */
++  shareId?: string;
+ }
+ export interface CredentialHandoffReceipt {
+   kind: "export" | "prepared" | "commit" | "adopted" | "aborted" | "stand_down" | "operator_takeover" | "operator_taken_down" | "operator_refused" | "retained_discard_request" | "retained_discard_settlement";
+diff --git a/v2/core/tests/accounts.test.ts b/v2/core/tests/accounts.test.ts
+index ad1738b9..10ba8aa8 100644
+--- a/v2/core/tests/accounts.test.ts
++++ b/v2/core/tests/accounts.test.ts
+@@ -169,7 +169,7 @@ test("v7.recipes: Muse accounts are unisolated on darwin only, where This Mac (t
+   assert.equal(nativeAccountRecipe("muse", "linux"), null);
+   for (const harness of Object.keys(ACCOUNT_RECIPES)) {
+     if (harness !== "muse") assert.equal(accountIsolationRefusal(harness, "darwin"), null, harness);
+-    if (harness !== "muse") assert.equal(nativeAccountRecipe(harness, "darwin"), null, harness);
++    if (harness !== "muse") assert.deepEqual([nativeAccountRecipe(harness, "darwin")?.label, nativeAccountRecipe(harness, "linux")?.redirectEnv[0]], ["This computer", "HOME"], harness);
+   }
+   assert.equal(accountIsolationRefusal("unknown", "darwin"), null);
+   assert.equal(nativeAccountRecipe("unknown", "darwin"), null);
+@@ -540,7 +540,7 @@ test("v7.migration: a v6 store opens as v7 — bees.account added, accounts/acco
+     try {
+       const version = check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string };
+       assert.equal(Number(version.value), SCHEMA_VERSION);
+-      assert.equal(SCHEMA_VERSION, 55);
++      assert.equal(SCHEMA_VERSION, 56);
+       const cols = (check.prepare("SELECT name FROM pragma_table_info('bees')").all() as Array<{ name: string }>).map((c) => c.name);
+       assert.ok(cols.includes("account"));
+       const tables = (check.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as Array<{ name: string }>).map((t) => t.name);
+diff --git a/v2/daemon/src/accountsService.ts b/v2/daemon/src/accountsService.ts
+index 74fe90ff..0132ab08 100644
+--- a/v2/daemon/src/accountsService.ts
++++ b/v2/daemon/src/accountsService.ts
+@@ -1961,10 +1961,10 @@ export class AccountsService {
+    * home is the account (singleton harnesses without a recipe are always
+    * candidates).
+    */
+-  credentialed(account: Pick<AccountRow, "harness" | "id" | "homePath">): boolean {
++  credentialed(account: Pick<AccountRow, "harness" | "id" | "homePath"> & Partial<Pick<AccountRow, "native">>): boolean {
+     const recipe = recipeFor(account.harness);
+     if (!recipe) return true;
+-    return dirHasCredentials(this.vaultDirOf(account), recipe) || dirHasCredentials(account.homePath, recipe);
++    return dirHasCredentials(this.vaultDirOf(account), recipe) || dirHasCredentials(account.homePath, recipe) || this.nativeKeychainOwned({ harness: account.harness, native: account.native === true });
+   }
+ 
+   /** Why this node cannot hold `harness` accounts at all (the recipe's `unisolatedOn` reason for this platform), else null. */
+@@ -2012,10 +2012,38 @@ export class AccountsService {
+ 
+   nativeBeeEnv(account: AccountRow, env: Readonly<Record<string, string>>): Record<string, string> {
+     if (!this.isNative(account)) return { ...env };
+-    const redirect = new Set(nativeAccountRecipe(account.harness, this.platform)?.redirectEnv ?? []);
++    const redirect = new Set([...(nativeAccountRecipe(account.harness, this.platform)?.redirectEnv ?? []), ...(account.harness === "claude" ? Object.keys(CLAUDE_COMPETING_AUTH_ENV_SCRUB) : [])]);
+     return Object.fromEntries(Object.entries(env).filter(([key]) => !redirect.has(key)));
+   }
+ 
++  /** H6: the machine's own `harness` login files present in its vendor home (recipe-relative), empty unless the primary credential is a recognised login. */
++  nativeLoginFiles(harness: string): string[] {
++    const recipe = recipeFor(harness);
++    const vendor = resolveVendorHome(harness, this.env, this.home);
++    if (!recipe || !vendor) return [];
++    const primary = primaryCredentialFile(recipe);
++    const present = vendor.files.filter(file => file.role === "credential" && readIfFile(file.path) !== null);
++    const primaryPath = vendor.files.find(file => file.rel === primary)?.path;
++    return primaryPath !== undefined && this.validPrimaryCredential(harness, primary, readIfFile(primaryPath)) ? present.map(file => file.rel) : [];
++  }
++
++  /** The machine-side credential paths `nativeLoginFiles` looks at. */
++  nativeLoginPaths(harness: string): string[] {
++    return resolveVendorHome(harness, this.env, this.home)?.files.filter(file => file.role === "credential").map(file => file.path) ?? [];
++  }
++
++  /** H6: whether the machine's own Claude login lives in the Keychain item for `home` (macOS). */
++  async nativeKeychainLogin(home: string): Promise<boolean> {
++    if (this.platform !== "darwin") return false;
++    const state = await this.keychainStateReader(home).catch((): KeychainState => ({ status: "unavailable" }));
++    return state.status === "present" && this.validPrimaryCredential("claude", ".credentials.json", state.raw);
++  }
++
++  /** A native Claude login on macOS lives in the user's Keychain, which the user's own Claude reads; Honeybee judges it present without a file. */
++  private nativeKeychainOwned(account: Pick<AccountRow, "harness" | "native">): boolean {
++    return account.native === true && account.harness === "claude" && this.platform === "darwin";
++  }
++
+   foreignHomeRefusal(account: AccountRow, what: string): string | null {
+     const native = this.nativeRefusal(account);
+     if (native) return native;
+@@ -2055,7 +2083,7 @@ export class AccountsService {
+     const source = dirHasCredentials(account.homePath, recipe)
+       ? account.homePath
+       : dirHasCredentials(this.vaultDirOf(account), recipe) ? this.vaultDirOf(account) : null;
+-    if (source === null) return "absent";
++    if (source === null) return this.nativeKeychainOwned(account) ? "present" : "absent";
+     if (account.harness === "muse") return this.museDocumentState(readIfFile(join(source, primary)), this.isNative(account));
+     if (account.harness !== "claude") return "present";
+     return this.claudeDocumentState(readIfFile(join(source, primary)));
+@@ -2248,7 +2276,7 @@ export class AccountsService {
+    * requests pass through. Harnesses without a recipe (the home is the
+    * account) are always credentialed.
+    */
+-  honestStatus(account: Pick<AccountRow, "harness" | "id" | "homePath">, requested: AccountStatus): AccountStatus {
++  honestStatus(account: Pick<AccountRow, "harness" | "id" | "homePath"> & Partial<Pick<AccountRow, "native">>, requested: AccountStatus): AccountStatus {
+     if (requested !== "ok") return requested;
+     if (this.centralCredentialInDoubt(account)) return "auth_needed";
+     return this.credentialed(account) ? "ok" : "auth_needed";
+diff --git a/v2/daemon/src/confinedPeer.ts b/v2/daemon/src/confinedPeer.ts
+index 2c146217..d6a9b31c 100644
+--- a/v2/daemon/src/confinedPeer.ts
++++ b/v2/daemon/src/confinedPeer.ts
+@@ -101,7 +101,7 @@ export function bwrapMode(searchPath = process.env.PATH ?? ""): {path: string |
+   return {path: null, setuid: false};
+ }
+ export function assertConfinedVerb(verb: string, confinement: Confinement): void {
+-  if (confinement === "confined" && (verb.startsWith("account.credentials.") || verb === "account.lease.export" || verb === "account.lease.grant" || verb === "account.lease.batch" || verb === "rpc.localTrust.challenge" || verb === "rpc.localTrust.register")) {
++  if (confinement === "confined" && (verb.startsWith("account.credentials.") || verb === "account.lease.export" || verb === "account.lease.grant" || verb === "account.lease.batch" || verb === "account.import" || verb === "rpc.localTrust.challenge" || verb === "rpc.localTrust.register")) {
+     throw new RpcError("confined_peer_refused", "Confined callers cannot acquire service authority or access host credentials");
+   }
+ }
+diff --git a/v2/daemon/src/credentialHandoff.ts b/v2/daemon/src/credentialHandoff.ts
+index e26a12dc..83ed1b09 100644
+--- a/v2/daemon/src/credentialHandoff.ts
++++ b/v2/daemon/src/credentialHandoff.ts
+@@ -32,7 +32,8 @@ function binding(value: unknown): CredentialHandoffBinding {
+     claimId: input.claimId === null ? null : name(input.claimId), targetAccount: input.targetAccount === null ? null : name(input.targetAccount), targetKey: input.targetKey === null ? null : name(input.targetKey),
+     ...(input.retainedGeneration !== undefined ? { retainedGeneration: integer(input.retainedGeneration) } : {}),
+     ...(input.retainedUnusableCount !== undefined ? { retainedUnusableCount: integer(input.retainedUnusableCount) } : {}),
+-    ...(input.recoveryEpoch !== undefined ? { recoveryEpoch: integer(input.recoveryEpoch) } : {}) };
++    ...(input.recoveryEpoch !== undefined ? { recoveryEpoch: integer(input.recoveryEpoch) } : {}),
++    ...(input.shareId !== undefined ? { shareId: name(input.shareId) } : {}) };
+ }
+ function unsigned(value: CredentialHandoffReceipt): Buffer {
+   return Buffer.from(JSON.stringify({ kind: value.kind, binding: value.binding }));
+@@ -176,7 +177,8 @@ export class CredentialHandoffService {
+ 
+   async export(params: Record<string, unknown>) {
+     const account = this.account(params.account);
+-    const handoffId = name(params.handoffId), from = identity(params.from), to = identity(params.to), epoch = integer(params.epoch);
++    const handoffId = name(params.handoffId), from = identity(params.from), to = identity(params.to);
++    const epoch = params.epoch === undefined ? Math.max(this.store.credentialAuthorityEpoch(account.id), account.shareEpoch ?? 0) + 1 : integer(params.epoch);
+     this.assertSelf(from);
+     if (account.source === "leased" || from.nodeId === to.nodeId || epoch <= this.store.credentialAuthorityEpoch(account.id)) throw new RpcError("credential_handoff_conflict", "Handoff requires a local authority, a different peer and a higher destination epoch.");
+     return this.lane(account, `export:${handoffId}`, async () => {
+@@ -195,7 +197,7 @@ export class CredentialHandoffService {
+       if (ttlMs < 1000 || ttlMs > 600_000) throw new RpcError("invalid_request", "Export preparation TTL must be between one second and ten minutes.");
+       const since = this.now();
+       const bound: CredentialHandoffBinding = { handoffId, sourceAccount: account.id, harness: account.harness, generation: value.generation, epoch, from, to,
+-        sourceKey: this.publicKey(), materialDigest: digest(value.document), since, prepareBy: since + ttlMs, claimId: null, targetAccount: null, targetKey: null };
++        sourceKey: this.publicKey(), materialDigest: digest(value.document), since, prepareBy: since + ttlMs, claimId: null, targetAccount: null, targetKey: null, ...(account.shareId !== null ? { shareId: account.shareId } : {}) };
+       const signed = this.signed("export", bound);
+       this.store.putCredentialHandoff({ handoffId, role: "source", account: account.id, state: "exported", binding: bound, receipt: signed, generation: null, expiresAt: null }, { ...state, phase: "handing_off" });
+       return { receipt: signed, material: { generation: value.generation, document: value.document } };
+@@ -204,7 +206,8 @@ export class CredentialHandoffService {
+ 
+   async adoptPrepare(params: Record<string, unknown>) {
+     const account = this.account(params.account), signed = receipt(params.exportReceipt);
+-    const from = identity(params.from), to = identity(params.to), handoffId = name(params.handoffId), epoch = integer(params.epoch);
++    const from = identity(params.from), to = identity(params.to), handoffId = name(params.handoffId);
++    const epoch = params.epoch === undefined ? signed.binding.epoch : integer(params.epoch);
+     this.assertSelf(to);
+     if (!same(from, identity(params.authenticatedPeer))) throw new RpcError("credential_handoff_conflict", "Export source differs from the authenticated lane peer.");
+     const bound = signed.binding;
+@@ -695,7 +698,7 @@ export class CredentialHandoffService {
+         const self = this.self(), source = same(held.binding.from, self), peer = source ? held.binding.to : held.binding.from;
+         const peerAccount = source ? held.binding.targetAccount : held.binding.sourceAccount;
+         if (!peerAccount) throw new RpcError("credential_handoff_unavailable", "The abandoned handoff has no durable peer preparation.");
+-        const floor = Math.max(this.store.credentialAuthorityEpoch(account.id), held.binding.epoch);
++        const floor = Math.max(this.store.credentialAuthorityEpoch(account.id), held.binding.epoch, account.shareEpoch ?? 0);
+         const epoch = params.epoch === undefined ? floor + 1 : integer(params.epoch);
+         if (epoch <= floor) throw new RpcError("credential_handoff_stale_epoch", "Take-over epoch must exceed the abandoned handoff and local authority.");
+         const bound: CredentialHandoffBinding = { ...held.binding, handoffId, from: self, to: peer, sourceAccount: peerAccount, targetAccount: account.id,
+diff --git a/v2/daemon/src/daemon.ts b/v2/daemon/src/daemon.ts
+index 352d0c79..efc8d704 100644
+--- a/v2/daemon/src/daemon.ts
++++ b/v2/daemon/src/daemon.ts
+@@ -303,6 +303,7 @@ import { BEE_IMPORT_BUNDLE_BYTES_MAX,
+   RpcError,
+   SPAWN_SUBSTRATES,
+   type AccountAddResult,
++  type AccountImportResult,
+   type AccountConfigImportResult,
+   type AccountConfigPreviewResult,
+   type AccountBackfillResult,
+@@ -2241,6 +2242,8 @@ export class HiveDaemon {
+         return this.rpcAccountGet(params);
+       case "account.add":
+         return this.rpcAccountAdd(params);
++      case "account.import":
++        return this.rpcAccountImport(params, conn);
+       case "account.config.preview":
+         return this.rpcAccountConfigPreview(params);
+       case "account.config.import":
+@@ -7342,6 +7345,43 @@ export class HiveDaemon {
+     return { account: accounts.mirrorRow(account), credentialHealth, imported: null, verification: "none" };
+   }
+ 
++  /**
++   * H6: `account.import {harness}` — adopt the machine's own harness login as
++   * this node's native account. The row points at the vendor home; nothing
++   * there is read into Honeybee, copied or rewritten, so the CLI keeps its
++   * login and refresh chain. Local Unix-socket callers only.
++   */
++  private rpcAccountImport(params: Record<string, unknown>, conn: RpcConn): Promise<AccountImportResult> {
++    if (conn.ingress !== "local_unix") throw new RpcError("caller_not_trusted", "account.import adopts this computer's own login; call it on this node's Unix socket.", { reason: "local_required" });
++    const accounts = this.mustAccounts();
++    const harness = this.param(params, "harness");
++    for (const key of ["label", "id"]) if (params[key] !== undefined && params[key] !== null && (typeof params[key] !== "string" || (params[key] as string).length === 0)) throw new RpcError("invalid_request", `account.import: ${key} must be a non-empty string`);
++    if (params.penalty !== undefined && params.penalty !== null && typeof params.penalty !== "number") throw new RpcError("invalid_request", "account.import: penalty must be a number");
++    const recipe = recipeFor(harness);
++    const native = accounts.nativeRecipe(harness);
++    const home = accounts.nativeHomeOf(harness);
++    if (!recipe || !native || home === null) throw new RpcError("account_unavailable", `account.import: ${harness} has no login on this computer that Honeybee can adopt`);
++    return this.withAsyncIdempotency("account.import", params, async () => {
++      const existing = accounts.nativeAccount(harness);
++      if (existing) {
++        const moved = accounts.nativeHomeRefusal(existing);
++        if (moved) throw new RpcError("account_unavailable", moved);
++        return { account: accounts.mirrorRow(existing), created: false, credentialHealth: accounts.credentialHealthOf(existing), source: { home, files: accounts.nativeLoginFiles(harness) } };
++      }
++      const files = accounts.nativeLoginFiles(harness);
++      if (files.length === 0 && harness === "claude") { if (await accounts.nativeKeychainLogin(home)) files.push("keychain"); }
++      if (files.length === 0) throw new RpcError("no_credentials_to_import", `account.import: no ${harness} login found at ${home}; sign in there first (${recipe.login.command} ${recipe.login.args.join(" ")})`, { checked: accounts.nativeLoginPaths(harness) });
++      const label = typeof params.label === "string" ? params.label : native.label;
++      const id = typeof params.id === "string" ? params.id : accountIdFor(harness, label);
++      if (!isAccountId(id)) throw new RpcError("invalid_request", "Account id must be a bounded safe account identity.");
++      if (this.mustStore().getAccount(id)) throw new RpcError("invalid_request", `account already exists: ${id}`);
++      const account = this.mustStore().createAccount({ id, harness, label, homePath: home, penalty: typeof params.penalty === "number" ? params.penalty : 0, native: true, status: accounts.honestStatus({ harness, id, homePath: home, native: true }, "ok") });
++      const credentialHealth = accounts.credentialHealthOf(account);
++      this.log(`account.import id=${id} harness=${harness} home=${home} files=${files.join(",")} status=${account.status} credentialHealth=${credentialHealth}`);
++      return { account: accounts.mirrorRow(account), created: true, credentialHealth, source: { home, files } };
++    });
++  }
++
+   /** v18: `account.verify {id}` — the harness's real probe, awaited; the mirror row follows through the audit stream. */
+   private rpcAccountVerify(params: Record<string, unknown>): Promise<AccountVerifyResult> {
+     const account = this.requireAccount(params);
+@@ -7723,14 +7763,36 @@ export class HiveDaemon {
+     const safeId = (value: unknown): value is string => typeof value === "string" && /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,199}$/.test(value);
+     const id = this.accountIdParam(params);
+     if (!safeId(params.nodeId)) throw new RpcError("invalid_request", "account.lease.grant: nodeId must be a safe node identity.", { reason: "node_id" });
+-    if (!safeId(params.shareId) || params.shareId.length < 8) throw new RpcError("invalid_request", "account.lease.grant: shareId must be a safe share identity of at least 8 characters.", { reason: "share_id" });
+-    if (typeof params.epoch !== "number" || !Number.isSafeInteger(params.epoch) || params.epoch < 0) throw new RpcError("invalid_request", "account.lease.grant: epoch must be a non-negative integer.", { reason: "epoch" });
++    if (params.shareId !== undefined && params.shareId !== null && (!safeId(params.shareId) || params.shareId.length < 8)) throw new RpcError("invalid_request", "account.lease.grant: shareId, when given, must be a safe share identity of at least 8 characters.", { reason: "share_id" });
++    if (params.epoch !== undefined && params.epoch !== null && (typeof params.epoch !== "number" || !Number.isSafeInteger(params.epoch) || params.epoch < 1)) throw new RpcError("invalid_request", "account.lease.grant: epoch, when given, must be a positive integer.", { reason: "epoch" });
+     if (params.ttlMs !== undefined && params.ttlMs !== null && (typeof params.ttlMs !== "number" || !Number.isSafeInteger(params.ttlMs) || params.ttlMs < MIN_LEASE_GRANT_TTL_MS || params.ttlMs > MAX_LEASE_GRANT_TTL_MS)) throw new RpcError("invalid_request", `account.lease.grant: ttlMs must be an integer from ${MIN_LEASE_GRANT_TTL_MS} to ${MAX_LEASE_GRANT_TTL_MS}.`, { reason: "ttl" });
+     const own = this.ownNodeIds();
+     if (params.authorityNodeId !== undefined && params.authorityNodeId !== null && (!safeId(params.authorityNodeId) || !own.includes(params.authorityNodeId))) throw new RpcError("invalid_request", `account.lease.grant: authorityNodeId must be this node (${own.join(" or ")}).`, { reason: "authority_node_id" });
+     const authorityNodeId = typeof params.authorityNodeId === "string" ? params.authorityNodeId : own[0]!;
+     if (own.includes(params.nodeId)) throw new RpcError("invalid_request", `account.lease.grant: ${params.nodeId} is the authority node itself; a lease is for another node.`, { reason: "self_grant" });
+-    return { id, nodeId: params.nodeId, shareId: params.shareId, epoch: params.epoch, ttlMs: typeof params.ttlMs === "number" ? params.ttlMs : DEFAULT_LEASE_GRANT_TTL_MS, authorityNodeId };
++    return { id, nodeId: params.nodeId, ...(typeof params.shareId === "string" ? { shareId: params.shareId } : {}), ...(typeof params.epoch === "number" ? { epoch: params.epoch } : {}), ttlMs: typeof params.ttlMs === "number" ? params.ttlMs : DEFAULT_LEASE_GRANT_TTL_MS, authorityNodeId };
++  }
++
++  /**
++   * H6: the account row owns its share id and authority epoch. A row without
++   * them gets them here, once: the caller's values when it still carries
++   * them (the Apiary ledger before C5), else a fresh share id and the epoch
++   * the credential handoff plane already reached for this account (genesis
++   * 1). Afterwards a caller-supplied value must equal the row's; a different
++   * one is a stale carrier record and is refused typed.
++   */
++  private deriveShareFacts(account: AccountRow, caller: { shareId?: string; epoch?: number }): { shareId: string; epoch: number } {
++    const store = this.mustStore();
++    let row = account;
++    if (row.shareId === null || row.shareEpoch === null) {
++      const shareId = row.shareId ?? caller.shareId ?? randomUUID();
++      const epoch = Math.max(row.shareEpoch ?? 0, caller.epoch ?? 0, store.credentialAuthorityEpoch(account.id), 1);
++      row = store.setAccountShare(account.id, { shareId, epoch });
++      this.log(`account.share account=${account.id} shareId=${shareId} epoch=${epoch} origin=${row.shareId === caller.shareId ? "caller" : "minted"}`);
++    }
++    if (caller.shareId !== undefined && caller.shareId !== row.shareId) throw new RpcError("invalid_request", `account.lease.grant: account ${account.id} belongs to share ${row.shareId}, not ${caller.shareId}.`, { reason: "share_id", shareId: row.shareId, epoch: row.shareEpoch });
++    if (caller.epoch !== undefined && caller.epoch !== row.shareEpoch) throw new RpcError("invalid_request", `account.lease.grant: account ${account.id} is at authority epoch ${row.shareEpoch}, not ${caller.epoch}.`, { reason: "epoch", shareId: row.shareId, epoch: row.shareEpoch });
++    return { shareId: row.shareId!, epoch: row.shareEpoch! };
+   }
+ 
+   /**
+@@ -7746,15 +7808,16 @@ export class HiveDaemon {
+     const grantedAt = window?.grantedAt ?? Date.now();
+     const expiresAt = window?.expiresAt ?? Math.floor((grantedAt + input.ttlMs!) / 1000);
+     if (expiresAt * 1000 <= Date.now()) throw new RpcError("invalid_request", "account.lease.grant: the lease window has already closed.", { reason: "ttl" });
++    const share = this.deriveShareFacts(account, input);
+     const lease = await this.mustAccounts().mintLease(account, {});
+     const grant: AccountLeaseGrant = {
+-      account: account.id, harness: account.harness, nodeId: input.nodeId, authorityNodeId: input.authorityNodeId!, shareId: input.shareId, epoch: input.epoch, ttlMs: input.ttlMs!, grantedAt, expiresAt,
++      account: account.id, harness: account.harness, nodeId: input.nodeId, authorityNodeId: input.authorityNodeId!, shareId: share.shareId, epoch: share.epoch, ttlMs: input.ttlMs!, grantedAt, expiresAt,
+       materialExpiresAt: lease.expiresAt ?? null,
+       ...(lease.authorityInstanceId !== undefined ? { authorityInstanceId: lease.authorityInstanceId } : {}),
+       ...(lease.generation !== undefined ? { generation: lease.generation } : {}),
+     };
+     const install: AccountLeaseInstallParams = {
+-      id: account.id, harness: account.harness, label: account.label, shareId: input.shareId, authorityNodeId: input.authorityNodeId!, epoch: input.epoch, expiresAt, files: lease.files, nodeId: input.nodeId,
++      id: account.id, harness: account.harness, label: account.label, shareId: share.shareId, authorityNodeId: input.authorityNodeId!, epoch: share.epoch, expiresAt, files: lease.files, nodeId: input.nodeId,
+       ...(lease.authorityInstanceId !== undefined ? { authorityInstanceId: lease.authorityInstanceId } : {}),
+       ...(lease.generation !== undefined ? { generation: lease.generation } : {}),
+     };
+@@ -7815,7 +7878,7 @@ export class HiveDaemon {
+             const input = this.leaseGrantParams(item.params);
+             const result = await this.mintLeaseGrant(input);
+             results.push({ index: item.index, op: "grant", id: result.grant.account, nodeId: input.nodeId, ok: true, result });
+-            entries.push({ index: item.index, op: "grant", id: result.grant.account, nodeId: input.nodeId, ok: true, replay: { ...input, id: result.grant.account }, grant: result.grant });
++            entries.push({ index: item.index, op: "grant", id: result.grant.account, nodeId: input.nodeId, ok: true, replay: { ...input, id: result.grant.account, shareId: result.grant.shareId, epoch: result.grant.epoch }, grant: result.grant });
+           } else if (item.op === "install") {
+             const result = await this.rpcAccountLeaseInstall(item.params, conn);
+             const entry: AccountLeaseBatchItemResult = { index: item.index, op: "install", id: result.account.id, ok: true, result };
+diff --git a/v2/daemon/src/protocol.ts b/v2/daemon/src/protocol.ts
+index 49b2c806..f31e0007 100644
+--- a/v2/daemon/src/protocol.ts
++++ b/v2/daemon/src/protocol.ts
+@@ -281,6 +281,15 @@ export const DAEMON_CAPABILITIES = [
+    * results). The audit kind `account.lease.granted` is secret-free.
+    */
+   "account.lease.grant.v1",
++  /**
++   * 2026-11-05 (H6, additive): the account row owns its credential share and
++   * authority epoch (`shareId`, `shareEpoch`, nullable on mirrored rows);
++   * `account.lease.grant` and `account.lease.batch` derive them (their
++   * `shareId`/`epoch` params are optional and must agree when given); and
++   * `account.import` adopts the machine's own harness login as a native
++   * account without touching it. Schema v56.
++   */
++  "account.share.v1",
+ ] as const;
+ export type DaemonCapability = (typeof DAEMON_CAPABILITIES)[number];
+ 
+@@ -615,6 +624,7 @@ export const RPC_VERBS = [
+   "account.list",
+   "account.get",
+   "account.add",
++  "account.import",
+   "account.config.preview",
+   "account.config.import",
+   "account.remove",
+@@ -911,6 +921,33 @@ export interface ImportedCredentials {
+  * mirror row promptly converges. Import can sign the machine's regular CLI
+  * out of that provider (refresh tokens rotate on use).
+  */
++/**
++ * H6 (`account.share.v1`): `account.import {harness, label?, id?, penalty?}`
++ * adopts the machine's own harness login (the vendor home: `~/.claude`,
++ * `~/.codex`, …, or the home env var) as this node's one native account.
++ * Nothing is copied, moved or rewritten: Honeybee runs the harness on that
++ * home with no home env and never signs it in, leases or changes it, so the
++ * CLI stays logged in. Idempotent: an existing native account for the
++ * harness is answered with `created: false`. Refusals: `account_unavailable`
++ * (no recipe or no vendor home), `no_credentials_to_import` (nothing is
++ * logged in there; `checked` lists what was looked at), `invalid_request`.
++ */
++export interface AccountImportParams {
++  harness: string;
++  label?: string;
++  id?: string;
++  penalty?: number;
++  idempotencyKey?: string;
++}
++
++export interface AccountImportResult extends DedupMarkers {
++  account: MirrorAccountRow;
++  created: boolean;
++  credentialHealth: CredentialHealth;
++  /** The vendor home adopted and the credential files found in it (or `keychain` for a macOS Keychain login). */
++  source: { home: string; files: string[] };
++}
++
+ export interface AccountAddResult extends DedupMarkers {
+   account: MirrorAccountRow;
+   /** `unverified` after an importExisting adoption; `absent` for a fresh logged-out account. */
+@@ -1240,9 +1277,12 @@ export const MIN_LEASE_GRANT_TTL_MS = 60_000;
+  * `account.lease.grant` (capability `account.lease.grant.v1`) — on the node
+  * that OWNS the account: mint its refresh-blanked material for one named
+  * node and answer with the complete `account.lease.install` payload for that
+- * node. `shareId` and `epoch` are the carrier's share facts (Apiary's org
+- * account-authority record; genesis epoch 1, +1 on take-over); the same
+- * share and epoch with a later `expiresAt` is a renewal. `ttlMs` is the
++ * node. The share facts come from the account row (H6, `account.share.v1`):
++ * `shareId` is minted at the row's first grant and `epoch` starts at 1 and
++ * rises with every take-over through the credential handoff plane; the
++ * `shareId`/`epoch` params are optional and must agree with the row when
++ * given (a row without share facts adopts them). The same share and epoch
++ * with a later `expiresAt` is a renewal. `ttlMs` is the
+  * lease window (default 36 h). `authorityNodeId` defaults to this node's id
+  * (`deployInfo.nodeId`) and may only name that id or the node id the local
+  * Apiary service registered with; any other value is `invalid_request`
+@@ -1263,8 +1303,10 @@ export const MIN_LEASE_GRANT_TTL_MS = 60_000;
+ export interface AccountLeaseGrantParams {
+   id: string;
+   nodeId: string;
+-  shareId: string;
+-  epoch: number;
++  /** H6: optional; the account row owns its share id. When given it must equal the row's (`invalid_request`, reason `share_id`); it seeds a row that has none yet. */
++  shareId?: string;
++  /** H6: optional; the account row owns its authority epoch. When given it must equal the row's (`invalid_request`, reason `epoch`); it seeds a row that has none yet. */
++  epoch?: number;
+   ttlMs?: number;
+   authorityNodeId?: string;
+ }
+diff --git a/v2/daemon/src/rpcAccess.ts b/v2/daemon/src/rpcAccess.ts
+index 67ff33ef..352b27f4 100644
+--- a/v2/daemon/src/rpcAccess.ts
++++ b/v2/daemon/src/rpcAccess.ts
+@@ -97,6 +97,7 @@ export const RPC_ACCESS = {
+   "account.list": "read",
+   "account.get": "read",
+   "account.add": "mutate",
++  "account.import": "mutate",
+   "account.config.preview": "read",
+   "account.config.import": "mutate",
+   "account.remove": "mutate",
+diff --git a/v2/daemon/tests/account-config-import.test.ts b/v2/daemon/tests/account-config-import.test.ts
+index 62ebe585..836c3f11 100644
+--- a/v2/daemon/tests/account-config-import.test.ts
++++ b/v2/daemon/tests/account-config-import.test.ts
+@@ -29,6 +29,8 @@ function account(harness: string, homePath: string): AccountRow {
+     pausedOwner: null,
+     pausedAt: null,
+     native: false,
++    shareId: null,
++    shareEpoch: null,
+     addedAt: 1,
+     updatedAt: 1,
+   };
+diff --git a/v2/daemon/tests/account-config-rpc.test.ts b/v2/daemon/tests/account-config-rpc.test.ts
+index f765547e..e499a5e0 100644
+--- a/v2/daemon/tests/account-config-rpc.test.ts
++++ b/v2/daemon/tests/account-config-rpc.test.ts
+@@ -76,7 +76,7 @@ test("rpc account config: fixed preview/import contract, typed refusals, seriali
+     await client.request<AccountAddResult>("account.add", {
+       harness: "codex",
+       label: "same-home",
+-      homePath: sourceHome,
++      native: true,
+       idempotencyKey: "add-same-home",
+     });
+     await rejects(client, "account.config.preview", { id: "codex-same-home" }, "config_import_refused");
+diff --git a/v2/daemon/tests/accounts-service.test.ts b/v2/daemon/tests/accounts-service.test.ts
+index 46e7a54a..9330f41c 100644
+--- a/v2/daemon/tests/accounts-service.test.ts
++++ b/v2/daemon/tests/accounts-service.test.ts
+@@ -1154,7 +1154,7 @@ test("muse.native: This Mac — on darwin the machine's own Muse login is the on
+     assert.equal(mac.nativeHomeOf("muse"), nativeHome);
+     assert.equal(service(r, { platform: "darwin", env: { XDG_CONFIG_HOME: join(r.dir, "xdg") }, home: machine.home }).nativeHomeOf("muse"), join(r.dir, "xdg"));
+     assert.equal(linux.nativeHomeOf("muse"), null, "Linux isolates Muse accounts; it has no native one");
+-    assert.equal(mac.nativeHomeOf("claude"), null, "only a recipe that says so offers a native account");
++    assert.equal(mac.nativeHomeOf("claude"), join(machine.home, ".claude"), "H6: every recipe with a vendor home offers the machine's own login as a native account");
+ 
+     // A Studio-held account (vault only) beside This Mac.
+     const held = addAccount(r, "muse", "held", { vault: { [file]: JSON.stringify({ schema_version: 1, providers: { meta: { api_key: "k" } } }) } });
