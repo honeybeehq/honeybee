@@ -1,0 +1,12 @@
+import { generateKeyPairSync } from "node:crypto";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
+import { releaseKeyId, releasePublicKeyHex } from "../../v2/core/src/release/descriptor.ts";
+const out = process.argv[2];
+if (!out) throw new Error("usage: keygen.mjs <private-key-path>");
+const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+mkdirSync(dirname(out), { recursive: true, mode: 0o700 });
+writeFileSync(out, privateKey.export({ format: "pem", type: "pkcs8" }), { mode: 0o600 });
+const hex = releasePublicKeyHex(publicKey);
+writeFileSync(`${out}.pub.hex`, `${hex}\n`);
+console.log(JSON.stringify({ publicKeyHex: hex, keyId: releaseKeyId(hex) }));

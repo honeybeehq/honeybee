@@ -1,0 +1,7 @@
+{"at":"2026-11-05T18:19:08.948Z","step":"daemon.started","pid":2230058,"bootMs":359,"socketPath":"/var/tmp/hb-D3-ydrbDX/v2/hived.sock","dist":"/home/trmd/.hive/v2/cells/rebuild-d3-runtime-install-d012ceb619ec/github-com-honeybeehq-honeybee-a9015b303498-space-d012ceb619ec/dist/cli.js","protocol":null,"capabilities":{"count":79,"runtimeUpdate":true,"reservationTags":[]}}
+{"at":"2026-11-05T18:19:08.974Z","step":"timing.deployInfo.rpc","n":50,"p50":0.2,"p95":0.5,"max":10.6}
+{"at":"2026-11-05T18:19:09.328Z","step":"timing.deploy-info.cli","n":5,"p50":70.2,"max":74.3,"bytes":4764}
+{"at":"2026-11-05T18:19:09.525Z","step":"envkey.status","envVarSet":true,"keys":{"trusted":0,"keyIds":[]},"pass":true}
+{"at":"2026-11-05T18:19:09.529Z","step":"envkey.install_refused","pass":true,"got":{"ok":false,"code":"runtime_refused","reason":"key_unknown","details":{"reason":"key_unknown","trustedKeys":0},"message":"runtime: release signature key 3f45b1957201f6da is not a trusted release key"},"versionDirs":[]}
+{"at":"2026-11-05T18:19:09.594Z","step":"envkey.cli.status","ok":true,"keysLine":"keys     0 trusted"}
+{"at":"2026-11-05T18:19:09.626Z","step":"daemon.stopped","pid":2230058,"exitCode":0,"signal":null,"stopMs":32,"runRoot":"/var/tmp/hb-D3-ydrbDX","log":["{\"ts\":1793902748913,\"op\":\"daemon.started pid=2230058 store=/var/tmp/hb-D3-ydrbDX/v2/core.sqlite3\"}","{\"ts\":1793902749594,\"op\":\"daemon.stopping pid=2230058\"}","{\"ts\":1793902749600,\"op\":\"daemon.stopped\"}","{\"ts\":1793902749600,\"op\":\"daemon.stop_complete pid=2230058\"}"]}

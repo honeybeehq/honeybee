@@ -1,0 +1,92 @@
+✔ boot-state lookup uses the existing live index even with retained stopped history (74.463689ms)
+✔ boot-state reads stay fresh through transitions, rollback, older generations and reopen (22.656711ms)
+✔ fresh service pin requires explicit managed node and refuses Electron (6.104022ms)
+✔ pin persists resolved executable identity and refuses version or byte drift (1248.45822ms)
+✔ runtime environment and inspector arguments are scrubbed (0.531337ms)
+✔ foreground helpers discover the persisted pin without inherited service environment (750.808726ms)
+✔ a recorded real executable replaced by a symlink cannot silently move the pin (560.006651ms)
+✔ only an explicit different HIVE_NODE_PATH permits installer migration (882.542374ms)
+✔ aliases to the recorded executable cannot migrate changed bytes (708.64645ms)
+✔ recovery may target an exact explicitly supported compatible combination (64.20648ms)
+✔ exact identity accepts an artifact and rejects legacy versions without hashes (1.710074ms)
+✔ compatibility evidence is bound to exact artifacts and both contract fingerprints (0.589294ms)
+✔ required uncertainty cannot claim compatibility, but optional failures do not veto (0.666649ms)
+✔ dependency locks distinguish exact pins from unverified legacy observations (3.122031ms)
+✔ a release manifest requires compatible pinned and explicitly supported combinations (1.03394ms)
+✔ evidence for another operation or check cannot satisfy a required result (0.319909ms)
+✔ published fixtures preserve compatible, incompatible, unverified and recovery states (0.876885ms)
+✔ artifact, provider, evaluator, model, prompt and policy changes invalidate prior evidence (0.974441ms)
+✔ missing, duplicate, unknown, or unevidenced required checks cannot pass (0.740981ms)
+✔ unknown contract versions, extra fields and component substitutions fail closed (0.95362ms)
+✔ current-major eligibility does not declare support and zero-major includes all minors (1.216043ms)
+✔ locks, pinned identities, required protocols and recovery targets cannot drift (3.455972ms)
+✔ canonical subject digests ignore object key order and parsers return independent values (0.279849ms)
+✔ artifact references reject malformed HTTPS authorities (0.236835ms)
+✔ a decisive storage claim requires evidence even while recovery remains unverified (0.61375ms)
+✔ a locked protocol can require capabilities provided by separate required operations (0.988242ms)
+✔ hashDirectoryTree digests path + content and ignores the stamp file (56.471733ms)
+✔ writeBuildStamp records the tree digest and readBuildStamp tolerates garbage (3.978686ms)
+✔ a settled install (stamp and tree both matching the local build) resolves first probe (6.40252ms)
+✔ a mid-copy install settles only once the tree catches up to its stamp (7.042068ms)
+✔ an install that never settles throws after the timeout with the disagreement (4.423543ms)
+✔ a recorded repack settles: base stamp, additions with their digests, nothing else changed (35.766198ms)
+✔ a repack that changed anything beyond its recorded additions never settles (294.544074ms)
+✔ a local repack record must be byte-identical to the installed one (32.575863ms)
+✔ the tree digest preserves historical host-locale ordering for rollback (178.752588ms)
+✔ settling without a local stamp is a caller error, not a wait (2.558856ms)
+✖ the deploy archive allowlist excludes workstation state and retains runtime assets (321.921242ms)
+✔ tarball name carries the full sha and refuses short refs (0.398427ms)
+✔ manifest artifactHash equals the deploy build stamp of dist/ and is idempotent (88.46977ms)
+✔ a changed dist byte changes artifactHash; other stage files do not (70.874047ms)
+✔ protocol is read from the artifact's own v2 bundle (50.28727ms)
+✔ execution corpus drift inside the artifact is refused (58.647234ms)
+✔ describe refuses an artifact without dist/cli.js or a foreign package (58.75727ms)
+✔ pack writes tarball + manifest + SHA256SUMS; tarball is the stage dir with the stamp and manifest inside (111.862986ms)
+✔ a tests-skipped build is marked in the manifest so it cannot pass for a release (67.338596ms)
+✔ manifest parsing rejects malformed manifests (0.674ms)
+✔ the artifact script reuses buildDeployArtifact and packRuntimeArtifact instead of forking them (0.896624ms)
+✔ artifact identity comes from its packaged bytes and rejects a mismatched requested revision (63.794592ms)
+✔ a Linux build can package macOS PTY prebuilds without retaining host binaries or host identity (28.757969ms)
+✔ unsupported cross-builds are refused before building or reserving a release (0.297787ms)
+✔ absent or wrong-architecture macOS prebuilds cannot relabel an archive (4.083903ms)
+ℹ tests 51
+ℹ suites 0
+ℹ pass 50
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 5999.931447
+
+✖ failing tests:
+
+test at v2/core/tests/release-settle.test.ts:274:1
+✖ the deploy archive allowlist excludes workstation state and retains runtime assets (321.921242ms)
+  Error: Command failed: npm pack --dry-run --json
+  npm error code EBADDEVENGINES
+  npm error EBADDEVENGINES The developer of this package has specified the following through devEngines
+  npm error EBADDEVENGINES Invalid devEngines.packageManager
+  npm error EBADDEVENGINES Invalid semver version ">=11 <12" does not match "12.0.1" for "packageManager"
+  npm error EBADDEVENGINES {
+  npm error EBADDEVENGINES   current: { name: 'npm', version: '12.0.1' },
+  npm error EBADDEVENGINES   required: { name: 'npm', version: '>=11 <12', onFail: 'error' }
+  npm error EBADDEVENGINES }
+  npm error A complete log of this run can be found in: /home/trmd/.npm/_logs/2026-11-05T18_08_34_636Z-debug-0.log
+  
+      at genericNodeError (node:internal/errors:985:15)
+      at wrappedFn (node:internal/errors:539:14)
+      at checkExecSyncError (node:child_process:925:11)
+      at execFileSync (node:child_process:961:15)
+      at TestContext.<anonymous> (file:///home/trmd/.hive/v2/cells/rebuild-d3-runtime-install-d012ceb619ec/github-com-honeybeehq-honeybee-a9015b303498-space-d012ceb619ec/v2/core/tests/release-settle.test.ts:275:37)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:911:18)
+      at Test.postRun (node:internal/test_runner/test:1465:19)
+      at Test.run (node:internal/test_runner/test:1390:12) {
+    status: 1,
+    signal: null,
+    output: [ null, '{\n  "error": {\n    "code": "EBADDEVENGINES",\n    "summary": "The developer of this package has specified the following through devEngines\\nInvalid devEngines.packageManager\\nInvalid semver version \\">=11 <12\\" does not match \\"12.0.1\\" for \\"packageManager\\"",\n    "detail": "[object Object]"\n  }\n}\n', `npm error code EBADDEVENGINES\nnpm error EBADDEVENGINES The developer of this package has specified the following through devEngines\nnpm error EBADDEVENGINES Invalid devEngines.packageManager\nnpm error EBADDEVENGINES Invalid semver version ">=11 <12" does not match "12.0.1" for "packageManager"\nnpm error EBADDEVENGINES {\nnpm error EBADDEVENGINES   current: { name: 'npm', version: '12.0.1' },\nnpm error EBADDEVENGINES   required: { name: 'npm', version: '>=11 <12', onFail: 'error' }\nnpm error EBADDEVENGINES }\nnpm error A complete log of this run can be found in: /home/trmd/.npm/_logs/2026-11-05T18_08_34_636Z-debug-0.log\n` ],
+    pid: 2182198,
+    stdout: '{\n  "error": {\n    "code": "EBADDEVENGINES",\n    "summary": "The developer of this package has specified the following through devEngines\\nInvalid devEngines.packageManager\\nInvalid semver version \\">=11 <12\\" does not match \\"12.0.1\\" for \\"packageManager\\"",\n    "detail": "[object Object]"\n  }\n}\n',
+    stderr: `npm error code EBADDEVENGINES\nnpm error EBADDEVENGINES The developer of this package has specified the following through devEngines\nnpm error EBADDEVENGINES Invalid devEngines.packageManager\nnpm error EBADDEVENGINES Invalid semver version ">=11 <12" does not match "12.0.1" for "packageManager"\nnpm error EBADDEVENGINES {\nnpm error EBADDEVENGINES   current: { name: 'npm', version: '12.0.1' },\nnpm error EBADDEVENGINES   required: { name: 'npm', version: '>=11 <12', onFail: 'error' }\nnpm error EBADDEVENGINES }\nnpm error A complete log of this run can be found in: /home/trmd/.npm/_logs/2026-11-05T18_08_34_636Z-debug-0.log\n`
+  }

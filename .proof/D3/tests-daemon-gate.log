@@ -1,0 +1,45 @@
+✔ real unshare peer is refused by a disposable daemon while host CLI still spawns (1670.347397ms)
+✔ sandbox-off host keeps unregistered host callers unconfined and still confines child-userns peers (1984.015183ms)
+✖ an explicitly unsandboxed Cell does not put a sandboxed satellite into strict host refusal (500.864395ms)
+✔ strict host with trust disabled cannot treat an unattributed host peer as registered (439.416099ms)
+✔ missing Linux peer credentials fail closed with a diagnostic error: degraded (89.211962ms)
+✔ missing Linux peer credentials fail closed with a diagnostic error: lookup_failed (2.021792ms)
+✔ confinement uses pinned process birth and namespace, failing closed (0.942343ms)
+✔ strict mode triggers and trusted host exceptions (0.609665ms)
+✔ confined spawn refuses every forbidden placement and permits sandboxed Cells and inbox (0.445518ms)
+✔ no false positives: host CLI, registered Apiary service, and host HSR bee (0.245809ms)
+✔ confined credential and service registration verbs are refused (0.219569ms)
+✔ runtime namespace follows the sandbox child rather than its host wrapper (0.308973ms)
+✔ confined allowlist denies every other verb including transcript and all placement indirections (2.002964ms)
+✔ confined writes enforce UTF-8 size and per-bee rate bounds across generations (0.98692ms)
+✔ bwrap mode detects the setuid bit on the resolved executable (0.945518ms)
+✔ Linux confinement follows the kernel rather than a simulated process platform (0.232979ms)
+✔ a confined caller whose ancestry is denied before its bee runtime is refused as ownerless (111.857597ms)
+✔ gateway reader accepts a live-registry shape and strips identity overrides (1.250355ms)
+✔ gateway reader rejects malformed commands, arguments, and environment (0.245188ms)
+✔ live gateway discovery reads the Honeybee store root, not the v2 daemon data dir (0.865548ms)
+ℹ tests 20
+ℹ suites 0
+ℹ pass 19
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 4791.117243
+
+✖ failing tests:
+
+test at v2/daemon/tests/confined-peer-rpc.test.ts:140:1
+✖ an explicitly unsandboxed Cell does not put a sandboxed satellite into strict host refusal (500.864395ms)
+  Error [RpcError]: Host Git refused: Git >=2.44 is required for host checkout operations; found version 2.43.0
+      at RpcClient.onFrame (file:///home/trmd/.hive/v2/cells/rebuild-d3-runtime-install-d012ceb619ec/github-com-honeybeehq-honeybee-a9015b303498-space-d012ceb619ec/v2/cli/src/client.ts:215:9)
+      at RpcClient.onData (file:///home/trmd/.hive/v2/cells/rebuild-d3-runtime-install-d012ceb619ec/github-com-honeybeehq-honeybee-a9015b303498-space-d012ceb619ec/v2/cli/src/client.ts:191:33)
+      at Socket.<anonymous> (file:///home/trmd/.hive/v2/cells/rebuild-d3-runtime-install-d012ceb619ec/github-com-honeybeehq-honeybee-a9015b303498-space-d012ceb619ec/v2/cli/src/client.ts:125:51)
+      at Socket.emit (node:events:509:28)
+      at addChunk (node:internal/streams/readable:563:12)
+      at readableAddChunkPushByteMode (node:internal/streams/readable:514:3)
+      at Readable.push (node:internal/streams/readable:394:5)
+      at Pipe.onStreamRead (node:internal/stream_base_commons:189:23) {
+    code: 'invalid_request',
+    details: undefined
+  }
