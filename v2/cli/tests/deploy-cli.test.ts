@@ -105,32 +105,6 @@ test("hive deploy refuses unknown flags before doing anything", async () => {
   });
 });
 
-test("artifact deploy flags reach artifact validation without bypassing help", async () => {
-  await withStore(async (dir) => {
-    const args = ["--artifact", join(dir, "runtime.tgz"), "--identity", join(dir, "identity.json"),
-      "--admission", join(dir, "admission.json"), "--expected-current", "none", "--bin-dir", join(dir, "bin")];
-    const { stdout } = await hive(dir, "deploy", ...args, "--help");
-    assert.match(stdout, /Usage: hive deploy/);
-    const stderr = await hiveExpectFail(dir, "deploy", ...args);
-    assert.doesNotMatch(stderr, /unknown flag/);
-    assert.match(stderr, /ENOENT.*identity\.json/);
-  });
-});
-
-test("artifact-only flags require an artifact before source deploy routing", async () => {
-  await withStore(async (dir) => {
-    for (const name of ["identity", "admission", "expected-current", "bin-dir"]) {
-      const result = await execFileAsync(process.execPath,
-        [join(process.cwd(), "v2", "cli", "src", "bin.ts"), "deploy", `--${name}`, "none"],
-        { cwd: dir, env: ENV(dir) }).then(
-          () => { throw new Error("expected orphan artifact flag to fail"); },
-          (error: NodeJS.ErrnoException & { stderr?: string }) => error.stderr ?? "");
-      assert.match(result, /Usage: hive deploy/);
-      assert.doesNotMatch(result, /not a git repository|not the honeybee repo/);
-    }
-  });
-});
-
 test("hive deploy refuses conflicting modes and stray positionals", async () => {
   await withStore(async (dir) => {
     assert.match(await hiveExpectFail(dir, "deploy", "--list", "--rollback"), /Usage: hive deploy/);
@@ -178,7 +152,7 @@ test("deploy --skip-tests is accepted and threaded to the source build", async (
 test("deploy refuses invalid skip-tests values and conflicting modes", async () => {
   await withStore(async (dir) => {
     assert.match(await hiveExpectFail(dir, "deploy", "--skip-tests=banana"), /requires a boolean value/);
-    for (const mode of ["--rollback", "--list", "--init", "--artifact=missing.tgz"]) {
+    for (const mode of ["--rollback", "--list", "--init"]) {
       assert.match(await hiveExpectFail(dir, "deploy", "--skip-tests", mode), /Usage: hive deploy/);
     }
   });

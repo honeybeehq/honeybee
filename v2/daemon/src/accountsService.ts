@@ -1031,7 +1031,6 @@ export class AccountsService {
       beforeEnroll: account => {
         this.assertLocalAccount(account);
         this.assertOwnedHome(account, "publishes credentials into");
-        this.store.assertNoUpdateReservation();
         if (this.refreshBusy(account) || this.leaseMints.has(account.id) || this.nativeKeychainSeeds.has(account.id)) throw new CredentialAuthorityError("A native credential refresh is in progress; retry enrollment shortly.");
       },
       nativeCredential: async account => (await this.freshestClaudeCredential(account))?.document ?? null,
@@ -1073,7 +1072,6 @@ export class AccountsService {
       beforeEnroll: account => {
         this.assertLocalAccount(account);
         this.assertOwnedHome(account, "publishes credentials into");
-        this.store.assertNoUpdateReservation();
         if (this.refreshBusy(account) || this.leaseMints.has(account.id)) throw new CredentialAuthorityError("A native credential refresh is in progress; retry enrollment shortly.");
       },
       nativeCredential: async account => this.freshestCodexAuth(account, true)?.parsed ?? null,
@@ -1127,7 +1125,6 @@ export class AccountsService {
       beforeEnroll: account => {
         this.assertLocalAccount(account);
         this.assertOwnedHome(account, "publishes credentials into");
-        this.store.assertNoUpdateReservation();
         if (this.refreshBusy(account) || this.leaseMints.has(account.id)) throw new CredentialAuthorityError("A native credential refresh is in progress; retry enrollment shortly.");
       },
       nativeCredential: async account => this.freshestGrokAuth(account),
@@ -1176,7 +1173,6 @@ export class AccountsService {
         const native = this.nativeRefusal(account);
         if (native) throw new CredentialAuthorityError(native);
         this.assertOwnedHome(account, "holds credentials for");
-        this.store.assertNoUpdateReservation();
         if (this.refreshBusy(account) || this.leaseMints.has(account.id)) throw new CredentialAuthorityError("Another credential operation is active.");
       },
       beforeRelogin: account => {

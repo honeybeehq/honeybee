@@ -2,7 +2,7 @@
 // Build a redistributable Honeybee runtime tarball for a committed sha
 // (distribution plan H1 / rollout F2): the exact stage directory `hive deploy`
 // installs, plus manifest.json and SHA256SUMS, so a machine with no git, npm,
-// or checkout can install it later (`hive deploy --artifact`, H2).
+// or checkout can install it later (`runtime.install`).
 //
 //   npm run runtime:artifact                       # HEAD, full gate, .artifacts/runtime/
 //   npm run runtime:artifact -- <sha|ref> --out <dir>

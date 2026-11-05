@@ -8,15 +8,10 @@ import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, readdir, readlink, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { createServer } from "node:net";
 import { join } from "node:path";
 import { test } from "node:test";
 import { promisify } from "node:util";
 import { DatabaseSync } from "node:sqlite";
-import { withFileLock } from "../../core/src/lock.ts";
-import { DeployReservationHeldError } from "../src/deploy/runtime.ts";
-import { readUpdateReservation } from "../src/deploy/readUpdateReservation.ts";
-import { restartDeployedDaemon } from "../src/deploy/command.ts";
 import {
   CURRENT_LINK_NAME,
   DEPLOY_HISTORY_FILENAME,
@@ -204,151 +199,14 @@ test("failed rollback to an unconfirmed activation recovers current and reports 
   });
 });
 
-async function seedReservation(root: string, active: boolean): Promise<void> {
+async function seedStore(root: string): Promise<void> {
   const data = join(root, "..", "v2");
   await mkdir(data, { recursive: true });
   const db = new DatabaseSync(join(data, "core.sqlite3"));
   try {
-    db.exec("CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT); CREATE TABLE IF NOT EXISTS account_credential_authorities (phase TEXT)");
-    db.prepare("INSERT OR REPLACE INTO meta VALUES ('schema_version', '27')").run();
-    db.prepare("INSERT OR REPLACE INTO meta VALUES ('coordinated_update', ?)").run(JSON.stringify({
-      id: "deploy-lab", epoch: 7, active, recoverySubjectDigest: `sha256:${"a".repeat(64)}`,
-    }));
+    db.exec("CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT)");
+    db.prepare("INSERT OR REPLACE INTO meta VALUES ('schema_version', '58')").run();
   } finally { db.close(); }
-}
-
-for (const operation of ["deploy", "rollback"] as const) {
-  test(`reservation lab: ${operation} refused while reserved`, async () => {
-    await withDeployWorld(async ({ root, repoRoot, commit, hooks, log }) => {
-      await commit("v1");
-      await seedReservation(root, true);
-      const invoke = () => operation === "deploy" ? deployVersion({ root, repoRoot, hooks }) : rollbackDeploy({ root, hooks });
-      await assert.rejects(invoke(), (error: unknown) => {
-        assert.ok(error instanceof DeployReservationHeldError);
-        assert.equal(error.reservationId, "deploy-lab");
-        assert.equal(error.epoch, 7);
-        assert.match(error.message, /update-owner release/);
-        return true;
-      });
-      assert.deepEqual(log, { builds: [], restarts: [] });
-      assert.equal(await currentDeployTarget(root), null);
-      assert.deepEqual(await readDeployHistory(root), []);
-    });
-  });
-}
-
-test("reservation lab: deploy and rollback proceed without a held reservation", async () => {
-  await withDeployWorld(async ({ root, repoRoot, commit, hooks, log }) => {
-    await seedReservation(root, false);
-    const first = await commit("v1");
-    await deployVersion({ root, repoRoot, hooks });
-    const second = await commit("v2");
-    await deployVersion({ root, repoRoot, hooks });
-    const result = await rollbackDeploy({ root, hooks });
-    assert.equal(result.from, second);
-    assert.equal(result.sha, first);
-    assert.equal(await currentDeployTarget(root), first);
-    assert.equal(log.builds.length, 2);
-    assert.equal(log.restarts.length, 3);
-  });
-});
-
-test("reservation lab: acquire under deploy lock fences a queued deploy", async () => {
-  await withDeployWorld(async ({ root, repoRoot, commit, hooks, log }) => {
-    await commit("v1");
-    await mkdir(root, { recursive: true });
-    let deployment!: Promise<unknown>;
-    await withFileLock(join(root, ".deploy.lock"), async () => {
-      deployment = deployVersion({ root, repoRoot, hooks });
-      await seedReservation(root, true);
-    });
-    await assert.rejects(deployment, DeployReservationHeldError);
-    assert.deepEqual(log, { builds: [], restarts: [] });
-    assert.equal(await currentDeployTarget(root), null);
-  });
-});
-
-test("reservation lab: schema 44 without a reservation permits deploy and rollback", async () => {
-  await withDeployWorld(async ({ root, repoRoot, commit, hooks }) => {
-    await seedReservation(root, false);
-    const db = new DatabaseSync(join(root, "..", "v2", "core.sqlite3"));
-    db.exec("UPDATE meta SET value='44' WHERE key='schema_version'; DELETE FROM meta WHERE key='coordinated_update'; DROP TABLE account_credential_authorities");
-    db.close();
-    const first = await commit("v1");
-    await deployVersion({ root, repoRoot, hooks });
-    await commit("v2");
-    await deployVersion({ root, repoRoot, hooks });
-    await rollbackDeploy({ root, hooks });
-    assert.equal(await currentDeployTarget(root), first);
-  });
-});
-
-for (const state of ["corrupt", "null", "sentinel", "missing-meta"] as const) {
-  test(`reservation lab: ${state} refuses deploy and rollback`, async () => {
-    await withDeployWorld(async ({ root, repoRoot, commit, hooks, log }) => {
-      await commit("v1");
-      await seedReservation(root, false);
-      const db = new DatabaseSync(join(root, "..", "v2", "core.sqlite3"));
-      if (state === "missing-meta") db.exec("DROP TABLE meta");
-      else db.prepare("UPDATE meta SET value=? WHERE key='coordinated_update'").run(state === "null" ? "null"
-        : state === "sentinel" ? JSON.stringify({ epoch: 0, id: "", recoverySubjectDigest: "", active: false }) : "{}");
-      db.close();
-      const refusal = state === "missing-meta" ? /no such table: meta/ : /Corrupt coordinated update reservation/;
-      await assert.rejects(deployVersion({ root, repoRoot, hooks }), refusal);
-      await assert.rejects(rollbackDeploy({ root, hooks }), refusal);
-      assert.deepEqual(log, { builds: [], restarts: [] });
-      assert.equal(await currentDeployTarget(root), null);
-    });
-  });
-}
-
-for (const protocol of ["v2/1", "v2/2"]) test(`reservation lab: live schema 44 owner takes precedence over offline reservation (${protocol})`, async () => {
-  await withDeployWorld(async ({ root }) => {
-    await seedReservation(root, false);
-    const reservation = { id: "live-owner", epoch: 8, active: true, recoverySubjectDigest: `sha256:${"b".repeat(64)}` };
-    let status: unknown = { runtimeRoot: root, storePath: join(root, "..", "v2", "core.sqlite3"), schemaVersion: 44, reservation };
-    const server = createServer(socket => {
-      socket.write(`${JSON.stringify({ protocol })}\n`);
-      let buffer = "";
-      socket.on("data", chunk => {
-        buffer += chunk;
-        for (;;) {
-          const nl = buffer.indexOf("\n");
-          if (nl < 0) break;
-          const frame = JSON.parse(buffer.slice(0, nl));
-          buffer = buffer.slice(nl + 1);
-          if (frame.id !== undefined) socket.write(`${JSON.stringify({ id: frame.id, ok: true, result: status })}\n`);
-        }
-      });
-    });
-    await new Promise<void>((resolve, reject) => { server.once("error", reject); server.listen(join(root, "..", "v2", "hived.sock"), resolve); });
-    try {
-      assert.deepEqual(await readUpdateReservation(root), reservation);
-      status = { runtimeRoot: root, storePath: join(root, "..", "v2", "core.sqlite3"), reservation: { id: "", epoch: 0, active: false, recoverySubjectDigest: "" } };
-      assert.equal(await readUpdateReservation(root), null);
-      for (const malformed of [{}, undefined, { runtimeRoot: root, storePath: "wrong", reservation: null }]) {
-        status = malformed;
-        await assert.rejects(readUpdateReservation(root), /cannot identify/);
-      }
-      status = { runtimeRoot: root, storePath: join(root, "..", "v2", "core.sqlite3"), reservation: { id: "", epoch: 0, active: false, recoverySubjectDigest: "", purpose: "unknown" } };
-      await assert.rejects(readUpdateReservation(root), /unknown/);
-    } finally { await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())); }
-  });
-});
-
-for (const path of ["config.json", "core.sqlite3"] as const) {
-  test(`reservation lab: unreadable ${path} refuses deploy and rollback`, async () => {
-    await withDeployWorld(async ({ root, repoRoot, commit, hooks, log }) => {
-      await commit("v1");
-      const data = join(root, "..", "v2");
-      await mkdir(data, { recursive: true });
-      await symlink(path, join(data, path));
-      const refusal = /ELOOP|unable to open database file/;
-      await assert.rejects(deployVersion({ root, repoRoot, hooks }), refusal);
-      await assert.rejects(rollbackDeploy({ root, hooks }), refusal);
-      assert.deepEqual(log, { builds: [], restarts: [] });
-    });
-  });
 }
 
 // 1. deploy from clean HEAD installs, switches `current` atomically, restarts daemon
@@ -671,50 +529,6 @@ test("failed rollback restores the active version without recording success", as
   });
 });
 
-for (const operation of ["deploy", "rollback"] as const) {
-  test(`held reservation fences pinned restart and recovery with an installed runtime: ${operation}`, async () => {
-    await withDeployWorld(async ({ root, repoRoot, commit, hooks }) => {
-      const prior = await commit("prior");
-      await deployVersion({ root, repoRoot, hooks });
-      await commit("candidate");
-      const history = await readDeployHistory(root);
-      await seedReservation(root, true);
-      let builds = 0, restarts = 0;
-      const guardedHooks: DeployHooks = {
-        buildArtifact: async context => { builds++; return hooks.buildArtifact(context); },
-        restartDaemon: async context => { restarts++; await restartDeployedDaemon(context); },
-      };
-      await assert.rejects(operation === "deploy"
-        ? deployVersion({ root, repoRoot, hooks: guardedHooks })
-        : rollbackDeploy({ root, hooks: guardedHooks }), DeployReservationHeldError);
-      assert.equal(builds, 0);
-      assert.equal(restarts, 0);
-      assert.equal(await currentDeployTarget(root), prior);
-      assert.deepEqual(await readDeployHistory(root), history);
-    });
-  });
-}
-
-test("unadmitted pinned restart refuses a held reservation before pin or service effects", async () => {
-  await withDeployWorld(async ({ root }) => {
-    await seedReservation(root, true);
-    await assert.rejects(restartDeployedDaemon({ root, installedDir: root, sha: "a".repeat(40), log() {} }), DeployReservationHeldError);
-    assert.equal(await currentDeployTarget(root), null);
-  });
-});
-
-test("restart recovery capability expires when its admitted hook returns", async () => {
-  await withDeployWorld(async ({ root, repoRoot, commit, hooks }) => {
-    await commit("prior"); await deployVersion({ root, repoRoot, hooks });
-    const next = await commit("next");
-    let captured: RestartDaemonContext | undefined;
-    await deployVersion({ root, repoRoot, hooks: { ...hooks, async restartDaemon(context) { captured = context; } } });
-    await assert.rejects(captured!.restorePrevious!(), /admission expired/);
-    await assert.rejects(captured!.assertRollbackSafe!(), /admission expired/);
-    assert.equal(await currentDeployTarget(root), next);
-  });
-});
-
 test("successful deploy retains an external current absent from history as the next rollback target", async () => {
   await withDeployWorld(async ({ root, repoRoot, commit, hooks }) => {
     const first = await commit("apiary current");
@@ -790,7 +604,7 @@ test("backup refusal leaves current and same-revision runtime bytes untouched", 
     const sha = await commit("v1");
     await deployVersion({ root, repoRoot, hooks });
     const before = await readFile(join(root, sha, "dist", "cli.js"), "utf8");
-    await seedReservation(root, false);
+    await seedStore(root);
     const originalBuild = hooks.buildArtifact;
     const refused = { ...hooks,
       async buildArtifact(context: BuildArtifactContext) {
@@ -810,7 +624,7 @@ test("backup refusal leaves current and same-revision runtime bytes untouched", 
 test("existing store requires a durable validated backup before source deploy activation", async () => {
   await withDeployWorld(async ({ root, repoRoot, commit, hooks, log }) => {
     await commit("backup");
-    await seedReservation(root, false);
+    await seedStore(root);
     const missing = { ...hooks, backupStore: undefined };
     await assert.rejects(deployVersion({ root, repoRoot, hooks: missing }), /backup owner is required/);
     const invalid = { ...hooks, async backupStore() { const path = join(root, "receipt.json"); await writeFile(path, '{}'); return { receiptPath: path }; } };

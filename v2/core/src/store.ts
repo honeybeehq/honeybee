@@ -20,12 +20,10 @@ import { type PhoneInput, type PhoneOperationOrigin, type PhoneOriginRequest, ty
 import { readAccountLease, accountLeaseUnknown, knownAccountLease } from "./accountLease.ts";
 import { ExecutionLedger, ExecutionFenceError, executionRequest, type ExecutionRequest } from "./executionFence.ts";
 import { EffectKeyError, EffectLedger, type EffectVerb, type EffectResolution } from "./effectResolve.ts";
-import { parseDurableUpdateReservation, parseApiarySwapAcquire, parseApiarySwapSettle, parseApiarySwapRecover, acquireApiarySwap, settleApiarySwap, recoverApiarySwap, type DurableUpdateReservation, type ApiarySwapReservation } from "./apiarySwap.ts";
 import { currentRpcCaller } from "./rpcAuditContext.ts";
 import type { QuestionDismissedEvent } from "./mirror.ts";
 import type { AccountObservationMetadata, LimitsObserverProvenance } from "./types.ts";
 import { isAccountId } from "./accountRecipes.ts";
-import { parseUpdateReservation, type UpdateReservation } from "./updateReservation.ts";
 import type { ReconnectToolsReceipt, ReconnectToolsError } from "./reconnectTools.ts";
 import { threadOperationView, type ThreadOperationRow, type ThreadOperationPhase } from "./threadOperation.ts";
 import { THREAD_OPERATIONS_TABLE_SQL } from "./schema.ts";
@@ -109,6 +107,7 @@ import {
   type ChampionRow,
   type GatewayRow,
   type SkillTreeRow,
+  type RuntimeJournalEntry,
   type ChampionHomeObjectRow,
   type BeeKind,
   type BeeResumeBundleRow,
@@ -1076,6 +1075,8 @@ function normalizePauseOwnerId(by: AccountPauseOwner, owner: string | null | und
   if (trimmed.length > 256) throw new CoreError(`${where}: owner id exceeds 256 characters`);
   return trimmed;
 }
+
+const RUNTIME_JOURNAL_LIMIT = 200;
 
 function mapAccountAdmission(r: Row): AccountAdmissionReservationRow {
   return {
@@ -7397,7 +7398,6 @@ export class CoreStore {
         : previous?.phase !== "disabled" && previous?.authorityInstanceId ? previous.authorityInstanceId : randomUUID();
       const refreshTokenExpiresAt = input.refreshTokenExpiresAt ?? null;
       const failure = input.failure ?? null;
-      if (input.phase !== "disabled") this.assertNoUpdateReservation();
       this.mustGetAccount(input.account);
       const updatedAt = this.now();
       this.stmt(`INSERT INTO account_credential_authorities(account,phase,generation,expires_at,operation_key,updated_at,refresh_token_expires_at,failure,authority_instance_id)
@@ -7438,86 +7438,6 @@ export class CoreStore {
    * authority. A bridge build must refuse to start while any such row exists;
    * otherwise its native refresher could consume a chain the authority owns.
    */
-  credentialAuthorityRollbackBlockers(): Array<{ account: string; phase: string }> {
-    return this.stmt(
-      "SELECT account, phase FROM account_credential_authorities WHERE phase <> 'disabled' ORDER BY account",
-    ).all() as Array<{ account: string; phase: string }>;
-  }
-
-  /** Infrastructure reservation, like RPC deduplication: never lifecycle truth.
-   * Epochs fence lost responses and delayed prior coordinators across restarts.
-   * No timeout: elapsed time cannot prove an activation failed to occur. */
-  updateReservation(): UpdateReservation {
-    const row = this.stmt("SELECT value FROM meta WHERE key = 'coordinated_update'").get() as { value: string } | undefined;
-    if (!row) return { epoch: 0, id: "", recoverySubjectDigest: "", active: false };
-    return parseUpdateReservation(JSON.parse(row.value));
-  }
-
-  durableUpdateReservation(): DurableUpdateReservation {
-    const row = this.stmt("SELECT value FROM meta WHERE key = 'coordinated_update'").get() as { value: string } | undefined;
-    return row ? parseDurableUpdateReservation(JSON.parse(row.value)) : { epoch: 0, id: "", recoverySubjectDigest: "", active: false };
-  }
-
-  private writeApiarySwap(reservation: ApiarySwapReservation): ApiarySwapReservation {
-    this.stmt("INSERT INTO meta(key,value) VALUES('coordinated_update',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(JSON.stringify(reservation));
-    return reservation;
-  }
-
-  acquireApiarySwap(value: unknown): ApiarySwapReservation {
-    const input = parseApiarySwapAcquire(value);
-    return this.tx(() => {
-      const previous = this.durableUpdateReservation(), next = acquireApiarySwap(previous, input);
-      return next === previous ? next : this.writeApiarySwap(next);
-    });
-  }
-
-  settleApiarySwap(value: unknown, kind: "release" | "abandon"): ApiarySwapReservation {
-    const input = parseApiarySwapSettle(value, kind);
-    return this.tx(() => {
-      const previous = this.durableUpdateReservation(), next = settleApiarySwap(previous, input, kind);
-      return next === previous ? next : this.writeApiarySwap(next);
-    });
-  }
-
-  recoverApiarySwap(value: unknown): ApiarySwapReservation {
-    const input = parseApiarySwapRecover(value);
-    return this.tx(() => {
-      const previous = this.durableUpdateReservation(), next = recoverApiarySwap(previous, input);
-      return next === previous ? next : this.writeApiarySwap(next);
-    });
-  }
-
-  assertNoUpdateReservation(): void {
-    if (this.durableUpdateReservation().active) throw new CoreError("Coordinated update is reserved; finish or recover the update before enrolling credentials");
-  }
-
-  reserveUpdate(input: { id: string; recoverySubjectDigest: string; expectedEpoch: number }) {
-    if (!/^[a-zA-Z0-9_-]{1,128}$/.test(input.id) || !/^sha256:[a-f0-9]{64}$/.test(input.recoverySubjectDigest)
-      || !Number.isSafeInteger(input.expectedEpoch) || input.expectedEpoch < 0) throw new CoreError("Invalid update reservation");
-    return this.tx(() => {
-      const previous = this.updateReservation();
-      if (previous.active && previous.id === input.id && previous.recoverySubjectDigest === input.recoverySubjectDigest
-        && previous.epoch === input.expectedEpoch + 1) return previous;
-      if (previous.epoch !== input.expectedEpoch) throw new CoreError("Update reservation epoch changed");
-      if (previous.active) throw new CoreError("Another coordinated update is reserved");
-      if (this.credentialAuthorityRollbackBlockers().length) throw new CoreError("Update recovery blocked by credential authority; explicit coordinated migration required");
-      if (!Number.isSafeInteger(previous.epoch + 1)) throw new CoreError("Update reservation epoch exhausted");
-      const reservation = { epoch: previous.epoch + 1, id: input.id, recoverySubjectDigest: input.recoverySubjectDigest, active: true };
-      this.stmt("INSERT INTO meta(key,value) VALUES('coordinated_update',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(JSON.stringify(reservation));
-      return reservation;
-    });
-  }
-
-  releaseUpdate(input: { id: string; recoverySubjectDigest: string; epoch: number }) {
-    return this.tx(() => {
-      const previous = this.updateReservation();
-      if (previous.id !== input.id || previous.recoverySubjectDigest !== input.recoverySubjectDigest || previous.epoch !== input.epoch)
-        throw new CoreError("Update reservation mismatch");
-      const released = { ...previous, active: false };
-      if (previous.active) this.stmt("UPDATE meta SET value=? WHERE key='coordinated_update'").run(JSON.stringify(released));
-      return released;
-    });
-  }
 
   /**
    * v7 — register an account (one row = one provider identity = one
@@ -9879,6 +9799,35 @@ export class CoreStore {
       const tree = this.skillTree()!;
       this.audit("skills.installed", null, { digest: tree.digest, files: tree.files, bytes: tree.bytes, homes: input.homes, replaced: existing?.digest ?? null });
       return { tree, changed: true, replaced: existing };
+    });
+  }
+
+  runtimeJournal(limit = 50): RuntimeJournalEntry[] {
+    const entries = this.readRuntimeJournal();
+    return entries.slice(Math.max(0, entries.length - Math.max(1, Math.floor(limit))));
+  }
+
+  appendRuntimeJournal(input: Pick<RuntimeJournalEntry, "event" | "sha" | "by" | "detail">): RuntimeJournalEntry {
+    return this.tx(() => {
+      const entries = this.readRuntimeJournal();
+      const entry: RuntimeJournalEntry = { seq: (entries.at(-1)?.seq ?? 0) + 1, at: this.now(), event: input.event, sha: input.sha, by: input.by, detail: input.detail };
+      const kept = [...entries, entry].slice(-RUNTIME_JOURNAL_LIMIT);
+      this.stmt("INSERT INTO meta(key, value) VALUES('runtime_journal', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(JSON.stringify(kept));
+      this.audit(`runtime.${entry.event}`, null, { seq: entry.seq, sha: entry.sha, by: entry.by, ...entry.detail });
+      return entry;
+    });
+  }
+
+  private readRuntimeJournal(): RuntimeJournalEntry[] {
+    const row = this.stmt("SELECT value FROM meta WHERE key = 'runtime_journal'").get() as Row | undefined;
+    if (!row) return [];
+    const parsed: unknown = JSON.parse(String(row.value));
+    if (!Array.isArray(parsed)) throw new CoreError("runtime journal is corrupt");
+    return parsed.map((value) => {
+      const entry = value as Partial<RuntimeJournalEntry>;
+      if (!Number.isSafeInteger(entry.seq) || !Number.isSafeInteger(entry.at) || (entry.event !== "installed" && entry.event !== "pruned")
+        || typeof entry.sha !== "string" || typeof entry.by !== "string" || !entry.detail || typeof entry.detail !== "object") throw new CoreError("runtime journal is corrupt");
+      return { seq: entry.seq!, at: entry.at!, event: entry.event, sha: entry.sha, by: entry.by, detail: entry.detail as Record<string, unknown> };
     });
   }
 

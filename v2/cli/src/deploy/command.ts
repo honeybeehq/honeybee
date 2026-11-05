@@ -15,15 +15,12 @@ import { tmpdir } from "node:os";
 import { delimiter, dirname, isAbsolute, join } from "node:path";
 import { promisify } from "node:util";
 import {
-  assertDeployRestartAdmission,
   DeployActivationHeldError,
   assertRollbackStoreCompatible,
-  hasDeployRestartAdmission,
   CURRENT_LINK_NAME,
   DEFAULT_KEEP_VERSIONS,
   currentDeployTarget,
   deployVersion,
-  deployArtifact,
   readDeployHistory,
   rollbackDeploy,
   rollbackTargetEntry,
@@ -31,8 +28,6 @@ import {
   type BuildArtifactContext,
   type RestartDaemonContext,
 } from "./runtime.ts";
-import { assertRuntimeUpdateAllowed } from "./readUpdateReservation.ts";
-import { withFileLock } from "../../../core/src/lock.ts";
 import { actionLine, bold, dim, errorLine, formatRelativeTime, isPretty, joinParts, tildify, yellow } from "../style.ts";
 import type { CliIo } from "../main.ts";
 
@@ -42,7 +37,7 @@ import { HARNESS_HOME_ENV } from "../../../core/src/accountRecipes.ts";
 import { socketPathFits } from "../../../core/src/socketPath.ts";
 import { prepareRuntimeTarget, validateRuntimeBuildTarget } from "../../../core/src/release/runtimeTarget.ts";
 import { waitForDeployReadiness, type DeployProcessIdentity } from "./readiness.ts";
-import { inspectProcess } from "./updateOwnerClient.mjs";
+import { inspectProcess } from "../../../harness/src/processIdentity.ts";
 import { DatabaseSync } from "node:sqlite";
 
 const execFileAsync = promisify(execFile);
@@ -50,7 +45,7 @@ const execFileAsync = promisify(execFile);
 type Parsed = { args: string[]; flags: Map<string, string | true | string[]> };
 
 const BOOLEAN_FLAGS = new Set(["provision-question-withdrawal", "skip-tests", "allow-non-descendant", "rollback", "list", "json", "init", "help", "h"]);
-const KNOWN_FLAGS = new Set([...BOOLEAN_FLAGS, "keep", "artifact", "identity", "expected-current", "admission", "bin-dir"]);
+const KNOWN_FLAGS = new Set([...BOOLEAN_FLAGS, "keep"]);
 
 function setFlag(flags: Parsed["flags"], key: string, value: string | true): void {
   const existing = flags.get(key);
@@ -103,7 +98,7 @@ function note(message: string): string {
   return dim(`hive: ${message}`);
 }
 
-/** `hive deploy …`: parses its own flags (the artifact and admission paths are not daemon flags) and never opens the daemon. */
+/** `hive deploy …`: parses its own flags and never opens the daemon. */
 export async function runDeployCli(argv: string[], io: CliIo): Promise<number> {
   try {
     await cmdDeploy(parseDeployArgs(argv), io);
@@ -122,7 +117,6 @@ const USAGE = [
   "       --skip-tests skips tests with a not release-grade warning; release artifacts cannot skip tests",
   "       refuses a <sha> that does not contain the deployed commit (silent-revert guard); --allow-non-descendant overrides",
   "       hive deploy --rollback             retarget current to the previous deploy and restart the daemon",
-  "       hive deploy --artifact <archive> --identity <json> --admission <json> --expected-current <sha|none> [--bin-dir <directory>]   install exact verified release bytes",
   "       hive deploy --list [--json]        show the deploy history",
   "       hive deploy --init                 print the manual steps that make the global `hive` resolve through ~/.hive/runtime/current",
 ].join("\n");
@@ -143,22 +137,7 @@ export async function cmdDeploy(parsed: Parsed, io: CliIo): Promise<void> {
   if (skipTests !== undefined && skipTests !== true && !["true", "1", "yes", "false", "0", "no"].includes(String(skipTests))) {
     throw new Error("deploy: --skip-tests requires a boolean value");
   }
-  if (skipTests !== undefined && ["artifact", "rollback", "list", "init"].some(name => parsed.flags.has(name))) throw new Error(USAGE);
-  const archive = flag(parsed, "artifact");
-  if (archive !== undefined) {
-    const identity = flag(parsed, "identity"), expected = flag(parsed, "expected-current"), admission = flag(parsed, "admission"), binDirectory = flag(parsed, "bin-dir");
-    if (typeof archive !== "string" || typeof identity !== "string" || typeof expected !== "string" || typeof admission !== "string"
-      || (binDirectory !== undefined && (typeof binDirectory !== "string" || binDirectory.length === 0))
-      || (expected !== "none" && !/^[a-f0-9]{40}$/.test(expected)) || parsed.args.length
-      || ["list", "init", "rollback"].some(name => parsed.flags.has(name))) throw new Error(USAGE);
-    const result = await deployArtifact({ archive, identity: JSON.parse(await readFile(identity, "utf8")),
-      admission: JSON.parse(await readFile(admission, "utf8")),
-      ...(typeof binDirectory === "string" ? { cliBinDirectory: binDirectory } : {}),
-      expectedCurrent: expected === "none" ? null : expected, hooks: { backupStore: backupBeforeSwap, restartDaemon: context => restartDeployedDaemon(context, provision === true) } });
-    io.out(JSON.stringify(result));
-    return;
-  }
-  if (["identity", "admission", "expected-current", "bin-dir"].some(name => parsed.flags.has(name))) throw new Error(USAGE);
+  if (skipTests !== undefined && ["rollback", "list", "init"].some(name => parsed.flags.has(name))) throw new Error(USAGE);
   const wantsList = truthy(flag(parsed, "list"));
   const wantsInit = truthy(flag(parsed, "init"));
   const wantsRollback = truthy(flag(parsed, "rollback"));
@@ -272,14 +251,7 @@ async function restoreServiceFile(file: string, data: Buffer | null, mode = 0o60
 }
 
 export async function restartDeployedDaemon(context: RestartDaemonContext, provision = false): Promise<void> {
-  if (hasDeployRestartAdmission(context)) {
-    await assertDeployRestartAdmission(context);
-    return restartAdmittedDaemon(context, provision);
-  }
-  await withFileLock(join(context.root, ".deploy.lock"), async () => {
-    await assertRuntimeUpdateAllowed(context.root, "restart");
-    await restartAdmittedDaemon(context, provision);
-  });
+  return restartAdmittedDaemon(context, provision);
 }
 
 export type LiveTmuxRuntime = { id: string; name: string; generation: number; pid: number | null };
