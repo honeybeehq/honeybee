@@ -97,6 +97,7 @@ export const RPC_ACCESS = {
   "account.list": "read",
   "account.get": "read",
   "account.add": "mutate",
+  "account.import": "mutate",
   "account.config.preview": "read",
   "account.config.import": "mutate",
   "account.remove": "mutate",

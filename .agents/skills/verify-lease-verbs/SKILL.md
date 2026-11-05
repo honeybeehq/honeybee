@@ -8,7 +8,7 @@ description: Check the account-lease ordering rules and the bulk-key replay of a
 ## What is verified, in one sentence each
 
 - **A lease window never shrinks within an epoch.** Harm if broken: a stale or replayed payload shortens a live lease on a satellite, and bees there lose their account before the grid says they will.
-- **Epochs only rise and the row's authority is the epoch's owner.** Harm: after a take-over, an old authority's payload resurrects itself on a satellite and two machines renew the same login.
+- **Epochs only rise and the row's authority is the epoch's owner.** Harm: after a take-over, an old authority's payload resurrects itself on a satellite and two machines renew the same login. Since H6 the epoch and share id live on the authority's account row (`accounts.share_id`, `accounts.share_epoch`); a grant derives them and a caller-supplied value must agree.
 - **A replayed bulk key is quiet.** Harm: a retried `account.lease.batch` installs or releases twice, or opens a second lease window for the same grant.
 - **A replayed key answers only its own items, and every mint is audited.** Harm if broken: anyone holding a key (it appears in the `rpc.dedup` log line) pulls fresh credential material for other items, unaudited.
 - **The owner signs the authority.** Harm if broken: a caller names another node as `authorityNodeId`, and node X's material renews node Q's lease on a satellite while the audit blames Q.
@@ -22,9 +22,9 @@ The model describes these places. If a diff touches any of them, run the check a
 | `Admits(p)` | `v2/daemon/src/accountsService.ts`, `installLease`, the `throw new RpcError("account_lease_conflict", "Lease origin conflicts with the installed lease.")` rule (shareId / epoch / authorityNodeId / expiresAt comparison) |
 | `Apply(p)` | same function: `this.store.setAccountLease(id, origin)` with `revokedAt: null` |
 | `Release` | `v2/daemon/src/accountsService.ts`, `removeLease` (disposition `revoked`, row kept) |
-| `GrantWindow(w)` | `v2/daemon/src/daemon.ts`, `leaseGrantParams` (authorityNodeId must be `ownNodeIds()`) and `mintLeaseGrant` (window = `grantedAt + ttlMs`, carried as `install.expiresAt`; audits `account.lease.granted`) |
+| `GrantWindow(w)` | `v2/daemon/src/daemon.ts`, `leaseGrantParams` (authorityNodeId must be `ownNodeIds()`; `shareId`/`epoch` optional) and `mintLeaseGrant` (share facts from `deriveShareFacts`: the account row's `shareId`/`shareEpoch`, seeded once; window = `grantedAt + ttlMs`, carried as `install.expiresAt`; audits `account.lease.granted`) |
 | caller gate (not modelled) | `v2/daemon/src/rpc.ts`, the `account.lease.grant` / `account.lease.batch` branch (registered local authority only) and `v2/daemon/src/confinedPeer.ts`, `assertConfinedVerb` |
-| `TakeOver` | Apiary's authority record epoch bump (not Honeybee code); the model only assumes epoch+1 with a new owner |
+| `TakeOver` | the credential handoff plane: `v2/daemon/src/credentialHandoff.ts` `export` derives epoch = row epoch + 1 when the caller gives none, and `v2/core/src/store.ts` `putCredentialAuthorityEpoch` raises the row's `share_epoch` on adoption, release and stand-down (never lowers it); the model assumes epoch+1 with a new owner |
 | `BatchFirstWindow` / `BatchReplayWindow` | `v2/daemon/src/daemon.ts`, `rpcAccountLeaseBatch`: receipt `{principal, itemsDigest, entries}` reserved under the key before items run, replay refused on another principal / other items / an unfinished first run, grants re-minted under the recorded window with `replay: true` audits |
 
 Sync commit: the commit that added this skill (`git log -1 --format=%H -- .agents/skills/verify-lease-verbs/SKILL.md`) describes the code at the time of the last confirmation. After a change to the files above, re-read the model, rerun, and only then move this line forward by committing the updated skill.

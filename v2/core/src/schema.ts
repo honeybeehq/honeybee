@@ -162,8 +162,10 @@
  * v54 — H5 Champions: `champions` (identity, home, template binding, current incarnation) and
  * `champion_home_objects` (home bundles in the object store); additive CREATE TABLE IF NOT EXISTS.
  * v55 — H6a bee durability: `bee_resume_bundles` (encrypted harness-state bundles in the object store)
- * and `bee_epochs` (import fence); additive CREATE TABLE IF NOT EXISTS. */
-export const SCHEMA_VERSION = 55;
+ * and `bee_epochs` (import fence); additive CREATE TABLE IF NOT EXISTS.
+ * v56 — H6 account authority: `accounts.share_id` and `accounts.share_epoch` (the credential share
+ * and its authority epoch, owned by Honeybee); additive; migration = ALTER TABLE ADD COLUMN ×2. */
+export const SCHEMA_VERSION = 56;
 
 export const QUESTIONS_TABLE_SQL = `
 CREATE TABLE IF NOT EXISTS questions (
@@ -622,6 +624,8 @@ CREATE TABLE IF NOT EXISTS accounts (
   paused_owner  TEXT,
   paused_at     INTEGER,
   native        INTEGER NOT NULL DEFAULT 0 CHECK (native IN (0,1)),
+  share_id      TEXT,
+  share_epoch   INTEGER CHECK (share_epoch IS NULL OR share_epoch >= 1),
   added_at      INTEGER NOT NULL,
   updated_at    INTEGER NOT NULL
 ) STRICT;

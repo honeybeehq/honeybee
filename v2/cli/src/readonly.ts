@@ -112,6 +112,8 @@ function mapAccountRow(r: Row): ReturnType<typeof presentAccountLease> {
     pausedOwner: r.paused_owner == null ? null : String(r.paused_owner),
     pausedAt: r.paused_at == null ? null : Number(r.paused_at),
     native: Number((r.native as number | null | undefined) ?? 0) === 1,
+    shareId: r.share_id == null ? null : String(r.share_id),
+    shareEpoch: r.share_epoch == null ? null : Number(r.share_epoch),
     addedAt: Number(r.added_at),
     updatedAt: Number(r.updated_at),
   });

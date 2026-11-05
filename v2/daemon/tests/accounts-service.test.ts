@@ -1154,7 +1154,7 @@ test("muse.native: This Mac — on darwin the machine's own Muse login is the on
     assert.equal(mac.nativeHomeOf("muse"), nativeHome);
     assert.equal(service(r, { platform: "darwin", env: { XDG_CONFIG_HOME: join(r.dir, "xdg") }, home: machine.home }).nativeHomeOf("muse"), join(r.dir, "xdg"));
     assert.equal(linux.nativeHomeOf("muse"), null, "Linux isolates Muse accounts; it has no native one");
-    assert.equal(mac.nativeHomeOf("claude"), null, "only a recipe that says so offers a native account");
+    assert.equal(mac.nativeHomeOf("claude"), join(machine.home, ".claude"), "H6: every recipe with a vendor home offers the machine's own login as a native account");
 
     // A Studio-held account (vault only) beside This Mac.
     const held = addAccount(r, "muse", "held", { vault: { [file]: JSON.stringify({ schema_version: 1, providers: { meta: { api_key: "k" } } }) } });

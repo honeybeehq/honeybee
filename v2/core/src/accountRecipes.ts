@@ -902,9 +902,23 @@ export function accountIsolationRefusal(harness: string, platform: string): stri
   return recipeFor(harness)?.unisolatedOn?.[platform] ?? null;
 }
 
-/** The machine's-own-login account `harness` offers on `platform` (the recipe's `nativeOn`), else null. */
+/**
+ * The machine's-own-login account `harness` offers on `platform`: the recipe's
+ * `nativeOn` entry where it names one, else (H6) the generic native account
+ * every recipe with a vendor home offers: the harness runs on the machine's
+ * own home with no home env, and Honeybee never signs it in, copies, leases
+ * or changes it. A recipe that declares `nativeOn` chose its platforms.
+ */
 export function nativeAccountRecipe(harness: string, platform: string): NativeAccountRecipe | null {
-  return recipeFor(harness)?.nativeOn?.[platform] ?? null;
+  const recipe = recipeFor(harness);
+  if (!recipe) return null;
+  if (recipe.nativeOn) return recipe.nativeOn[platform] ?? null;
+  return {
+    label: "This computer",
+    description: `This computer: uses your own ${harness} sign-in (\`${recipe.login.command} ${recipe.login.args.join(" ")}\`) on this computer. Honeybee never copies or changes it.`,
+    signIn: `Run \`${recipe.login.command} ${recipe.login.args.join(" ")}\` on this computer, then mark the account restored.`,
+    redirectEnv: ["HOME", ...(HARNESS_HOME_ENV[harness] ? [HARNESS_HOME_ENV[harness]] : []), ...Object.keys(recipe.extraEnv ?? {})],
+  };
 }
 
 export function recipeFor(harness: string): IdentityRecipe | undefined {

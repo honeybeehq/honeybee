@@ -1026,6 +1026,8 @@ function mapAccount(r: Row): AccountRow {
     pausedOwner: r.paused_owner == null ? null : String(r.paused_owner),
     pausedAt: r.paused_at == null ? null : Number(r.paused_at),
     native: Number(r.native ?? 0) === 1,
+    shareId: r.share_id == null ? null : String(r.share_id),
+    shareEpoch: r.share_epoch == null ? null : Number(r.share_epoch),
     addedAt: Number(r.added_at),
     updatedAt: Number(r.updated_at),
   };
@@ -2086,6 +2088,11 @@ export class CoreStore {
       // v34 → v35: why the status last changed and when the login itself ends.
       if (!accountCols.has("status_reason")) this.db.exec("ALTER TABLE accounts ADD COLUMN status_reason TEXT");
       if (!accountCols.has("refresh_token_expires_at")) this.db.exec("ALTER TABLE accounts ADD COLUMN refresh_token_expires_at INTEGER");
+      // v55 → v56: the credential share and its authority epoch live on the account row.
+      if (!accountCols.has("share_id")) {
+        this.db.exec("ALTER TABLE accounts ADD COLUMN share_id TEXT");
+        this.db.exec("ALTER TABLE accounts ADD COLUMN share_epoch INTEGER CHECK (share_epoch IS NULL OR share_epoch >= 1)");
+      }
       // v34 → v35: the authority phase CHECK gains 'login_required' and the
       // row gains two nullable columns. SQLite cannot widen a CHECK in place,
       // so rebuild and carry the v27 columns across by name.
@@ -7312,7 +7319,7 @@ export class CoreStore {
   completeCredentialAdoptionDiscard(record: CredentialHandoffRecord, epoch: number): void {
     this.credentialHandoffTx(() => {
       this.applyAccountUpdate(record.account, { source: "local", leasedFrom: null, status: this.mustGetAccount(record.account).status === "paused" ? "paused" : "auth_needed", statusReason: "Explicit capped retained discard; native login required" }, "explicit signed retained recovery");
-      this.stmt("INSERT INTO credential_authority_epochs(account,epoch,demoted) VALUES(?,?,1) ON CONFLICT(account) DO UPDATE SET epoch=excluded.epoch,demoted=1").run(record.account, epoch);
+      this.putCredentialAuthorityEpoch(record.account, epoch, true);
       this.putCredentialHandoff(record);
     });
   }
@@ -7321,7 +7328,7 @@ export class CoreStore {
     const release = record.releasePeer!;
     this.credentialHandoffTx(() => {
       if (release.mode !== "destination_void") this.applyAccountUpdate(record.account, { source: "local", leasedFrom: null, status: this.mustGetAccount(record.account).status === "paused" ? "paused" : release.outcome === "restored" ? "ok" : "auth_needed", statusReason: release.outcome === "restored" ? "Removed peer released; central authority restored" : "Removed peer retains a working login; native login required here" }, "explicit removed peer recovery");
-      this.stmt("INSERT INTO credential_authority_epochs(account,epoch,demoted) VALUES(?,?,?) ON CONFLICT(account) DO UPDATE SET epoch=excluded.epoch,demoted=excluded.demoted").run(record.account, release.requiredEpoch, release.outcome === "restored" ? 0 : 1);
+      this.putCredentialAuthorityEpoch(record.account, release.requiredEpoch, release.outcome !== "restored");
       this.putCredentialHandoff(record, authority);
     });
   }
@@ -7346,7 +7353,7 @@ export class CoreStore {
   demoteCredentialAuthority(account: string, epoch: number): void {
     this.tx(() => {
       if (this.credentialAuthorityIsDemoted(account) && this.credentialAuthorityEpoch(account) === epoch) return;
-      this.stmt("INSERT INTO credential_authority_epochs(account,epoch,demoted) VALUES(?,?,1) ON CONFLICT(account) DO UPDATE SET epoch=excluded.epoch,demoted=1").run(account, epoch);
+      this.putCredentialAuthorityEpoch(account, epoch, true);
       this.stmt("INSERT INTO credential_handoff_events(handoff_id,role,state,at) VALUES(?,?,?,?)").run(`stand-down:${account}:${epoch}`, "source", "stood_down", this.now());
       if (this.mustGetAccount(account).source !== "leased") this.setAccountStatus(account, "auth_needed", "Authority transferred; install a lease from the new authority or explicitly take over.");
     });
@@ -7356,7 +7363,8 @@ export class CoreStore {
   completeCredentialAdoption(record: CredentialHandoffRecord): void {
     this.tx(() => {
       this.applyAccountUpdate(record.account, { source: "local", leasedFrom: null, statusReason: "Central credential authority adopted" }, "central credential authority adopted");
-      this.stmt("INSERT INTO credential_authority_epochs(account,epoch,demoted) VALUES(?,?,0) ON CONFLICT(account) DO UPDATE SET epoch=excluded.epoch,demoted=0").run(record.account, record.binding.epoch);
+      this.putCredentialAuthorityEpoch(record.account, record.binding.epoch, false);
+      if (record.binding.shareId !== undefined && this.mustGetAccount(record.account).shareId === null) this.setAccountShare(record.account, { shareId: record.binding.shareId, epoch: record.binding.epoch });
       this.putCredentialHandoff(record);
     });
     this.db.exec("PRAGMA wal_checkpoint(FULL)");
@@ -7584,7 +7592,7 @@ export class CoreStore {
     });
   }
 
-  private applyAccountUpdate(id: string, patch: Partial<Pick<AccountRow, "status" | "statusReason" | "refreshTokenExpiresAt" | "penalty" | "weeklyCeiling" | "lastLoginAt" | "exhaustedAt" | "homePath" | "label" | "pausedBy" | "pausedOwner" | "pausedAt" | "source" | "leasedFrom">>, reason: string | null): { account: AccountRow; applied: boolean } {
+  private applyAccountUpdate(id: string, patch: Partial<Pick<AccountRow, "status" | "statusReason" | "refreshTokenExpiresAt" | "penalty" | "weeklyCeiling" | "lastLoginAt" | "exhaustedAt" | "homePath" | "label" | "pausedBy" | "pausedOwner" | "pausedAt" | "source" | "leasedFrom" | "shareId" | "shareEpoch">>, reason: string | null): { account: AccountRow; applied: boolean } {
     const before = this.mustGetAccount(id);
     knownAccountLease(before);
     const at = this.now();
@@ -7601,9 +7609,9 @@ export class CoreStore {
     }
     this.db
       .prepare(
-        "UPDATE accounts SET status = ?, status_reason = ?, refresh_token_expires_at = ?, penalty = ?, weekly_ceiling = ?, last_login_at = ?, exhausted_at = ?, home_path = ?, label = ?, paused_by = ?, paused_owner = ?, paused_at = ?, source = ?, leased_from = ?, updated_at = ? WHERE id = ?",
+        "UPDATE accounts SET status = ?, status_reason = ?, refresh_token_expires_at = ?, penalty = ?, weekly_ceiling = ?, last_login_at = ?, exhausted_at = ?, home_path = ?, label = ?, paused_by = ?, paused_owner = ?, paused_at = ?, source = ?, leased_from = ?, share_id = ?, share_epoch = ?, updated_at = ? WHERE id = ?",
       )
-      .run(next.status, next.statusReason, next.refreshTokenExpiresAt, next.penalty, next.weeklyCeiling, next.lastLoginAt, next.exhaustedAt, next.homePath, next.label, next.pausedBy, next.pausedOwner, next.pausedAt, next.source, knownAccountLease(next) === null ? null : JSON.stringify(knownAccountLease(next)), at, id);
+      .run(next.status, next.statusReason, next.refreshTokenExpiresAt, next.penalty, next.weeklyCeiling, next.lastLoginAt, next.exhaustedAt, next.homePath, next.label, next.pausedBy, next.pausedOwner, next.pausedAt, next.source, knownAccountLease(next) === null ? null : JSON.stringify(knownAccountLease(next)), next.shareId, next.shareEpoch, at, id);
     const account = this.mustGetAccount(id);
     this.audit("account.put", null, { account, outcome: "updated", changed, previous: Object.fromEntries(changed.map((k) => [k, before[k]])), reason });
     return { account, applied: true };
@@ -7626,9 +7634,34 @@ export class CoreStore {
   setAccountLease(id: string, leasedFrom: NonNullable<ReturnType<typeof knownAccountLease>>): AccountRow {
     return this.tx(() => {
       const before = this.mustGetAccount(id);
-      if (before.source === "leased" && JSON.stringify(knownAccountLease(before)) === JSON.stringify(leasedFrom)) return before;
-      return this.applyAccountUpdate(id, { source: "leased", leasedFrom }, "lease installed").account;
+      const share = { shareId: leasedFrom.shareId, shareEpoch: Math.max(before.shareEpoch ?? 0, leasedFrom.epoch, 1) };
+      if (before.source === "leased" && JSON.stringify(knownAccountLease(before)) === JSON.stringify(leasedFrom) && before.shareId === share.shareId && before.shareEpoch === share.shareEpoch) return before;
+      return this.applyAccountUpdate(id, { source: "leased", leasedFrom, ...share }, "lease installed").account;
     });
+  }
+
+  /**
+   * H6: the credential share and its authority epoch on the row. The share
+   * id is set once and never replaced here (a lease install may move a row to
+   * its lessor's share); the epoch never falls.
+   */
+  setAccountShare(id: string, share: { shareId: string; epoch: number }): AccountRow {
+    if (typeof share.shareId !== "string" || share.shareId.length === 0) throw new CoreError("setAccountShare: shareId must be a non-empty string");
+    if (!Number.isSafeInteger(share.epoch) || share.epoch < 1) throw new CoreError("setAccountShare: epoch must be a positive integer");
+    return this.tx(() => {
+      const before = this.mustGetAccount(id);
+      if (before.shareId !== null && before.shareId !== share.shareId) throw new CoreError(`setAccountShare: account ${id} already belongs to share ${before.shareId}`);
+      const shareEpoch = Math.max(before.shareEpoch ?? 0, share.epoch);
+      if (before.shareId === share.shareId && before.shareEpoch === shareEpoch) return before;
+      return this.applyAccountUpdate(id, { shareId: share.shareId, shareEpoch }, "share recorded").account;
+    });
+  }
+
+  /** The handoff plane moved the share's authority epoch: the row's epoch follows it (never falls). */
+  private putCredentialAuthorityEpoch(account: string, epoch: number, demoted: boolean): void {
+    this.stmt("INSERT INTO credential_authority_epochs(account,epoch,demoted) VALUES(?,?,?) ON CONFLICT(account) DO UPDATE SET epoch=excluded.epoch,demoted=excluded.demoted").run(account, epoch, demoted ? 1 : 0);
+    const row = this.mustGetAccount(account);
+    if (epoch >= 1 && (row.shareEpoch ?? 0) < epoch) this.applyAccountUpdate(account, { shareEpoch: epoch }, demoted ? "authority epoch raised; this node stood down" : "authority epoch raised");
   }
 
   /**

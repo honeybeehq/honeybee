@@ -169,7 +169,7 @@ test("v7.recipes: Muse accounts are unisolated on darwin only, where This Mac (t
   assert.equal(nativeAccountRecipe("muse", "linux"), null);
   for (const harness of Object.keys(ACCOUNT_RECIPES)) {
     if (harness !== "muse") assert.equal(accountIsolationRefusal(harness, "darwin"), null, harness);
-    if (harness !== "muse") assert.equal(nativeAccountRecipe(harness, "darwin"), null, harness);
+    if (harness !== "muse") assert.deepEqual([nativeAccountRecipe(harness, "darwin")?.label, nativeAccountRecipe(harness, "linux")?.redirectEnv[0]], ["This computer", "HOME"], harness);
   }
   assert.equal(accountIsolationRefusal("unknown", "darwin"), null);
   assert.equal(nativeAccountRecipe("unknown", "darwin"), null);
@@ -540,7 +540,7 @@ test("v7.migration: a v6 store opens as v7 — bees.account added, accounts/acco
     try {
       const version = check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string };
       assert.equal(Number(version.value), SCHEMA_VERSION);
-      assert.equal(SCHEMA_VERSION, 55);
+      assert.equal(SCHEMA_VERSION, 56);
       const cols = (check.prepare("SELECT name FROM pragma_table_info('bees')").all() as Array<{ name: string }>).map((c) => c.name);
       assert.ok(cols.includes("account"));
       const tables = (check.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as Array<{ name: string }>).map((t) => t.name);
