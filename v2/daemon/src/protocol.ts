@@ -25,6 +25,8 @@ import type { ThreadOperationView } from "../../core/src/threadOperation.ts";
 import type {
   AccountStatus,
   AccountLeaseEnrolment,
+  GatewayRow,
+  SkillTreeRow,
   AuthInterruptionRow,
   ActionDefinition,
   ActionQueueView,
@@ -291,6 +293,19 @@ export const DAEMON_CAPABILITIES = [
    * account without touching it. Schema v56.
    */
   "account.share.v1",
+  /**
+   * 2026-11-05 (H7, additive, schema v57): `gateway.register {url, tokenIssuer?}` —
+   * Apiary registers its MCP endpoint; Honeybee stores the row and writes
+   * `<storeRoot>/gateways/<name>.json` itself; a spawned bee's native MCP
+   * config points at the registered URL. Audit kind `gateway.registered`.
+   */
+  "gateway.register.v1",
+  /**
+   * 2026-11-05 (H7, additive): `skills.install {tree}` — one content-hashed
+   * skill tree installed into every Honeybee-owned home now and into every
+   * home activated later. Audit kind `skills.installed`.
+   */
+  "skills.install.v1",
 ] as const;
 export type DaemonCapability = (typeof DAEMON_CAPABILITIES)[number];
 
@@ -697,6 +712,8 @@ export const RPC_VERBS = [
   "account.lease.remove",
   "account.lease.grant",
   "account.lease.batch",
+  "gateway.register",
+  "skills.install",
   "account.admission.acquire",
   "account.admission.confirm",
   "account.admission.release",
@@ -797,6 +814,70 @@ export type WatchFrame =
 export interface DedupMarkers {
   deduped?: boolean;
   status?: CommandStatus;
+}
+
+/**
+ * `gateway.register {name?, url, tokenIssuer?, idempotencyKey?}` (capability
+ * `gateway.register.v1`) — the registered local Apiary authority on a direct
+ * Unix socket registers its MCP endpoint (streamable HTTP; target.md W4).
+ * `name` defaults to `apiary`. Honeybee owns the row and writes
+ * `<storeRoot>/gateways/<name>.json` from it, at register and at every boot;
+ * every home activated from then on seeds `{type: "http", url}` (claude, pi),
+ * `url = …` (codex, grok config.toml) or `{type: "remote", url}` (opencode)
+ * for that name. `tokenIssuer` is stored and echoed in the file; the per-bee
+ * token contract is C6's, so nothing here mints or forwards a token.
+ * Refusals: `caller_not_trusted`, `confined_peer_refused`, `invalid_request`
+ * (`details.reason`: `name` | `url` | `token_issuer`).
+ */
+export interface GatewayRegisterParams {
+  name?: string;
+  url: string;
+  tokenIssuer?: string | null;
+  idempotencyKey?: string;
+}
+
+export interface GatewayRegisterResult extends DedupMarkers {
+  gateway: GatewayRow;
+  /** The file Honeybee wrote for this registration. */
+  file: string;
+  /** False when the row already said the same thing (the file is still rewritten). */
+  changed: boolean;
+  replaced: { url: string; tokenIssuer: string | null } | null;
+}
+
+/** One file of a skill tree on the wire; `content` is base64 and must hash to `sha256`. */
+export interface SkillTreeEntry {
+  path: string;
+  sha256: string;
+  size: number;
+  executable?: boolean;
+  content: string;
+}
+
+/**
+ * `skills.install {tree: {digest, entries}, idempotencyKey?}` (capability
+ * `skills.install.v1`) — the registered local Apiary authority installs one
+ * content-hashed skill tree. `digest` is sha256 over the entries sorted by
+ * path, one line each `<sha256> <x|-> <path>`; a mismatch anywhere is
+ * `invalid_request` with `details.reason` (`digest` | `sha256` | `size` |
+ * `path` | `content` | `entries` | `bytes`) and `details.index`. The node
+ * keeps its own copy under `<dataDir>/skills/<digest>/`, writes the tree into
+ * `<home>/skills/` of every Honeybee-owned account home that exists (native
+ * vendor homes are never written), and installs it into every home activated
+ * later. `<home>/skills/.hive-skills.json` records the digest and the files
+ * Honeybee owns there; files it never listed are left alone.
+ */
+export interface SkillsInstallParams {
+  tree: { digest: string; entries: SkillTreeEntry[] };
+  idempotencyKey?: string;
+}
+
+export interface SkillsInstallResult extends DedupMarkers {
+  tree: SkillTreeRow;
+  /** False when this digest was already the node's tree. */
+  changed: boolean;
+  replaced: string | null;
+  homes: Array<{ account: string; home: string; status: "installed" | "unchanged" }>;
 }
 
 export interface SpawnResult extends DedupMarkers {
@@ -2030,6 +2111,9 @@ export interface DeployInfoResult {
   capabilities: readonly DaemonCapability[];
   /** Additive: this node's durable id (the `authorityNodeId` / `nodeId` the lease verbs accept for it). */
   nodeId?: string;
+  /** Additive (H7): the gateways registered through `gateway.register` and the installed skill tree. */
+  gateways?: GatewayRow[];
+  skills?: SkillTreeRow | null;
   daemonVersion: string;
   nodeVersion: string;
   pid: number;

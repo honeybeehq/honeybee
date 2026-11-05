@@ -93,6 +93,8 @@ export interface RpcConn {
   readonly secretExecutionNodeId?: string;
   /** Set by the lease-grant gate: the registered caller a batch idempotency key is bound to. */
   readonly leasePrincipal?: string;
+  /** Set by the gateway/skills gate: the registered local Apiary authority that called. */
+  readonly authorityPrincipal?: string;
   readonly humanChat?: HumanChatAdmission;
   readonly humanPolicyAuthority?: true;
   readonly automationAuthority?: true;
@@ -569,6 +571,11 @@ export class RpcServer {
           if (!peer || peer.state !== "verified" || !this.trust.enabled || conn.ingress !== "local_unix" || conn.relayLane !== null) throw new RpcError("caller_not_trusted", "Lease grants require the registered direct local Apiary authority");
           this.trust.require(peer, conn.ingress);
           return this.opts.dispatch(verb, params, { ...conn, leasePrincipal: `${peer.peer.uid}:${this.trust.nodeId ?? "-"}` });
+        }
+        if (verb === "gateway.register" || verb === "skills.install") {
+          if (!peer || peer.state !== "verified" || !this.trust.enabled || conn.ingress !== "local_unix" || conn.relayLane !== null) throw new RpcError("caller_not_trusted", `${verb} requires the registered direct local Apiary authority`);
+          this.trust.require(peer, conn.ingress);
+          return this.opts.dispatch(verb, params, { ...conn, authorityPrincipal: `${peer.peer.uid}:${this.trust.nodeId ?? "-"}` });
         }
         if (params.automationReference !== undefined) throw new RpcError("automation_unauthorized","Reference admission belongs in protected context");
         if (params.automationKind !== undefined || params.automationRef !== undefined || automationContext?.automationReference !== undefined) {

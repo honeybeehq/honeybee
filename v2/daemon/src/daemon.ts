@@ -244,7 +244,8 @@ import {
   type HarnessAdapter,
   type GrokMcpServerStdio,
 } from "../../adapters/src/index.ts";
-import { liveGateways, type LiveGateway } from "./gateways.ts";
+import { GATEWAY_NAME, MAX_TOKEN_ISSUER_LENGTH, gatewayUrlRefusal, httpGateway, liveGateways, writeGatewayFile, type LiveGateway } from "./gateways.ts";
+import { installSkillTreeIntoHome, parseSkillTree, readSkillsManifest, skillTreeDir, storeSkillTree } from "./skills.ts";
 import { DaemonCore, type BootReport, type I1ViolationEvent } from "./loops.ts";
 import { QuotaRecovery } from "./quotaRecovery.ts";
 import { AuthResume, type CredentialValidatedReceipt } from "./authResume.ts";
@@ -314,6 +315,8 @@ import { BEE_IMPORT_BUNDLE_BYTES_MAX,
   type AccountLeaseGrant,
   type AccountLeaseGrantParams,
   type AccountLeaseGrantResult,
+  type GatewayRegisterResult,
+  type SkillsInstallResult,
   type AccountLeaseBatchItemResult,
   type AccountLeaseBatchResult,
   DEFAULT_LEASE_GRANT_TTL_MS,
@@ -713,13 +716,13 @@ type AccountActivationState = {
 
 
 function gatewayActivationRevision(gateways: readonly LiveGateway[]): string {
-  const namesOnly = gateways.map((gateway) => ({
+  const namesOnly = gateways.map((gateway) => gateway.kind === "http" ? { name: gateway.name, url: gateway.url } : {
     name: gateway.name,
     command: gateway.shim.command,
     args: gateway.shim.args,
     envNames: Object.keys(gateway.env).sort(),
     envVars: gateway.envVars ?? [],
-  }));
+  });
   return createHash("sha256").update(JSON.stringify(namesOnly)).digest("hex");
 }
 
@@ -953,6 +956,8 @@ export class HiveDaemon {
       keychainWriter: this.deps.keychainWriter,
       fetchers: this.deps.fetchers,
       ...(this.deps.gatewayMcpSeeder ? { gatewayMcpSeeder: this.deps.gatewayMcpSeeder } : {}),
+      gateways: () => this.gateways(),
+      skillsSync: (homePath) => this.syncSkillsIntoHome(homePath),
       onCredentialValidated: (accountId, by) => this.credentialValidatedQuietly(accountId, by),
     });
     const accounts = this.accounts;
@@ -1089,6 +1094,13 @@ export class HiveDaemon {
     for (const warning of this.cfg.transcriptSegments.warnings) this.log(`config.transcripts.invalid ${warning}`);
     for (const warning of this.cfg.champions.warnings) this.log(`config.champions.invalid ${warning}`);
     if (this.cfg.champions.enabled) this.log(`champions.enabled homes=${this.cfg.champions.homesDir} home_sync=${this.cfg.champions.homeSync} store=${this.cfg.transcriptSegments.storeDir}`);
+    for (const gateway of store.listGateways()) {
+      try {
+        this.log(`gateway.file name=${gateway.name} path=${await writeGatewayFile(gateway)}`);
+      } catch (error) {
+        this.log(`gateway.file_unavailable name=${gateway.name} error=${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
     for (const warning of this.cfg.durability.warnings) this.log(`config.durability.invalid ${warning}`);
     if (this.cfg.durability.resumeBundle.enabled) {
       const keyFile = this.cfg.durability.resumeBundle.keyFile;
@@ -1425,7 +1437,7 @@ export class HiveDaemon {
       return;
     }
     if (this.activationRevisionEpoch !== this.tickEpoch) {
-      this.gatewayActivationRevision = gatewayActivationRevision(liveGateways());
+      this.gatewayActivationRevision = gatewayActivationRevision(this.gateways());
       this.activationRevisionEpoch = this.tickEpoch;
     }
 
@@ -1795,12 +1807,12 @@ export class HiveDaemon {
     if (fence.fencedAt != null) throw new Error(`resolve: bee ${beeId} is fenced at epoch ${fence.epoch}; another executor owns it`);
     const adapterName = spec.adapter ?? bee.agent;
     const grokMcpServers: GrokMcpServerStdio[] = adapterName === "grok" || adapterName === "kimi" || adapterName === "muse"
-      ? liveGateways().map((gateway) => ({
+      ? this.gateways().flatMap((gateway) => gateway.kind === "stdio" ? [{
         name: gateway.name,
         command: gateway.shim.command,
         args: [...gateway.shim.args],
         env: Object.entries(gateway.env).map(([name, value]) => ({ name, value })),
-      }))
+      }] : [])
       : [];
     const instructionMove = store.placementInstructionMove(beeId);
     const placementInstruction = instructionMove
@@ -2376,6 +2388,10 @@ export class HiveDaemon {
         return this.rpcAccountLeaseGrant(params);
       case "account.lease.batch":
         return this.rpcAccountLeaseBatch(params, conn);
+      case "gateway.register":
+        return this.rpcGatewayRegister(params, conn);
+      case "skills.install":
+        return this.rpcSkillsInstall(params, conn);
       case "account.activity":
         return this.rpcAccountActivity(params);
       case "account.admission.acquire":
@@ -6948,7 +6964,7 @@ export class HiveDaemon {
       pid: process.pid,
       startedAt: this.startedAt,
       instanceId: this.instanceId,
-      ...(this.store ? { nodeId: this.store.nodeId() } : {}),
+      ...(this.store ? { nodeId: this.store.nodeId(), gateways: this.store.listGateways(), skills: this.store.skillTree() } : {}),
       dataDir: this.cfg.dataDir,
       socketPath: this.cfg.socketPath,
       storePath: this.cfg.storePath,
@@ -7823,6 +7839,66 @@ export class HiveDaemon {
 
   private rpcAccountLeaseGrant(params: Record<string, unknown>): Promise<AccountLeaseGrantResult> {
     return this.mintLeaseGrant(this.leaseGrantParams(params));
+  }
+
+  /** Registered HTTP gateways own their name; stdio shim files fill in the rest. */
+  private gateways(): LiveGateway[] {
+    const registered = this.store?.listGateways().map(httpGateway) ?? [];
+    const names = new Set(registered.map((gateway) => gateway.name));
+    return [...registered, ...liveGateways().filter((gateway) => !names.has(gateway.name))];
+  }
+
+  private rpcGatewayRegister(params: Record<string, unknown>, conn: RpcConn): Promise<GatewayRegisterResult> {
+    const name = params.name === undefined || params.name === null ? "apiary" : params.name;
+    if (typeof name !== "string" || !GATEWAY_NAME.test(name)) throw new RpcError("invalid_request", "gateway.register: name must be 1-64 lower-case letters, digits, - or _", { reason: "name" });
+    const urlRefusal = gatewayUrlRefusal(params.url);
+    if (urlRefusal) throw new RpcError("invalid_request", `gateway.register: ${urlRefusal}`, { reason: "url" });
+    const tokenIssuer = params.tokenIssuer === undefined || params.tokenIssuer === null ? null : params.tokenIssuer;
+    if (tokenIssuer !== null && (typeof tokenIssuer !== "string" || tokenIssuer.length === 0 || tokenIssuer.length > MAX_TOKEN_ISSUER_LENGTH || /[\u0000-\u001f\u007f]/u.test(tokenIssuer))) {
+      throw new RpcError("invalid_request", `gateway.register: tokenIssuer, when given, must be a string of at most ${MAX_TOKEN_ISSUER_LENGTH} characters without control characters`, { reason: "token_issuer" });
+    }
+    return this.withAsyncIdempotency("gateway.register", params, async () => {
+      const put = this.mustStore().putGateway({ name, url: params.url as string, tokenIssuer, principal: conn.authorityPrincipal ?? "-" });
+      const file = await writeGatewayFile(put.gateway);
+      this.log(`gateway.register name=${name} url=${put.gateway.url} changed=${put.changed} file=${file}`);
+      return { gateway: put.gateway, file, changed: put.changed, replaced: put.replaced ? { url: put.replaced.url, tokenIssuer: put.replaced.tokenIssuer } : null };
+    });
+  }
+
+  private skillsRoot(): string {
+    return join(this.cfg.dataDir, "skills");
+  }
+
+  /** Activation hook: an owned home gets the node's current tree when its manifest names another digest or none. */
+  private syncSkillsIntoHome(homePath: string): { status: "installed" | "unchanged" | "none"; digest?: string } {
+    const tree = this.store?.skillTree();
+    if (!tree) return { status: "none" };
+    const dir = skillTreeDir(this.skillsRoot(), tree.digest);
+    if (readSkillsManifest(dir)?.digest !== tree.digest) {
+      this.log(`skills.copy_missing digest=${tree.digest} dir=${dir}`);
+      return { status: "none" };
+    }
+    const result = installSkillTreeIntoHome(dir, homePath);
+    return { status: result.status, digest: result.digest };
+  }
+
+  private rpcSkillsInstall(params: Record<string, unknown>, conn: RpcConn): Promise<SkillsInstallResult> {
+    const tree = parseSkillTree(params.tree);
+    return this.withAsyncIdempotency("skills.install", params, async () => {
+      const store = this.mustStore();
+      const accounts = this.mustAccounts();
+      const dir = storeSkillTree(this.skillsRoot(), tree);
+      const homes: SkillsInstallResult["homes"] = [];
+      for (const account of store.listAccounts()) {
+        if (accounts.isNative(account) || !existsSync(account.homePath)) continue;
+        const installed = installSkillTreeIntoHome(dir, account.homePath);
+        homes.push({ account: account.id, home: account.homePath, status: installed.status });
+      }
+      const put = store.putSkillTree({ digest: tree.digest, files: tree.files.length, bytes: tree.bytes, principal: conn.authorityPrincipal ?? "-", homes: homes.filter((home) => home.status === "installed").length });
+      if (put.replaced && put.replaced.digest !== tree.digest) rmSync(skillTreeDir(this.skillsRoot(), put.replaced.digest), { recursive: true, force: true });
+      this.log(`skills.install digest=${tree.digest} files=${tree.files.length} bytes=${tree.bytes} homes=${homes.map((home) => `${home.account}:${home.status}`).join(",") || "-"} changed=${put.changed}`);
+      return { tree: put.tree, changed: put.changed, replaced: put.replaced?.digest ?? null, homes };
+    });
   }
 
   private async rpcAccountLeaseBatch(params: Record<string, unknown>, conn: RpcConn): Promise<AccountLeaseBatchResult> {

@@ -17,6 +17,7 @@ test("gateway reader accepts a live-registry shape and strips identity overrides
     startedAt: "2026-08-21T00:00:00.000Z",
     gatewayRev: 1,
   })), {
+    kind: "stdio",
     name: "apiary",
     shim: { command: "/opt/apiary-mcp", args: [] },
     env: { APIARY_GATEWAY: "/tmp/apiary.json" },

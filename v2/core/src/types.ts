@@ -1107,6 +1107,26 @@ export interface ChampionRow {
   fencedAt: number | null;
 }
 
+/** H7: an MCP gateway Apiary registered through `gateway.register`; Honeybee writes its file. */
+export interface GatewayRow {
+  name: string;
+  url: string;
+  /** Opaque until C6 defines the per-bee token issuer contract; echoed in the gateway file. */
+  tokenIssuer: string | null;
+  principal: string;
+  registeredAt: number;
+  updatedAt: number;
+}
+
+/** H7: the one content-hashed skill tree installed into every Honeybee-owned home. */
+export interface SkillTreeRow {
+  digest: string;
+  files: number;
+  bytes: number;
+  principal: string;
+  installedAt: number;
+}
+
 export interface ChampionHomeObjectRow {
   id: string;
   championId: string;

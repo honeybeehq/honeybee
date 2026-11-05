@@ -136,7 +136,8 @@ import { filterMailbox, INBOX_AGENT, isInboxAgent, TASK_STATUSES, type AuditRow,
 import { matchAccount } from "../../core/src/accountMatch.ts";
 import { publicAuditRow, publicEnvRecords } from "../../core/src/envRedaction.ts";
 import { hostname } from "node:os";
-import type { AuditTailResult } from "../../daemon/src/protocol.ts";
+import type { AuditTailResult, DeployInfoResult, GatewayRegisterResult, SkillsInstallResult } from "../../daemon/src/protocol.ts";
+import { readSkillTreeFromDirectory } from "../../daemon/src/skills.ts";
 import type { TranscriptTurnStream } from "../../driver-tmux/src/transcripts.ts";
 import {
   agyArgGrammar,
@@ -235,6 +236,7 @@ const VALUE_FLAGS = new Set([
   "--retained-generation",
   "--out",
   "--dir",
+  "--token-issuer",
   "--id",
   "--idempotency-key",
   "--method",
@@ -1524,6 +1526,60 @@ async function cmdTag(ctx: CliContext, parsed: Parsed): Promise<number> {
     );
     return 0;
   });
+}
+
+const GATEWAY_USAGE = "usage: hive gateway register <url> [--name apiary] [--token-issuer <issuer>] [--idempotency-key key] [--register] [--json] | hive gateway list";
+const SKILLS_USAGE = "usage: hive skills install <dir> [--idempotency-key key] [--register] [--json] | hive skills status";
+
+async function cmdGateway(ctx: CliContext, parsed: Parsed): Promise<number> {
+  const action = parsed.positional[1];
+  if (action === "list") {
+    const info = await withClient(ctx, (c) => c.request<DeployInfoResult>("deployInfo"));
+    const gateways = info.gateways ?? [];
+    emit(ctx, gateways.length === 0 ? ["no registered gateways"] : gateways.map((g) => `${g.name}  ${g.url}${g.tokenIssuer ? `  issuer=${g.tokenIssuer}` : ""}  registered ${new Date(g.registeredAt).toISOString()}`), { gateways }, false);
+    return 0;
+  }
+  const url = parsed.positional[2];
+  if (action !== "register" || !url) throw new Error(GATEWAY_USAGE);
+  const name = parsed.flags.get("--name");
+  const tokenIssuer = parsed.flags.get("--token-issuer");
+  const key = parsed.flags.get("--idempotency-key");
+  const r = await withClient(ctx, async (c) => {
+    if (!c.capabilities.includes("gateway.register.v1")) throw new RpcError("capability_missing", "Update Honeybee: gateway.register.v1 is required.");
+    if (parsed.flags.get("--register") === true) await registerLocalTrust(ctx, c);
+    return c.request<GatewayRegisterResult>("gateway.register", {
+      url,
+      ...(typeof name === "string" ? { name } : {}),
+      ...(typeof tokenIssuer === "string" ? { tokenIssuer } : {}),
+      ...(typeof key === "string" ? { idempotencyKey: key } : {}),
+    });
+  });
+  emit(ctx, [confirm("ok", r.changed ? "registered" : "already registered", `gateway ${r.gateway.name} at ${r.gateway.url}; file ${tildify(r.file)}`, r.deduped)], r, false);
+  return 0;
+}
+
+async function cmdSkills(ctx: CliContext, parsed: Parsed): Promise<number> {
+  const action = parsed.positional[1];
+  if (action === "status") {
+    const info = await withClient(ctx, (c) => c.request<DeployInfoResult>("deployInfo"));
+    const tree = info.skills ?? null;
+    emit(ctx, [tree ? `skill tree ${tree.digest}  ${tree.files} files, ${tree.bytes} bytes, installed ${new Date(tree.installedAt).toISOString()}` : "no skill tree installed"], { skills: tree }, false);
+    return 0;
+  }
+  const dir = parsed.positional[2];
+  if (action !== "install" || !dir) throw new Error(SKILLS_USAGE);
+  const tree = readSkillTreeFromDirectory(resolve(dir));
+  const key = parsed.flags.get("--idempotency-key");
+  const r = await withClient(ctx, async (c) => {
+    if (!c.capabilities.includes("skills.install.v1")) throw new RpcError("capability_missing", "Update Honeybee: skills.install.v1 is required.");
+    if (parsed.flags.get("--register") === true) await registerLocalTrust(ctx, c);
+    return c.request<SkillsInstallResult>("skills.install", { tree, ...(typeof key === "string" ? { idempotencyKey: key } : {}) }, 300_000);
+  });
+  emit(ctx, [
+    confirm("ok", r.changed ? "installed" : "already installed", `skill tree ${r.tree.digest} (${r.tree.files} files, ${r.tree.bytes} bytes)`, r.deduped),
+    ...r.homes.map((home) => `  ${home.status === "installed" ? "+" : "="} ${home.account}  ${tildify(home.home)}`),
+  ], r, false);
+  return 0;
 }
 
 async function cmdReconnectTools(ctx: CliContext, parsed: Parsed): Promise<number> {
@@ -5044,6 +5100,10 @@ export async function runV2Cli(argv: string[], io: CliIo = defaultIo): Promise<n
         return await cmdCell(ctx, parsed);
       case "account":
         return await cmdAccount(ctx, parsed);
+      case "gateway":
+        return await cmdGateway(ctx, parsed);
+      case "skills":
+        return await cmdSkills(ctx, parsed);
       case "x":
         return await cmdX(ctx, parsed);
       case "xa":

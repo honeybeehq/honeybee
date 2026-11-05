@@ -28,9 +28,9 @@ import { defaultClaudeRefreshTransport, describeRefreshFailure, sanitizeProvider
 import { CodexCredentialAuthority, CODEX_CREDENTIAL_CODEC, readCodexCredentialCopy, defaultCodexRefreshTransport } from "./codexCredentialAuthority.ts";
 import { MuseCredentialAuthority, MUSE_CREDENTIAL_CODEC, MUSE_DEFAULT_KEY_TTL_MS, museMeta, museWorkingDocument, defaultMuseKeyTransport } from "./museCredentialAuthority.ts";
 import { GrokCredentialAuthority, GROK_CREDENTIAL_CODEC, grokAccessOnly, grokCredentialEntry, defaultGrokRefreshTransport } from "./grokCredentialAuthority.ts";
-import { liveGateways } from "./gateways.ts";
+import { liveGateways, type LiveGateway } from "./gateways.ts";
 import { withFileLock } from "../../core/src/lock.ts";
-import { seedGatewayMcp, type GatewayMcpSeedResult } from "./gatewayMcpSeed.ts";
+import { seedGatewayMcp, type GatewayMcpGateway, type GatewayMcpSeedResult } from "./gatewayMcpSeed.ts";
 import {
   AUTO_PICK_DEBIT_PERCENT,
   DEFAULT_ACCOUNT_ADMISSION_POLICY,
@@ -195,6 +195,10 @@ export interface AccountsServiceOptions {
   codexLeaseRefresh?: (homePath: string) => Promise<void>;
   /** Common native MCP reconciler; injected so activation tests stay hermetic. */
   gatewayMcpSeeder?: (homePath: string, harness: string) => Promise<GatewayMcpSeedResult>;
+  /** The gateways a home is seeded with: registered HTTP endpoints plus the stdio shim files. Default: the files only. */
+  gateways?: () => LiveGateway[];
+  /** H7: install the node's current skill tree into an owned home at activation; absent = no tree. */
+  skillsSync?: (homePath: string) => { status: "installed" | "unchanged" | "none"; digest?: string };
   /** The provider just accepted this account's credential: a rotation it issued, or a probe it answered. */
   onCredentialValidated?: (accountId: string, by: "refresh" | "limits_probe") => void;
 }
@@ -951,6 +955,8 @@ export class AccountsService {
   private readonly nativeKeychainSeeds = new Map<string, Set<Promise<unknown>>>();
   private readonly codexLeaseRefresh: (homePath: string) => Promise<void>;
   private readonly gatewayMcpSeeder: (homePath: string, harness: string) => Promise<GatewayMcpSeedResult>;
+  private readonly gateways: () => LiveGateway[];
+  private readonly skillsSync: (homePath: string) => { status: "installed" | "unchanged" | "none"; digest?: string };
   private readonly onCredentialValidated: (accountId: string, by: "refresh" | "limits_probe") => void;
 
   constructor(opts: AccountsServiceOptions) {
@@ -1218,8 +1224,17 @@ export class AccountsService {
       ...opts.providerHttp,
     };
     this.codexLeaseRefresh = opts.codexLeaseRefresh ?? defaultCodexLeaseRefresh(this.cfg.agents.codex?.command ?? "codex");
+    this.gateways = opts.gateways ?? (() => liveGateways());
+    this.skillsSync = opts.skillsSync ?? (() => ({ status: "none" }));
     this.gatewayMcpSeeder = opts.gatewayMcpSeeder
-      ?? ((homePath, harness) => seedGatewayMcp(homePath, harness, { gateways: liveGateways(), disabled: process.env.HIVE_GATEWAYS_DISABLE === "1", failOnError: true }));
+      ?? ((homePath, harness) => seedGatewayMcp(homePath, harness, { ...this.seedGateways(), failOnError: true }));
+  }
+
+  private seedGateways(): { gateways: GatewayMcpGateway[]; disabled: boolean } {
+    const gateways = this.gateways().map((gateway) => gateway.kind === "http"
+      ? { name: gateway.name, url: gateway.url }
+      : { name: gateway.name, shim: gateway.shim, env: gateway.env, ...(gateway.envVars ? { envVars: gateway.envVars } : {}) });
+    return { gateways, disabled: process.env.HIVE_GATEWAYS_DISABLE === "1" && !this.gateways().some((gateway) => gateway.kind === "http") };
   }
 
   // -------------------------------------------------------------------------
@@ -4395,7 +4410,7 @@ export class AccountsService {
    */
   async reconnectGatewayTools(home: string, afterSeed: (targets: string[]) => Promise<void>): Promise<void> {
     const result = await seedGatewayMcp(home, "codex", {
-      gateways: liveGateways(), disabled: process.env.HIVE_GATEWAYS_DISABLE === "1", failOnError: true,
+      ...this.seedGateways(), failOnError: true,
       afterSeed,
     });
     if (result.status !== "seeded") throw new Error(`Gateway config reconciliation refused: ${result.reason ?? "unknown"}`);
@@ -4422,6 +4437,8 @@ export class AccountsService {
     } else if (gatewaySeed.status === "skipped") {
       this.log(`account.activate.gateways account=${account.id} skipped=${JSON.stringify(gatewaySeed.reason ?? "unknown")}`);
     }
+    const skills = this.skillsSync(account.homePath);
+    if (skills.status === "installed") this.log(`account.activate.skills account=${account.id} digest=${skills.digest}`);
     return result;
   }
 

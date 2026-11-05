@@ -101,6 +101,8 @@ export const GROUPS: Group[] = [
       ["swap-account", "<bee> <account>", "move a bee to another account of the SAME harness"],
       ["account", "limits [<selector>]", "refresh + show provider limits (feeds auto; rr uses registration order)"],
       ["account", "import [--root ~/.hive]", "import the old vault · account backfill [--dry-run]"],
+      ["gateway", "register <url> [--name apiary]", "register the Apiary MCP endpoint; Honeybee writes gateways/<name>.json and seeds every home with it · gateway list"],
+      ["skills", "install <dir>", "install a content-hashed skill tree into every Honeybee-owned home · skills status"],
     ],
   },
   {

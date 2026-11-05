@@ -108,6 +108,8 @@ import {
   type TranscriptSegmentRow,
   type TranscriptSegmentObjectRow,
   type ChampionRow,
+  type GatewayRow,
+  type SkillTreeRow,
   type ChampionHomeObjectRow,
   type BeeResumeBundleRow,
   type BeeEpochRow,
@@ -220,7 +222,7 @@ import {
   TASK_TRANSITIONS,
 } from "./tasks.ts";
 import { deliveredSenderKind } from "./automation.ts";
-import { ACCOUNT_CREDENTIAL_ATTENTION_TABLE_SQL, QUESTIONS_TABLE_SQL, ACTIONS_TABLE_SQL, AUTH_INTERRUPTIONS_TABLE_SQL, ACCOUNT_ADMISSIONS_TABLE_SQL, ACCOUNT_CREDENTIAL_AUTHORITIES_TABLE_SQL, ACCOUNT_CREDENTIAL_AUTHORITIES_V27_COLUMNS, ACCOUNT_LIMITS_TABLE_SQL, ACCOUNTS_NATIVE_INDEX_SQL, BEES_ADDITIVE_COLUMNS, BEES_ACTIVE_MOVE_INDEX_SQL, BEES_ACTIVE_HANDOFF_INDEX_SQL, BEE_HANDOFFS_TABLE_SQL, TRANSCRIPT_SEGMENTS_TABLE_SQL, TRANSCRIPT_SEGMENT_OBJECTS_SQL, CHAMPIONS_SQL, BEE_RESUME_BUNDLES_SQL, MAILBOX_PENDING_METADATA_INDEX_SQL, BEE_MOVES_TABLE_SQL, CELLS_TABLE_SQL, CELLS_V22_COLUMNS, CELLS_ADDITIVE_COLUMNS, CELL_OPS_TABLE_SQL, FLAGS_ADDITIVE_COLUMNS, FLAGS_EXPIRY_INDEX_SQL, HANDLE_INDEX_SQL, IDEMPOTENCY_INDEX_SQL, MAILBOX_ADDITIVE_COLUMNS, MAIL_HISTORY_INDEX_SQL, MAIL_HISTORY_PROJECTION_SQL, RUNTIMES_ADDITIVE_COLUMNS, SCHEMA_SQL, SCHEMA_VERSION } from "./schema.ts";
+import { ACCOUNT_CREDENTIAL_ATTENTION_TABLE_SQL, QUESTIONS_TABLE_SQL, ACTIONS_TABLE_SQL, AUTH_INTERRUPTIONS_TABLE_SQL, ACCOUNT_ADMISSIONS_TABLE_SQL, ACCOUNT_CREDENTIAL_AUTHORITIES_TABLE_SQL, ACCOUNT_CREDENTIAL_AUTHORITIES_V27_COLUMNS, ACCOUNT_LIMITS_TABLE_SQL, ACCOUNTS_NATIVE_INDEX_SQL, BEES_ADDITIVE_COLUMNS, BEES_ACTIVE_MOVE_INDEX_SQL, BEES_ACTIVE_HANDOFF_INDEX_SQL, BEE_HANDOFFS_TABLE_SQL, TRANSCRIPT_SEGMENTS_TABLE_SQL, TRANSCRIPT_SEGMENT_OBJECTS_SQL, CHAMPIONS_SQL, GATEWAYS_SQL, BEE_RESUME_BUNDLES_SQL, MAILBOX_PENDING_METADATA_INDEX_SQL, BEE_MOVES_TABLE_SQL, CELLS_TABLE_SQL, CELLS_V22_COLUMNS, CELLS_ADDITIVE_COLUMNS, CELL_OPS_TABLE_SQL, FLAGS_ADDITIVE_COLUMNS, FLAGS_EXPIRY_INDEX_SQL, HANDLE_INDEX_SQL, IDEMPOTENCY_INDEX_SQL, MAILBOX_ADDITIVE_COLUMNS, MAIL_HISTORY_INDEX_SQL, MAIL_HISTORY_PROJECTION_SQL, RUNTIMES_ADDITIVE_COLUMNS, SCHEMA_SQL, SCHEMA_VERSION } from "./schema.ts";
 import { beeMoveReviveKey, beeMoveStopKey, beeMoveTransitionLegal, toBeeMoveView } from "./cellMove.ts";
 import {
   ACTION_DISPATCH_SENDER,
@@ -1745,6 +1747,10 @@ function mailPendingMessage(row: Row): MailPendingMessage {
   };
 }
 
+function gatewayRowOf(row: Row): GatewayRow {
+  return { name: String(row.name), url: String(row.url), tokenIssuer: row.token_issuer == null ? null : String(row.token_issuer), principal: String(row.principal), registeredAt: Number(row.registered_at), updatedAt: Number(row.updated_at) };
+}
+
 export class CoreStore {
   readonly path: string;
   private readonly effectLedger: EffectLedger;
@@ -2211,6 +2217,7 @@ export class CoreStore {
     this.db.exec(TRANSCRIPT_SEGMENTS_TABLE_SQL);
     this.db.exec(TRANSCRIPT_SEGMENT_OBJECTS_SQL);
     this.db.exec(CHAMPIONS_SQL);
+    this.db.exec(GATEWAYS_SQL);
     this.db.exec(BEE_RESUME_BUNDLES_SQL);
     // v24: the action queue tables are additive (CREATE IF NOT EXISTS).
     this.db.exec(ACTIONS_TABLE_SQL);
@@ -9828,6 +9835,47 @@ export class CoreStore {
       const champion = this.getChampion(id) as ChampionRow;
       this.audit("champion.put", existing.currentBeeId, { champion, outcome: "updated" });
       return champion;
+    });
+  }
+
+  listGateways(): GatewayRow[] {
+    return (this.stmt("SELECT name, url, token_issuer, principal, registered_at, updated_at FROM gateways ORDER BY name").all() as Row[]).map(gatewayRowOf);
+  }
+
+  getGateway(name: string): GatewayRow | null {
+    const row = this.stmt("SELECT name, url, token_issuer, principal, registered_at, updated_at FROM gateways WHERE name = ?").get(name) as Row | undefined;
+    return row ? gatewayRowOf(row) : null;
+  }
+
+  /** Upsert one registered gateway; a row that already says the same thing is left alone and audits nothing. */
+  putGateway(input: { name: string; url: string; tokenIssuer: string | null; principal: string }): { gateway: GatewayRow; changed: boolean; replaced: GatewayRow | null } {
+    return this.tx(() => {
+      const existing = this.getGateway(input.name);
+      if (existing && existing.url === input.url && existing.tokenIssuer === input.tokenIssuer) return { gateway: existing, changed: false, replaced: null };
+      const now = this.now();
+      this.stmt("INSERT INTO gateways(name, url, token_issuer, principal, registered_at, updated_at) VALUES(?, ?, ?, ?, ?, ?) ON CONFLICT(name) DO UPDATE SET url = excluded.url, token_issuer = excluded.token_issuer, principal = excluded.principal, updated_at = excluded.updated_at")
+        .run(input.name, input.url, input.tokenIssuer, input.principal, existing?.registeredAt ?? now, now);
+      const gateway = this.getGateway(input.name)!;
+      this.audit("gateway.registered", null, { name: gateway.name, url: gateway.url, tokenIssuer: gateway.tokenIssuer, replaced: existing ? { url: existing.url, tokenIssuer: existing.tokenIssuer } : null });
+      return { gateway, changed: true, replaced: existing };
+    });
+  }
+
+  skillTree(): SkillTreeRow | null {
+    const row = this.stmt("SELECT digest, files, bytes, principal, installed_at FROM skill_tree WHERE id = 1").get() as Row | undefined;
+    return row ? { digest: String(row.digest), files: Number(row.files), bytes: Number(row.bytes), principal: String(row.principal), installedAt: Number(row.installed_at) } : null;
+  }
+
+  /** Make one tree the node's current skill tree; the same digest again changes nothing and audits nothing. */
+  putSkillTree(input: { digest: string; files: number; bytes: number; principal: string; homes: number }): { tree: SkillTreeRow; changed: boolean; replaced: SkillTreeRow | null } {
+    return this.tx(() => {
+      const existing = this.skillTree();
+      if (existing && existing.digest === input.digest) return { tree: existing, changed: false, replaced: null };
+      this.stmt("INSERT INTO skill_tree(id, digest, files, bytes, principal, installed_at) VALUES(1, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET digest = excluded.digest, files = excluded.files, bytes = excluded.bytes, principal = excluded.principal, installed_at = excluded.installed_at")
+        .run(input.digest, input.files, input.bytes, input.principal, this.now());
+      const tree = this.skillTree()!;
+      this.audit("skills.installed", null, { digest: tree.digest, files: tree.files, bytes: tree.bytes, homes: input.homes, replaced: existing?.digest ?? null });
+      return { tree, changed: true, replaced: existing };
     });
   }
 

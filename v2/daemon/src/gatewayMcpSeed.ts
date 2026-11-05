@@ -8,18 +8,15 @@ function tomlLines(input: string): string[] {
   return trimmed.length === 0 ? [] : trimmed.split(/\r?\n/u);
 }
 
-export type GatewayMcpGateway = {
-  name: string;
-  shim: { command: string; args: string[] };
-  env: Record<string, string>;
-  envVars?: string[];
-};
+export type GatewayMcpGateway =
+  | { name: string; shim: { command: string; args: string[] }; env: Record<string, string>; envVars?: string[] }
+  | { name: string; url: string };
 
 const STAMP_FILE = ".hive-gateways.json";
 const STAMP_SCHEMA = 1;
 const GATEWAY_IDENTITY_ENV_VARS = ["HIVE_BEE", "HIVE_BEE_ID"] as const;
 
-type McpEntry = { command: string; args: string[]; envVars?: string[] };
+type McpEntry = { command: string; args: string[]; envVars?: string[] } | { url: string };
 type McpDialectKind = "claude-json" | "toml-mcp-servers" | "opencode-json";
 type McpDialect = { file: string; kind: McpDialectKind; forwardEnvVars: boolean };
 
@@ -36,6 +33,7 @@ export type GatewayMcpSeedResult = {
 
 export type SeedGatewayMcpOptions = {
   gateways: GatewayMcpGateway[];
+  /** File discovery is off (HIVE_GATEWAYS_DISABLE=1) and nothing is registered: leave the home's seed state untouched. */
   disabled?: boolean;
   /** Let a readiness gate retry transient lock/filesystem failures. */
   failOnError?: boolean;
@@ -85,7 +83,7 @@ export function nativeGatewayHome(harness: string, env: NodeJS.ProcessEnv = proc
 }
 
 function desiredEntries(gateways: GatewayMcpGateway[], dialect: McpDialect): Record<string, McpEntry> {
-  return Object.fromEntries(gateways.map((gateway) => [gateway.name, {
+  return Object.fromEntries(gateways.map((gateway) => [gateway.name, "url" in gateway ? { url: gateway.url } : {
     command: gateway.shim.command,
     args: [...gateway.shim.args],
     ...(dialect.forwardEnvVars
@@ -101,11 +99,29 @@ function desiredEntries(gateways: GatewayMcpGateway[], dialect: McpDialect): Rec
 function isMcpEntry(value: unknown): value is McpEntry {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const entry = value as Record<string, unknown>;
+  if (typeof entry.url === "string") return entry.command === undefined && entry.args === undefined && entry.envVars === undefined;
   return typeof entry.command === "string"
     && Array.isArray(entry.args)
     && entry.args.every((arg) => typeof arg === "string")
     && (entry.envVars === undefined
       || (Array.isArray(entry.envVars) && entry.envVars.every((name) => typeof name === "string")));
+}
+
+function copyEntry(entry: McpEntry): McpEntry {
+  return "url" in entry ? { url: entry.url } : { command: entry.command, args: [...entry.args], ...(entry.envVars ? { envVars: [...entry.envVars] } : {}) };
+}
+
+/** The claude-json shape on disk: a stdio entry is `{command, args}`; an HTTP gateway is `{type: "http", url}`. */
+function claudeOnDisk(entry: McpEntry): Record<string, unknown> {
+  return "url" in entry ? { type: "http", url: entry.url } : entry;
+}
+
+function claudeFromDisk(value: unknown): McpEntry | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  if (record.type === "http" && typeof record.url === "string" && record.command === undefined) return { url: record.url };
+  if (record.type !== undefined) return null;
+  return isMcpEntry(record) ? record : null;
 }
 
 async function readStamp(homePath: string): Promise<StampRead> {
@@ -131,11 +147,7 @@ async function readStamp(homePath: string): Promise<StampRead> {
       const parsedEntries: Record<string, McpEntry> = {};
       for (const [name, entry] of Object.entries(entries)) {
         if (!isMcpEntry(entry)) return { status: "invalid" };
-        parsedEntries[name] = {
-          command: entry.command,
-          args: [...entry.args],
-          ...(entry.envVars ? { envVars: [...entry.envVars] } : {}),
-        };
+        parsedEntries[name] = copyEntry(entry);
       }
       files[file] = parsedEntries;
     }
@@ -182,7 +194,9 @@ async function kitClaimsTarget(homePath: string, targetFile: string): Promise<"c
 }
 
 function sameEntry(left: unknown, right: McpEntry): boolean {
-  if (!isMcpEntry(left) || left.command !== right.command) return false;
+  if (!isMcpEntry(left)) return false;
+  if ("url" in right || "url" in left) return "url" in right && "url" in left && left.url === right.url;
+  if (left.command !== right.command) return false;
   if (left.args.length !== right.args.length || !left.args.every((arg, index) => arg === right.args[index])) return false;
   const leftEnvVars = left.envVars ?? [];
   const rightEnvVars = right.envVars ?? [];
@@ -325,22 +339,22 @@ function reconcileClaude(
     const current = servers[name];
     const next = desired[name];
     if (next) {
-      if (!sameEntry(current, next)) changed = true;
-      servers[name] = next;
+      if (!sameEntry(claudeFromDisk(current), next)) changed = true;
+      servers[name] = claudeOnDisk(next);
       nextOwned[name] = next;
       continue;
     }
     if (current === undefined) {
       continue;
     }
-    if (!sameEntry(current, prior)) continue;
+    if (!sameEntry(claudeFromDisk(current), prior)) continue;
     delete servers[name];
     changed = true;
   }
 
   for (const [name, entry] of Object.entries(desired)) {
-    if (name in owned || sameEntry(servers[name], entry)) continue;
-    servers[name] = entry;
+    if (name in owned || sameEntry(claudeFromDisk(servers[name]), entry)) continue;
+    servers[name] = claudeOnDisk(entry);
     nextOwned[name] = entry;
     changed = true;
   }
@@ -356,6 +370,7 @@ function opencodeEnvTemplate(name: string): string {
 }
 
 function opencodeOnDisk(entry: McpEntry): Record<string, unknown> {
+  if ("url" in entry) return { type: "remote", url: entry.url, enabled: true };
   const command = [entry.command, ...entry.args];
   const environment = entry.envVars
     ? Object.fromEntries(entry.envVars.map((name) => [name, opencodeEnvTemplate(name)]))
@@ -371,6 +386,7 @@ function opencodeOnDisk(entry: McpEntry): Record<string, unknown> {
 function opencodeFromDisk(value: unknown): McpEntry | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const record = value as Record<string, unknown>;
+  if (record.type === "remote") return typeof record.url === "string" ? { url: record.url } : null;
   if (record.type !== "local" || !Array.isArray(record.command) || record.command.length === 0) return null;
   if (!record.command.every((part) => typeof part === "string")) return null;
   const command = record.command[0] as string;
@@ -446,7 +462,7 @@ function renderCodexEntry(name: string, entry: McpEntry, previous?: string): str
     const lines = previous.split("\n").slice(1);
     for (let index = 0; index < lines.length; index++) {
       const line = lines[index]!;
-      const owned = /^\s*(?:command|args|env_vars|["'](?:command|args|env_vars)["'])\s*=/.test(line);
+      const owned = /^\s*(?:command|args|env_vars|url|["'](?:command|args|env_vars|url)["'])\s*=/.test(line);
       const assignment = /^\s*[^=]+=(.*)$/.exec(line);
       let balance = assignment ? scanTomlValue(assignment[1]!, { square: 0, curly: 0 }) : null;
       if (!owned) extra.push(line);
@@ -460,11 +476,13 @@ function renderCodexEntry(name: string, entry: McpEntry, previous?: string): str
   }
   return [
     `[mcp_servers.${tomlKey(name)}]`,
-    `command = ${JSON.stringify(entry.command)}`,
-    `args = [${entry.args.map((arg) => JSON.stringify(arg)).join(", ")}]`,
-    ...(entry.envVars
-      ? [`env_vars = [${entry.envVars.map((envVar) => JSON.stringify(envVar)).join(", ")}]`]
-      : []),
+    ...("url" in entry ? [`url = ${JSON.stringify(entry.url)}`] : [
+      `command = ${JSON.stringify(entry.command)}`,
+      `args = [${entry.args.map((arg) => JSON.stringify(arg)).join(", ")}]`,
+      ...(entry.envVars
+        ? [`env_vars = [${entry.envVars.map((envVar) => JSON.stringify(envVar)).join(", ")}]`]
+        : []),
+    ]),
     ...extra,
   ].join("\n");
 }

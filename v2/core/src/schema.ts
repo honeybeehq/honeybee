@@ -164,8 +164,11 @@
  * v55 — H6a bee durability: `bee_resume_bundles` (encrypted harness-state bundles in the object store)
  * and `bee_epochs` (import fence); additive CREATE TABLE IF NOT EXISTS.
  * v56 — H6 account authority: `accounts.share_id` and `accounts.share_epoch` (the credential share
- * and its authority epoch, owned by Honeybee); additive; migration = ALTER TABLE ADD COLUMN ×2. */
-export const SCHEMA_VERSION = 56;
+ * and its authority epoch, owned by Honeybee); additive; migration = ALTER TABLE ADD COLUMN ×2.
+ * v57 — H7 gateways and skills: `gateways` (the MCP endpoints Apiary registers; Honeybee writes
+ * `<storeRoot>/gateways/<name>.json` from these rows) and `skill_tree` (the one content-hashed skill
+ * tree installed into every Honeybee-owned home); additive CREATE TABLE IF NOT EXISTS ×2. */
+export const SCHEMA_VERSION = 57;
 
 export const QUESTIONS_TABLE_SQL = `
 CREATE TABLE IF NOT EXISTS questions (
@@ -1088,6 +1091,25 @@ CREATE TABLE IF NOT EXISTS champion_home_objects (
   epoch       INTEGER NOT NULL DEFAULT 0
 ) STRICT;
 CREATE INDEX IF NOT EXISTS champion_home_objects_champion ON champion_home_objects(champion_id, closed_at);
+`;
+
+export const GATEWAYS_SQL = `
+CREATE TABLE IF NOT EXISTS gateways (
+  name          TEXT PRIMARY KEY,
+  url           TEXT NOT NULL,
+  token_issuer  TEXT,
+  principal     TEXT NOT NULL,
+  registered_at INTEGER NOT NULL,
+  updated_at    INTEGER NOT NULL
+) STRICT;
+CREATE TABLE IF NOT EXISTS skill_tree (
+  id           INTEGER PRIMARY KEY CHECK (id = 1),
+  digest       TEXT NOT NULL,
+  files        INTEGER NOT NULL,
+  bytes        INTEGER NOT NULL,
+  principal    TEXT NOT NULL,
+  installed_at INTEGER NOT NULL
+) STRICT;
 `;
 
 export const BEE_RESUME_BUNDLES_SQL = `
