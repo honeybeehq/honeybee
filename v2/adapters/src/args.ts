@@ -196,8 +196,8 @@ export const agyArgGrammar: ArgGrammar = {
 /**
  * `agy acp` takes model, reasoning and mode on the wire, not argv:
  *   `--model X`  → session/set_config_option `model` (a family such as
- *                  `gemini-4-argon`); a concrete id (`gemini-4-argon-high`)
- *                  the option refuses goes through session/set_model
+ *                  `gemini-4-argon`, or a concrete id such as
+ *                  `gemini-4-argon-high`); a refusal retries as session/set_model
  *   `--effort low|medium|high` → session/set_config_option `thought_level`
  *   `--mode default|accept-edits|plan` → session/set_config_option `mode`
  * `--dangerously-skip-permissions` stays on argv and also answers permission
