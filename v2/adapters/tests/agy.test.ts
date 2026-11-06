@@ -1,6 +1,6 @@
 /**
- * agy ACP adapter. The initialize and session/new shapes are from agy 1.5.2
- * (captured 2026-11-06); the rest follows ACP v1.
+ * agy ACP adapter. Shapes are from agy 1.5.2 (initialize and session/new
+ * captured 2026-11-06, the rest from that day's live smoke) and ACP v1.
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -104,7 +104,7 @@ test("agy applies model, effort and mode through configuration options before it
   assert.deepEqual(adapter({ model: "m" }).parseLine(j({ id: "agy:model:s-3", result: {} }))[0], { kind: "booted", sessionId: "s-3" });
 });
 
-test("agy sends a concrete model id through session/set_model when the option refuses it", () => {
+test("agy retries a model the option refuses through session/set_model", () => {
   const a = adapter({ model: "gemini-4-argon-high", effort: "low" });
   const refused = j({ id: "agy:model:s-1", error: { code: -32602, message: "Invalid params", data: "unknown model value" } });
   const fallback = request(a.parseLine(refused));
@@ -188,7 +188,8 @@ test("agy output opens a turn; replayed and unrelated updates do not", () => {
   for (const kind of ["agent_message_chunk", "agent_thought_chunk", "tool_call", "tool_call_update"]) {
     assert.deepEqual(a.parseLine(update(kind)), [{ kind: "turn_started" }], kind);
   }
-  for (const kind of ["user_message_chunk", "available_commands_update", "current_mode_update", "config_option_update", "plan"]) {
+  // agy 1.5.2 sends the first three of these outside prompts, at boot and after a turn.
+  for (const kind of ["config_option_update", "available_commands_update", "session_info_update", "user_message_chunk", "current_mode_update", "plan"]) {
     assert.deepEqual(a.parseLine(update(kind)), [], kind);
   }
   assert.deepEqual(a.parseLine(update("agent_message_chunk", { isReplay: true })), []);

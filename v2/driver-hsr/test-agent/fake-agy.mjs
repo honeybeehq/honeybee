@@ -109,13 +109,16 @@ function startMcp(servers) {
 async function mcpTurn(msg, body) {
   const callId = `call-${++nextCall}`;
   const input = { text: /SMOKE_[A-Z0-9_]+/.exec(body)?.[0] ?? "hi" };
-  update({ sessionUpdate: "tool_call", toolCallId: callId, title: `Run mcp_${mcp.name}_smoke_echo`, kind: "other", status: "pending", rawInput: input });
+  const tool = `mcp_${mcp.name}_smoke_echo`;
+  update({ sessionUpdate: "tool_call", toolCallId: callId, name: tool, title: `Run ${tool}`, kind: "other", status: "in_progress", args: input, rawInput: input });
   await mcp.ready;
   const reply = await mcp.call("tools/call", { name: "smoke_echo", arguments: input });
   lastToolResult = reply.result?.content?.[0]?.text ?? "";
-  update({ sessionUpdate: "tool_call_update", toolCallId: callId, status: "completed", content: [{ type: "content", content: text(lastToolResult) }] });
+  // agy 1.5.2 completes an MCP call without its output.
+  update({ sessionUpdate: "tool_call_update", toolCallId: callId, name: tool, title: `Run ${tool}`, kind: "other", status: "completed", args: input, rawInput: input });
   update({ sessionUpdate: "agent_message_chunk", content: text(lastToolResult) });
-  write({ id: msg.id, result: { stopReason: "end_turn" } });
+  write({ id: msg.id, result: { stopReason: "end_turn", usage: { inputTokens: 20, outputTokens: 4, cachedReadTokens: 0, cachedWriteTokens: 0, thoughtTokens: 0, totalTokens: 24 } } });
+  update({ sessionUpdate: "session_info_update", title: "Smoke" });
 }
 
 function prompt(msg) {
@@ -189,9 +192,11 @@ createInterface({ input: process.stdin }).on("line", (raw) => {
       write({ id: msg.id, result: session() });
       return;
     case "session/set_config_option": {
-      const allowed = { model: FAMILIES, thought_level: LEVELS, mode: MODES }[msg.params?.configId];
+      const allowed = { model: [...FAMILIES, ...CONCRETE], thought_level: LEVELS, mode: MODES }[msg.params?.configId];
       if (!allowed?.includes(msg.params.value)) return refuse(msg.id, -32602, "Invalid params", `unknown ${msg.params?.configId} value`);
       write({ id: msg.id, result: { configOptions: session().configOptions } });
+      update({ sessionUpdate: "config_option_update", configOptions: session().configOptions });
+      update({ sessionUpdate: "available_commands_update", availableCommands: [] });
       return;
     }
     case "session/set_model":

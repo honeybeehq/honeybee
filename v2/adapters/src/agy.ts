@@ -11,8 +11,8 @@
  *   we write :   authenticate {methodId:"gemini-api-key"}, then the session request once more
  *                (without the key: `auth_needed`; the user signs in with agy itself)
  *   server   : session result {sessionId}              → respond, each only when requested:
- *   we write :   session/set_config_option model        (`--model`; a refusal retries as session/set_model,
- *                                                        which takes the concrete model ids)
+ *   we write :   session/set_config_option model        (`--model`, a family or a concrete id; a refusal
+ *                                                        retries as session/set_model)
  *   we write :   session/set_config_option thought_level (`--effort`)
  *   we write :   session/set_config_option mode          (`--mode`; a refusal retries as session/set_mode)
  *   server   : last configuration result               → booted (idle)
@@ -25,8 +25,10 @@
  *
  * Request ids carry the session id, so every signal derives from the input
  * line alone and a daemon that adopts the host mid-handshake replays the same
- * decisions. Captured from agy 1.5.2 on 2026-11-06 (initialize, session/new);
- * the remaining shapes follow ACP v1.
+ * decisions. Verified against agy 1.5.2 on 2026-11-06 (SMOKE.md): the `model`
+ * option takes families and concrete ids alike, the prompt response carries
+ * `usage`, and agy sends config_option_update, available_commands_update and
+ * session_info_update outside prompts, none of which opens a turn.
  */
 import {
   asObject,
@@ -211,7 +213,7 @@ export function agyAdapter(opts: AgyAdapterOptions): HarnessAdapter {
       const kind = step[1] as Step;
       const sessionId = step[2]!;
       if (error) {
-        // The option takes model families; the concrete model ids go through session/set_model.
+        // A second route for an agy whose option refuses the value (1.5.2 accepts families and concrete ids).
         if (kind === "model") return configure("set_model", sessionId);
         if (kind === "mode") return configure("set_mode", sessionId);
         const what = kind === "set_model" ? `model ${opts.model}` : kind === "effort" ? `effort ${opts.effort}` : `mode ${opts.mode}`;
@@ -272,14 +274,21 @@ export function agyAdapter(opts: AgyAdapterOptions): HarnessAdapter {
 /** agy titles an MCP call `Run mcp_<server>_<tool>`; the tool is the name. */
 const MCP_TITLE = /^Run (mcp_[A-Za-z0-9_.-]+)$/;
 
-/** The same row with an MCP tool call named by its tool; null when the row needs no change. */
+/**
+ * The same row with the tool call named by its tool; null when the row needs
+ * no change. agy 1.5.2 puts the tool's identifier in `name` beside a display
+ * `title` (`name: "mcp_smoke_smoke_echo"`, `title: "Run mcp_smoke_smoke_echo"`);
+ * a row without `name` falls back to the identifier inside an MCP title.
+ */
 function withToolName(row: Record<string, unknown>): string | null {
   if (row.method !== "session/update") return null;
   const params = asObject(row.params);
   const update = asObject(params?.update);
   if (!update || (update.sessionUpdate !== "tool_call" && update.sessionUpdate !== "tool_call_update")) return null;
-  const tool = typeof update.title === "string" ? MCP_TITLE.exec(update.title)?.[1] : undefined;
-  return tool ? JSON.stringify({ ...row, params: { ...params, update: { ...update, title: tool } } }) : null;
+  const tool = typeof update.name === "string" && update.name.trim().length > 0
+    ? update.name
+    : typeof update.title === "string" ? MCP_TITLE.exec(update.title)?.[1] : undefined;
+  return tool && tool !== update.title ? JSON.stringify({ ...row, params: { ...params, update: { ...update, title: tool } } }) : null;
 }
 
 /** ACP prompt usage. Gemini counts cached reads inside the input; the projection's `input` is uncached. */

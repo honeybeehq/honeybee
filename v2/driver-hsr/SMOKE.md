@@ -54,8 +54,8 @@ reply). The adapter handshakes `initialize` (client `Honeybee` version `2`) →
 `session/new` (or `session/resume` for a recorded session id) with the operator's MCP
 servers, then applies only what the spawn asked for: `--model` and `--effort` through
 `session/set_config_option` (`model`, `thought_level`), `--mode` through the `mode`
-option. A concrete model id such as `gemini-3.8-flash-low` is refused by the `model`
-option and goes through `session/set_model`. Mail is `session/prompt`; the prompt
+option. The `model` option takes a family or a concrete id such as
+`gemini-3.8-flash-low`; a refusal retries as `session/set_model`. Mail is `session/prompt`; the prompt
 response closes the turn; `session/cancel` is the interrupt and ends the prompt
 `cancelled`. Without `--dangerously-skip-permissions` a `session/request_permission` is
 declined; with it the adapter selects the provider's allow-once option.
@@ -93,7 +93,7 @@ Result log:
 | 2026-08-17 | claude | trmd | ALL 11 PASS | after readyAtSpawn fix (4a8c6c42); 6 log lines |
 | 2026-08-17 | codex | trmd | ALL 11 PASS | codex-cli app-server; 53 log lines |
 | 2026-08-20 | grok | trmd | ALL 11 PASS | grok 1.0.5 ACP stdio; grok-4.6; 82 log lines; authMethods cached_token+grok.com; loadSession=true; step 6 still manual |
-| | agy | | | ACP adapter (`agy acp`); initialize and session/new captured from agy 1.5.2 on 2026-11-06; live smoke pending |
+| 2026-11-06 | agy | CL.054e (Mac Studio) | ALL 19 PASS | agy 1.5.2 `agy acp`, run on the first ACP commit before its rebase (11e4aa50, branch `agy-acp`); gemini-3.8-flash, effort low; model and thought_level via set_config_option, the concrete id gemini-3.8-flash-low accepted by the model option; MCP tool row `name: mcp_smoke_smoke_echo`, `title: Run mcp_smoke_smoke_echo`, completed without output; the 11 updates outside prompts were config_option_update, available_commands_update and session_info_update (none opens a turn); usage on the prompt response; cancel ended `cancelled`; session/resume recalled turn 1; no authenticate call; step 6 still manual |
 
 ---
 
