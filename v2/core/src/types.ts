@@ -1124,7 +1124,8 @@ export interface GatewayRow {
 }
 
 /** H7: the one content-hashed skill tree installed into every Honeybee-owned home. */
-export type RuntimeJournalEvent = "installed" | "pruned";
+export type RuntimeJournalEvent = "installed" | "pruned" | "activated" | "rollback";
+export const RUNTIME_JOURNAL_EVENTS: readonly RuntimeJournalEvent[] = ["installed", "pruned", "activated", "rollback"];
 
 export interface RuntimeJournalEntry {
   seq: number;
@@ -1133,6 +1134,46 @@ export interface RuntimeJournalEntry {
   sha: string;
   by: string;
   detail: Record<string, unknown>;
+}
+
+/** One live runtime as the old daemon recorded it before handing over. */
+export interface RuntimeHandoverRuntime {
+  beeId: string;
+  generation: number;
+  pid: number;
+  pidStartedAt: number;
+  birth: string | null;
+  state: RuntimeState;
+  substrate: string;
+}
+
+export interface RuntimeHandoverMissing {
+  beeId: string;
+  generation: number;
+  state: RuntimeState | null;
+  reason: "not_adopted" | "stopped" | "generation_moved" | "deleted";
+}
+
+/** What the successor daemon found at boot, compared with the census. */
+export interface RuntimeHandoverResult {
+  at: number;
+  bootPid: number;
+  runningSha: string | null;
+  expected: number;
+  adopted: number;
+  degraded: number;
+  missing: RuntimeHandoverMissing[];
+  reverted: boolean;
+}
+
+/** meta.handover: the census an activation wrote, and the boot comparison once the successor ran. */
+export interface RuntimeHandover {
+  fromSha: string | null;
+  toSha: string;
+  fromPid: number;
+  at: number;
+  runtimes: RuntimeHandoverRuntime[];
+  result: RuntimeHandoverResult | null;
 }
 
 export interface SkillTreeRow {

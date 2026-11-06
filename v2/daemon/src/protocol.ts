@@ -27,6 +27,8 @@ import type {
   GatewayRow,
   SkillTreeRow,
   RuntimeJournalEntry,
+  RuntimeHandover,
+  RuntimeHandoverMissing,
   AuthInterruptionRow,
   ActionDefinition,
   ActionQueueView,
@@ -321,6 +323,13 @@ export const DAEMON_CAPABILITIES = [
    * release into `<storeRoot>/runtime/<sha>` itself, reports its runtime root and
    * journal, and prunes versions it is not running. Audit kinds
    * `runtime.installed` and `runtime.pruned`.
+   * 2026-11-06 (D4, additive): `runtime.activate {sha}` and `runtime.probe {}` —
+   * Honeybee swaps itself: census of live runtimes to `meta.handover`, atomic
+   * retarget of `runtime/current`, the `runtime/handover.json` marker, the
+   * service-manager restart issued by the old daemon, the successor's boot
+   * comparison (`boot.handover`), and a probe that reports the handover, a stub
+   * canary bee in a fresh Cell and the degraded count. Audit kinds
+   * `runtime.activated` and `runtime.rollback`.
    */
   "runtime.update.v1",
 ] as const;
@@ -709,6 +718,8 @@ export const RPC_VERBS = [
   "runtime.install",
   "runtime.status",
   "runtime.prune",
+  "runtime.activate",
+  "runtime.probe",
   // v18 (additive): run the harness's real credential probe on demand.
   "account.verify",
   "account.limits",
@@ -910,8 +921,7 @@ export interface SkillsInstallResult extends DedupMarkers {
  * (`details.reason`: `archive` | `descriptor` | `signature` | `keep`) and
  * `runtime_refused` (`details.reason`: `signature_invalid` | `key_unknown` |
  * `archive_digest_mismatch` | `target_mismatch` | `node_pin_unmet` |
- * `archive_unsafe` | `archive_invalid` | `install_conflict` | `is_current` |
- * `is_previous`).
+ * `archive_unsafe` | `archive_invalid` | `install_conflict`).
  */
 export interface RuntimeInstallParams {
   archive: string;
@@ -938,7 +948,20 @@ export interface RuntimeVersion {
   previous: boolean;
 }
 
-/** `runtime.status {}` — the runtime root as Honeybee sees it; read-only. */
+/** The `runtime/handover.json` marker: present from retarget until the successor listens (or the launcher reverts). */
+export interface RuntimeHandoverMarker {
+  fromPid: number;
+  fromSha: string | null;
+  toSha: string;
+  at: number;
+}
+
+/**
+ * `runtime.status {}` — the runtime root as Honeybee sees it; read-only.
+ * `previous` is the `runtime/previous` link `runtime.activate` writes;
+ * `handover` is `meta.handover` (census plus the successor's boot result);
+ * `marker` is the on-disk `handover.json` while a swap is in flight.
+ */
 export interface RuntimeStatusResult {
   root: string;
   current: string | null;
@@ -947,9 +970,58 @@ export interface RuntimeStatusResult {
   installed: RuntimeVersion[];
   journal: RuntimeJournalEntry[];
   store: { schemaVersion: number; minReaderSchema: number };
-  handover: Record<string, unknown> | null;
+  handover: RuntimeHandover | null;
+  marker: RuntimeHandoverMarker | null;
   nodePin: { version: string; path: string } | null;
   keys: { trusted: number; keyIds: string[] };
+}
+
+/**
+ * `runtime.activate {sha, idempotencyKey?}` (capability `runtime.update.v1`, verified
+ * direct local caller) — Honeybee swaps itself to an installed version: it writes a
+ * census of every live runtime (bee, generation, pid, birth) to `meta.handover`,
+ * points `runtime/previous` at the version it runs, retargets `runtime/current`
+ * atomically, writes `runtime/handover.json`, journals `activated {from, to}` and,
+ * once the answer is on the wire, asks the service manager to restart its unit
+ * (`systemctl --user restart --no-block`, `launchctl kickstart -k`). The old
+ * daemon then exits without signalling its runner hosts; the successor boots
+ * through `runtime/current`, adopts the survivors, compares them with the census
+ * and records `boot.handover`. Refusals: `invalid_request` (`details.reason`:
+ * `sha`), `runtime_refused` (`details.reason`: `not_installed` | `is_current` |
+ * `schema_unknown` | `store_newer_than_target` | `service_not_installed`).
+ */
+export interface RuntimeActivateParams {
+  sha: string;
+  idempotencyKey?: string;
+}
+
+export interface RuntimeActivateResult extends DedupMarkers {
+  sha: string;
+  from: string | null;
+  census: { runtimes: number; degraded: number };
+  service: { platform: "systemd" | "launchd"; label: string };
+  journal: RuntimeJournalEntry;
+}
+
+/**
+ * `runtime.probe {}` (capability `runtime.update.v1`, verified direct local caller)
+ * — the activation's result: the boot comparison of the last handover, a stub-harness
+ * canary bee spawned in a fresh Cell that reaches idle and is deleted, and the number
+ * of adopted-degraded runtimes right now. Refusals: `runtime_refused`
+ * (`details.reason`: `handover_pending` while the old daemon still runs,
+ * `activation_reverted` when the running build is not the one activated,
+ * `handover_incomplete` when a census runtime was not adopted or was adopted
+ * degraded, `canary_failed` when the stub bee does not reach idle or cannot be
+ * deleted).
+ */
+export interface RuntimeProbeParams {
+  idempotencyKey?: string;
+}
+
+export interface RuntimeProbeResult extends DedupMarkers {
+  handover: { toSha: string; runningSha: string | null; expected: number; adopted: number; degraded: number; missing: RuntimeHandoverMissing[] } | null;
+  canary: { beeId: string; cell: string; idleAfterMs: number; deletedAfterMs: number };
+  degraded: number;
 }
 
 /** `runtime.prune {keep?, idempotencyKey?}` — remove installed versions beyond the `keep` most recent (default 5), never `current` or `previous`. */

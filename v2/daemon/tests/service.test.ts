@@ -61,6 +61,8 @@ const PLIST_SNAPSHOT = `<?xml version="1.0" encoding="UTF-8"?>
   </dict>
   <key>ProcessType</key>
   <string>Interactive</string>
+  <key>AbandonProcessGroup</key>
+  <true/>
   <key>StandardOutPath</key>
   <string>/data/v2/hived.log</string>
   <key>StandardErrorPath</key>

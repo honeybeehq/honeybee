@@ -31,12 +31,11 @@ for (const group of GROUPS) {
   }
 }
 for (const [name, aliases] of Object.entries(ALIASES)) for (const alias of aliases) { if (SUBCOMMANDS[name]) SUBCOMMANDS[alias] = SUBCOMMANDS[name]; if (BEE_FIRST_ARG.has(name)) BEE_FIRST_ARG.add(alias); }
-for (const name of ["deploy", "completion", "help"]) if (!COMMAND_NAMES.includes(name)) COMMAND_NAMES.push(name);
+for (const name of ["completion", "help"]) if (!COMMAND_NAMES.includes(name)) COMMAND_NAMES.push(name);
 COMMAND_NAMES.sort();
 const COMMAND_FLAGS = [...KNOWN_FLAGS].sort();
 
 export const SHELLS = ["bash", "zsh", "fish"];
-const DEPLOY_FLAGS = ["--rollback", "--list", "--init", "--json", "--keep", "--skip-tests", "--allow-non-descendant", "--provision-question-withdrawal", "--help"];
 
 export type CompletionState = { bees: Array<{ id: string; handle: string | null; name: string; human_ref?: string | null }> };
 
@@ -104,9 +103,8 @@ export function getCompletionsFromState(words: string[], state: CompletionState,
   const valueKind = VALUE_FLAG_KINDS[previous];
   if (valueKind === "bee") return beeCandidates(state);
   if (valueKind === "file") return fileCandidates(current, cwd);
-  if (current.startsWith("-")) return command === "deploy" ? DEPLOY_FLAGS : COMMAND_FLAGS;
+  if (current.startsWith("-")) return COMMAND_FLAGS;
   if (command === "completion") return args.length === 2 ? SHELLS : [];
-  if (command === "deploy") return [];
   const subs = SUBCOMMANDS[command];
   const positionals = args.slice(1).filter((word, index, all) => !word.startsWith("-") && !(index > 0 && all[index - 1]!.startsWith("--") && VALUE_FLAG_KINDS[all[index - 1]!]));
   if (subs && positionals.length <= 1) return subs;

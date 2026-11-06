@@ -240,7 +240,7 @@ test("manifest parsing rejects malformed manifests", () => {
 
 test("the artifact script reuses buildDeployArtifact and packRuntimeArtifact instead of forking them", async () => {
   const source = await readFile(join(process.cwd(), "scripts", "build-runtime-artifact.mjs"), "utf8");
-  assert.match(source, /import \{ buildDeployArtifact \} from "\.\.\/v2\/cli\/src\/deploy\/command\.ts"/);
+  assert.match(source, /import \{ buildDeployArtifact \} from "\.\.\/v2\/core\/src\/release\/buildArtifact\.ts"/);
   assert.match(source, /import \{ packRuntimeArtifact \} from "\.\.\/v2\/core\/src\/release\/runtimeArtifact\.ts"/);
   assert.match(source, /\["-C", repoRoot, "rev-parse", "--verify", `\$\{ref\}\^\{commit\}`\]/);
   assert.match(source, /gate: options\.skipTests \? "tests-skipped" : "full"/);

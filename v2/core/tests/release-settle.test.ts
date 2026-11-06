@@ -1,4 +1,4 @@
-import { parseNpmPackResult } from "../../cli/src/deploy/npmPack.ts";
+import { parseNpmPackResult } from "../src/release/npmPack.ts";
 // Deploy settling: the daemon must never restart
 // over a half-copied or mid-rebuild global module tree. The settle barrier
 // proves content equality between the local build and the installed tree —

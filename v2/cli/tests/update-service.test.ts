@@ -21,7 +21,7 @@ test("service entry follows selected node current, independent of ambient home",
     const entry = join(dir, "runtime", "current", "dist", "cli.js");
     mkdirSync(join(dir, "runtime", "current", "dist"), { recursive: true });
     writeFileSync(entry, "fixture");
-    assert.deepEqual(serviceExecArgs(join(dir, "v2"), { HIVE_NODE_PATH: process.execPath }), [process.execPath, entry, "v2", "daemon", "run", "--data-dir", join(dir, "v2")]);
+    assert.deepEqual(serviceExecArgs(join(dir, "v2"), { HIVE_NODE_PATH: process.execPath }), [join(dir, "runtime", "launch"), process.execPath, "v2", "daemon", "run", "--data-dir", join(dir, "v2")]);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 

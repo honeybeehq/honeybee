@@ -133,8 +133,11 @@ For restart behavior, inspect `v2/driver-hsr/src/runner-host.ts`,
 
 ## Deployment and compatibility
 
-- Change the live runtime only with `hive deploy` and its versioned atomic `runtime/current`.
-- Keep `hive deploy --rollback`; never deploy from or symlink to a mutable working tree.
+- Change the live runtime only through `runtime.install` and `runtime.activate` (versioned
+  atomic `runtime/current`, census to `meta.handover`, service-manager restart issued by
+  the old daemon, `boot.handover` on the successor); the launcher at `runtime/launch`
+  reverts a candidate that fails to boot three times. Never deploy from or symlink to a
+  mutable working tree.
 - Keep removed internals removed: no swarms, colonies, old buz store, `kill`, `retire`,
   state-file authority, or multi-path daemon control.
 - Keep compatibility aliases only at documented CLI edges mapping to v2 primitives.

@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { canonicalDigest } from "../v2/core/src/canonical.ts";
-import { buildDeployArtifact } from "../v2/cli/src/deploy/command.ts";
+import { buildDeployArtifact } from "../v2/core/src/release/buildArtifact.ts";
 import { packRuntimeArtifact } from "../v2/core/src/release/runtimeArtifact.ts";
 import { prepareHoneybeeRelease } from "../v2/core/src/release/prepare.ts";
 import { publishHoneybeeRelease } from "../v2/core/src/release/publish.ts";

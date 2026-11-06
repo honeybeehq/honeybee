@@ -145,6 +145,8 @@ export const RPC_ACCESS = {
   "runtime.install": "mutate",
   "runtime.status": "read",
   "runtime.prune": "mutate",
+  "runtime.activate": "mutate",
+  "runtime.probe": "mutate",
   "account.verify": "mutate",
   "account.limits": "mutate",
   "account.limits.observe": "mutate",

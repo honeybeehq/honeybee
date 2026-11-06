@@ -60,6 +60,8 @@ export const GROUPS: Group[] = [
       ["deploy-info", "", "protocol / versions / paths"],
       ["runtime", "status|list", "installed runtime versions, current/previous, journal, store schema, trusted release keys"],
       ["runtime", "install <archive> --descriptor <release.json> --signature <release.json.sig>", "verify a signed release and unpack it into ~/.hive/runtime/<sha> (nothing is activated)"],
+      ["runtime", "activate <sha>", "swap to an installed version: census of live bees, retarget current, restart the service; bees keep running"],
+      ["runtime", "probe", "the last swap's result (every bee in the census adopted), a stub canary bee in a fresh Cell, the degraded count"],
       ["runtime", "prune [keep]", "remove installed versions beyond the newest `keep` (default 5), never current or previous"],
       ["human-ref", "status|enroll <receipt.json>", "installation identity and permanent reference enrollment"],
       ["human-ref", "registry init|status|reserve <installation-id>", "explicit fleet namespace registry (one per fleet)"],
@@ -119,8 +121,6 @@ export const GROUPS: Group[] = [
     rows: [
       ["daemon", "run", "run the daemon in the foreground"],
       ["daemon", "install|uninstall|start|stop|restart|status", "platform service + liveness"],
-      ["deploy", "[<sha>] [--keep n] [--skip-tests]", "build a committed sha in a clean checkout, install it under ~/.hive/runtime, retarget current, restart"],
-      ["deploy", "--rollback | --list [--json] | --init", "retarget current to the previous version · history · one-time global migration steps"],
       ["completion", "<bash|zsh|fish>", "print a shell completion script (eval to install)"],
     ],
   },

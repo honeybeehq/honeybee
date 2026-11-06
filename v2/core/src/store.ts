@@ -108,6 +108,10 @@ import {
   type GatewayRow,
   type SkillTreeRow,
   type RuntimeJournalEntry,
+  type RuntimeJournalEvent,
+  type RuntimeHandover,
+  type RuntimeHandoverRuntime,
+  RUNTIME_JOURNAL_EVENTS,
   type ChampionHomeObjectRow,
   type BeeKind,
   type BeeResumeBundleRow,
@@ -9825,10 +9829,22 @@ export class CoreStore {
     if (!Array.isArray(parsed)) throw new CoreError("runtime journal is corrupt");
     return parsed.map((value) => {
       const entry = value as Partial<RuntimeJournalEntry>;
-      if (!Number.isSafeInteger(entry.seq) || !Number.isSafeInteger(entry.at) || (entry.event !== "installed" && entry.event !== "pruned")
+      if (!Number.isSafeInteger(entry.seq) || !Number.isSafeInteger(entry.at) || !RUNTIME_JOURNAL_EVENTS.includes(entry.event as RuntimeJournalEvent)
         || typeof entry.sha !== "string" || typeof entry.by !== "string" || !entry.detail || typeof entry.detail !== "object") throw new CoreError("runtime journal is corrupt");
-      return { seq: entry.seq!, at: entry.at!, event: entry.event, sha: entry.sha, by: entry.by, detail: entry.detail as Record<string, unknown> };
+      return { seq: entry.seq!, at: entry.at!, event: entry.event as RuntimeJournalEvent, sha: entry.sha, by: entry.by, detail: entry.detail as Record<string, unknown> };
     });
+  }
+
+  handover(): RuntimeHandover | null {
+    const row = this.stmt("SELECT value FROM meta WHERE key = 'handover'").get() as Row | undefined;
+    if (!row) return null;
+    const parsed = JSON.parse(String(row.value)) as Partial<RuntimeHandover> | null;
+    if (!parsed || typeof parsed !== "object" || typeof parsed.toSha !== "string" || !Number.isSafeInteger(parsed.fromPid) || !Number.isSafeInteger(parsed.at) || !Array.isArray(parsed.runtimes)) throw new CoreError("runtime handover record is corrupt");
+    return { fromSha: typeof parsed.fromSha === "string" ? parsed.fromSha : null, toSha: parsed.toSha, fromPid: parsed.fromPid!, at: parsed.at!, runtimes: parsed.runtimes as RuntimeHandoverRuntime[], result: parsed.result ?? null };
+  }
+
+  setHandover(record: RuntimeHandover): void {
+    this.stmt("INSERT INTO meta(key, value) VALUES('handover', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(JSON.stringify(record));
   }
 
   nodeId(): string {

@@ -25,7 +25,12 @@ import { withoutRpcCaller } from "../../core/src/rpcAuditContext.ts";
 import { applyObservation, observationReadRequest, discardObservation } from "./limitsObservation.ts";
 import { reconnectToolsResult, type ReconnectToolsResult } from "../../core/src/reconnectTools.ts";
 import { withFileLock } from "../../core/src/lock.ts";
-import { RuntimeUpdateService } from "./runtimeUpdate.ts";
+import { RuntimeUpdateService, removeHandoverMarker, takeRollbackRecord, runtimeRefused, type RuntimeServiceUnit } from "./runtimeUpdate.ts";
+import { restartServiceUnit, serviceFileDataDir } from "./service.ts";
+import { serviceDirectory } from "../../core/src/servicePaths.ts";
+import { hostGitEnv } from "../../core/src/hostGit.ts";
+import { execFileSync } from "node:child_process";
+import type { RuntimeHandoverMissing, RuntimeHandoverRuntime } from "../../core/src/types.ts";
 import { SCHEMA_VERSION } from "../../core/src/schema.ts";
 import { ThreadOperations } from "./threadOperations.ts";
 import { carryCodexHistory, codexSwapHistoryPath, validateCodexSwapPath } from "./codexSwapHistory.ts";
@@ -434,8 +439,13 @@ import { BEE_IMPORT_BUNDLE_BYTES_MAX,
   type TemplateListResult,
   type TemplatePutResult,
   type ViewResult,
+  type RuntimeProbeResult,
 } from "./protocol.ts";
 
+export const RUNTIME_PROBE_AGENT = "runtime-probe";
+const RUNTIME_PROBE_IDLE_MS = 60_000;
+const RUNTIME_PROBE_DELETE_MS = 30_000;
+const RUNTIME_PROBE_STUB = 'process.stdin.setEncoding("utf8");let b="";const w=(o)=>process.stdout.write(JSON.stringify(o)+"\\n");w({event:"ready",sessionId:"probe-"+process.pid});process.stdin.on("data",(d)=>{b+=d;let i;while((i=b.indexOf("\\n"))>=0){const l=b.slice(0,i);b=b.slice(i+1);let m=null;try{m=JSON.parse(l)}catch{}if(m&&m.type==="message"){w({event:"turn_started",messageId:m.id});w({event:"text",text:"probe"});w({event:"turn_ended",messageId:m.id,ok:true})}}});process.stdin.on("end",()=>process.exit(0));';
 const ADAPTER_NAMES = ["agy", "claude", "codex", "grok", "kimi", "muse", "stub"] as const;
 
 const FOREIGN_GUARDED_VERBS = new Set<RpcVerb>([
@@ -838,6 +848,7 @@ export class HiveDaemon {
   private readonly beeTmpOverrideLogged = new Set<string>();
 
   constructor(cfg: ResolvedNodeConfig, deps: HiveDaemonDeps = {}) {
+    cfg.agents[RUNTIME_PROBE_AGENT] ??= { command: process.execPath, args: ["-e", RUNTIME_PROBE_STUB], adapter: "stub" };
     validateNodeStatePaths(cfg);
     this.cfg = cfg;
     this.deps = deps;
@@ -1193,6 +1204,7 @@ export class HiveDaemon {
     const unresolved = this.adoptSurvivors(store, driver);
     for (const row of unresolved) this.identityRecovery.retain({...row, since: store.runtimeIdentityUnresolvedSince(row.beeId, row.generation)});
     this.lastBoot = this.core.boot(unresolved);
+    this.recordHandoverAtBoot(store, driver);
     for (const { view } of store.listBeeViewRows()) {
       const flags = store.activeFlags(view.beeId).filter(row => row.detail.startsWith("account_credentials_unusable:") || row.detail.startsWith("runtime_start_held:"));
       if (flags.length === 0) continue;
@@ -1242,6 +1254,7 @@ export class HiveDaemon {
       removeEndpointRecord(this.cfg.dataDir, this.instanceId);
       throw error;
     }
+    if (await removeHandoverMarker(this.runtimeUpdate().root)) this.log(`boot.handover_marker_removed root=${this.runtimeUpdate().root}`);
     cells.trackOrigins(this.recentCellOrigins(store));
     void this.accounts?.credentialHandoff.reconcileStartup().catch(() => this.log("account.credentials.handoff_reconcile_failed"));
     rpc.end();
@@ -2713,6 +2726,10 @@ export class HiveDaemon {
         return this.withAsyncIdempotency(verb, params, () => this.runtimeUpdate().install(params, this.runtimePrincipal(conn)));
       case "runtime.prune":
         return this.withAsyncIdempotency(verb, params, () => this.runtimeUpdate().prune(params, this.runtimePrincipal(conn)));
+      case "runtime.activate":
+        return this.withAsyncIdempotency(verb, params, () => this.runtimeUpdate().activate(params, this.runtimePrincipal(conn)));
+      case "runtime.probe":
+        return this.withAsyncIdempotency(verb, params, () => this.rpcRuntimeProbe());
       case "doctor.integrity": {
         if (this.integrityCheck) return this.integrityCheck;
         if (Date.now() - this.integrityCheckAt < 60_000) throw new RpcError("doctor_cooldown", "Integrity check requires a sixty-second interval between runs");
@@ -2786,7 +2803,132 @@ export class HiveDaemon {
   private runtimeService: RuntimeUpdateService | null = null;
 
   private runtimeUpdate(): RuntimeUpdateService {
-    return this.runtimeService ??= new RuntimeUpdateService({ dataDir: this.cfg.dataDir, store: () => this.mustStore(), log: (line) => this.log(line) });
+    return this.runtimeService ??= new RuntimeUpdateService({
+      dataDir: this.cfg.dataDir,
+      store: () => this.mustStore(),
+      log: (line) => this.log(line),
+      liveRuntimes: () => this.liveRuntimeCensus(),
+      serviceUnit: () => this.ownServiceUnit(),
+      restartService: (unit) => restartServiceUnit(process.platform, unit.label, { uid: process.getuid?.() ?? 0, exec: (cmd, args) => new Promise((resolveExec) => {
+        execFile(cmd, args, { timeout: 15_000 }, (error, stdout, stderr) => resolveExec({ code: error == null ? 0 : typeof error.code === "number" ? error.code : 1, stdout: String(stdout), stderr: String(stderr) }));
+      }) }),
+    });
+  }
+
+  private liveRuntimeCensus(): Array<RuntimeHandoverRuntime & { degraded: boolean }> {
+    const store = this.mustStore();
+    const census: Array<RuntimeHandoverRuntime & { degraded: boolean }> = [];
+    for (const bee of store.listBees()) {
+      if (bee.lifecycle === "deleted") continue;
+      const rt = store.currentRuntime(bee.id);
+      if (!rt || rt.state === "stopped" || rt.pid == null || rt.pidStartedAt == null) continue;
+      const binding = store.runtimeProcessIdentity(bee.id, rt.generation);
+      census.push({ beeId: bee.id, generation: rt.generation, pid: rt.pid, pidStartedAt: rt.pidStartedAt, birth: binding.kind === "bound" ? binding.identity.birth : null, state: rt.state, substrate: bee.substrate, degraded: this.driver?.isDegraded(bee.id, rt.generation) ?? false });
+    }
+    return census;
+  }
+
+  private ownServiceUnit(): RuntimeServiceUnit | null {
+    if (process.platform !== "linux" && process.platform !== "darwin") return null;
+    const platform = process.platform === "darwin" ? "launchd" as const : "systemd" as const;
+    const label = process.env.HIVE_V2_SERVICE_LABEL ?? "dev.honeybee.hive.v2";
+    let path: string;
+    try { path = join(serviceDirectory(process.platform, process.env), `${label}.${platform === "launchd" ? "plist" : "service"}`); } catch { return null; }
+    let contents: string;
+    try { contents = readFileSync(path, "utf8"); } catch { return null; }
+    const unitDataDir = serviceFileDataDir(contents);
+    if (unitDataDir === null || !samePath(unitDataDir, this.cfg.dataDir)) return null;
+    return { platform, label, path };
+  }
+
+  private recordHandoverAtBoot(store: CoreStore, driver: RuntimeHost): void {
+    const root = this.runtimeUpdate().root;
+    void takeRollbackRecord(root).then((rollback) => {
+      if (!rollback) return;
+      const sha = rollback.previous ?? BUILD_IDENTITY.sourceRevision ?? "unknown";
+      store.appendRuntimeJournal({ event: "rollback", sha, by: "launcher", detail: { reason: rollback.reason, candidate: rollback.candidate, previous: rollback.previous, attempts: rollback.attempts, at: rollback.at } });
+      this.log(`boot.rollback reason=${rollback.reason} candidate=${rollback.candidate ?? "-"} previous=${rollback.previous ?? "-"} attempts=${rollback.attempts ?? "-"}`);
+    }).catch((error) => this.log(`boot.rollback_record_failed error=${JSON.stringify(error instanceof Error ? error.message : String(error))}`));
+    const handover = store.handover();
+    if (!handover || handover.result !== null) return;
+    const missing: RuntimeHandoverMissing[] = [];
+    let adopted = 0, degraded = 0;
+    for (const expected of handover.runtimes) {
+      const bee = store.getBee(expected.beeId);
+      if (!bee || bee.lifecycle === "deleted") { missing.push({ beeId: expected.beeId, generation: expected.generation, state: null, reason: "deleted" }); continue; }
+      const rt = store.currentRuntime(expected.beeId);
+      if (!rt || rt.generation !== expected.generation) { missing.push({ beeId: expected.beeId, generation: expected.generation, state: rt?.state ?? null, reason: "generation_moved" }); continue; }
+      if (rt.state === "stopped") { missing.push({ beeId: expected.beeId, generation: expected.generation, state: rt.state, reason: "stopped" }); continue; }
+      if (!driver.hasProcess(expected.beeId, expected.generation)) { missing.push({ beeId: expected.beeId, generation: expected.generation, state: rt.state, reason: "not_adopted" }); continue; }
+      adopted += 1;
+      if (driver.isDegraded(expected.beeId, expected.generation)) degraded += 1;
+    }
+    const runningSha = BUILD_IDENTITY.sourceRevision;
+    const result = { at: Date.now(), bootPid: process.pid, runningSha, expected: handover.runtimes.length, adopted, degraded, missing, reverted: runningSha !== handover.toSha };
+    store.setHandover({ ...handover, result });
+    this.log(`boot.handover adopted=${adopted} expected=${handover.runtimes.length} degraded=${degraded} missing=${missing.length} from=${handover.fromSha ?? "-"} to=${handover.toSha} running=${runningSha ?? "-"} reverted=${result.reverted}${missing.length ? ` detail=${JSON.stringify(missing)}` : ""}`);
+  }
+
+  private async rpcRuntimeProbe(): Promise<RuntimeProbeResult> {
+    const store = this.mustStore();
+    const handover = store.handover();
+    let summary: RuntimeProbeResult["handover"] = null;
+    if (handover) {
+      if (handover.result === null) throw runtimeRefused("handover_pending", `runtime/current was retargeted to ${handover.toSha} by pid ${handover.fromPid}; the successor has not booted`, { toSha: handover.toSha, fromPid: handover.fromPid, at: handover.at });
+      const { result } = handover;
+      summary = { toSha: handover.toSha, runningSha: result.runningSha, expected: result.expected, adopted: result.adopted, degraded: result.degraded, missing: result.missing };
+      if (result.reverted) throw runtimeRefused("activation_reverted", `activation to ${handover.toSha} did not take; this daemon runs ${result.runningSha ?? "unknown"}`, { ...summary, journal: store.runtimeJournal(5) });
+      if (result.adopted < result.expected || result.degraded > 0) throw runtimeRefused("handover_incomplete", `adopted ${result.adopted} of ${result.expected} runtimes from the census (${result.degraded} degraded)`, summary);
+    }
+    const canary = await this.runCanary();
+    const degraded = this.liveRuntimeCensus().filter((runtime) => runtime.degraded).length;
+    this.log(`runtime.probe handover=${summary ? `${summary.adopted}/${summary.expected}` : "none"} canary=${canary.beeId} idle_ms=${canary.idleAfterMs} deleted_ms=${canary.deletedAfterMs} degraded=${degraded}`);
+    return { handover: summary, canary, degraded };
+  }
+
+  private probeOrigin(): string {
+    const origin = join(this.cfg.dataDir, "probe", "origin");
+    if (!existsSync(join(origin, ".git"))) {
+      mkdirSync(origin, { recursive: true });
+      const env = { ...hostGitEnv(), GIT_AUTHOR_NAME: "hived", GIT_AUTHOR_EMAIL: "hived@localhost", GIT_COMMITTER_NAME: "hived", GIT_COMMITTER_EMAIL: "hived@localhost" };
+      execFileSync("git", ["init", "-q", "-b", "main", origin], { env, stdio: "ignore", timeout: 10_000 });
+      writeFileSync(join(origin, "README"), "runtime.probe canary origin\n");
+      execFileSync("git", ["-C", origin, "add", "README"], { env, stdio: "ignore", timeout: 10_000 });
+      execFileSync("git", ["-C", origin, "-c", "commit.gpgsign=false", "commit", "-q", "-m", "runtime.probe canary"], { env, stdio: "ignore", timeout: 10_000 });
+    }
+    return origin;
+  }
+
+  private async runCanary(): Promise<RuntimeProbeResult["canary"]> {
+    const store = this.mustStore();
+    const started = Date.now();
+    const settle = async (deadlineMs: number, ready: () => boolean): Promise<boolean> => {
+      const deadline = Date.now() + deadlineMs;
+      while (Date.now() < deadline) {
+        if (ready()) return true;
+        await new Promise<void>((resolveWait) => setTimeout(resolveWait, 50));
+      }
+      return ready();
+    };
+    const spawned = await this.rpcSpawnWithAccount({ name: `probe-${started.toString(36)}`, agent: RUNTIME_PROBE_AGENT, substrate: "cell", cell: { originRepo: this.probeOrigin() }, tags: ["runtime.probe"] });
+    const beeId = spawned.beeId;
+    const cell = store.getBee(beeId)?.cwd ?? "";
+    this.requestTick();
+    const idle = await settle(RUNTIME_PROBE_IDLE_MS, () => store.currentRuntime(beeId)?.state === "idle");
+    const idleAfterMs = Date.now() - started;
+    if (!idle) {
+      const rt = store.currentRuntime(beeId);
+      const flags = store.activeFlags(beeId).map((flag) => flag.detail);
+      this.rpcEnqueue("delete", beeId, {}, {});
+      this.requestTick();
+      throw runtimeRefused("canary_failed", `canary bee ${beeId} did not reach idle within ${RUNTIME_PROBE_IDLE_MS} ms (state ${rt?.state ?? "none"})`, { beeId, cell, state: rt?.state ?? null, exitCause: rt?.exitCause ?? null, flags });
+    }
+    const deleting = Date.now();
+    this.rpcEnqueue("delete", beeId, {}, {});
+    this.requestTick();
+    const deleted = await settle(RUNTIME_PROBE_DELETE_MS, () => { const bee = store.getBee(beeId); return !bee || bee.lifecycle === "deleted"; });
+    if (!deleted) throw runtimeRefused("canary_failed", `canary bee ${beeId} was not deleted within ${RUNTIME_PROBE_DELETE_MS} ms`, { beeId, cell, lifecycle: store.getBee(beeId)?.lifecycle ?? null });
+    return { beeId, cell, idleAfterMs, deletedAfterMs: Date.now() - deleting };
   }
 
   private runtimePrincipal(conn: RpcConn): string {

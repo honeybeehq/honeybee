@@ -1,9 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
-import { cp, lstat, mkdir, open, readFile, readdir, readlink, rename, rm } from "node:fs/promises";
+import { cp, lstat, mkdir, open, readFile, readdir, readlink, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import type { CoreStore } from "../../core/src/index.ts";
-import type { RuntimeJournalEntry } from "../../core/src/types.ts";
+import type { RuntimeHandoverRuntime, RuntimeJournalEntry } from "../../core/src/types.ts";
+import { HANDOVER_ATTEMPTS_FILE_NAME, ROLLBACK_FILE_NAME } from "./launcher.ts";
 import { withFileLock } from "../../core/src/lock.ts";
 import { resolveNodePin } from "../../core/src/nodeRuntime.ts";
 import { readBuildIdentity } from "../../core/src/release/buildIdentity.ts";
@@ -12,16 +13,89 @@ import { satisfiesNodeRange } from "../../core/src/release/nodeRange.ts";
 import { sha256File } from "../../core/src/release/runtimeArtifact.ts";
 import { UnsafeArchiveError, artifactTreeDigest, unpackRuntimeArchive } from "../../core/src/release/strictUnpack.ts";
 import { RELEASE_PUBLIC_KEYS } from "../../core/src/release/trustedKeys.ts";
-import { BUILD_IDENTITY, RpcError, type RuntimeInstallResult, type RuntimePruneResult, type RuntimeStatusResult, type RuntimeVersion } from "./protocol.ts";
+import { BUILD_IDENTITY, RpcError, type RuntimeActivateResult, type RuntimeHandoverMarker, type RuntimeInstallResult, type RuntimePruneResult, type RuntimeStatusResult, type RuntimeVersion } from "./protocol.ts";
 
 export const RUNTIME_LOCK_NAME = ".deploy.lock";
 export const CURRENT_LINK_NAME = "current";
+export const PREVIOUS_LINK_NAME = "previous";
 export const HANDOVER_FILE_NAME = "handover.json";
 export const DEFAULT_KEEP_VERSIONS = 5;
 const SHA_PATTERN = /^[0-9a-f]{40}$/;
+const RESTART_AFTER_ANSWER_MS = 250;
 
 export type RuntimeRefusal = "signature_invalid" | "key_unknown" | "archive_digest_mismatch" | "target_mismatch" | "node_pin_unmet"
-  | "archive_unsafe" | "archive_invalid" | "install_conflict" | "is_current" | "is_previous";
+  | "archive_unsafe" | "archive_invalid" | "install_conflict" | "not_installed" | "is_current" | "schema_unknown" | "store_newer_than_target"
+  | "service_not_installed" | "handover_pending" | "activation_reverted" | "handover_incomplete" | "canary_failed";
+
+export interface RuntimeServiceUnit { platform: "systemd" | "launchd"; label: string; path: string }
+
+export interface RuntimeUpdateDeps {
+  dataDir: string;
+  store: () => CoreStore;
+  log: (line: string) => void;
+  trustedKeys?: readonly string[];
+  liveRuntimes?: () => Array<RuntimeHandoverRuntime & { degraded: boolean }>;
+  serviceUnit?: () => RuntimeServiceUnit | null;
+  restartService?: (unit: RuntimeServiceUnit) => Promise<void>;
+}
+
+export async function bundleSchemaVersion(installedDir: string): Promise<number | null> {
+  const bundleDir = join(installedDir, "dist", "v2");
+  const names = await readdir(bundleDir).catch(() => [] as string[]);
+  const bundles = await Promise.all(names.filter((name) => name === "cli.js" || /^cli-chunk-[A-Z0-9]+\.js$/.test(name)).sort().map((name) => readFile(join(bundleDir, name), "utf8").catch(() => "")));
+  const versions = bundles.flatMap((bundle) => [...bundle.matchAll(/^(?:var|let|const) SCHEMA_VERSION\d* = (\d+);$/gm)].map((match) => Number(match[1])));
+  return versions.length === 1 && Number.isSafeInteger(versions[0]) ? versions[0]! : null;
+}
+
+export async function readHandoverMarker(root: string): Promise<RuntimeHandoverMarker | null> {
+  let parsed: Partial<RuntimeHandoverMarker> | null;
+  try { parsed = JSON.parse(await readFile(join(root, HANDOVER_FILE_NAME), "utf8")); } catch { return null; }
+  if (!parsed || typeof parsed !== "object" || typeof parsed.toSha !== "string" || !Number.isSafeInteger(parsed.fromPid) || !Number.isSafeInteger(parsed.at)) return null;
+  return { fromPid: parsed.fromPid!, fromSha: typeof parsed.fromSha === "string" ? parsed.fromSha : null, toSha: parsed.toSha, at: parsed.at! };
+}
+
+export async function removeHandoverMarker(root: string): Promise<boolean> {
+  let removed = false;
+  for (const name of [HANDOVER_FILE_NAME, HANDOVER_ATTEMPTS_FILE_NAME]) {
+    try { await rm(join(root, name)); removed = removed || name === HANDOVER_FILE_NAME; } catch {}
+  }
+  if (removed) await syncPath(root).catch(() => undefined);
+  return removed;
+}
+
+export async function takeRollbackRecord(root: string): Promise<{ reason: string; candidate: string | null; previous: string | null; attempts: number | null; at: number | null } | null> {
+  const path = join(root, ROLLBACK_FILE_NAME);
+  let parsed: Record<string, unknown>;
+  try { parsed = JSON.parse(await readFile(path, "utf8")); } catch { return null; }
+  await rm(path, { force: true });
+  await syncPath(root).catch(() => undefined);
+  if (!parsed || typeof parsed !== "object") return null;
+  return {
+    reason: typeof parsed.reason === "string" ? parsed.reason : "unknown",
+    candidate: typeof parsed.candidate === "string" ? parsed.candidate : null,
+    previous: typeof parsed.previous === "string" ? parsed.previous : null,
+    attempts: Number.isSafeInteger(parsed.attempts) ? parsed.attempts as number : null,
+    at: Number.isSafeInteger(parsed.at) ? parsed.at as number : null,
+  };
+}
+
+async function retargetLink(root: string, name: string, sha: string): Promise<void> {
+  const temp = join(root, `.${name}.${process.pid}.${randomUUID()}`);
+  await rm(temp, { force: true });
+  await symlink(sha, temp);
+  try {
+    await rename(temp, join(root, name));
+    await syncPath(root);
+  } finally { await rm(temp, { force: true }).catch(() => undefined); }
+}
+
+async function writeMarker(root: string, marker: RuntimeHandoverMarker): Promise<void> {
+  const temp = join(root, `.${HANDOVER_FILE_NAME}.${process.pid}.${randomUUID()}`);
+  await writeFile(temp, `${JSON.stringify(marker)}\n`, { mode: 0o644 });
+  await syncPath(temp);
+  await rename(temp, join(root, HANDOVER_FILE_NAME));
+  await syncPath(root);
+}
 
 export function runtimeRefused(reason: RuntimeRefusal, message: string, details: Record<string, unknown> = {}): RpcError {
   return new RpcError("runtime_refused", `runtime: ${message}`, { reason, ...details });
@@ -63,21 +137,21 @@ async function currentSha(root: string): Promise<string | null> {
   } catch { return null; }
 }
 
-async function deployHistoryPrevious(root: string, current: string | null): Promise<string | null> {
-  let parsed: { entries?: unknown };
-  try { parsed = JSON.parse(await readFile(join(root, "deploys.json"), "utf8")); } catch { return null; }
-  if (!Array.isArray(parsed?.entries)) return null;
-  for (let index = parsed.entries.length - 1; index >= 0; index -= 1) {
-    const sha = (parsed.entries[index] as { sha?: unknown })?.sha;
-    if (typeof sha === "string" && SHA_PATTERN.test(sha) && sha !== current && existsSync(join(root, sha, "dist", "cli.js"))) return sha;
-  }
-  return null;
+function installedIdentity(root: string, sha: string): { ok: true } | { ok: false; detail: string } {
+  const dir = join(root, sha);
+  if (!existsSync(join(dir, "dist", "cli.js"))) return { ok: false, detail: `runtime/${sha} has no dist/cli.js` };
+  try {
+    const identity = readBuildIdentity(join(dir, "dist", "build-identity.json"));
+    if (identity.component !== "honeybee" || identity.sourceRevision !== sha) return { ok: false, detail: `runtime/${sha} build identity is ${identity.component} ${identity.sourceRevision ?? "unknown"}` };
+    if (identity.target !== hostTarget()) return { ok: false, detail: `runtime/${sha} targets ${identity.target}; this node is ${hostTarget()}` };
+  } catch (error) { return { ok: false, detail: `runtime/${sha} build identity unreadable: ${error instanceof Error ? error.message : String(error)}` }; }
+  return { ok: true };
 }
 
 export class RuntimeUpdateService {
   private pin: { version: string; path: string } | null | undefined;
-  private readonly deps: { dataDir: string; store: () => CoreStore; log: (line: string) => void; trustedKeys?: readonly string[] };
-  constructor(deps: { dataDir: string; store: () => CoreStore; log: (line: string) => void; trustedKeys?: readonly string[] }) { this.deps = deps; }
+  private readonly deps: RuntimeUpdateDeps;
+  constructor(deps: RuntimeUpdateDeps) { this.deps = deps; }
 
   private trustedKeys(): readonly string[] {
     return this.deps.trustedKeys ?? RELEASE_PUBLIC_KEYS;
@@ -97,9 +171,8 @@ export class RuntimeUpdateService {
   }
 
   private async previous(current: string | null): Promise<string | null> {
-    const link = await readLinkOrNull(join(this.root, "previous"));
-    if (link && SHA_PATTERN.test(link) && link !== current) return link;
-    return deployHistoryPrevious(this.root, current);
+    const link = await readLinkOrNull(join(this.root, PREVIOUS_LINK_NAME));
+    return link && SHA_PATTERN.test(link) && link !== current ? link : null;
   }
 
   private async versions(current: string | null, previous: string | null): Promise<RuntimeVersion[]> {
@@ -126,11 +199,6 @@ export class RuntimeUpdateService {
   async status(): Promise<RuntimeStatusResult> {
     const current = await currentSha(this.root);
     const previous = await this.previous(current);
-    let handover: Record<string, unknown> | null = null;
-    try {
-      const parsed: unknown = JSON.parse(await readFile(join(this.root, HANDOVER_FILE_NAME), "utf8"));
-      handover = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : { raw: true };
-    } catch {}
     const keys = this.trustedKeys();
     return {
       root: this.root, current, previous,
@@ -138,10 +206,60 @@ export class RuntimeUpdateService {
       installed: await this.versions(current, previous),
       journal: this.deps.store().runtimeJournal(50),
       store: this.deps.store().schemaInfo(),
-      handover,
+      handover: this.deps.store().handover(),
+      marker: await readHandoverMarker(this.root),
       nodePin: this.nodePin(),
       keys: { trusted: keys.length, keyIds: keys.map(releaseKeyId) },
     };
+  }
+
+  async activate(params: Record<string, unknown>, by: string): Promise<RuntimeActivateResult> {
+    const sha = params.sha;
+    if (typeof sha !== "string" || !SHA_PATTERN.test(sha)) throw new RpcError("invalid_request", "runtime.activate: sha must be a full 40-hex commit id", { reason: "sha" });
+    const installed = installedIdentity(this.root, sha);
+    if (!installed.ok) throw runtimeRefused("not_installed", installed.detail, { sha });
+    const current = await currentSha(this.root);
+    if (current === sha) throw runtimeRefused("is_current", `runtime/current already points at ${sha}`, { sha });
+    const targetSchema = await bundleSchemaVersion(join(this.root, sha));
+    if (targetSchema === null) throw runtimeRefused("schema_unknown", `runtime/${sha} carries no unambiguous store schema capability`, { sha });
+    const schema = this.deps.store().schemaInfo();
+    if (schema.minReaderSchema > targetSchema) throw runtimeRefused("store_newer_than_target", `the store needs a reader at schema ${schema.minReaderSchema} or later; ${sha} is schema ${targetSchema}`, { sha, targetSchema, minReaderSchema: schema.minReaderSchema, schemaVersion: schema.schemaVersion });
+    const unit = this.deps.serviceUnit?.() ?? null;
+    if (!unit || !this.deps.restartService) throw runtimeRefused("service_not_installed", "no background service unit names this daemon's data dir; the service manager cannot restart it", { dataDir: this.deps.dataDir });
+    await mkdir(this.root, { recursive: true });
+    return withFileLock(join(this.root, RUNTIME_LOCK_NAME), async () => {
+      const live = this.deps.liveRuntimes?.() ?? [];
+      const runtimes: RuntimeHandoverRuntime[] = live.map(({ degraded: _degraded, ...runtime }) => runtime);
+      const degraded = live.filter((runtime) => runtime.degraded).length;
+      const at = Date.now();
+      this.deps.store().setHandover({ fromSha: current, toSha: sha, fromPid: process.pid, at, runtimes, result: null });
+      if (current) await retargetLink(this.root, PREVIOUS_LINK_NAME, current);
+      await retargetLink(this.root, CURRENT_LINK_NAME, sha);
+      await rm(join(this.root, HANDOVER_ATTEMPTS_FILE_NAME), { force: true });
+      await writeMarker(this.root, { fromPid: process.pid, fromSha: current, toSha: sha, at });
+      const journal = this.deps.store().appendRuntimeJournal({ event: "activated", sha, by, detail: { from: current, runtimes: runtimes.length, degraded, service: unit.label, platform: unit.platform } });
+      this.deps.log(`runtime.activate from=${current ?? "-"} to=${sha} runtimes=${runtimes.length} degraded=${degraded} unit=${unit.label}`);
+      const timer = setTimeout(() => {
+        this.deps.restartService!(unit).then(
+          () => this.deps.log(`runtime.activate.restart_issued unit=${unit.label} platform=${unit.platform}`),
+          (error) => void this.revertUnissued(sha, current, unit, error instanceof Error ? error.message : String(error)),
+        );
+      }, RESTART_AFTER_ANSWER_MS);
+      timer.unref();
+      return { sha, from: current, census: { runtimes: runtimes.length, degraded }, service: { platform: unit.platform, label: unit.label }, journal };
+    });
+  }
+
+  private async revertUnissued(sha: string, current: string | null, unit: RuntimeServiceUnit, error: string): Promise<void> {
+    this.deps.log(`runtime.activate.restart_failed unit=${unit.label} error=${JSON.stringify(error)}`);
+    await withFileLock(join(this.root, RUNTIME_LOCK_NAME), async () => {
+      if (await currentSha(this.root) !== sha) return;
+      if (current) await retargetLink(this.root, CURRENT_LINK_NAME, current);
+      await removeHandoverMarker(this.root);
+      const record = this.deps.store().handover();
+      if (record && record.toSha === sha && record.fromPid === process.pid) this.deps.store().setHandover({ ...record, result: { at: Date.now(), bootPid: process.pid, runningSha: BUILD_IDENTITY.sourceRevision, expected: record.runtimes.length, adopted: record.runtimes.length, degraded: 0, missing: [], reverted: true } });
+      this.deps.store().appendRuntimeJournal({ event: "rollback", sha: current ?? sha, by: "daemon", detail: { reason: "restart_failed", candidate: sha, error } });
+    }).catch((failure) => this.deps.log(`runtime.activate.revert_failed error=${JSON.stringify(failure instanceof Error ? failure.message : String(failure))}`));
   }
 
   async install(params: Record<string, unknown>, by: string): Promise<RuntimeInstallResult> {

@@ -138,7 +138,8 @@ import { filterMailbox, INBOX_AGENT, isInboxAgent, TASK_STATUSES, type AuditRow,
 import { matchAccount } from "../../core/src/accountMatch.ts";
 import { publicAuditRow, publicEnvRecords } from "../../core/src/envRedaction.ts";
 import { hostname } from "node:os";
-import type { AuditTailResult, DeployInfoResult, GatewayRegisterResult, RuntimeInstallResult, RuntimePruneResult, RuntimeStatusResult, RuntimeVersion, SkillsInstallResult } from "../../daemon/src/protocol.ts";
+import type { AuditTailResult, DeployInfoResult, GatewayRegisterResult, RuntimeActivateResult, RuntimeInstallResult, RuntimeProbeResult, RuntimePruneResult, RuntimeStatusResult, RuntimeVersion, SkillsInstallResult } from "../../daemon/src/protocol.ts";
+import { LAUNCHER_FILE_NAME, installLauncher, launcherPath } from "../../daemon/src/launcher.ts";
 import { readSkillTreeFromDirectory } from "../../daemon/src/skills.ts";
 import type { TranscriptTurnStream } from "../../adapters/src/transcript.ts";
 import {
@@ -1585,7 +1586,7 @@ async function cmdSkills(ctx: CliContext, parsed: Parsed): Promise<number> {
   return 0;
 }
 
-const RUNTIME_USAGE = "usage: hive runtime status [--json] | hive runtime list [--json] | hive runtime install <archive.tar.gz> --descriptor <release.json> --signature <release.json.sig> [--idempotency-key key] [--json] | hive runtime prune [keep] [--idempotency-key key] [--json]";
+const RUNTIME_USAGE = "usage: hive runtime status [--json] | hive runtime list [--json] | hive runtime install <archive.tar.gz> --descriptor <release.json> --signature <release.json.sig> [--idempotency-key key] [--json] | hive runtime activate <sha> [--idempotency-key key] [--json] | hive runtime probe [--json] | hive runtime prune [keep] [--idempotency-key key] [--json]";
 
 function requireRuntimeUpdate(c: RpcClient): void {
   if (!c.capabilities.includes("runtime.update.v1")) throw new RpcError("capability_missing", "Update Honeybee: runtime.update.v1 is required.");
@@ -1611,7 +1612,8 @@ async function cmdRuntime(ctx: CliContext, parsed: Parsed): Promise<number> {
       `store    schema ${status.store.schemaVersion}, min reader ${status.store.minReaderSchema}`,
       `node pin ${status.nodePin ? `${status.nodePin.version} (${status.nodePin.path})` : "none"}`,
       `keys     ${status.keys.trusted} trusted${status.keys.keyIds.length ? `: ${status.keys.keyIds.join(", ")}` : ""}`,
-      `handover ${status.handover ? JSON.stringify(status.handover) : "none"}`,
+      `handover ${status.handover ? `${status.handover.fromSha ?? "none"} -> ${status.handover.toSha} at ${new Date(status.handover.at).toISOString()}, ${status.handover.runtimes.length} runtimes, ${status.handover.result ? `boot adopted ${status.handover.result.adopted}/${status.handover.result.expected} degraded ${status.handover.result.degraded}${status.handover.result.reverted ? " REVERTED" : ""}` : "successor not booted"}` : "none"}`,
+      `marker   ${status.marker ? `handover.json to ${status.marker.toSha} from pid ${status.marker.fromPid} at ${new Date(status.marker.at).toISOString()}` : "none"}`,
       `installed (${status.installed.length}):`,
       ...status.installed.map(versionLine),
       `journal (last ${status.journal.length}):`,
@@ -1629,6 +1631,27 @@ async function cmdRuntime(ctx: CliContext, parsed: Parsed): Promise<number> {
       return c.request<RuntimeInstallResult>("runtime.install", { archive: realpathSync(archive), descriptor, signature, ...(typeof key === "string" ? { idempotencyKey: key } : {}) }, 600_000);
     });
     emit(ctx, [confirm("ok", r.changed ? "installed" : "already installed", `${r.sha} → ${tildify(r.installedDir)} (${r.bytes} bytes, key ${r.keyId})`, r.deduped)], r, false);
+    return 0;
+  }
+  if (action === "activate") {
+    const sha = parsed.positional[2];
+    if (!sha || parsed.positional.length !== 3) throw new Error(RUNTIME_USAGE);
+    const r = await withClient(ctx, async (c) => {
+      requireRuntimeUpdate(c);
+      return c.request<RuntimeActivateResult>("runtime.activate", { sha, ...(typeof key === "string" ? { idempotencyKey: key } : {}) }, 120_000);
+    });
+    emit(ctx, [confirm("ok", "activated", `${r.from ?? "none"} -> ${r.sha}; ${r.census.runtimes} live runtimes in the census (${r.census.degraded} degraded); ${r.service.platform} restarts ${r.service.label}`, r.deduped)], r, false);
+    return 0;
+  }
+  if (action === "probe") {
+    if (parsed.positional.length !== 2) throw new Error(RUNTIME_USAGE);
+    const r = await withClient(ctx, async (c) => {
+      requireRuntimeUpdate(c);
+      return c.request<RuntimeProbeResult>("runtime.probe", { ...(typeof key === "string" ? { idempotencyKey: key } : {}) }, 180_000);
+    });
+    emit(ctx, [
+      confirm("ok", "probe", `${r.handover ? `handover ${r.handover.adopted}/${r.handover.expected} adopted, ${r.handover.degraded} degraded, running ${r.handover.runningSha ?? "unknown"}` : "no handover recorded"}; canary ${r.canary.beeId} idle after ${r.canary.idleAfterMs} ms, deleted after ${r.canary.deletedAfterMs} ms; ${r.degraded} degraded now`, r.deduped),
+    ], r, false);
     return 0;
   }
   if (action === "prune") {
@@ -4748,18 +4771,28 @@ export function serviceExecArgs(dataDir: string, env: Record<string, string | un
   // drift (2026-08-19: it pointed at a working checkout), and the `current`
   // symlink is the deploy contract — a service pinned to it follows every
   // deploy across restarts.
-  const runtimeEntry = resolve(dataDir, "..", "runtime", "current", "dist", "cli.js");
-  const entry = existsSync(runtimeEntry) ? runtimeEntry : resolve(process.argv[1] ?? "");
+  const runtimeRoot = resolve(dataDir, "..", "runtime");
+  const runtimeEntry = join(runtimeRoot, "current", "dist", "cli.js");
+  const pin = resolveNodePin(dataDir, env, undefined, true).path;
+  // The versioned runtime starts through the launcher beside `current`: it
+  // counts a candidate's failed boots and reverts `current` to `previous`.
+  if (existsSync(runtimeEntry)) return [launcherPath(runtimeRoot), pin, "v2", "daemon", "run", "--data-dir", dataDir];
+  const entry = resolve(process.argv[1] ?? "");
   // Invoked through the hive binary → keep the `v2` argv prefix so a service
   // unit installed before freeze still hits this stack (`hive v2 daemon run`).
   // The standalone v2 bin already is this CLI, so no prefix.
   const viaHive = /[/\\]dist[/\\]cli\.js$/.test(entry);
-  return [resolveNodePin(dataDir, env, undefined, true).path, entry, ...(viaHive ? ["v2"] : []), "daemon", "run", "--data-dir", dataDir];
+  return [pin, entry, ...(viaHive ? ["v2"] : []), "daemon", "run", "--data-dir", dataDir];
+}
+
+/** The Node interpreter a service argv runs: argv[0], or argv[1] behind the launcher. */
+export function serviceInterpreter(args: string[]): string {
+  return basename(args[0] ?? "") === LAUNCHER_FILE_NAME && args.length > 1 ? args[1]! : args[0]!;
 }
 
 function buildServiceManager(ctx: CliContext, installing = false): ServiceManager {
   const args = installing ? serviceExecArgs(ctx.cfg.dataDir) : [];
-  const pin = installing ? resolveNodePin(ctx.cfg.dataDir, process.env, args[0], true) : undefined;
+  const pin = installing ? resolveNodePin(ctx.cfg.dataDir, process.env, serviceInterpreter(args), true) : undefined;
   const platform = process.platform;
   const dir = serviceDirectory(platform);
   return createServiceManager(
@@ -4834,9 +4867,11 @@ async function cmdDaemon(ctx: CliContext, parsed: Parsed): Promise<number> {
       return (await import("../../daemon/src/main.ts")).runDaemon(["--data-dir", ctx.cfg.dataDir, ...(ctx.target.socketSource === "flag" ? ["--socket", ctx.cfg.socketPath] : [])]);
     case "install": {
       const mgr = ownedServiceManager(ctx, "install");
+      const args = serviceExecArgs(ctx.cfg.dataDir);
+      const launcher = basename(args[0] ?? "") === LAUNCHER_FILE_NAME ? await installLauncher(resolve(ctx.cfg.dataDir, "..", "runtime")) : null;
       await mgr.install();
-      persistNodePin(ctx.cfg.dataDir, resolveNodePin(ctx.cfg.dataDir, process.env, serviceExecArgs(ctx.cfg.dataDir)[0], true));
-      emit(ctx, [confirm("ok", "installed", `${mgr.platform} service at ${mgr.servicePath}`)], { servicePath: mgr.servicePath }, false);
+      persistNodePin(ctx.cfg.dataDir, resolveNodePin(ctx.cfg.dataDir, process.env, serviceInterpreter(args), true));
+      emit(ctx, [confirm("ok", "installed", `${mgr.platform} service at ${mgr.servicePath}${launcher ? `, launcher ${launcher}` : ""}`)], { servicePath: mgr.servicePath, launcher }, false);
       return 0;
     }
     case "uninstall": {
@@ -4960,8 +4995,7 @@ export async function runV2Cli(argv: string[], io: CliIo = defaultIo): Promise<n
     io.out(helpText(hiveVersion()));
     return 0;
   }
-  // Runtime management and shell plumbing parse their own argv and never open the daemon.
-  if (argv[0] === "deploy") return (await import("./deploy/command.ts")).runDeployCli(argv.slice(1), io);
+  // Shell plumbing parses its own argv and never opens the daemon.
   if (argv[0] === "__complete") {
     for (const candidate of (await import("./completion.ts")).getCompletions(argv.slice(1))) io.out(candidate);
     return 0;

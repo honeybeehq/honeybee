@@ -9,7 +9,8 @@ architecture and reliability contract and applies to every task.
 ## Working rules
 
 - Inspect `git status` before editing; live bees frequently share this checkout.
-- Change the deployed runtime only through `hive deploy`. Never point the live runtime
-  at a mutable working tree or hand-copy build output into it.
+- Change the deployed runtime only through `hive runtime install` and `hive runtime activate`
+  (never from a Cell). Never point the live runtime at a mutable working tree or hand-copy
+  build output into it.
 - Typecheck, test, and build every change. Add tests for logic and state-machine behavior.
 - Preserve unrelated user/agent changes in a dirty worktree.

@@ -109,6 +109,8 @@ ${args}
   </dict>
   <key>ProcessType</key>
   <string>Interactive</string>
+  <key>AbandonProcessGroup</key>
+  <true/>
   <key>StandardOutPath</key>
   <string>${xmlEscape(spec.logPath)}</string>
   <key>StandardErrorPath</key>
@@ -316,6 +318,13 @@ export class SystemdServiceManager implements ServiceManager {
     }
     return { installed: false, running: false, detail: `systemd: ${state || "unknown unit"}` };
   }
+}
+
+/** The restart the old daemon issues on `runtime.activate`: asynchronous on both platforms, so the answer leaves before the unit stops. */
+export async function restartServiceUnit(platform: NodeJS.Platform, label: string, deps: { exec: ExecRunner; uid: number }): Promise<void> {
+  if (platform === "darwin") { await must(deps.exec, "launchctl", ["kickstart", "-k", `gui/${deps.uid}/${label}`]); return; }
+  if (platform === "linux") { await must(deps.exec, "systemctl", ["--user", "restart", "--no-block", `${label}.service`]); return; }
+  throw new ServiceError(`unsupported platform for service management: ${platform}`);
 }
 
 export function createServiceManager(

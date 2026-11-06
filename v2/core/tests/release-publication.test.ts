@@ -91,7 +91,7 @@ test("existing metadata with different bytes is never overwritten or exposed as 
 });
 
 test("release build boundary refuses the local skip-tests escape hatch", async () => {
-  const { buildDeployArtifact } = await import("../../cli/src/deploy/command.ts");
+  const { buildDeployArtifact } = await import("../src/release/buildArtifact.ts");
   await assert.rejects(buildDeployArtifact({ repoRoot: "/unused", sha: reservation.sourceRevision, workDir: "/unused", log: () => {}, release: true, skipTests: true }), /cannot skip tests/);
 });
 

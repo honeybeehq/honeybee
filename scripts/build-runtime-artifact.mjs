@@ -1,24 +1,22 @@
 #!/usr/bin/env node
 // Build a redistributable Honeybee runtime tarball for a committed sha
-// (distribution plan H1 / rollout F2): the exact stage directory `hive deploy`
-// installs, plus manifest.json and SHA256SUMS, so a machine with no git, npm,
-// or checkout can install it later (`runtime.install`).
+// (distribution plan H1 / rollout F2): the exact stage directory `runtime.install`
+// unpacks, plus manifest.json and SHA256SUMS, so a machine with no git, npm,
+// or checkout can install it later.
 //
 //   npm run runtime:artifact                       # HEAD, full gate, .artifacts/runtime/
 //   npm run runtime:artifact -- <sha|ref> --out <dir>
 //   npm run runtime:artifact -- --skip-tests       # local iteration only; manifest gate=tests-skipped
 //
-// Runs through tsx (like scripts/update-execution-digest.mjs) so it shares
-// the production build path — src/commands/deploy.ts buildDeployArtifact —
-// and the manifest/hash/tar logic in src/runtimeArtifact.ts with `hive
-// deploy` instead of forking either. The committed sha is exported with
-// `git archive`; the working tree is only ever read.
+// Shares the release build path (v2/core/src/release/buildArtifact.ts) and the
+// manifest/hash/tar logic in runtimeArtifact.ts. The committed sha is exported
+// with `git archive`; the working tree is only ever read.
 import { execFileSync } from "node:child_process";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildDeployArtifact } from "../v2/cli/src/deploy/command.ts";
+import { buildDeployArtifact } from "../v2/core/src/release/buildArtifact.ts";
 import { packRuntimeArtifact } from "../v2/core/src/release/runtimeArtifact.ts";
 
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));

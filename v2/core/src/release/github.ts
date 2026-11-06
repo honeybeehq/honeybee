@@ -46,7 +46,7 @@ export class GitHubReleaseStore implements ReleaseAssetStore {
     if (!this.release) {
       try {
         this.release = await (await this.api("/releases", { method: "POST", body: JSON.stringify({ tag_name: this.tag,
-          name: this.tag, draft: true, make_latest: "false", body: "Immutable Honeybee runtime. See release.json for exact source, artifact and inventory identities. Activation remains hive deploy." }) }))!.json() as Release;
+          name: this.tag, draft: true, make_latest: "false", body: "Immutable Honeybee runtime. See release.json for exact source, artifact and inventory identities. Activation is runtime.activate." }) }))!.json() as Release;
       } catch (error) {
         this.release = await this.find();
         if (!this.release) throw error;

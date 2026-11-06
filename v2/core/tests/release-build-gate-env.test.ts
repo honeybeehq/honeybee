@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { test } from "node:test";
-import { buildDeployArtifact } from "../src/deploy/command.ts";
+import { buildDeployArtifact } from "../src/release/buildArtifact.ts";
 
 const exec = promisify(execFile);
 
