@@ -7,7 +7,7 @@ export * from "./transcript.ts";
 export { createTranscriptProjector, createNativeTranscriptProjector, restoreTranscriptProjector, createTranscriptTurnStream, renderTranscriptLines } from "./transcripts.ts";
 export { museAdapter, museFreshCommandId, museMessageCommandId, museSessionMcpServers, MUSE_EFFORTS, type MuseAdapterOptions, type MuseApprovalMode, type MuseEffort } from "./muse.ts";
 export { kimiAdapter, kimiSpawnPlan, type KimiAdapterOptions, type KimiMode } from "./kimi.ts";
-export { agyAdapter, agyResumeArgs, encodeAgyMessage, parseAgyLine } from "./agy.ts";
+export { agyAdapter, agyVersionRefusal, AGY_EFFORTS, AGY_MIN_VERSION, AGY_MODES, type AgyAdapterOptions, type AgyEffort, type AgyMode } from "./agy.ts";
 export { canonicalCwd, claudeAdapter, claudeProjectKey, claudeResumeArgs, claudeForkArgs, encodeClaudeInterrupt, parseClaudeLine, encodeClaudeMessage } from "./claude.ts";
 export { codexAdapter, codexRateLimitSignals, codexThreadRequest, type CodexAdapterOptions } from "./codex.ts";
 export { grokAdapter, grokAllowPermissionResult, type GrokAdapterOptions, type GrokMcpServerStdio } from "./grok.ts";
@@ -17,6 +17,7 @@ export {
   parseArgUnits,
   dedupeUnits,
   agyArgGrammar,
+  agySpawnPlan,
   claudeArgGrammar,
   codexArgGrammar,
   grokArgGrammar,

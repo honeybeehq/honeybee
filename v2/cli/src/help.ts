@@ -91,7 +91,7 @@ export const GROUPS: Group[] = [
     title: "Accounts",
     rows: [
       ["account", "list [--harness h]", "accounts + latest limits · get <selector> (exact or unique fuzzy)"],
-      ["account", "add <harness> <label>", "create an account [--id id] [--home dir] [--penalty n]"],
+      ["account", "add <harness> <label>", "create an account [--id id] [--home dir] [--penalty n] (agy takes none: it runs on the machine's own agy sign-in)"],
       ["account", "remove|pause|unpause <selector>", "lifecycle · penalty <selector> <0-100> · ceiling <selector> <1-100|off>"],
       ["login", "<account>", "sign in (browser / code / API key — driven from this terminal; --no-wait just starts it)"],
       ["account", "capture <selector>", "snapshot an already-authenticated home/provider credential into the vault"],

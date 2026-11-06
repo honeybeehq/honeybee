@@ -306,12 +306,6 @@ const GENERIC_PROMPTS: LoginCliCue[] = [
 ];
 const GENERIC_USER_CODE = "\\b(?:code|enter)[^\\n]{0,40}?\\b([A-Z0-9]{4,6}-[A-Z0-9]{4,6})\\b";
 const GENERIC_FAILURE = ["\\b(login|authentication|authorization) (failed|error|denied)\\b", "\\binvalid (code|token|api key)\\b"];
-const AGY_AUTH_URL = `(?:Authentication required\\. Please visit the URL to log in:\\s*)?${GENERIC_URL}`;
-const AGY_CODE_PROMPT: LoginCliCue = {
-  match: "(?:Or,\\s*)?paste the authorization code here and press Enter:\\s*$",
-  field: LOGIN_FIELD_CODE,
-};
-const AGY_FAILURE = ["\\bauthentication (?:failed or )?timed out\\b"];
 // Captured from `muse login` 1.4.7 without a TTY: the sign-in URL already
 // carries the code, then "confirm this code matches:" (or "and enter this
 // code:") and the code on its own line, then it polls.
@@ -702,47 +696,6 @@ export const ACCOUNT_RECIPES: Readonly<Record<string, IdentityRecipe>> = {
       ],
     },
   },
-  agy: {
-    credentialFiles: [".gemini/antigravity-cli/antigravity-oauth-token"],
-    configFiles: [".gemini/antigravity/antigravity_state.pbtxt"],
-    // Local agy uses the OS keyring independently of HOME. Its supported SSH
-    // mode bypasses the keyring and persists the OAuth token below HOME, so
-    // every managed login and spawn gets the same file-backed identity.
-    extraEnv: {
-      HOME: "{home}",
-      SSH_CONNECTION: "127.0.0.1 1 127.0.0.1 1",
-    },
-    vendorHome: {
-      dir: ".gemini",
-      relocated: {
-        ".gemini/antigravity-cli/antigravity-oauth-token": { path: "{HOME}/.gemini/antigravity-cli/antigravity-oauth-token" },
-        ".gemini/antigravity/antigravity_state.pbtxt": { path: "{HOME}/.gemini/antigravity/antigravity_state.pbtxt" },
-      },
-    },
-    login: { command: "agy", args: [] },
-    loginFlow: {
-      defaultMethodId: "agy-cli",
-      methods: [
-        {
-          id: "agy-cli",
-          kind: "browser_code",
-          label: "Sign in with agy",
-          description: "Approve access in your browser, then paste the authorization code.",
-          remoteCapable: true,
-          fields: [],
-          run: {
-            mode: "cli",
-            cli: {
-              tty: true,
-              env: { BROWSER: "true" },
-              cues: { url: AGY_AUTH_URL, prompts: [AGY_CODE_PROMPT], failure: AGY_FAILURE },
-              landing: "home_mtime",
-            },
-          },
-        },
-      ],
-    },
-  },
   muse: {
     // XDG_CONFIG_HOME (HARNESS_HOME_ENV) is the account home, so Muse keeps
     // auth.json, settings and trust under <home>/muse; its sessions and
@@ -923,6 +876,22 @@ export function nativeAccountRecipe(harness: string, platform: string): NativeAc
 
 export function recipeFor(harness: string): IdentityRecipe | undefined {
   return ACCOUNT_RECIPES[harness];
+}
+
+/**
+ * Harnesses that run only on the machine's own sign-in. Honeybee holds no
+ * account for them: nothing to sign in, capture, vault, lease, allocate or
+ * rotate, and no recipe above. agy keeps its login in the OS keyring (or its
+ * own files after `agy acp --login`), and its terms rule out automated account
+ * rotation.
+ */
+const MACHINE_SIGN_IN_ONLY: Readonly<Record<string, string>> = {
+  agy: "agy runs on this computer's own agy sign-in (run `agy`, or `agy acp --login` on a headless host; a GEMINI_API_KEY in the environment also works). Honeybee holds no agy accounts and never signs agy in, copies its login or rotates it.",
+};
+
+/** Why `harness` takes no Honeybee account (it runs on the machine's own sign-in), else null. */
+export function machineSignInOnly(harness: string): string | null {
+  return MACHINE_SIGN_IN_ONLY[harness] ?? null;
 }
 
 /** The explicit allowlist and content rules for config-only onboarding. */

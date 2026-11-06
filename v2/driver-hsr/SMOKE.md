@@ -3,14 +3,15 @@
 CI proves the driver against the stub agent only. This checklist verifies the real
 adapters against live harness streams once, manually. Budget: one short turn each.
 
-Setup: none — the runner is checked in. From the repo root:
+Setup: `npm ci && npm run build` once (the build produces the native process-identity
+bridge the runtime host needs). The runner is checked in. From the repo root:
 
 ```
 npm run v2:smoke -- stub     # wiring proof, no tokens (run first)
 npm run v2:smoke -- claude   # real claude from PATH   [--model <m>]
 npm run v2:smoke -- codex    # real codex from PATH    [--model <m>]
 npm run v2:smoke -- grok     # real grok agent stdio   [--model <m>]
-npm run v2:smoke -- agy      # real agy print mode     [--model <m>]
+npm run v2:smoke -- agy      # real `agy acp` (ACP)    [--model <m>] [--effort <e>]
 npm run v2:smoke -- muse     # real muse serve (MSP)   [--model <m>] [--provider echo]
 ```
 
@@ -45,18 +46,38 @@ paste during its post-turn redraw. Claude's transcript locator now realpaths the
    - [ ] adapter emits `auth_needed` evidence; restoring credentials + successful turn
          emits the contrary-evidence clear
 
-## agy print-mode checks
+## agy ACP checks
 
-agy 1.1.24 emits an `init` line before accepting input, so delivery during
-boot must return `not_ready`; it is not a synthetic-ready harness. Confirm
-that each `agent_response` step opens a turn and every terminal `result`,
-including `CANCELED`, closes it. Run the authenticated check with
-`--dangerously-skip-permissions` so tool requests do not wait for approval.
+agy runs as `agy acp` (agy 1.5.1 or newer; `agy acp` exists from 1.5.0, and 1.5.1 is
+the first release that stops sending `session/update` after the `session/prompt`
+reply). The adapter handshakes `initialize` (client `Honeybee` version `2`) →
+`session/new` (or `session/resume` for a recorded session id) with the operator's MCP
+servers, then applies only what the spawn asked for: `--model` and `--effort` through
+`session/set_config_option` (`model`, `thought_level`), `--mode` through the `mode`
+option. A concrete model id such as `gemini-3.8-flash-low` is refused by the `model`
+option and goes through `session/set_model`. Mail is `session/prompt`; the prompt
+response closes the turn; `session/cancel` is the interrupt and ends the prompt
+`cancelled`. Without `--dangerously-skip-permissions` a `session/request_permission` is
+declined; with it the adapter selects the provider's allow-once option.
 
-For the auth check, use a fresh HOME and inspect both streams. agy prints the
-"Authentication required" stanza on stderr, emits an `ERROR` result containing
-"authentication failed or timed out" on stdout, and may exit 0. The result
-event, not the exit code, must set `auth_needed`.
+Sign-in is agy's own. Honeybee holds no agy account and never reads, copies, vaults or
+leases its login: `--account auto` runs an agy bee unbound on the machine's sign-in (OS
+keyring locally; `agy acp --login` on a headless host). A `GEMINI_API_KEY` in the
+environment passes through to agy; the adapter calls `authenticate` with
+`gemini-api-key` only after agy answers a session request with auth-required.
+
+The agy smoke has its own flow, three short turns on a Gemini model (default
+`gemini-3.8-flash`, effort `low`): one calls the smoke's stdio MCP server
+(`test-agent/smoke-mcp-server.mjs`, passed in `session/new`), one is cancelled
+mid-turn, and one runs after stop and `session/resume` and must recall the first. A
+second runtime proves the `not_ready` refusal during boot and a concrete model id
+without a turn. It ends with the protocol facts it saw (agent info, auth methods,
+configuration routes, tool-call rows, stop reasons); paste them with the result.
+
+For the auth check, sign agy out (or run on a host where it never signed in) and start
+the smoke: the session request fails auth-required, the runtime never boots, and the
+adapter reports `auth_needed` naming agy's own sign-in. Sign in again and a served turn
+clears it.
 
 ## Format-confidence items (from adapter implementation)
 
@@ -72,7 +93,7 @@ Result log:
 | 2026-08-17 | claude | trmd | ALL 11 PASS | after readyAtSpawn fix (4a8c6c42); 6 log lines |
 | 2026-08-17 | codex | trmd | ALL 11 PASS | codex-cli app-server; 53 log lines |
 | 2026-08-20 | grok | trmd | ALL 11 PASS | grok 1.0.5 ACP stdio; grok-4.6; 82 log lines; authMethods cached_token+grok.com; loadSession=true; step 6 still manual |
-| | agy | | | pending live smoke after deployment; fixture protocol captured from agy 1.1.24 on 2026-09-02 |
+| | agy | | | ACP adapter (`agy acp`); initialize and session/new captured from agy 1.5.2 on 2026-11-06; live smoke pending |
 
 ---
 

@@ -434,11 +434,17 @@ test("verbs.transcript: -f/--follow streams appended lines until SIGINT", async 
   }
 });
 
+const agyChunk = (sessionId: string, text: string): string => JSON.stringify({
+  jsonrpc: "2.0", method: "session/update",
+  params: { sessionId, update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text } } },
+});
+const agyPromptDone = (id: number): string => JSON.stringify({ jsonrpc: "2.0", id, result: { stopReason: "end_turn" } });
+
 test("verbs.transcript: agy follow keeps projector state across appended lines", async () => {
   const dir = mkdtempSync(join(tmpdir(), "hb-v2-verbs-agy-follow-"));
   try {
     const logPath = join(dir, "agy.jsonl");
-    writeFileSync(logPath, `${JSON.stringify({ event: "init", conversation_id: "agy-follow-session" })}\n`);
+    writeFileSync(logPath, `${agyChunk("agy-follow-session", "SEC")}\n`);
     const store = openCoreStore(join(dir, "core.sqlite3"));
     store.createBee({
       id: "agy-follow-1",
@@ -455,27 +461,7 @@ test("verbs.transcript: agy follow keeps projector state across appended lines",
       await runFollowUntil(
         ["transcript", "agy-follow", "--follow", "--data-dir", dir],
         follow,
-        () => appendFileSync(logPath, [
-          JSON.stringify({
-            event: "step_update",
-            step_update: {
-              conversation_id: "agy-follow-session",
-              step_index: 1,
-              state: "DONE",
-              step_type: "agent_response",
-              text_delta: "SECOND",
-            },
-          }),
-          JSON.stringify({
-            event: "result",
-            result: {
-              conversation_id: "agy-follow-session",
-              status: "SUCCESS",
-              response: "SECOND",
-              num_turns: 1,
-            },
-          }),
-        ].join("\n") + "\n"),
+        () => appendFileSync(logPath, `${agyChunk("agy-follow-session", "OND")}\n${agyPromptDone(1001)}\n`),
         () => follow.out.includes("[assistant] SECOND"),
         "agy transcript --follow appended turn",
       ),
@@ -494,36 +480,10 @@ test("verbs.transcript: follow completes a torn agy record with one projector", 
   const dir = mkdtempSync(join(tmpdir(), "hb-v2-verbs-agy-torn-follow-"));
   try {
     const logPath = join(dir, "agy.jsonl");
-    const init = JSON.stringify({ event: "init", conversation_id: "agy-torn-session" });
-    const active = JSON.stringify({
-      event: "step_update",
-      step_update: {
-        conversation_id: "agy-torn-session",
-        step_index: 1,
-        state: "ACTIVE",
-        step_type: "agent_response",
-        text_delta: "HEL",
-      },
-    });
-    const done = JSON.stringify({
-      event: "step_update",
-      step_update: {
-        conversation_id: "agy-torn-session",
-        step_index: 1,
-        state: "DONE",
-        step_type: "agent_response",
-        text_delta: "LO",
-      },
-    });
-    const result = JSON.stringify({
-      event: "result",
-      result: {
-        conversation_id: "agy-torn-session",
-        status: "SUCCESS",
-        response: "HELLO",
-        num_turns: 1,
-      },
-    });
+    const init = JSON.stringify({ jsonrpc: "2.0", id: 2, result: { sessionId: "agy-torn-session" } });
+    const active = agyChunk("agy-torn-session", "HEL");
+    const done = agyChunk("agy-torn-session", "LO");
+    const result = agyPromptDone(1001);
     const splitAt = Math.floor(done.length / 2);
     writeFileSync(logPath, `${init}\n${active}\n${done.slice(0, splitAt)}`);
     const store = openCoreStore(join(dir, "core.sqlite3"));
@@ -575,19 +535,7 @@ test("verbs.transcript: follow flushes one live agy fragment once on SIGINT", as
   const dir = mkdtempSync(join(tmpdir(), "hb-v2-verbs-agy-live-follow-"));
   try {
     const logPath = join(dir, "agy.jsonl");
-    writeFileSync(logPath, [
-      JSON.stringify({ event: "init", conversation_id: "agy-live-session" }),
-      JSON.stringify({
-        event: "step_update",
-        step_update: {
-          conversation_id: "agy-live-session",
-          step_index: 1,
-          state: "ACTIVE",
-          step_type: "agent_response",
-          text_delta: "reply in progress",
-        },
-      }),
-    ].join("\n") + "\n");
+    writeFileSync(logPath, `${agyChunk("agy-live-session", "reply in progress")}\n`);
     const store = openCoreStore(join(dir, "core.sqlite3"));
     store.createBee({
       id: "agy-live-follow-1",

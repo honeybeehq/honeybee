@@ -34,7 +34,7 @@ export class TurnQuiet {
     const params = asObject(row?.params);
     const scope = params?.threadId ?? params?.sessionId ?? row?.session_id ?? row?.sessionId;
     if (sessionId && typeof scope === "string" && scope !== sessionId) return;
-    if (this.harness === "grok" || this.harness === "kimi") {
+    if (this.harness === "grok" || this.harness === "kimi" || this.harness === "agy") {
       const promptResponse = row?.method === undefined && typeof row?.id === "number" && row.id >= 1000;
       const update = asObject(params?.update);
       const completion = typeof row?.method === "string" && (

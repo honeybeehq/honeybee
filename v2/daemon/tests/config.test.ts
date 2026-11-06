@@ -63,18 +63,7 @@ test("config.1: absent file resolves to pure defaults (the file may be absent)",
     assert.ok(cfg.agents.codex);
     assert.ok(cfg.agents.grok);
     assert.deepEqual(cfg.agents.agy, BUILTIN_AGENTS.agy);
-    assert.deepEqual(cfg.agents.agy, {
-      command: "agy",
-      args: [
-        "--print=",
-        "--input-format", "stream-json",
-        "--output-format", "stream-json",
-        "--dangerously-skip-permissions",
-        "--print-timeout", "12h",
-      ],
-      adapter: "agy",
-      env: { AGY_CLI_DISABLE_AUTO_UPDATE: "1" },
-    });
+    assert.deepEqual(cfg.agents.agy, { command: "agy", args: ["acp"], adapter: "agy", env: { AGY_CLI_DISABLE_AUTO_UPDATE: "1" } });
     assert.deepEqual(cfg.agents.muse, {
       command: "muse",
       args: ["serve", "-c", "context.foreign_personal_rules=false", "-c", "context.foreign_personal_skills=false"],

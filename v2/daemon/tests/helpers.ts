@@ -70,7 +70,7 @@ export class FakeDriver implements RuntimeDriver {
    * immediate-exit stub / missing-cwd shape). Wins over autoBoot.
    */
   bootCrash = false;
-  /** agy auth failure before init: flag evidence, then a clean booting exit. */
+  /** A harness auth failure before boot: flag evidence, then a clean booting exit. */
   authBootFailure = false;
   /**
    * v9 — the readyAtSpawn instant-death shape (the 2026-08-18 soak loop): a
