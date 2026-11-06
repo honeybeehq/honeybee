@@ -486,7 +486,10 @@ export function resolveSendSender(
   dataDir: string,
   env: Record<string, string | undefined> = process.env,
 ): string | undefined {
-  const senderId = env.HIVE_BEE_ID?.trim();
+  const beeId = env.HIVE_BEE_ID?.trim();
+  const sessionId = env.HIVE_SESSION_ID?.trim();
+  if (beeId && sessionId && beeId !== sessionId) throw new Error("send: conflicting calling session identity");
+  const senderId = beeId || sessionId;
   const senderName = env.HIVE_BEE?.trim();
   const identityDataDir = env.HIVE_V2_DATA_DIR?.trim();
   if (identityDataDir && resolve(identityDataDir) !== resolve(dataDir)) {
@@ -496,7 +499,6 @@ export function resolveSendSender(
     return undefined;
   }
   if (!senderId) {
-    if (senderName) throw new Error("send: HIVE_BEE is set but HIVE_BEE_ID is missing; refusing an unauthenticated bee sender");
     if (explicitSender !== undefined) {
       throw new Error("send: --sender requires the calling bee identity from HIVE_BEE_ID; human senders must use buz --sender-human");
     }
@@ -2496,12 +2498,8 @@ async function cmdSend(ctx: CliContext, parsed: Parsed, options: { humanSender?:
     if (options.humanSender !== undefined && !humanSender) {
       throw new Error("buz: --sender-human must be a non-empty name");
     }
-    if (humanSender && (process.env.HIVE_BEE_ID?.trim() || process.env.HIVE_BEE?.trim())) {
-      throw new Error("buz: a bee runtime cannot claim a human sender");
-    }
-    const sender = humanSender
-      ? `human:${humanSender}`
-      : resolveSendSender(views, parsed.flags.get("--sender") as string | undefined, ctx.cfg.dataDir);
+    if (humanSender) throw new Error("buz: human input requires the authenticated Apiary UI");
+    const sender = resolveSendSender(views, parsed.flags.get("--sender") as string | undefined, ctx.cfg.dataDir);
     const result = await c.request<SendRpcResult>("send", {
       beeId,
       body,

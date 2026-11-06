@@ -2108,6 +2108,13 @@ export class HiveDaemon {
 
   private dispatch(verb: RpcVerb, params: Record<string, unknown>, conn: RpcConn): unknown {
     assertConfinedVerb(verb, conn.confinement ?? "unknown");
+    if (verb === "send") {
+      const caller = conn.authenticatedBeeId ?? (conn.localPeer ? peerOwner(conn)?.beeId : undefined);
+      if (caller) {
+        if (conn.humanChat) throw new RpcError("human_chat_unauthorized", "An agent cannot send human input");
+        params = { ...params, sender: caller, senderKind: undefined };
+      }
+    }
     if (params.automationKind !== undefined || params.automationRef !== undefined) {
       if (verb !== "send") throw new RpcError("automation_unauthorized", "Automation metadata is only valid for send");
       assertAutomationSend(params, conn);
@@ -6148,6 +6155,9 @@ export class HiveDaemon {
         throw new RpcError("invalid_request", "send: senderKind is only for operator and human senders; an agent's mail is always mail");
       }
     }
+    // Display labels never establish human provenance. Only protected UI
+    // admission may create human mail; old relays and bare CLI sends are automation.
+    if (sender === "operator" || sender.startsWith("human:")) senderKind = humanChat ? "human" : "automation";
     if (this.phoneOriginOf(params)) { sender = `remote:${this.phoneOriginOf(params)!.issuerNodeId}/phone`; senderKind = undefined; }
     const res = store.send(beeId, body, { sender, urgency, ...(params.automationKind !== undefined ? { automationKind: params.automationKind as AutomationKind, ...(typeof params.automationRef === "string" ? { automationRef: params.automationRef } : {}) } : {}), ...((params as Record<PropertyKey,unknown>)[AUTOMATION_REFERENCE] ? {automationReference:(params as Record<PropertyKey,unknown>)[AUTOMATION_REFERENCE] as import("../../core/src/types.ts").AutomationReference} : {}), ...(humanChat ? { humanChat } : {}), ...(senderKind ? { senderKind } : {}), ...this.phoneSendOptions(params) });
     this.forwardIfMailboxOnly(beeId, res.message);

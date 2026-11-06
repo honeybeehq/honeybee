@@ -73,7 +73,7 @@ test("send: exact-ID lookup preserves fallback and sender authority", async (t) 
       const env = { HIVE_BEE_ID: sender, HIVE_BEE: "caller", HIVE_V2_DATA_DIR: dir };
       const peer = await run(target, [], env); assert.equal(peer.send?.sender, sender); assert.deepEqual(peer.verbs, ["view", "send"]);
       assert.equal((await run(target, [], { ...env, HIVE_V2_DATA_DIR: join(dir, "other") })).send?.sender, undefined);
-      const invalid = await run(target, [], { HIVE_BEE: "caller" }); assert.equal(invalid.exit, 1); assert.match(invalid.err.join(""), /HIVE_BEE_ID is missing/); assert.equal(invalid.send, undefined);
+      const unclaimed = await run(target, [], { HIVE_BEE: "caller" }); assert.equal(unclaimed.exit, 0); assert.equal(unclaimed.send?.sender, undefined);
     });
     await t.test("explicit aliases and forged sender claims retain the full resolver", async () => {
       const env = { HIVE_BEE_ID: sender, HIVE_BEE: "caller", HIVE_V2_DATA_DIR: dir };
@@ -84,8 +84,8 @@ test("send: exact-ID lookup preserves fallback and sender authority", async (t) 
         const result = await run(target, ["--sender", alias], identity); assert.equal(result.exit, 1); assert.equal(result.send, undefined); assert.deepEqual(result.verbs, ["list"]);
       }
     });
-    await t.test("buz human sender is preserved and cannot be claimed by a bee", async () => {
-      const human = await run(target, ["--sender-human", "Tormod"], {}, "buz"); assert.equal(human.exit, 0); assert.equal(human.send?.sender, "human:Tormod");
+    await t.test("buz human sender requires authenticated UI input", async () => {
+      const human = await run(target, ["--sender-human", "Tormod"], {}, "buz"); assert.equal(human.exit, 1); assert.match(human.err.join(""), /authenticated Apiary UI/); assert.equal(human.send, undefined);
       const forged = await run(target, ["--sender-human", "Tormod"], { HIVE_BEE_ID: sender }, "buz"); assert.equal(forged.exit, 1); assert.equal(forged.send, undefined);
     });
     await t.test("view errors propagate without list fallback or mutation", async () => {

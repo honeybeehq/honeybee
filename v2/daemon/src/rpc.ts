@@ -371,7 +371,7 @@ export class RpcServer {
   }
 
   get capabilities(): typeof DAEMON_CAPABILITIES[number][] {
-    return DAEMON_CAPABILITIES.filter(capability => !(["cell.secret.exec.v1", "cell.secret.capture.v1", "mirror.local.homes.v1", "question.withdraw.v1", "mail.humanFirst.v1", "mail.batching.v1", "bee.tell.v1", "bee.react.v1", "bee.human_output_mode.v1"] as string[]).includes(capability) || (this.trust.enabled && this.trust.state === "ready" && this.credentials.status.state === "ready"));
+    return DAEMON_CAPABILITIES.filter(capability => !(["cell.secret.exec.v1", "cell.secret.capture.v1", "mirror.local.homes.v1", "question.withdraw.v1", "mail.humanFirst.v1", "mail.agentPrincipal.v1", "mail.batching.v1", "bee.tell.v1", "bee.react.v1", "bee.human_output_mode.v1"] as string[]).includes(capability) || (this.trust.enabled && this.trust.state === "ready" && this.credentials.status.state === "ready"));
   }
 
   private operatorLocalAllowed(conn: Connection): boolean {
@@ -665,7 +665,7 @@ export class RpcServer {
           if (!peer || !this.trust.enabled || conn.ingress !== "local_unix" || conn.relayLane !== null) throw new RpcError("human_chat_unauthorized", "Human chat requires the registered local Apiary authority");
           try { this.trust.require(peer, conn.ingress); } catch { throw new RpcError("human_chat_unauthorized", "Human chat requires the registered local Apiary authority"); }
           if (verb === "mail.humanFirst.set") return this.opts.dispatch(verb, params, { ...conn, humanPolicyAuthority: true });
-          if (verb !== "send" || humanContext?.phoneOrigin !== undefined || humanContext?.phoneLane !== undefined) throw new RpcError("human_chat_unauthorized", "Human chat context is only valid for send");
+          if (verb !== "send" || Object.keys(humanContext ?? {}).some(key => key !== "humanChat")) throw new RpcError("human_chat_unauthorized", "Human chat context is only valid for send and cannot be mixed with other principals");
           const raw = humanContext?.humanChat;
           if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new RpcError("human_chat_invalid", "Malformed human chat admission");
           const chat = raw as Record<string, unknown>;
@@ -680,6 +680,16 @@ export class RpcServer {
           return this.opts.dispatch(verb, params, { ...conn, humanChat: chat as unknown as HumanChatAdmission });
         }
         if (params.phoneOrigin !== undefined || params.phoneInput !== undefined || params.phoneLane !== undefined) throw new RpcError("invalid_request", "Phone carriers belong in RPC context, not args");
+        if (verb === "send" && (frame.context as Record<string, unknown> | undefined)?.sessionPrincipal !== undefined) {
+          const context = frame.context as Record<string, unknown>;
+          if (Object.keys(context).some(key => key !== "sessionPrincipal") || !peer || !this.trust.enabled || conn.ingress !== "local_unix" || conn.relayLane !== null) throw new RpcError("caller_not_trusted", "Send principals require the registered direct local Apiary service");
+          this.trust.require(peer, conn.ingress);
+          const principal = context.sessionPrincipal;
+          if (!principal || typeof principal !== "object" || Array.isArray(principal) || Object.keys(principal).some(key => key !== "beeId")) throw new RpcError("caller_not_trusted", "Invalid send principal");
+          const beeId = (principal as Record<string, unknown>).beeId;
+          if (typeof beeId !== "string" || !beeId.trim() || beeId.length > 256 || beeId.includes("\0")) throw new RpcError("caller_not_trusted", "Invalid send principal");
+          return this.opts.dispatch(verb, params, { ...conn, authenticatedBeeId: beeId });
+        }
         if (verb === "spawn") {
           const rawContext = frame.context;
           if (rawContext !== undefined && (!rawContext || typeof rawContext !== "object" || Array.isArray(rawContext))) throw new RpcError("caller_not_trusted", "Invalid spawn context");

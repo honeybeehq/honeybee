@@ -101,6 +101,7 @@ export const DAEMON_CAPABILITIES = [
   "cell.secret.exec.v1",
   "cell.secret.capture.v1",
   "mail.humanFirst.v1",
+  "mail.agentPrincipal.v1",
   "mail.batching.v1",
   "mail.delivery.confirmation.v1",
   "rpc.local_trust.v1",

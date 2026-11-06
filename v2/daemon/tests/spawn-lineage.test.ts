@@ -37,7 +37,7 @@ createInterface({input:process.stdin}).on('line', async line => {
   const message = JSON.parse(line);
   if (message.type !== 'message') return;
   emit({event:'turn_started',messageId:message.id});
-  const {args,output,rpc,detach} = JSON.parse(message.body);
+  const {args,output,rpc,detach} = JSON.parse(message.body.startsWith('[Hive automated message,') ? message.body.slice(message.body.indexOf('\\n\\n') + 2) : message.body);
   if (detach) {
     const result = spawnSync(process.execPath, [${JSON.stringify(intermediate)}, JSON.stringify({...detach,output,runtimePid:process.pid})], {env:process.env,encoding:'utf8',timeout:5000});
     if (result.status !== 0) writeFileSync(output,JSON.stringify({error:result.stderr}));
@@ -53,7 +53,7 @@ createInterface({input:process.stdin}).on('line', async line => {
         const token = createHmac('sha256',secret).update(localTrustMessage(challenge)).digest('hex');
         secret.fill(0);
         result = await client.request('rpc.localTrust.register',{pid:process.pid,challengeId:challenge.challengeId,token});
-      } else result = await client.request('spawn',rpc.params);
+      } else result = await client.request(rpc.verb ?? 'spawn',rpc.params);
       writeFileSync(output, JSON.stringify({result}));
     }
     catch (error) { writeFileSync(output,JSON.stringify({code:error.code})); }
@@ -61,7 +61,7 @@ createInterface({input:process.stdin}).on('line', async line => {
     emit({event:'turn_ended',messageId:message.id,ok:true}); return;
   }
   const env = {...process.env};
-  delete env.HIVE_BEE_ID; delete env.HIVE_PARENT_BEE_ID;
+  delete env.HIVE_BEE_ID; delete env.HIVE_SESSION_ID; delete env.HIVE_PARENT_BEE_ID;
   const result = spawnSync(process.execPath, [${JSON.stringify(cli)}, ...args], {env,encoding:'utf8',timeout:15000});
   writeFileSync(output, JSON.stringify({status:result.status,stdout:result.stdout,stderr:result.stderr}));
   emit({event:'turn_ended',messageId:message.id,ok:true});
@@ -130,6 +130,20 @@ renameSync(payload.output+'.pending',payload.output);
   }, "parent runtime ready");
   const other = await client.request<SpawnResult>("spawn", { name: "other-parent", agent: "inbox", cwd: rig.dir });
   let sequence = 0;
+  for (const lane of [undefined, "node_relay", "remote"]) {
+    await t.test(`runtime send retains its process owner on ${lane ?? "local_unix"}`, async () => {
+      const output = join(rig.dir, `send-${lane ?? "local"}.json`);
+      await client.request("send", { beeId: parent.beeId, body: JSON.stringify({ output, rpc: { socket: daemon.socketPath, lane, verb: "send", params: { beeId: other.beeId, body: "runtime report", sender: "human:Tormod", senderKind: "human" } } }) });
+      await waitFor(() => existsSync(output), "runtime send receipt");
+      const result = JSON.parse(readFileSync(output, "utf8"));
+      assert.equal(result.code, undefined);
+      const { messages } = await client.request<{ messages: Array<{ id: number; sender: string; senderKind?: string; humanChat?: unknown }> }>("mailbox", { beeId: other.beeId });
+      const message = messages.find(row => row.id === result.result.messageId)!;
+      assert.equal(message.sender, parent.beeId);
+      assert.equal(message.senderKind, undefined);
+      assert.equal(message.humanChat, undefined);
+    });
+  }
   const args = (extra: string[]) => [...extra, "--data-dir", rig.dir, "--socket", daemon.socketPath, "--json"];
   async function runtimeCli(extra: string[]): Promise<Output> {
     const output = join(rig.dir, `cli-${++sequence}.json`);
@@ -163,6 +177,13 @@ renameSync(payload.output+'.pending',payload.output);
     assert.equal(view.bee?.parentId, expected);
     return result.beeId;
   }
+  await t.test("runtime CLI send without identity variables uses its process ancestor", async () => {
+    const result = await runtimeCli(["send", other.beeId, "CLI runtime report"]);
+    assert.equal(result.status, 0, result.stderr);
+    const sent = JSON.parse(result.stdout) as { messageId: number };
+    const { messages } = await client.request<{ messages: Array<{ id: number; sender: string }> }>("mailbox", { beeId: other.beeId });
+    assert.equal(messages.find(row => row.id === sent.messageId)?.sender, parent.beeId);
+  });
   await t.test("runtime CLI defaults to its exact process ancestor", async () => {
     const childId = await check(await runtimeCli(["spawn", "default-child", "inbox"]), parent.beeId);
     await checkProvenance(childId, "bee", parent.beeId);
@@ -318,7 +339,7 @@ createInterface({input:process.stdin}).on('line', async line => {
   const message = JSON.parse(line);
   if (message.type !== 'message') return;
   emit({event:'turn_started',messageId:message.id});
-  const {output, socket, lane, params} = JSON.parse(message.body);
+  const {output, socket, lane, params} = JSON.parse(message.body.startsWith('[Hive automated message,') ? message.body.slice(message.body.indexOf('\\n\\n') + 2) : message.body);
   const client = await RpcClient.connect(socket, 3000, lane);
   try { writeFileSync(output, JSON.stringify({result: await client.request('spawn', params)})); }
   catch (error) { writeFileSync(output, JSON.stringify({code: error.code})); }
