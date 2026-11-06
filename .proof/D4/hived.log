@@ -1,0 +1,144 @@
+{"ts":1794122984339,"op":"tmp.policy beeTmpRoot=/var/tmp/hb-D4-oc3at2/v2/tmp source=data_dir_default daemonTmp=/var/tmp/hb-D4-oc3at2/v2/tmp/daemon nodeCompileCache=/var/tmp/hb-D4-oc3at2/v2/node-compile-cache"}
+{"ts":1794122984362,"op":"store.migration.rpc_idempotency_env seen=0 redacted=0 skipped_unparseable=0 skipped_unrecognised=0 complete=true ms=0"}
+{"ts":1794122984366,"op":"security.confinement strict=false bwrap={\"path\":\"/usr/bin/bwrap\",\"setuid\":false}"}
+{"ts":1794122984367,"op":"champions homes=/var/tmp/hb-D4-oc3at2/v2/champions store=/var/tmp/hb-D4-oc3at2/v2/transcript-objects"}
+{"ts":1794122984367,"op":"transcripts.segments store=/var/tmp/hb-D4-oc3at2/v2/transcript-objects max_lines=1024 max_raw_bytes=1048576 projection=8"}
+{"ts":1794122984370,"op":"boot adopted=0 stopped=0 requeued=0 reaped=0 wakes=0"}
+{"ts":1794122984401,"op":"rpc.listen socket=/var/tmp/hb-D4-oc3at2/v2/hived.sock"}
+{"ts":1794122984402,"op":"transcripts.segment.catch_up scheduled=0"}
+{"ts":1794122984415,"op":"daemon.started pid=1871548 store=/var/tmp/hb-D4-oc3at2/v2/core.sqlite3"}
+{"ts":1794122984670,"op":"config.retention.invalid cells.retention.minFreeBytes 21474836480 is not below the Cells volume size 1073741824; ignored"}
+{"ts":1794122984962,"op":"cmd.spawn id=1 bee=e265fc60-77f1-4948-9133-cfdb0af21a32 start gen=1"}
+{"ts":1794122985182,"op":"cmd.spawn id=2 bee=bcb42335-9c62-4f76-a69a-32fd053984c9 start gen=1"}
+{"ts":1794122985188,"op":"spawn.evidence bee=e265fc60-77f1-4948-9133-cfdb0af21a32 gen=1 kind=booted"}
+{"ts":1794122985189,"op":"obs.booted bee=e265fc60-77f1-4948-9133-cfdb0af21a32 gen=1 pid=1871595"}
+{"ts":1794122985190,"op":"obs.turn_ended bee=e265fc60-77f1-4948-9133-cfdb0af21a32 gen=1"}
+{"ts":1794122985193,"op":"session.recorded bee=e265fc60-77f1-4948-9133-cfdb0af21a32 gen=1 id=stub-1871602"}
+{"ts":1794122985195,"op":"obs.checkpoint bee=e265fc60-77f1-4948-9133-cfdb0af21a32 gen=1 cursor=45"}
+{"ts":1794122985408,"op":"cmd.spawn id=3 bee=176b76df-68ee-4f76-924f-6976754b1e21 start gen=1"}
+{"ts":1794122985445,"op":"cell.reserve bee=fad0c7e3-3b69-46fa-9f8c-bb54d7982c62 origin=/var/tmp/hb-D4-oc3at2/origin sha=21d903325de8546c1e23f7d6a7a12fe413e422b3 base=head space=/var/tmp/hb-D4-oc3at2/cells/cell-1-8fcd6f194534/origin-space-8fcd6f194534"}
+{"ts":1794122985447,"op":"transcripts.segment.cut bee=e265fc60-77f1-4948-9133-cfdb0af21a32 reason=turn_ended segments=1 lines=1 through=1"}
+{"ts":1794122985450,"op":"spawn.evidence bee=bcb42335-9c62-4f76-a69a-32fd053984c9 gen=1 kind=booted"}
+{"ts":1794122985450,"op":"obs.booted bee=bcb42335-9c62-4f76-a69a-32fd053984c9 gen=1 pid=1871618"}
+{"ts":1794122985450,"op":"obs.turn_ended bee=bcb42335-9c62-4f76-a69a-32fd053984c9 gen=1"}
+{"ts":1794122985451,"op":"session.recorded bee=bcb42335-9c62-4f76-a69a-32fd053984c9 gen=1 id=stub-1871626"}
+{"ts":1794122985451,"op":"obs.checkpoint bee=bcb42335-9c62-4f76-a69a-32fd053984c9 gen=1 cursor=45"}
+{"ts":1794122985453,"op":"cmd.spawn id=4 bee=fad0c7e3-3b69-46fa-9f8c-bb54d7982c62 start gen=1"}
+{"ts":1794122985485,"op":"cell.reserve bee=1b51e407-288d-4527-9788-74fdc7f24564 origin=/var/tmp/hb-D4-oc3at2/origin sha=21d903325de8546c1e23f7d6a7a12fe413e422b3 base=head space=/var/tmp/hb-D4-oc3at2/cells/cell-2-a13158cf4e68/origin-space-a13158cf4e68"}
+{"ts":1794122985489,"op":"cmd.spawn id=5 bee=1b51e407-288d-4527-9788-74fdc7f24564 start gen=1"}
+{"ts":1794122985491,"op":"transcripts.segment.cut bee=bcb42335-9c62-4f76-a69a-32fd053984c9 reason=turn_ended segments=1 lines=1 through=1"}
+{"ts":1794122985493,"op":"spawn.evidence bee=176b76df-68ee-4f76-924f-6976754b1e21 gen=1 kind=booted"}
+{"ts":1794122985493,"op":"obs.booted bee=176b76df-68ee-4f76-924f-6976754b1e21 gen=1 pid=1871640"}
+{"ts":1794122985494,"op":"obs.turn_ended bee=176b76df-68ee-4f76-924f-6976754b1e21 gen=1"}
+{"ts":1794122985494,"op":"session.recorded bee=176b76df-68ee-4f76-924f-6976754b1e21 gen=1 id=stub-1871650"}
+{"ts":1794122985494,"op":"obs.checkpoint bee=176b76df-68ee-4f76-924f-6976754b1e21 gen=1 cursor=45"}
+{"ts":1794122985497,"op":"transcripts.segment.cut bee=176b76df-68ee-4f76-924f-6976754b1e21 reason=turn_ended segments=1 lines=1 through=1"}
+{"ts":1794122986185,"op":"spawn.evidence bee=fad0c7e3-3b69-46fa-9f8c-bb54d7982c62 gen=1 kind=booted"}
+{"ts":1794122986186,"op":"obs.booted bee=fad0c7e3-3b69-46fa-9f8c-bb54d7982c62 gen=1 pid=1871724"}
+{"ts":1794122986186,"op":"obs.turn_ended bee=fad0c7e3-3b69-46fa-9f8c-bb54d7982c62 gen=1"}
+{"ts":1794122986186,"op":"session.recorded bee=fad0c7e3-3b69-46fa-9f8c-bb54d7982c62 gen=1 id=stub-1871731"}
+{"ts":1794122986186,"op":"obs.checkpoint bee=fad0c7e3-3b69-46fa-9f8c-bb54d7982c62 gen=1 cursor=45"}
+{"ts":1794122986198,"op":"transcripts.segment.cut bee=fad0c7e3-3b69-46fa-9f8c-bb54d7982c62 reason=turn_ended segments=1 lines=1 through=1"}
+{"ts":1794122986262,"op":"spawn.evidence bee=1b51e407-288d-4527-9788-74fdc7f24564 gen=1 kind=booted"}
+{"ts":1794122986268,"op":"obs.booted bee=1b51e407-288d-4527-9788-74fdc7f24564 gen=1 pid=1871746"}
+{"ts":1794122986269,"op":"obs.turn_ended bee=1b51e407-288d-4527-9788-74fdc7f24564 gen=1"}
+{"ts":1794122986269,"op":"session.recorded bee=1b51e407-288d-4527-9788-74fdc7f24564 gen=1 id=stub-1871756"}
+{"ts":1794122986270,"op":"obs.checkpoint bee=1b51e407-288d-4527-9788-74fdc7f24564 gen=1 cursor=45"}
+{"ts":1794122986274,"op":"transcripts.segment.cut bee=1b51e407-288d-4527-9788-74fdc7f24564 reason=turn_ended segments=1 lines=1 through=1"}
+{"ts":1794122986303,"op":"deliver bee=bcb42335-9c62-4f76-a69a-32fd053984c9 msg=1 gen=1 urgency=next"}
+{"ts":1794122986307,"op":"obs.turn_started bee=bcb42335-9c62-4f76-a69a-32fd053984c9 gen=1 synthetic"}
+{"ts":1794122986308,"op":"obs.checkpoint bee=bcb42335-9c62-4f76-a69a-32fd053984c9 gen=1 cursor=84"}
+{"ts":1794122986455,"op":"runtime.activate from=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa to=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb runtimes=5 degraded=0 unit=hb.d4.test"}
+{"ts":1794122986712,"op":"runtime.activate.restart_issued unit=hb.d4.test platform=systemd"}
+{"ts":1794122986740,"op":"daemon.stopping pid=1871548"}
+{"ts":1794122986748,"op":"daemon.stopped"}
+{"ts":1794122986748,"op":"daemon.stop_complete pid=1871548"}
+{"ts":1794122987128,"op":"tmp.policy beeTmpRoot=/var/tmp/hb-D4-oc3at2/v2/tmp source=data_dir_default daemonTmp=/var/tmp/hb-D4-oc3at2/v2/tmp/daemon nodeCompileCache=/var/tmp/hb-D4-oc3at2/v2/node-compile-cache"}
+{"ts":1794122987136,"op":"security.confinement strict=false bwrap={\"path\":\"/usr/bin/bwrap\",\"setuid\":false}"}
+{"ts":1794122987138,"op":"champions homes=/var/tmp/hb-D4-oc3at2/v2/champions store=/var/tmp/hb-D4-oc3at2/v2/transcript-objects"}
+{"ts":1794122987138,"op":"transcripts.segments store=/var/tmp/hb-D4-oc3at2/v2/transcript-objects max_lines=1024 max_raw_bytes=1048576 projection=8"}
+{"ts":1794122987146,"op":"boot.adopt bee=176b76df-68ee-4f76-924f-6976754b1e21 gen=1 pid=1871640 ok=true identityReason=resolved"}
+{"ts":1794122987148,"op":"boot.adopt bee=1b51e407-288d-4527-9788-74fdc7f24564 gen=1 pid=1871746 ok=true identityReason=resolved"}
+{"ts":1794122987150,"op":"boot.adopt bee=bcb42335-9c62-4f76-a69a-32fd053984c9 gen=1 pid=1871618 ok=true identityReason=resolved"}
+{"ts":1794122987151,"op":"boot.adopt bee=e265fc60-77f1-4948-9133-cfdb0af21a32 gen=1 pid=1871595 ok=true identityReason=resolved"}
+{"ts":1794122987152,"op":"boot.adopt bee=fad0c7e3-3b69-46fa-9f8c-bb54d7982c62 gen=1 pid=1871724 ok=true identityReason=resolved"}
+{"ts":1794122987154,"op":"boot adopted=5 stopped=0 requeued=0 reaped=0 wakes=0"}
+{"ts":1794122987156,"op":"boot.handover adopted=5 expected=5 degraded=0 missing=0 from=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa to=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb running=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb reverted=false"}
+{"ts":1794122987172,"op":"rpc.listen socket=/var/tmp/hb-D4-oc3at2/v2/hived.sock"}
+{"ts":1794122987174,"op":"transcripts.segment.catch_up scheduled=0"}
+{"ts":1794122987176,"op":"boot.handover_marker_removed root=/var/tmp/hb-D4-oc3at2/runtime"}
+{"ts":1794122987185,"op":"daemon.started pid=1871784 store=/var/tmp/hb-D4-oc3at2/v2/core.sqlite3"}
+{"ts":1794122987399,"op":"config.retention.invalid cells.retention.minFreeBytes 21474836480 is not below the Cells volume size 1073741824; ignored"}
+{"ts":1794122995311,"op":"obs.skip bee=bcb42335-9c62-4f76-a69a-32fd053984c9 gen=1 kind=booted reason=already_running"}
+{"ts":1794122995312,"op":"obs.turn_ended bee=bcb42335-9c62-4f76-a69a-32fd053984c9 gen=1"}
+{"ts":1794122995317,"op":"obs.checkpoint bee=bcb42335-9c62-4f76-a69a-32fd053984c9 gen=1 cursor=204"}
+{"ts":1794122995437,"op":"cell.reserve bee=e4f64a39-1ce0-44de-acaf-c3761cd8db1b origin=/var/tmp/hb-D4-oc3at2/v2/probe/origin sha=12adef66fb40c897402b0e40d7cc4bea6564c77c base=head space=/var/tmp/hb-D4-oc3at2/cells/probe-mw7iib32-32d652bbd379/origin-space-32d652bbd379"}
+{"ts":1794122995439,"op":"transcripts.segment.cut bee=bcb42335-9c62-4f76-a69a-32fd053984c9 reason=turn_ended segments=1 lines=4 through=5"}
+{"ts":1794122995443,"op":"cmd.spawn id=6 bee=e4f64a39-1ce0-44de-acaf-c3761cd8db1b start gen=1"}
+{"ts":1794122996011,"op":"spawn.evidence bee=e4f64a39-1ce0-44de-acaf-c3761cd8db1b gen=1 kind=booted"}
+{"ts":1794122996017,"op":"obs.booted bee=e4f64a39-1ce0-44de-acaf-c3761cd8db1b gen=1 pid=1871879"}
+{"ts":1794122996018,"op":"obs.turn_ended bee=e4f64a39-1ce0-44de-acaf-c3761cd8db1b gen=1"}
+{"ts":1794122996019,"op":"session.recorded bee=e4f64a39-1ce0-44de-acaf-c3761cd8db1b gen=1 id=probe-1871886"}
+{"ts":1794122996019,"op":"obs.checkpoint bee=e4f64a39-1ce0-44de-acaf-c3761cd8db1b gen=1 cursor=46"}
+{"ts":1794122996027,"op":"transcripts.segment.cut bee=e4f64a39-1ce0-44de-acaf-c3761cd8db1b reason=turn_ended segments=1 lines=1 through=1"}
+{"ts":1794122996050,"op":"tmp.bee_removed bee=e4f64a39-1ce0-44de-acaf-c3761cd8db1b ok=true"}
+{"ts":1794122996050,"op":"cmd.delete id=7 bee=e4f64a39-1ce0-44de-acaf-c3761cd8db1b"}
+{"ts":1794122996062,"op":"obs.skip bee=e4f64a39-1ce0-44de-acaf-c3761cd8db1b gen=1 kind=exited reason=no_bee"}
+{"ts":1794122996092,"op":"runtime.probe handover=5/5 canary=e4f64a39-1ce0-44de-acaf-c3761cd8db1b idle_ms=681 deleted_ms=52 degraded=0"}
+{"ts":1794122996188,"op":"cell.reserve bee=13d3cfef-d390-4c0b-9c94-42bc65f8a7e8 origin=/var/tmp/hb-D4-oc3at2/v2/probe/origin sha=12adef66fb40c897402b0e40d7cc4bea6564c77c base=head space=/var/tmp/hb-D4-oc3at2/cells/probe-mw7iibpa-d3a7ed8e5ba6/origin-space-d3a7ed8e5ba6"}
+{"ts":1794122996192,"op":"cmd.spawn id=8 bee=13d3cfef-d390-4c0b-9c94-42bc65f8a7e8 start gen=1"}
+{"ts":1794122996708,"op":"spawn.evidence bee=13d3cfef-d390-4c0b-9c94-42bc65f8a7e8 gen=1 kind=booted"}
+{"ts":1794122996715,"op":"obs.booted bee=13d3cfef-d390-4c0b-9c94-42bc65f8a7e8 gen=1 pid=1871951"}
+{"ts":1794122996716,"op":"obs.turn_ended bee=13d3cfef-d390-4c0b-9c94-42bc65f8a7e8 gen=1"}
+{"ts":1794122996716,"op":"session.recorded bee=13d3cfef-d390-4c0b-9c94-42bc65f8a7e8 gen=1 id=probe-1871958"}
+{"ts":1794122996717,"op":"obs.checkpoint bee=13d3cfef-d390-4c0b-9c94-42bc65f8a7e8 gen=1 cursor=46"}
+{"ts":1794122996721,"op":"transcripts.segment.cut bee=13d3cfef-d390-4c0b-9c94-42bc65f8a7e8 reason=turn_ended segments=1 lines=1 through=1"}
+{"ts":1794122996746,"op":"tmp.bee_removed bee=13d3cfef-d390-4c0b-9c94-42bc65f8a7e8 ok=true"}
+{"ts":1794122996746,"op":"cmd.delete id=9 bee=13d3cfef-d390-4c0b-9c94-42bc65f8a7e8"}
+{"ts":1794122996759,"op":"obs.skip bee=13d3cfef-d390-4c0b-9c94-42bc65f8a7e8 gen=1 kind=exited reason=no_bee"}
+{"ts":1794122996789,"op":"runtime.probe handover=5/5 canary=13d3cfef-d390-4c0b-9c94-42bc65f8a7e8 idle_ms=578 deleted_ms=52 degraded=0"}
+{"ts":1794122996978,"op":"runtime.activate from=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb to=cccccccccccccccccccccccccccccccccccccccc runtimes=5 degraded=0 unit=hb.d4.test"}
+{"ts":1794122997245,"op":"runtime.activate.restart_issued unit=hb.d4.test platform=systemd"}
+{"ts":1794122997281,"op":"daemon.stopping pid=1871784"}
+{"ts":1794122997289,"op":"daemon.stopped"}
+{"ts":1794122997289,"op":"daemon.stop_complete pid=1871784"}
+{"ts":1794122998670,"op":"tmp.policy beeTmpRoot=/var/tmp/hb-D4-oc3at2/v2/tmp source=data_dir_default daemonTmp=/var/tmp/hb-D4-oc3at2/v2/tmp/daemon nodeCompileCache=/var/tmp/hb-D4-oc3at2/v2/node-compile-cache"}
+{"ts":1794122998684,"op":"security.confinement strict=false bwrap={\"path\":\"/usr/bin/bwrap\",\"setuid\":false}"}
+{"ts":1794122998687,"op":"champions homes=/var/tmp/hb-D4-oc3at2/v2/champions store=/var/tmp/hb-D4-oc3at2/v2/transcript-objects"}
+{"ts":1794122998687,"op":"transcripts.segments store=/var/tmp/hb-D4-oc3at2/v2/transcript-objects max_lines=1024 max_raw_bytes=1048576 projection=8"}
+{"ts":1794122998698,"op":"boot.adopt bee=176b76df-68ee-4f76-924f-6976754b1e21 gen=1 pid=1871640 ok=true identityReason=resolved"}
+{"ts":1794122998702,"op":"boot.adopt bee=1b51e407-288d-4527-9788-74fdc7f24564 gen=1 pid=1871746 ok=true identityReason=resolved"}
+{"ts":1794122998704,"op":"boot.adopt bee=bcb42335-9c62-4f76-a69a-32fd053984c9 gen=1 pid=1871618 ok=true identityReason=resolved"}
+{"ts":1794122998705,"op":"boot.adopt bee=e265fc60-77f1-4948-9133-cfdb0af21a32 gen=1 pid=1871595 ok=true identityReason=resolved"}
+{"ts":1794122998706,"op":"boot.adopt bee=fad0c7e3-3b69-46fa-9f8c-bb54d7982c62 gen=1 pid=1871724 ok=true identityReason=resolved"}
+{"ts":1794122998709,"op":"boot adopted=5 stopped=0 requeued=0 reaped=0 wakes=0"}
+{"ts":1794122998711,"op":"boot.handover adopted=5 expected=5 degraded=0 missing=0 from=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb to=cccccccccccccccccccccccccccccccccccccccc running=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb reverted=true"}
+{"ts":1794122998732,"op":"rpc.listen socket=/var/tmp/hb-D4-oc3at2/v2/hived.sock"}
+{"ts":1794122998735,"op":"transcripts.segment.catch_up scheduled=0"}
+{"ts":1794122998747,"op":"daemon.started pid=1872019 store=/var/tmp/hb-D4-oc3at2/v2/core.sqlite3"}
+{"ts":1794122998750,"op":"boot.rollback reason=crash_loop candidate=cccccccccccccccccccccccccccccccccccccccc previous=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb attempts=3"}
+{"ts":1794122999013,"op":"config.retention.invalid cells.retention.minFreeBytes 21474836480 is not below the Cells volume size 1073741824; ignored"}
+{"ts":1794122999054,"op":"runtime.activate from=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb to=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa runtimes=5 degraded=0 unit=hb.d4.test"}
+{"ts":1794122999223,"op":"obs.exited bee=176b76df-68ee-4f76-924f-6976754b1e21 gen=1 cause=crashed"}
+{"ts":1794122999320,"op":"runtime.activate.restart_issued unit=hb.d4.test platform=systemd"}
+{"ts":1794122999354,"op":"daemon.stopping pid=1872019"}
+{"ts":1794122999358,"op":"daemon.stopped"}
+{"ts":1794122999358,"op":"daemon.stop_complete pid=1872019"}
+{"ts":1794122999790,"op":"tmp.policy beeTmpRoot=/var/tmp/hb-D4-oc3at2/v2/tmp source=data_dir_default daemonTmp=/var/tmp/hb-D4-oc3at2/v2/tmp/daemon nodeCompileCache=/var/tmp/hb-D4-oc3at2/v2/node-compile-cache"}
+{"ts":1794122999800,"op":"security.confinement strict=false bwrap={\"path\":\"/usr/bin/bwrap\",\"setuid\":false}"}
+{"ts":1794122999802,"op":"champions homes=/var/tmp/hb-D4-oc3at2/v2/champions store=/var/tmp/hb-D4-oc3at2/v2/transcript-objects"}
+{"ts":1794122999802,"op":"transcripts.segments store=/var/tmp/hb-D4-oc3at2/v2/transcript-objects max_lines=1024 max_raw_bytes=1048576 projection=8"}
+{"ts":1794122999812,"op":"boot.adopt bee=1b51e407-288d-4527-9788-74fdc7f24564 gen=1 pid=1871746 ok=true identityReason=resolved"}
+{"ts":1794122999814,"op":"boot.adopt bee=bcb42335-9c62-4f76-a69a-32fd053984c9 gen=1 pid=1871618 ok=true identityReason=resolved"}
+{"ts":1794122999815,"op":"boot.adopt bee=e265fc60-77f1-4948-9133-cfdb0af21a32 gen=1 pid=1871595 ok=true identityReason=resolved"}
+{"ts":1794122999817,"op":"boot.adopt bee=fad0c7e3-3b69-46fa-9f8c-bb54d7982c62 gen=1 pid=1871724 ok=true identityReason=resolved"}
+{"ts":1794122999819,"op":"boot adopted=4 stopped=0 requeued=0 reaped=0 wakes=0"}
+{"ts":1794122999821,"op":"boot.handover adopted=4 expected=5 degraded=0 missing=1 from=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb to=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa running=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa reverted=false detail=[{\"beeId\":\"176b76df-68ee-4f76-924f-6976754b1e21\",\"generation\":1,\"state\":\"stopped\",\"reason\":\"stopped\"}]"}
+{"ts":1794122999839,"op":"rpc.listen socket=/var/tmp/hb-D4-oc3at2/v2/hived.sock"}
+{"ts":1794122999843,"op":"transcripts.segment.catch_up scheduled=0"}
+{"ts":1794122999853,"op":"boot.handover_marker_removed root=/var/tmp/hb-D4-oc3at2/runtime"}
+{"ts":1794122999864,"op":"daemon.started pid=1872072 store=/var/tmp/hb-D4-oc3at2/v2/core.sqlite3"}
+{"ts":1794123000116,"op":"config.retention.invalid cells.retention.minFreeBytes 21474836480 is not below the Cells volume size 1073741824; ignored"}
+{"ts":1794123000135,"op":"daemon.stopping pid=1872072"}
+{"ts":1794123000141,"op":"daemon.stopped"}
+{"ts":1794123000141,"op":"daemon.stop_complete pid=1872072"}
