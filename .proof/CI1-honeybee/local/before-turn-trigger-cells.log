@@ -1,0 +1,128 @@
+✖ turn-trigger.rpc: send senderKind automation opens an other turn, operator stays human, bad kinds are refused (1204.366642ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 0
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1269.82531
+
+✖ failing tests:
+
+test at v2/daemon/tests/turn-trigger-rpc.test.ts:17:1
+✖ turn-trigger.rpc: send senderKind automation opens an other turn, operator stays human, bad kinds are refused (1204.366642ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+  
+    [
+  +   'other',
+  -   'human',
+      'operator'
+    ]
+  
+      at TestContext.<anonymous> (file:///home/trmd/.hive/v2/cells/rebuild-ci1h-honeybee-main-green-c5c9f3f44d09/github-com-honeybeehq-honeybee-a9015b303498-space-c5c9f3f44d09/v2/daemon/tests/turn-trigger-rpc.test.ts:28:12)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: [ 'other', 'operator' ],
+    expected: [ 'human', 'operator' ],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+✔ cells.0: the verb list + error list carry the cell verbs Apiary calls, and only closed-list codes (0.614932ms)
+✖ cells.1: spawn {substrate:cell} → row + seed ledger → provisioned on start → agent works INSIDE the cell → capture lands onto a throwaway branch (origin untouched otherwise) (469.059856ms)
+✖ cells.2: cell.remove — runtime_refused while live; refused-dirty leaves everything; forced deletes cell + enqueues delete; replay keeps its own status; absent path (451.108389ms)
+✖ cells.3: daemon SIGKILL → restart re-adopts a live cell bee at full capability: the missed completion folds from the journal and mail reaches the SAME generation (450.189933ms)
+✖ cells.4: spawn param validation (typed invalid_request), explicit sha/warm/sandbox land in the seed ledger, and a provisioning failure is a bounded spawn_failed — never a wedged command (487.418963ms)
+✖ cells.5: an unpinned spawn from a stale origin triggers an upstream fetch; the next Cell starts at the upstream tip with origin = the real remote (502.453837ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 1
+ℹ fail 5
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2451.304845
+
+✖ failing tests:
+
+test at v2/daemon/tests/cells.test.ts:199:1
+✖ cells.1: spawn {substrate:cell} → row + seed ledger → provisioned on start → agent works INSIDE the cell → capture lands onto a throwaway branch (origin untouched otherwise) (469.059856ms)
+  Error [RpcError]: Host Git refused: Git >=2.44 is required for host checkout operations; found version 2.43.0
+      at RpcClient.onFrame (file:///home/trmd/.hive/v2/cells/rebuild-ci1h-honeybee-main-green-c5c9f3f44d09/github-com-honeybeehq-honeybee-a9015b303498-space-c5c9f3f44d09/v2/cli/src/client.ts:215:9)
+      at RpcClient.onData (file:///home/trmd/.hive/v2/cells/rebuild-ci1h-honeybee-main-green-c5c9f3f44d09/github-com-honeybeehq-honeybee-a9015b303498-space-c5c9f3f44d09/v2/cli/src/client.ts:191:33)
+      at Socket.<anonymous> (file:///home/trmd/.hive/v2/cells/rebuild-ci1h-honeybee-main-green-c5c9f3f44d09/github-com-honeybeehq-honeybee-a9015b303498-space-c5c9f3f44d09/v2/cli/src/client.ts:125:51)
+      at Socket.emit (node:events:509:28)
+      at addChunk (node:internal/streams/readable:563:12)
+      at readableAddChunkPushByteMode (node:internal/streams/readable:514:3)
+      at Readable.push (node:internal/streams/readable:394:5)
+      at Pipe.onStreamRead (node:internal/stream_base_commons:189:23) {
+    code: 'invalid_request',
+    details: undefined
+  }
+
+test at v2/daemon/tests/cells.test.ts:380:1
+✖ cells.2: cell.remove — runtime_refused while live; refused-dirty leaves everything; forced deletes cell + enqueues delete; replay keeps its own status; absent path (451.108389ms)
+  Error [RpcError]: Host Git refused: Git >=2.44 is required for host checkout operations; found version 2.43.0
+      at RpcClient.onFrame (file:///home/trmd/.hive/v2/cells/rebuild-ci1h-honeybee-main-green-c5c9f3f44d09/github-com-honeybeehq-honeybee-a9015b303498-space-c5c9f3f44d09/v2/cli/src/client.ts:215:9)
+      at RpcClient.onData (file:///home/trmd/.hive/v2/cells/rebuild-ci1h-honeybee-main-green-c5c9f3f44d09/github-com-honeybeehq-honeybee-a9015b303498-space-c5c9f3f44d09/v2/cli/src/client.ts:191:33)
+      at Socket.<anonymous> (file:///home/trmd/.hive/v2/cells/rebuild-ci1h-honeybee-main-green-c5c9f3f44d09/github-com-honeybeehq-honeybee-a9015b303498-space-c5c9f3f44d09/v2/cli/src/client.ts:125:51)
+      at Socket.emit (node:events:509:28)
+      at addChunk (node:internal/streams/readable:563:12)
+      at readableAddChunkPushByteMode (node:internal/streams/readable:514:3)
+      at Readable.push (node:internal/streams/readable:394:5)
+      at Pipe.onStreamRead (node:internal/stream_base_commons:189:23) {
+    code: 'invalid_request',
+    details: undefined
+  }
+
+test at v2/daemon/tests/cells.test.ts:486:1
+✖ cells.3: daemon SIGKILL → restart re-adopts a live cell bee at full capability: the missed completion folds from the journal and mail reaches the SAME generation (450.189933ms)
+  Error [RpcError]: Host Git refused: Git >=2.44 is required for host checkout operations; found version 2.43.0
+      at RpcClient.onFrame (file:///home/trmd/.hive/v2/cells/rebuild-ci1h-honeybee-main-green-c5c9f3f44d09/github-com-honeybeehq-honeybee-a9015b303498-space-c5c9f3f44d09/v2/cli/src/client.ts:215:9)
+      at RpcClient.onData (file:///home/trmd/.hive/v2/cells/rebuild-ci1h-honeybee-main-green-c5c9f3f44d09/github-com-honeybeehq-honeybee-a9015b303498-space-c5c9f3f44d09/v2/cli/src/client.ts:191:33)
+      at Socket.<anonymous> (file:///home/trmd/.hive/v2/cells/rebuild-ci1h-honeybee-main-green-c5c9f3f44d09/github-com-honeybeehq-honeybee-a9015b303498-space-c5c9f3f44d09/v2/cli/src/client.ts:125:51)
+      at Socket.emit (node:events:509:28)
+      at addChunk (node:internal/streams/readable:563:12)
+      at readableAddChunkPushByteMode (node:internal/streams/readable:514:3)
+      at Readable.push (node:internal/streams/readable:394:5)
+      at Pipe.onStreamRead (node:internal/stream_base_commons:189:23) {
+    code: 'invalid_request',
+    details: undefined
+  }
+
+test at v2/daemon/tests/cells.test.ts:589:1
+✖ cells.4: spawn param validation (typed invalid_request), explicit sha/warm/sandbox land in the seed ledger, and a provisioning failure is a bounded spawn_failed — never a wedged command (487.418963ms)
+  Error [RpcError]: Host Git refused: Git >=2.44 is required for host checkout operations; found version 2.43.0
+      at RpcClient.onFrame (file:///home/trmd/.hive/v2/cells/rebuild-ci1h-honeybee-main-green-c5c9f3f44d09/github-com-honeybeehq-honeybee-a9015b303498-space-c5c9f3f44d09/v2/cli/src/client.ts:215:9)
+      at RpcClient.onData (file:///home/trmd/.hive/v2/cells/rebuild-ci1h-honeybee-main-green-c5c9f3f44d09/github-com-honeybeehq-honeybee-a9015b303498-space-c5c9f3f44d09/v2/cli/src/client.ts:191:33)
+      at Socket.<anonymous> (file:///home/trmd/.hive/v2/cells/rebuild-ci1h-honeybee-main-green-c5c9f3f44d09/github-com-honeybeehq-honeybee-a9015b303498-space-c5c9f3f44d09/v2/cli/src/client.ts:125:51)
+      at Socket.emit (node:events:509:28)
+      at addChunk (node:internal/streams/readable:563:12)
+      at readableAddChunkPushByteMode (node:internal/streams/readable:514:3)
+      at Readable.push (node:internal/streams/readable:394:5)
+      at Pipe.onStreamRead (node:internal/stream_base_commons:189:23) {
+    code: 'invalid_request',
+    details: undefined
+  }
+
+test at v2/daemon/tests/cells.test.ts:666:1
+✖ cells.5: an unpinned spawn from a stale origin triggers an upstream fetch; the next Cell starts at the upstream tip with origin = the real remote (502.453837ms)
+  Error [RpcError]: Host Git refused: Git >=2.44 is required for host checkout operations; found version 2.43.0
+      at RpcClient.onFrame (file:///home/trmd/.hive/v2/cells/rebuild-ci1h-honeybee-main-green-c5c9f3f44d09/github-com-honeybeehq-honeybee-a9015b303498-space-c5c9f3f44d09/v2/cli/src/client.ts:215:9)
+      at RpcClient.onData (file:///home/trmd/.hive/v2/cells/rebuild-ci1h-honeybee-main-green-c5c9f3f44d09/github-com-honeybeehq-honeybee-a9015b303498-space-c5c9f3f44d09/v2/cli/src/client.ts:191:33)
+      at Socket.<anonymous> (file:///home/trmd/.hive/v2/cells/rebuild-ci1h-honeybee-main-green-c5c9f3f44d09/github-com-honeybeehq-honeybee-a9015b303498-space-c5c9f3f44d09/v2/cli/src/client.ts:125:51)
+      at Socket.emit (node:events:509:28)
+      at addChunk (node:internal/streams/readable:563:12)
+      at readableAddChunkPushByteMode (node:internal/streams/readable:514:3)
+      at Readable.push (node:internal/streams/readable:394:5)
+      at Pipe.onStreamRead (node:internal/stream_base_commons:189:23) {
+    code: 'invalid_request',
+    details: undefined
+  }
+v2 daemon/cli test files failed (2 of 2):
+  v2/daemon/tests/turn-trigger-rpc.test.ts (exit 1)
+  v2/daemon/tests/cells.test.ts (exit 1)

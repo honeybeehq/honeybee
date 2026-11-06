@@ -1,0 +1,24 @@
+✔ runner host waits for exact inherited release, rejects wrong attempts, and forks only once (136.914246ms)
+✔ owner disconnect before release never forks an agent (95.575474ms)
+✖ HSR owner commits release and recovers pending identity with agent-start acceptance (10251.413338ms)
+✔ HSR refuses a mismatched bee or runtime generation before spec preparation (3.639807ms)
+✔ unset, empty, relative or root runtime directories refuse before mkdir (4.796622ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 4
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 10634.912256
+
+✖ failing tests:
+
+test at v2/driver-hsr/tests/execution-handshake.test.ts:62:1
+✖ HSR owner commits release and recovers pending identity with agent-start acceptance (10251.413338ms)
+  Error: timeout owner completion
+      at wait (file:///tmp/ci1h/wt-green/v2/driver-hsr/tests/execution-handshake.test.ts:17:119)
+      at async TestContext.<anonymous> (file:///tmp/ci1h/wt-green/v2/driver-hsr/tests/execution-handshake.test.ts:73:3)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7)
+green scale 1 exit=1

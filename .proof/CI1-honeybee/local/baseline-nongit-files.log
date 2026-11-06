@@ -1,0 +1,388 @@
+✔ policy: bees.tmpRoot wins, absent defaults by nodeKind, null turns it off (1.467371ms)
+✔ config: bees.tmpRoot is additive and validated (3.457596ms)
+✔ names: safe ids map to themselves; unsafe ids and the daemon name hash into one segment (0.679088ms)
+✔ dirs: ensure creates, remove deletes, sweep keeps daemon and kept bees (1.528693ms)
+✔ satellite daemon: per-bee TMPDIR, shared compile cache, removed on archive after stop (940.697209ms)
+✔ bees.tmpRoot turns it on for a node whose nodeKind is unset, and null turns a satellite off (2450.186263ms)
+✔ workstation daemon: bees get a Honeybee-owned tmp beside the Cells and a shared compile cache, never the inherited system tmp (1153.17741ms)
+✔ workstation daemon: bees.tmpRoot null keeps the inherited TMPDIR and compile cache (1148.550899ms)
+✔ a restart that turns the policy on keeps reaching the surviving runner: same generation, mail delivered (1257.593152ms)
+✔ boot sweep removes only this store's archived bees' dirs (1485.000912ms)
+✖ satellite sandboxed Cell: the per-bee TMPDIR and compile cache are writable inside the sandbox (450.739998ms)
+✔ symlinks: a planted link at any owned level is replaced by a real dir, never granted or followed (5.475062ms)
+✖ Queen's probe: a sandboxed bee that swaps its tmp dir for a symlink gets no write access through it on the next generation (455.603832ms)
+✔ an invalid bees setting boots with the policy off and logs why; a template TMPDIR override is logged once (2745.947547ms)
+✔ config: bees.sandboxTmpBytes is additive, nullable and falls back to the default when invalid (3.342593ms)
+✖ sandboxed bee past its tmpfs cap: ENOSPC inside, a typed resource_blocked outside, the cap logged per bee (472.483468ms)
+✖ a bad bees.sandboxTmpBytes boots, logs why and spawns with the 1 GiB default (449.585776ms)
+ℹ tests 17
+ℹ suites 0
+ℹ pass 13
+ℹ fail 4
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 13118.595019
+
+✖ failing tests:
+
+test at v2/daemon/tests/bee-tmp.test.ts:369:1
+✖ satellite sandboxed Cell: the per-bee TMPDIR and compile cache are writable inside the sandbox (450.739998ms)
+  Error [RpcError]: Host Git refused: Git >=2.44 is required for host checkout operations; found version 2.43.0
+      at RpcClient.onFrame (file:///home/trmd/.hive/v2/cells/rebuild-ci1h-honeybee-main-green-c5c9f3f44d09/github-com-honeybeehq-honeybee-a9015b303498-space-c5c9f3f44d09/v2/cli/src/client.ts:215:9)
+      at RpcClient.onData (file:///home/trmd/.hive/v2/cells/rebuild-ci1h-honeybee-main-green-c5c9f3f44d09/github-com-honeybeehq-honeybee-a9015b303498-space-c5c9f3f44d09/v2/cli/src/client.ts:191:33)
+      at Socket.<anonymous> (file:///home/trmd/.hive/v2/cells/rebuild-ci1h-honeybee-main-green-c5c9f3f44d09/github-com-honeybeehq-honeybee-a9015b303498-space-c5c9f3f44d09/v2/cli/src/client.ts:125:51)
+      at Socket.emit (node:events:509:28)
+      at addChunk (node:internal/streams/readable:563:12)
+      at readableAddChunkPushByteMode (node:internal/streams/readable:514:3)
+      at Readable.push (node:internal/streams/readable:394:5)
+      at Pipe.onStreamRead (node:internal/stream_base_commons:189:23) {
+    code: 'invalid_request',
+    details: undefined
+  }
+
+test at v2/daemon/tests/bee-tmp.test.ts:454:1
+✖ Queen's probe: a sandboxed bee that swaps its tmp dir for a symlink gets no write access through it on the next generation (455.603832ms)
+  Error [RpcError]: Host Git refused: Git >=2.44 is required for host checkout operations; found version 2.43.0
+      at RpcClient.onFrame (file:///home/trmd/.hive/v2/cells/rebuild-ci1h-honeybee-main-green-c5c9f3f44d09/github-com-honeybeehq-honeybee-a9015b303498-space-c5c9f3f44d09/v2/cli/src/client.ts:215:9)
+      at RpcClient.onData (file:///home/trmd/.hive/v2/cells/rebuild-ci1h-honeybee-main-green-c5c9f3f44d09/github-com-honeybeehq-honeybee-a9015b303498-space-c5c9f3f44d09/v2/cli/src/client.ts:191:33)
+      at Socket.<anonymous> (file:///home/trmd/.hive/v2/cells/rebuild-ci1h-honeybee-main-green-c5c9f3f44d09/github-com-honeybeehq-honeybee-a9015b303498-space-c5c9f3f44d09/v2/cli/src/client.ts:125:51)
+      at Socket.emit (node:events:509:28)
+      at addChunk (node:internal/streams/readable:563:12)
+      at readableAddChunkPushByteMode (node:internal/streams/readable:514:3)
+      at Readable.push (node:internal/streams/readable:394:5)
+      at Pipe.onStreamRead (node:internal/stream_base_commons:189:23) {
+    code: 'invalid_request',
+    details: undefined
+  }
+
+test at v2/daemon/tests/bee-tmp.test.ts:647:1
+✖ sandboxed bee past its tmpfs cap: ENOSPC inside, a typed resource_blocked outside, the cap logged per bee (472.483468ms)
+  Error [RpcError]: Host Git refused: Git >=2.44 is required for host checkout operations; found version 2.43.0
+      at RpcClient.onFrame (file:///home/trmd/.hive/v2/cells/rebuild-ci1h-honeybee-main-green-c5c9f3f44d09/github-com-honeybeehq-honeybee-a9015b303498-space-c5c9f3f44d09/v2/cli/src/client.ts:215:9)
+      at RpcClient.onData (file:///home/trmd/.hive/v2/cells/rebuild-ci1h-honeybee-main-green-c5c9f3f44d09/github-com-honeybeehq-honeybee-a9015b303498-space-c5c9f3f44d09/v2/cli/src/client.ts:191:33)
+      at Socket.<anonymous> (file:///home/trmd/.hive/v2/cells/rebuild-ci1h-honeybee-main-green-c5c9f3f44d09/github-com-honeybeehq-honeybee-a9015b303498-space-c5c9f3f44d09/v2/cli/src/client.ts:125:51)
+      at Socket.emit (node:events:509:28)
+      at addChunk (node:internal/streams/readable:563:12)
+      at readableAddChunkPushByteMode (node:internal/streams/readable:514:3)
+      at Readable.push (node:internal/streams/readable:394:5)
+      at Pipe.onStreamRead (node:internal/stream_base_commons:189:23) {
+    code: 'invalid_request',
+    details: undefined
+  }
+
+test at v2/daemon/tests/bee-tmp.test.ts:657:1
+✖ a bad bees.sandboxTmpBytes boots, logs why and spawns with the 1 GiB default (449.585776ms)
+  Error [RpcError]: Host Git refused: Git >=2.44 is required for host checkout operations; found version 2.43.0
+      at RpcClient.onFrame (file:///home/trmd/.hive/v2/cells/rebuild-ci1h-honeybee-main-green-c5c9f3f44d09/github-com-honeybeehq-honeybee-a9015b303498-space-c5c9f3f44d09/v2/cli/src/client.ts:215:9)
+      at RpcClient.onData (file:///home/trmd/.hive/v2/cells/rebuild-ci1h-honeybee-main-green-c5c9f3f44d09/github-com-honeybeehq-honeybee-a9015b303498-space-c5c9f3f44d09/v2/cli/src/client.ts:191:33)
+      at Socket.<anonymous> (file:///home/trmd/.hive/v2/cells/rebuild-ci1h-honeybee-main-green-c5c9f3f44d09/github-com-honeybeehq-honeybee-a9015b303498-space-c5c9f3f44d09/v2/cli/src/client.ts:125:51)
+      at Socket.emit (node:events:509:28)
+      at addChunk (node:internal/streams/readable:563:12)
+      at readableAddChunkPushByteMode (node:internal/streams/readable:514:3)
+      at Readable.push (node:internal/streams/readable:394:5)
+      at Pipe.onStreamRead (node:internal/stream_base_commons:189:23) {
+    code: 'invalid_request',
+    details: undefined
+  }
+✔ real unshare peer is refused by a disposable daemon while host CLI still spawns (1678.70821ms)
+✔ sandbox-off host keeps unregistered host callers unconfined and still confines child-userns peers (1988.857575ms)
+✖ an explicitly unsandboxed Cell does not put a sandboxed satellite into strict host refusal (494.107068ms)
+✔ strict host with trust disabled cannot treat an unattributed host peer as registered (440.902131ms)
+✔ missing Linux peer credentials fail closed with a diagnostic error: degraded (49.684437ms)
+✔ missing Linux peer credentials fail closed with a diagnostic error: lookup_failed (4.270275ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 5
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 4722.938957
+
+✖ failing tests:
+
+test at v2/daemon/tests/confined-peer-rpc.test.ts:140:1
+✖ an explicitly unsandboxed Cell does not put a sandboxed satellite into strict host refusal (494.107068ms)
+  Error [RpcError]: Host Git refused: Git >=2.44 is required for host checkout operations; found version 2.43.0
+      at RpcClient.onFrame (file:///home/trmd/.hive/v2/cells/rebuild-ci1h-honeybee-main-green-c5c9f3f44d09/github-com-honeybeehq-honeybee-a9015b303498-space-c5c9f3f44d09/v2/cli/src/client.ts:215:9)
+      at RpcClient.onData (file:///home/trmd/.hive/v2/cells/rebuild-ci1h-honeybee-main-green-c5c9f3f44d09/github-com-honeybeehq-honeybee-a9015b303498-space-c5c9f3f44d09/v2/cli/src/client.ts:191:33)
+      at Socket.<anonymous> (file:///home/trmd/.hive/v2/cells/rebuild-ci1h-honeybee-main-green-c5c9f3f44d09/github-com-honeybeehq-honeybee-a9015b303498-space-c5c9f3f44d09/v2/cli/src/client.ts:125:51)
+      at Socket.emit (node:events:509:28)
+      at addChunk (node:internal/streams/readable:563:12)
+      at readableAddChunkPushByteMode (node:internal/streams/readable:514:3)
+      at Readable.push (node:internal/streams/readable:394:5)
+      at Pipe.onStreamRead (node:internal/stream_base_commons:189:23) {
+    code: 'invalid_request',
+    details: undefined
+  }
+✖ OS-level file read outside cwd: hsr; tool-policy read UNVERIFIED (OS-level only) (1.477195ms)
+✖ OS-level file read outside cwd: cell-sandbox; tool-policy read UNVERIFIED (OS-level only) (0.230295ms)
+✖ OS-level file read outside cwd: satellite-default; tool-policy read UNVERIFIED (OS-level only) (0.158107ms)
+✔ default Darwin dataDir and delivery-content for a /Users home are outside default scratch paths and TMPDIR (1.06633ms)
+✖ real HSR asynchronous confirmation settles from durable confirmation (5338.252615ms)
+✖ real HSR asynchronous confirmation with lost outbound-attempt state settles from durable intent (5360.88404ms)
+✖ real codex pointer confirmation stays pending without UNKNOWN notices (5350.515984ms)
+✖ real codex pointer confirmation refusal retries the saved publication (5356.401783ms)
+✖ real muse pointer confirmation stays pending without UNKNOWN notices (5354.786033ms)
+✖ real muse pointer confirmation refusal retries the saved publication (5354.972706ms)
+✖ SIGKILL after in_flight on a surviving HSR generation becomes UNKNOWN and later mail flows (5459.62149ms)
+ℹ tests 11
+ℹ suites 0
+ℹ pass 1
+ℹ fail 10
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 37716.589317
+
+✖ failing tests:
+
+test at v2/daemon/tests/delivery-file-read.test.ts:23:80
+✖ OS-level file read outside cwd: hsr; tool-policy read UNVERIFIED (OS-level only) (1.477195ms)
+  AssertionError [ERR_ASSERTION]: Delivery read fixture longest socket path is 107 bytes; maximum is 103
+      at TestContext.<anonymous> (file:///home/trmd/.hive/v2/cells/rebuild-ci1h-honeybee-main-green-c5c9f3f44d09/github-com-honeybeehq-honeybee-a9015b303498-space-c5c9f3f44d09/v2/daemon/tests/delivery-file-read.test.ts:32:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at v2/daemon/tests/delivery-file-read.test.ts:23:80
+✖ OS-level file read outside cwd: cell-sandbox; tool-policy read UNVERIFIED (OS-level only) (0.230295ms)
+  Error: Sandboxed Linux delivery read fixture requires a base outside private mounts with socket paths at most 103 bytes; candidate lengths: 107, 178
+      at deliveryReadFixtureBase (file:///home/trmd/.hive/v2/cells/rebuild-ci1h-honeybee-main-green-c5c9f3f44d09/github-com-honeybeehq-honeybee-a9015b303498-space-c5c9f3f44d09/v2/daemon/tests/delivery-file-read-root.ts:13:20)
+      at TestContext.<anonymous> (file:///home/trmd/.hive/v2/cells/rebuild-ci1h-honeybee-main-green-c5c9f3f44d09/github-com-honeybeehq-honeybee-a9015b303498-space-c5c9f3f44d09/v2/daemon/tests/delivery-file-read.test.ts:25:16)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7)
+
+test at v2/daemon/tests/delivery-file-read.test.ts:23:80
+✖ OS-level file read outside cwd: satellite-default; tool-policy read UNVERIFIED (OS-level only) (0.158107ms)
+  Error: Sandboxed Linux delivery read fixture requires a base outside private mounts with socket paths at most 103 bytes; candidate lengths: 107, 178
+      at deliveryReadFixtureBase (file:///home/trmd/.hive/v2/cells/rebuild-ci1h-honeybee-main-green-c5c9f3f44d09/github-com-honeybeehq-honeybee-a9015b303498-space-c5c9f3f44d09/v2/daemon/tests/delivery-file-read-root.ts:13:20)
+      at TestContext.<anonymous> (file:///home/trmd/.hive/v2/cells/rebuild-ci1h-honeybee-main-green-c5c9f3f44d09/github-com-honeybeehq-honeybee-a9015b303498-space-c5c9f3f44d09/v2/daemon/tests/delivery-file-read.test.ts:25:16)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7)
+
+test at v2/daemon/tests/delivery-file-read.test.ts:116:42
+✖ real HSR asynchronous confirmation settles from durable confirmation (5338.252615ms)
+  AssertionError [ERR_ASSERTION]: HSR confirm timed out
+      at wait (file:///home/trmd/.hive/v2/cells/rebuild-ci1h-honeybee-main-green-c5c9f3f44d09/github-com-honeybeehq-honeybee-a9015b303498-space-c5c9f3f44d09/v2/daemon/tests/delivery-file-read.test.ts:126:183)
+      at async TestContext.<anonymous> (file:///home/trmd/.hive/v2/cells/rebuild-ci1h-honeybee-main-green-c5c9f3f44d09/github-com-honeybeehq-honeybee-a9015b303498-space-c5c9f3f44d09/v2/daemon/tests/delivery-file-read.test.ts:127:3)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: undefined,
+    operator: 'fail',
+    diff: 'simple'
+  }
+
+test at v2/daemon/tests/delivery-file-read.test.ts:116:42
+✖ real HSR asynchronous confirmation with lost outbound-attempt state settles from durable intent (5360.88404ms)
+  AssertionError [ERR_ASSERTION]: HSR confirm timed out
+      at wait (file:///home/trmd/.hive/v2/cells/rebuild-ci1h-honeybee-main-green-c5c9f3f44d09/github-com-honeybeehq-honeybee-a9015b303498-space-c5c9f3f44d09/v2/daemon/tests/delivery-file-read.test.ts:126:183)
+      at async TestContext.<anonymous> (file:///home/trmd/.hive/v2/cells/rebuild-ci1h-honeybee-main-green-c5c9f3f44d09/github-com-honeybeehq-honeybee-a9015b303498-space-c5c9f3f44d09/v2/daemon/tests/delivery-file-read.test.ts:127:3)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: undefined,
+    operator: 'fail',
+    diff: 'simple'
+  }
+
+test at v2/daemon/tests/delivery-file-read.test.ts:159:87
+✖ real codex pointer confirmation stays pending without UNKNOWN notices (5350.515984ms)
+  AssertionError [ERR_ASSERTION]: real adapter confirmation timed out
+      at wait (file:///home/trmd/.hive/v2/cells/rebuild-ci1h-honeybee-main-green-c5c9f3f44d09/github-com-honeybeehq-honeybee-a9015b303498-space-c5c9f3f44d09/v2/daemon/tests/delivery-file-read.test.ts:170:183)
+      at async TestContext.<anonymous> (file:///home/trmd/.hive/v2/cells/rebuild-ci1h-honeybee-main-green-c5c9f3f44d09/github-com-honeybeehq-honeybee-a9015b303498-space-c5c9f3f44d09/v2/daemon/tests/delivery-file-read.test.ts:171:3)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: undefined,
+    operator: 'fail',
+    diff: 'simple'
+  }
+
+test at v2/daemon/tests/delivery-file-read.test.ts:159:87
+✖ real codex pointer confirmation refusal retries the saved publication (5356.401783ms)
+  AssertionError [ERR_ASSERTION]: real adapter confirmation timed out
+      at wait (file:///home/trmd/.hive/v2/cells/rebuild-ci1h-honeybee-main-green-c5c9f3f44d09/github-com-honeybeehq-honeybee-a9015b303498-space-c5c9f3f44d09/v2/daemon/tests/delivery-file-read.test.ts:170:183)
+      at async TestContext.<anonymous> (file:///home/trmd/.hive/v2/cells/rebuild-ci1h-honeybee-main-green-c5c9f3f44d09/github-com-honeybeehq-honeybee-a9015b303498-space-c5c9f3f44d09/v2/daemon/tests/delivery-file-read.test.ts:171:3)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: undefined,
+    operator: 'fail',
+    diff: 'simple'
+  }
+
+test at v2/daemon/tests/delivery-file-read.test.ts:159:87
+✖ real muse pointer confirmation stays pending without UNKNOWN notices (5354.786033ms)
+  AssertionError [ERR_ASSERTION]: real adapter confirmation timed out
+      at wait (file:///home/trmd/.hive/v2/cells/rebuild-ci1h-honeybee-main-green-c5c9f3f44d09/github-com-honeybeehq-honeybee-a9015b303498-space-c5c9f3f44d09/v2/daemon/tests/delivery-file-read.test.ts:170:183)
+      at async TestContext.<anonymous> (file:///home/trmd/.hive/v2/cells/rebuild-ci1h-honeybee-main-green-c5c9f3f44d09/github-com-honeybeehq-honeybee-a9015b303498-space-c5c9f3f44d09/v2/daemon/tests/delivery-file-read.test.ts:171:3)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: undefined,
+    operator: 'fail',
+    diff: 'simple'
+  }
+
+test at v2/daemon/tests/delivery-file-read.test.ts:159:87
+✖ real muse pointer confirmation refusal retries the saved publication (5354.972706ms)
+  AssertionError [ERR_ASSERTION]: real adapter confirmation timed out
+      at wait (file:///home/trmd/.hive/v2/cells/rebuild-ci1h-honeybee-main-green-c5c9f3f44d09/github-com-honeybeehq-honeybee-a9015b303498-space-c5c9f3f44d09/v2/daemon/tests/delivery-file-read.test.ts:170:183)
+      at async TestContext.<anonymous> (file:///home/trmd/.hive/v2/cells/rebuild-ci1h-honeybee-main-green-c5c9f3f44d09/github-com-honeybeehq-honeybee-a9015b303498-space-c5c9f3f44d09/v2/daemon/tests/delivery-file-read.test.ts:171:3)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: undefined,
+    operator: 'fail',
+    diff: 'simple'
+  }
+
+test at v2/daemon/tests/delivery-file-read.test.ts:187:1
+✖ SIGKILL after in_flight on a surviving HSR generation becomes UNKNOWN and later mail flows (5459.62149ms)
+  Error: crash fixture exit 1: file:///home/trmd/.cache/honeybee/tmp/a9ebc7a8-8b0b-430c-ad35-f10ac7ca7b47/bc-eZBvaw/[eval1]:9
+  for(let i=0;store.currentRuntime(bee.id)?.state!=="idle";i++){if(i>500)throw Error("boot timeout");core.step();await new Promise(r=>setTimeout(r,10));}
+                                                                               ^
+  
+  Error: boot timeout
+      at file:///home/trmd/.cache/honeybee/tmp/a9ebc7a8-8b0b-430c-ad35-f10ac7ca7b47/bc-eZBvaw/[eval1]:9:78
+  
+  Node.js v24.18.0
+  
+      at ChildProcess.<anonymous> (file:///home/trmd/.hive/v2/cells/rebuild-ci1h-honeybee-main-green-c5c9f3f44d09/github-com-honeybeehq-honeybee-a9015b303498-space-c5c9f3f44d09/v2/daemon/tests/delivery-file-read.test.ts:213:80)
+      at Object.onceWrapper (node:events:631:26)
+      at ChildProcess.emit (node:events:509:28)
+      at ChildProcess._handle.onexit (node:internal/child_process:295:12)
+✖ test teardown: a daemon stand-in that keeps spawning writers into its data dir is stopped to the last process before the dir is removed (139395.312051ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 0
+ℹ fail 0
+ℹ cancelled 1
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 160029.944924
+
+✖ failing tests:
+
+test at v2/daemon/tests/helpers-teardown.test.ts:10:1
+✖ test teardown: a daemon stand-in that keeps spawning writers into its data dir is stopped to the last process before the dir is removed (139395.312051ms)
+  'test timed out after 60000ms'
+hive entry staged at dist/cli.js; v2 artifacts staged at dist/v2/cli.js, dist/v2/provision-worker.js, dist/v2/pool-worker.js, dist/v2/retention-worker.js, dist/v2/transcript-segment-worker.js, and dist/v2/runner-host.js (25777 bytes)
+▶ bundled RuntimeHost pins its release before current is swapped
+  ✔ default resolution (1977.617551ms)
+  ✔ preserve-symlinks resolution (1972.0302ms)
+✔ bundled RuntimeHost pins its release before current is swapped (4243.826734ms)
+✖ a staged Cell spawn uses the bundled sibling host through ready, turn, and stop (506.565651ms)
+✔ fallback reap rejects a stale status PID owned by an unrelated process (426.59653ms)
+✔ a built daemon reports a missing required runner-host sibling without CLI fallback (357.565003ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 5
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 5624.895213
+
+✖ failing tests:
+
+test at v2/daemon/tests/runner-host-artifact.test.ts:501:1
+✖ a staged Cell spawn uses the bundled sibling host through ready, turn, and stop (506.565651ms)
+  AssertionError [ERR_ASSERTION]: hive: error (invalid_request): Host Git refused: Git >=2.44 is required for host checkout operations; found version 2.43.0
+  {"error":{"code":"invalid_request","message":"Host Git refused: Git >=2.44 is required for host checkout operations; found version 2.43.0"},"daemonTarget":{"dataDir":"/tmp/hb-v2-daemon-HDzeqW","dataDirSource":"flag","socketPath":"/tmp/hb-v2-daemon-HDzeqW/hived.sock","socketSource":"record","instanceId":"d45e22b5-4a22-407a-bdf2-dfde31fd1a6b","daemonDataDir":"/tmp/hb-v2-daemon-HDzeqW","connected":true}}
+  
+  
+  1 !== 0
+  
+      at TestContext.<anonymous> (file:///home/trmd/.hive/v2/cells/rebuild-ci1h-honeybee-main-green-c5c9f3f44d09/github-com-honeybeehq-honeybee-a9015b303498-space-c5c9f3f44d09/v2/daemon/tests/runner-host-artifact.test.ts:542:12)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 1,
+    expected: 0,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+✔ set-model --apply uses atomic admission and waits out an active turn (1189.799611ms)
+✔ cli.1: help prints and exits 0; unknown command exits 1 (4.762272ms)
+✔ cli.2: reads fall back to the read-only store when the daemon is down — labeled stale (65.048403ms)
+✔ cli.children: stale reads exclude external lineage that collides with a local bee id (22.975727ms)
+✔ cli.3: mutations NEVER fall back — daemon down means a loud, typed failure (20.684672ms)
+✔ cli.3b: a misspelled flag is a LOUD error (never a silent no-op), and spawn takes the agent positionally (3.601492ms)
+✔ cli.send-sender-wire: the real CLI request carries the authority-bound ambient bee id (2.879699ms)
+✔ cli.4: against a live daemon — spawn, list (not stale), send --wait blocks on the delivery mark (953.740421ms)
+✔ cli.4n: health and daemon status report naming ok, off, or disabled with the reason (1375.248228ms)
+✔ cli.4b: --idempotency-key passes through on spawn and send — replays dedup to the original (674.591859ms)
+✔ cli.4c: per-bee args — `spawn --arg` (repeatable), `bee set-args <bee> -- <args…>` / --clear, `bee args`, `revive --arg`, view/list carry args; stale read shows them too (1492.285218ms)
+✖ cli.4d: cells — `spawn --substrate cell --origin`, `cell capture --onto` (landed / refused as results), `cell remove` (refused-dirty exit 2, --force) (461.197951ms)
+✔ cli.4e: v6 verbs — rename, tag, interrupt, fork, children, spawn --parent (+ ambient HIVE_BEE_ID), ask/answer/question list, seal create/list/get; stale fallbacks for the reads (1925.825438ms)
+✔ cli.daemon: usage lists restart as a stop+start alias (1.915002ms)
+✔ cli.5: daemon status when nothing runs and no service is installed (2.21354ms)
+✔ cli.6: service glue — label never the live daemon's, exec args env override wins (1083.929403ms)
+✔ cli.urgency: send --urgency passes through to the row; the mailbox read surfaces it; an unknown value is a typed error (1120.357614ms)
+✔ cli.version: --version answers (Apiary's Doctor gates local runs on it) (0.551767ms)
+✔ cli.task: add/ls/done/supply round-trip through the daemon; unknown command is gone (688.598703ms)
+✔ cli.answer-display-label: --by stays local and question rows use plain answered wording (6.975541ms)
+ℹ tests 20
+ℹ suites 0
+ℹ pass 19
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 11288.924325
+
+✖ failing tests:
+
+test at v2/cli/tests/cli.test.ts:530:1
+✖ cli.4d: cells — `spawn --substrate cell --origin`, `cell capture --onto` (landed / refused as results), `cell remove` (refused-dirty exit 2, --force) (461.197951ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  1 !== 0
+  
+      at TestContext.<anonymous> (file:///home/trmd/.hive/v2/cells/rebuild-ci1h-honeybee-main-green-c5c9f3f44d09/github-com-honeybeehq-honeybee-a9015b303498-space-c5c9f3f44d09/v2/cli/tests/cli.test.ts:543:12)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 1,
+    expected: 0,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+v2 daemon/cli test files failed (6 of 6):
+  v2/daemon/tests/bee-tmp.test.ts (exit 1)
+  v2/daemon/tests/confined-peer-rpc.test.ts (exit 1)
+  v2/daemon/tests/delivery-file-read.test.ts (exit 1)
+  v2/daemon/tests/helpers-teardown.test.ts (exit 1)
+  v2/daemon/tests/runner-host-artifact.test.ts (exit 1)
+  v2/cli/tests/cli.test.ts (exit 1)
+fixture-warden: reaped leaked fixture pid 1044146: /opt/node-v24.18.0-linux-x64/bin/node --experimental-strip-types /home/trmd/.hive/v2/cells/rebuild-ci1h-honeybee-main-green-c5c9f3f44d09/github-com-honeybeehq-honeybee-a9015b303498-space-c5c9f3f44d09/v2/driver-hsr/src/runner-host-main.ts /home/trmd/.cache/honeybee/tmp/a9ebc7a8-8b0b-430c-ad35-f10ac7ca7b47/bc-eZBvaw/runners/01b43ad0-c868-4df9-ae1f-338c34639a64.1.json
+fixture-warden: reaped leaked fixture pid 1044153: /opt/node-v24.18.0-linux-x64/bin/node /home/trmd/.hive/v2/cells/rebuild-ci1h-honeybee-main-green-c5c9f3f44d09/github-com-honeybeehq-honeybee-a9015b303498-space-c5c9f3f44d09/v2/driver-hsr/test-agent/fake-codex.mjs

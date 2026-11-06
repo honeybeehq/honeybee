@@ -1,0 +1,300 @@
+✔ turn-trigger.rpc: bare, labelled and automation operator sends open other turns; only admitted human chat opens a human turn; bad kinds are refused (1223.818456ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1326.095839
+{"tells":1,"reactions":1,"reconnectReceiptIntact":true,"oldPendingCleared":true}
+✔ human output daemon: explicit output, exact replies, strict validation, mirror reconnect and durable key replay (942.107305ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1043.462004
+LAB root reply + quiet sidechains: endedQuiet=false, human cursor advances
+LAB visible text + trailing token: endedQuiet=false, human cursor advances
+LAB quiet then native error: endedQuiet absent
+LAB quiet then explicit interrupt: endedQuiet absent
+LAB committed final message boundary=1711, cursor=1711
+LAB restart after committed quiet message: same PID/generation, endedQuiet=true, human cursor preserved
+✔ quiet facts through a throwaway daemon: root/child isolation, failure, interruption and mid-turn restart (5953.4022ms)
+LAB grok @success: endedQuiet=true
+LAB grok @content-quiet: endedQuiet=false
+LAB grok @error: endedQuiet=undefined
+LAB grok @cancelled: endedQuiet=undefined
+LAB grok @refusal: endedQuiet=undefined
+✔ quiet ACP facts through a throwaway grok daemon (939.247647ms)
+LAB kimi @success: endedQuiet=true
+LAB kimi @content-quiet: endedQuiet=false
+LAB kimi @error: endedQuiet=undefined
+LAB kimi @cancelled: endedQuiet=undefined
+LAB kimi @refusal: endedQuiet=undefined
+✔ quiet ACP facts through a throwaway kimi daemon (970.375289ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 7966.811091
+✔ int.1: verb round-trips over the real socket — the full bee lifecycle (1303.248593ms)
+✔ int.2: typed errors — closed list only (bee_not_found, invalid_request, protocol_mismatch) (457.17642ms)
+✔ int.3: watch — snapshot + contiguous seq deltas; induced gap forces a snapshot refetch (958.29719ms)
+✔ int.4: daemon SIGKILL mid-turn → restart → zero failed states (B7) + runtime re-adopted (1269.575143ms)
+✔ int.4b: runner-persisted completion recovers after SIGKILL and releases idle-urgency mail (2443.025248ms)
+✔ int.5: scale-to-zero with a tiny window → stopped_by_system → revive-on-message (1373.237062ms)
+✔ int.6: induced I1 breach — a boot-hanging agent leaves mail undelivered past the deadline → violation row (1412.995584ms)
+✔ int.7: immediate-exit agent → bounded revives on backoff, spawn_failed at the budget; the counter survives a daemon SIGKILL; operator revive recovers once the agent is fixed (3611.629536ms)
+✔ int.urgency.1: mid-turn `now` — the turn is interrupted, the message delivers immediately, and the bee keeps working (867.188564ms)
+✔ int.urgency.2: mid-turn `idle` — held while the turn runs, delivered only after it ends (1259.978464ms)
+✔ int.urgency.3: an unknown urgency is a typed invalid_request, and nothing is enqueued (828.129629ms)
+ℹ tests 11
+ℹ suites 0
+ℹ pass 11
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 15897.711855
+✔ v6.rpc.1: rename / tag / children round-trips, idempotent replays, typed refusals; snapshot + watch carry the new rows/kinds (1103.258501ms)
+✔ v6.rpc.2: bee.interrupt — idle no-op; mid-turn (hung) interrupt → turn_ended, runtime live, next message delivers to the same generation; replay dedups (1095.676663ms)
+✔ v6.rpc.3: bee.fork (claude) — forks the source session into a NEW one (--resume <src> --fork-session), records the fork's own id (seed consumed), parentId/forkedFrom set, HIVE_* env stamps; revive resumes the fork's own id; copy has no prompt; replay dedups (1809.619362ms)
+✔ v6.rpc.4: bee.fork (codex) — the fork's handshake sends thread/fork {threadId: source}; the NEW thread id is recorded; delivery targets the new thread (1301.950956ms)
+✔ daemon restart: adopted Codex keeps its thread id and confirms queued mail (1539.633122ms)
+✖ v6.rpc.5: parenting policy over RPC — archive parent leaves children; delete parent orphans (bee.orphaned in the watch stream, children alive, parentId null); fork of a cell bee refused (1706.373248ms)
+✔ v6.rpc.6: questions + seals — ask → open row → answer → delivered as mailbox message → answered; list filters; seals CRUD; typed not-found; idempotent replays; snapshot carries them (1250.01872ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 6
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 9965.313528
+
+✖ failing tests:
+
+test at v2/daemon/tests/preflip-verbs.test.ts:418:1
+✖ v6.rpc.5: parenting policy over RPC — archive parent leaves children; delete parent orphans (bee.orphaned in the watch stream, children alive, parentId null); fork of a cell bee refused (1706.373248ms)
+  Error [RpcError]: Host Git refused: Git >=2.44 is required for host checkout operations; found version 2.43.0
+      at RpcClient.onFrame (file:///home/trmd/.hive/v2/cells/rebuild-ci1h-honeybee-main-green-c5c9f3f44d09/github-com-honeybeehq-honeybee-a9015b303498-space-c5c9f3f44d09/v2/cli/src/client.ts:215:9)
+      at RpcClient.onData (file:///home/trmd/.hive/v2/cells/rebuild-ci1h-honeybee-main-green-c5c9f3f44d09/github-com-honeybeehq-honeybee-a9015b303498-space-c5c9f3f44d09/v2/cli/src/client.ts:191:33)
+      at Socket.<anonymous> (file:///home/trmd/.hive/v2/cells/rebuild-ci1h-honeybee-main-green-c5c9f3f44d09/github-com-honeybeehq-honeybee-a9015b303498-space-c5c9f3f44d09/v2/cli/src/client.ts:125:51)
+      at Socket.emit (node:events:509:28)
+      at addChunk (node:internal/streams/readable:563:12)
+      at readableAddChunkPushByteMode (node:internal/streams/readable:514:3)
+      at Readable.push (node:internal/streams/readable:394:5)
+      at Pipe.onStreamRead (node:internal/stream_base_commons:189:23) {
+    code: 'invalid_request',
+    details: undefined
+  }
+✔ handoff.rpc.replay-defaults: omitted target defaults stay bound to the original source after later switches (1536.725282ms)
+✔ handoff.rpc: capability, validation, idempotency, typed refusals, and unavailable target accounts (1213.668838ms)
+✔ handoff.rpc.cross-family: claude → codex on an idle hsr bee keeps identity, mailbox order, and publishes parseable segments (1216.312992ms)
+✔ handoff.rpc.same-family: a context reset keeps args unless replaced, opens a fresh thread, and stays on the account (1608.042382ms)
+✔ handoff.rpc.working+stopped: stopAt=idle waits for the running turn, stopAt=now stops a hung turn, a stopped source hands off (5081.518754ms)
+✔ handoff.rpc.disconnect+crash: a lost response replays to the same operation; SIGKILL during stopping and starting resumes (3014.684219ms)
+✖ handoff.rpc.cell: a Cell bee hands off in place — same Cell, cwd, dirty files, one runtime in the checkout (459.219935ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 6
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 14284.410091
+
+✖ failing tests:
+
+test at v2/daemon/tests/handoff-rpc.test.ts:367:1
+✖ handoff.rpc.cell: a Cell bee hands off in place — same Cell, cwd, dirty files, one runtime in the checkout (459.219935ms)
+  Error [RpcError]: Host Git refused: Git >=2.44 is required for host checkout operations; found version 2.43.0
+      at RpcClient.onFrame (file:///home/trmd/.hive/v2/cells/rebuild-ci1h-honeybee-main-green-c5c9f3f44d09/github-com-honeybeehq-honeybee-a9015b303498-space-c5c9f3f44d09/v2/cli/src/client.ts:215:9)
+      at RpcClient.onData (file:///home/trmd/.hive/v2/cells/rebuild-ci1h-honeybee-main-green-c5c9f3f44d09/github-com-honeybeehq-honeybee-a9015b303498-space-c5c9f3f44d09/v2/cli/src/client.ts:191:33)
+      at Socket.<anonymous> (file:///home/trmd/.hive/v2/cells/rebuild-ci1h-honeybee-main-green-c5c9f3f44d09/github-com-honeybeehq-honeybee-a9015b303498-space-c5c9f3f44d09/v2/cli/src/client.ts:125:51)
+      at Socket.emit (node:events:509:28)
+      at addChunk (node:internal/streams/readable:563:12)
+      at readableAddChunkPushByteMode (node:internal/streams/readable:514:3)
+      at Readable.push (node:internal/streams/readable:394:5)
+      at Pipe.onStreamRead (node:internal/stream_base_commons:189:23) {
+    code: 'invalid_request',
+    details: undefined
+  }
+✔ champions.0: verbs and capabilities are published; a node with no Champions answers empty and its snapshot carries no champions table (433.737907ms)
+✖ champions.1: put prepares the home, start spawns in it with the Apiary tags, the incarnation is resident, a turn end bundles the home, a second daemon restores it before its first runtime, archive and delete keep the home (7163.652267ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 1
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 7704.161584
+
+✖ failing tests:
+
+test at v2/daemon/tests/champions.test.ts:74:1
+✖ champions.1: put prepares the home, start spawns in it with the Apiary tags, the incarnation is resident, a turn end bundles the home, a second daemon restores it before its first runtime, archive and delete keep the home (7163.652267ms)
+  Error: waitFor timeout: test daemon runner hosts reaped (982534)
+      at waitFor (file:///home/trmd/.hive/v2/cells/rebuild-ci1h-honeybee-main-green-c5c9f3f44d09/github-com-honeybeehq-honeybee-a9015b303498-space-c5c9f3f44d09/v2/daemon/tests/helpers.ts:38:38)
+      at async Object.stop (file:///home/trmd/.hive/v2/cells/rebuild-ci1h-honeybee-main-green-c5c9f3f44d09/github-com-honeybeehq-honeybee-a9015b303498-space-c5c9f3f44d09/v2/daemon/tests/helpers.ts:389:7)
+      at async TestContext.<anonymous> (file:///home/trmd/.hive/v2/cells/rebuild-ci1h-honeybee-main-green-c5c9f3f44d09/github-com-honeybeehq-honeybee-a9015b303498-space-c5c9f3f44d09/v2/daemon/tests/champions.test.ts:214:5)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7)
+✔ resume-bundles.0: capability published; flag off bundles nothing and reports no status (1893.289815ms)
+✔ resume-bundles.1: turn ends bundle the harness state encrypted with the epoch; unchanged state writes no row; rows are capped (2687.799235ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 4686.056557
+✔ resume-import.1: a killed executor's bee is imported elsewhere with its state, id and handle; epochs fence the old executor (4985.480335ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 5094.543332
+✔ resume-import-bytes.1: an import onto an executor with its own object directory restores natively from inline bundle bytes (1926.7673ms)
+✔ resume-import-bytes.2: without the bytes the same import is fresh with bundle_missing (1515.340397ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3550.202261
+✔ resume-reseed.1: an import without a usable bundle re-seeds the bee from its projected transcript (2106.028761ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2202.410173
+✔ session-only CLI identity is retained outside a Cell (0.809234ms)
+✔ isolated owner records agent, unattributed and authenticated UI sends distinctly (621.429126ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 806.574059
+▶ spawn lineage: runtime ancestry, registered Apiary principal, and local operator
+  ✔ unrelated default spawn is accepted while a runtime boots (224.785669ms)
+  ✔ runtime send retains its process owner on local_unix (35.964805ms)
+  ✔ runtime send retains its process owner on node_relay (17.022973ms)
+  ✔ runtime send retains its process owner on remote (16.897266ms)
+{"caller":"runtime","argv":["send","d1f5fec7-14de-4b0e-b355-66fe7b631d7e","CLI runtime report"],"status":0,"stdout":"{\"messageId\":8,\"commandId\":null,\"unarchived\":false,\"daemonTarget\":{\"dataDir\":\"/tmp/hb-v2-daemon-GdKNAC\",\"dataDirSource\":\"flag\",\"socketPath\":\"/tmp/hb-v2-daemon-GdKNAC/hived.sock\",\"socketSource\":\"flag\",\"instanceId\":\"0c89abd6-d929-4095-867d-b46218afdc86\",\"daemonDataDir\":\"/tmp/hb-v2-daemon-GdKNAC\",\"connected\":true}}\n","stderr":""}
+  ✔ runtime CLI send without identity variables uses its process ancestor (183.404883ms)
+{"caller":"runtime","argv":["spawn","default-child","inbox"],"status":0,"stdout":"{\"beeId\":\"c0c30e03-ff62-46e1-b87c-12a309982a6b\",\"agent\":\"inbox\",\"handle\":\"IN.0002\",\"commandId\":null,\"messageId\":null,\"account\":null,\"substrate\":\"hsr\",\"daemonTarget\":{\"dataDir\":\"/tmp/hb-v2-daemon-GdKNAC\",\"dataDirSource\":\"flag\",\"socketPath\":\"/tmp/hb-v2-daemon-GdKNAC/hived.sock\",\"socketSource\":\"flag\",\"instanceId\":\"0c89abd6-d929-4095-867d-b46218afdc86\",\"daemonDataDir\":\"/tmp/hb-v2-daemon-GdKNAC\",\"connected\":true}}\n","stderr":""}
+  ✔ runtime CLI defaults to its exact process ancestor (96.257466ms)
+{"caller":"runtime","argv":["spawn","denied-3","inbox","--parent","d1f5fec7-14de-4b0e-b355-66fe7b631d7e"],"status":1,"stdout":"{\"error\":{\"code\":\"caller_not_trusted\",\"message\":\"A bee spawn must use its authenticated caller as the local parent; --no-parent and external or different parents are refused\"},\"daemonTarget\":{\"dataDir\":\"/tmp/hb-v2-daemon-GdKNAC\",\"dataDirSource\":\"flag\",\"socketPath\":\"/tmp/hb-v2-daemon-GdKNAC/hived.sock\",\"socketSource\":\"flag\",\"instanceId\":\"0c89abd6-d929-4095-867d-b46218afdc86\",\"daemonDataDir\":\"/tmp/hb-v2-daemon-GdKNAC\",\"connected\":true}}\n","stderr":"hive: error (caller_not_trusted): A bee spawn must use its authenticated caller as the local parent; --no-parent and external or different parents are refused\n"}
+  ✔ runtime CLI refuses --parent (78.356666ms)
+{"caller":"runtime","argv":["spawn","denied-5","inbox","--no-parent"],"status":1,"stdout":"{\"error\":{\"code\":\"caller_not_trusted\",\"message\":\"A bee spawn must use its authenticated caller as the local parent; --no-parent and external or different parents are refused\"},\"daemonTarget\":{\"dataDir\":\"/tmp/hb-v2-daemon-GdKNAC\",\"dataDirSource\":\"flag\",\"socketPath\":\"/tmp/hb-v2-daemon-GdKNAC/hived.sock\",\"socketSource\":\"flag\",\"instanceId\":\"0c89abd6-d929-4095-867d-b46218afdc86\",\"daemonDataDir\":\"/tmp/hb-v2-daemon-GdKNAC\",\"connected\":true}}\n","stderr":"hive: error (caller_not_trusted): A bee spawn must use its authenticated caller as the local parent; --no-parent and external or different parents are refused\n"}
+{"caller":"operator","argv":["spawn","operator-default","inbox"],"status":0,"stdout":"{\"beeId\":\"73ad391f-f635-4021-b12d-a17abc6071a2\",\"agent\":\"inbox\",\"handle\":\"IN.0003\",\"commandId\":null,\"messageId\":null,\"account\":null,\"substrate\":\"hsr\",\"daemonTarget\":{\"dataDir\":\"/tmp/hb-v2-daemon-GdKNAC\",\"dataDirSource\":\"flag\",\"socketPath\":\"/tmp/hb-v2-daemon-GdKNAC/hived.sock\",\"socketSource\":\"flag\",\"instanceId\":\"0c89abd6-d929-4095-867d-b46218afdc86\",\"daemonDataDir\":\"/tmp/hb-v2-daemon-GdKNAC\",\"connected\":true}}\n","stderr":""}
+  ✔ runtime CLI refuses --no-parent (91.739372ms)
+{"caller":"operator","argv":["spawn","operator-denied-7","inbox","--parent","d1f5fec7-14de-4b0e-b355-66fe7b631d7e"],"status":1,"stdout":"{\"error\":{\"code\":\"caller_not_trusted\",\"message\":\"Explicit, empty, and external parent claims require the registered Apiary service while local RPC trust is enabled, or an unconfined direct local caller while it is disabled\"},\"daemonTarget\":{\"dataDir\":\"/tmp/hb-v2-daemon-GdKNAC\",\"dataDirSource\":\"flag\",\"socketPath\":\"/tmp/hb-v2-daemon-GdKNAC/hived.sock\",\"socketSource\":\"flag\",\"instanceId\":\"0c89abd6-d929-4095-867d-b46218afdc86\",\"daemonDataDir\":\"/tmp/hb-v2-daemon-GdKNAC\",\"connected\":true}}\n","stderr":"hive: error (caller_not_trusted): Explicit, empty, and external parent claims require the registered Apiary service while local RPC trust is enabled, or an unconfined direct local caller while it is disabled\n"}
+{"caller":"operator","argv":["spawn","operator-denied-8","inbox","--no-parent"],"status":1,"stdout":"{\"error\":{\"code\":\"caller_not_trusted\",\"message\":\"Explicit, empty, and external parent claims require the registered Apiary service while local RPC trust is enabled, or an unconfined direct local caller while it is disabled\"},\"daemonTarget\":{\"dataDir\":\"/tmp/hb-v2-daemon-GdKNAC\",\"dataDirSource\":\"flag\",\"socketPath\":\"/tmp/hb-v2-daemon-GdKNAC/hived.sock\",\"socketSource\":\"flag\",\"instanceId\":\"0c89abd6-d929-4095-867d-b46218afdc86\",\"daemonDataDir\":\"/tmp/hb-v2-daemon-GdKNAC\",\"connected\":true}}\n","stderr":"hive: error (caller_not_trusted): Explicit, empty, and external parent claims require the registered Apiary service while local RPC trust is enabled, or an unconfined direct local caller while it is disabled\n"}
+  ✔ unregistered operator CLI allows defaults and refuses explicit lineage (258.031377ms)
+{"caller":"detached","pid":983625,"initialPpid":3858473,"detachedPpid":3858473,"intermediatePid":983618,"intermediatePpid":983544,"runtimePid":983544,"ancestry":[{"pid":983625,"ppid":3858473},{"pid":3858473,"ppid":1}],"outputs":[{"status":1,"stdout":"{\"error\":{\"code\":\"caller_not_trusted\",\"message\":\"Explicit, empty, and external parent claims require the registered Apiary service while local RPC trust is enabled, or an unconfined direct local caller while it is disabled\"},\"daemonTarget\":{\"dataDir\":\"/tmp/hb-v2-daemon-GdKNAC\",\"dataDirSource\":\"flag\",\"socketPath\":\"/tmp/hb-v2-daemon-GdKNAC/hived.sock\",\"socketSource\":\"flag\",\"instanceId\":\"0c89abd6-d929-4095-867d-b46218afdc86\",\"daemonDataDir\":\"/tmp/hb-v2-daemon-GdKNAC\",\"connected\":true}}\n","stderr":"hive: error (caller_not_trusted): Explicit, empty, and external parent claims require the registered Apiary service while local RPC trust is enabled, or an unconfined direct local caller while it is disabled\n"},{"status":1,"stdout":"{\"error\":{\"code\":\"caller_not_trusted\",\"message\":\"Explicit, empty, and external parent claims require the registered Apiary service while local RPC trust is enabled, or an unconfined direct local caller while it is disabled\"},\"daemonTarget\":{\"dataDir\":\"/tmp/hb-v2-daemon-GdKNAC\",\"dataDirSource\":\"flag\",\"socketPath\":\"/tmp/hb-v2-daemon-GdKNAC/hived.sock\",\"socketSource\":\"flag\",\"instanceId\":\"0c89abd6-d929-4095-867d-b46218afdc86\",\"daemonDataDir\":\"/tmp/hb-v2-daemon-GdKNAC\",\"connected\":true}}\n","stderr":"hive: error (caller_not_trusted): Explicit, empty, and external parent claims require the registered Apiary service while local RPC trust is enabled, or an unconfined direct local caller while it is disabled\n"}],"rpc":{"code":"caller_not_trusted"},"defaultSpawn":{"result":{"beeId":"1931c65e-59fd-4e6e-8a45-add6581dc720","agent":"inbox","handle":"IN.0004","commandId":null,"messageId":null,"account":null}}}
+  ✔ detached runtime descendant cannot acquire operator lineage authority (246.167047ms)
+  ✔ runtime Unix RPC refuses an external parent (16.88035ms)
+  ✔ a runtime declaring node_relay is still attributed by ancestry: parented to itself, never to another bee (50.192697ms)
+  ✔ runtime cannot escape lineage by declaring remote (16.818898ms)
+  ✔ runtime cannot register as a service even with the disposable fixture key (16.706049ms)
+  ✔ plain operator RPC refuses an external parent (1.697034ms)
+  ✔ with local trust enabled, an unregistered direct local peer still cannot claim a local parent (0.874161ms)
+  ✔ with local trust enabled, an unregistered peer relaying over node_relay cannot spawn at all (27.565241ms)
+  ✔ unregistered caller cannot assert an Apiary principal (0.82745ms)
+  ✔ replay cannot borrow another authenticated parent's spawn (6.000797ms)
+  ✔ registered service defaults forwarded principal and permits matching parent (4.342041ms)
+  ✔ forwarded principal refuses {"parentId":"d1f5fec7-14de-4b0e-b355-66fe7b631d7e"} (0.725137ms)
+  ✔ forwarded principal refuses {"parentId":null} (0.614992ms)
+  ✔ forwarded principal refuses {"parentId":"15ecdadc-f4b1-4265-9fac-9516a5ada650","parentExternal":true} (0.521412ms)
+  ✔ the registered service relaying a Studio spawn over node_relay keeps its authority; the remote lane does not (20.51552ms)
+  ✔ registered service without principal can delegate any lineage (4.125536ms)
+✔ spawn lineage: runtime ancestry, registered Apiary principal, and local operator (2038.11369ms)
+✔ spawn lineage: with local RPC trust off, an unconfined direct local peer keeps its parent claims as unattributed provenance (934.26164ms)
+ℹ tests 27
+ℹ suites 0
+ℹ pass 27
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3079.303236
+✔ verbs.agent-account-selector: auto/rr suffixes collapse without hijacking ordinary hyphenated agents (1.271055ms)
+✔ verbs.login-flow: interactive logins are driven from the terminal; json/no-wait just start; the rendered flow carries no secret and no attach target (0.553029ms)
+✔ verbs.x: spawn + first send in one shot (fire-and-forget); prompt lands in the mailbox; usage error without a prompt (1061.813168ms)
+✔ verbs.run: spawn + send + wait + print the reply + archive; --keep leaves the bee (1858.674203ms)
+✔ verbs.wait: blocks until idle with no queued mail; a hung turn times out with exit 1 (2738.500835ms)
+✔ verbs.here: the HIVE_BEE_ID stamp — full line, --json, and the loud unset error (650.522649ms)
+✔ verbs.transcript+last: stub session log rendered as turns; --raw verbatim; --tail bounds; last = newest assistant text (1548.044612ms)
+✔ verbs.transcript: claude-format fixture — text turns kept, tool traffic one-lined, thinking/result elided; stale offline read (44.657468ms)
+✔ verbs.tail: rendered backlog with -n (--raw for verbatim); -f/--follow streams appends until SIGINT (283.458742ms)
+✔ verbs.transcript: -f/--follow streams appended lines until SIGINT (564.01427ms)
+✔ verbs.transcript: agy follow keeps projector state across appended lines (281.361016ms)
+✔ verbs.transcript: follow completes a torn agy record with one projector (280.419514ms)
+✔ verbs.transcript: follow flushes one live agy fragment once on SIGINT (60.603427ms)
+✔ verbs.transcript: follow starts at the backlog snapshot boundary (280.653195ms)
+✔ verbs.last: falls back to the latest seal when the log has no assistant text; --seal skips straight there (35.013459ms)
+✔ verbs.events: audit-row tail with --kind glob and --bee filters; stale fallback when the daemon is down (950.056492ms)
+▶ verbs.set-model: arg surgery — grammar-aware for claude/codex, conservative in-place for unknown harnesses; CLI applies via bee.setArgs
+  ✔ withModelArg unit surface (1.249774ms)
+✔ verbs.set-model: arg surgery — grammar-aware for claude/codex, conservative in-place for unknown harnesses; CLI applies via bee.setArgs (678.843221ms)
+✔ verbs.aliases: ls and ps are list; usage is limits-shaped over account_limits; login/swap-account top-level route through (696.561298ms)
+✔ verbs.account-capture: an already-authenticated home is validated, backed up, and marked logged in (437.36114ms)
+✔ verbs.usage: renders the cached account_limits rows (stale, read-only) with pct + resets, v1-usage style (27.196118ms)
+✔ verbs.help: the grouped v1-style overview lists the new verbs under their sections (0.821842ms)
+✔ handles.ladder: exact id → exact handle (case-insensitive) → exact name → unique prefix; ambiguity lists candidates (0.582013ms)
+✔ handles.live: spawn returns the minted handle; ls leads with it and keeps id= tail; every verb takes the handle (672.545038ms)
+✔ verbs.send-sender: hive send binds the ambient bee identity; unclaimed and operator sends are delivered as automation (1077.869001ms)
+✔ verbs.buz: v1 compat — buz send maps tiers onto urgency + sender; buz inbox = mailbox; retired subs guide loudly (1157.712207ms)
+✔ verbs.tag: a bee cannot write apiary:* tags; the operator can (689.204247ms)
+ℹ tests 27
+ℹ suites 0
+ℹ pass 27
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 16223.812117
+▶ send: exact-ID lookup preserves fallback and sender authority
+  ✔ exact ID avoids the list and preserves urgency, key and wait (9.901195ms)
+  ✔ names, case-insensitive handles, prefixes and non-UUID IDs keep full lookup (9.060986ms)
+  ✔ UUID-shaped name falls back and exact ID takes precedence over a name (2.40111ms)
+  ✔ missing and ambiguous recipients never send (2.60067ms)
+  ✔ ambient identity survives the fast path; foreign authority remains operator (2.980078ms)
+  ✔ explicit aliases and forged sender claims retain the full resolver (5.150022ms)
+  ✔ buz human sender requires authenticated UI input (1.748832ms)
+  ✔ view errors propagate without list fallback or mutation (1.252057ms)
+✔ send: exact-ID lookup preserves fallback and sender authority (39.714547ms)
+ℹ tests 9
+ℹ suites 0
+ℹ pass 9
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 189.207864
+v2 daemon/cli test files failed (3 of 15):
+  v2/daemon/tests/preflip-verbs.test.ts (exit 1)
+  v2/daemon/tests/handoff-rpc.test.ts (exit 1)
+  v2/daemon/tests/champions.test.ts (exit 1)
