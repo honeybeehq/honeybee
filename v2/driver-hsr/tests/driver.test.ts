@@ -869,38 +869,96 @@ test("late init must not close an in-flight turn (cell smoke 2026-08-17 phantom 
   }
 });
 
-test("agy auth before init is flag evidence, not real boot evidence", async (t) => {
-  const dir = mkdtempSync(join(tmpdir(), "hive-drv-agy-preinit-auth-"));
+const FAKE_AGY = join(import.meta.dirname, "..", "test-agent", "fake-agy.mjs");
+
+test("agy ACP: handshake with MCP servers and configuration, a turn, a declined permission, cancel, then session/resume", async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), "hive-drv-agy-acp-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
-  const fake = join(dir, "preinit-auth-agy.mjs");
-  writeFileSync(fake, `
-    process.stdout.write(JSON.stringify({
-      event: "result",
-      result: {
-        conversation_id: "",
-        status: "ERROR",
-        error: "authentication failed or timed out",
-      },
-    }) + "\\n");
-    setTimeout(() => process.exit(0), 50);
-  `);
+  const requestsPath = join(dir, "requests.jsonl");
+  const gateway = { name: "apiary", command: "/usr/bin/node", args: ["shim.mjs"], env: [{ name: "HONEYBEE_GATEWAY", value: "apiary" }] };
+  let resumeSessionId: string | undefined;
   const driver = new RuntimeHost({
     sessionLogDir: join(dir, "logs"),
-    resolve: () => ({ adapter: agyAdapter, command: process.execPath, args: [fake] }),
+    resolve: () => ({
+      adapter: agyAdapter({ cwd: dir, model: "gemini-3.8-flash", effort: "low", mode: "plan", mcpServers: [gateway], ...(resumeSessionId ? { resumeSessionId } : {}) }),
+      command: process.execPath,
+      args: [FAKE_AGY, "acp"],
+      env: { ...(process.env as Record<string, string>), FAKE_AGY_REQUESTS: requestsPath },
+    }),
+  });
+  const requests = () => readFileSync(requestsPath, "utf8").trim().split("\n").map((line) => JSON.parse(line) as { method: string; params: Record<string, unknown> });
+  try {
+    driver.start("agy-acp", 1);
+    assert.deepEqual(driver.deliver("agy-acp", 1, 1, "early"), { accepted: false, reason: "not_ready" });
+    await drainUntil(driver, (e) => ofKind(e, "booted").length > 0 && ofKind(e, "turn_ended").length > 0);
+    assert.deepEqual(driver.observeSessions(), [{ beeId: "agy-acp", generation: 1, sessionId: "agy-fake-session" }]);
+    assert.deepEqual(requests().map((r) => r.method), ["initialize", "session/new", "session/set_config_option", "session/set_config_option", "session/set_config_option"]);
+    assert.deepEqual((requests()[0]!.params as { clientInfo: unknown }).clientInfo, { name: "Honeybee", version: "2" });
+    assert.deepEqual(requests()[1]!.params, { cwd: dir, mcpServers: [gateway] });
+    assert.deepEqual(requests().slice(2).map((r) => [r.params.configId, r.params.value]), [["model", "gemini-3.8-flash"], ["thought_level", "low"], ["mode", "plan"]]);
+
+    await deliverUntilAccepted(driver, "agy-acp", 1, 2, "hello");
+    const turn = await drainUntil(driver, (e) => ofKind(e, "turn_started").length >= 1 && ofKind(e, "turn_ended").length >= 1);
+    assert.equal(ofKind(turn, "exited").length, 0);
+    assert.match(readFileSync(driver.sessionLogPath("agy-acp"), "utf8"), /echo: hello/);
+
+    // No --dangerously-skip-permissions: the tool's permission request is declined and the turn still ends.
+    await deliverUntilAccepted(driver, "agy-acp", 1, 3, "use the tool");
+    await drainUntil(driver, (e) => ofKind(e, "turn_ended").length >= 1);
+    const log = readFileSync(driver.sessionLogPath("agy-acp"), "utf8");
+    assert.match(log, /"outcome":\{"outcome":"selected","optionId":"reject"\}/);
+    assert.match(log, /tool declined/);
+
+    await deliverUntilAccepted(driver, "agy-acp", 1, 4, "hang");
+    await drainUntil(driver, (e) => ofKind(e, "turn_started").length >= 1);
+    assert.deepEqual(driver.interrupt("agy-acp", 1), { interrupted: true });
+    const cancelled = await drainUntil(driver, (e) => ofKind(e, "turn_ended").length >= 1);
+    assert.equal(ofKind(cancelled, "exited").length, 0, "cancel ends the turn, not the runtime");
+    assert.equal(requests().at(-1)!.method, "session/cancel");
+    assert.match(readFileSync(driver.sessionLogPath("agy-acp"), "utf8"), /"stopReason":"cancelled"/);
+
+    driver.stop("agy-acp", 1, "stopped_by_user");
+    await drainUntil(driver, (e) => ofKind(e, "exited").length > 0);
+    resumeSessionId = "agy-fake-session";
+    driver.start("agy-acp", 2);
+    await drainUntil(driver, (e) => ofKind(e, "booted").length > 0);
+    const resumed = requests().filter((r) => r.method === "session/resume");
+    assert.deepEqual(resumed.map((r) => r.params), [{ cwd: dir, mcpServers: [gateway], sessionId: "agy-fake-session" }]);
+    assert.equal(requests().filter((r) => r.method === "session/new").length, 1);
+  } finally {
+    driver.disposeAll();
+  }
+});
+
+test("agy ACP: a signed-out agy is auth_needed evidence, never boot evidence; GEMINI_API_KEY authenticates when agy asks", async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), "hive-drv-agy-auth-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const requestsPath = join(dir, "requests.jsonl");
+  const { GEMINI_API_KEY: _ambient, ...ambient } = process.env as Record<string, string>;
+  const driver = new RuntimeHost({
+    sessionLogDir: join(dir, "logs"),
+    resolve: (beeId) => ({
+      adapter: agyAdapter({ cwd: dir, apiKeyAuth: beeId === "agy-key" }),
+      command: process.execPath,
+      args: [FAKE_AGY, "acp"],
+      env: { ...ambient, FAKE_AGY_SIGNED_OUT: "1", FAKE_AGY_REQUESTS: requestsPath, ...(beeId === "agy-key" ? { GEMINI_API_KEY: "fixture-key" } : {}) },
+    }),
   });
   try {
-    driver.start("agy-auth", 1);
-    const evidence = await drainEvidenceUntil(
-      driver,
-      (items) => items.some((item) => item.flag === "auth_needed" && item.action === "set"),
-      3000,
-    );
-    const observations = await drainUntil(driver, (items) => ofKind(items, "exited").length > 0, 3000);
+    driver.start("agy-out", 1);
+    const evidence = await drainEvidenceUntil(driver, (items) => items.some((item) => item.flag === "auth_needed" && item.action === "set"), 5000);
+    assert.match(evidence.find((item) => item.flag === "auth_needed")!.detail, /Sign in with agy on this computer/);
+    await sleep(100);
+    const observations = driver.observe();
+    assert.equal(ofKind(observations, "booted").length, 0, "an auth refusal is not readiness");
+    assert.equal(ofKind(observations, "turn_ended").length, 0);
+    assert.equal(readFileSync(requestsPath, "utf8").includes("authenticate"), false, "no key: no authenticate call");
+    driver.stop("agy-out", 1, "stopped_by_system");
 
-    assert.ok(evidence.some((item) => item.flag === "auth_needed" && item.action === "set"));
-    assert.equal(ofKind(observations, "booted").length, 0, "pre-init auth is not readiness proof");
-    assert.equal(ofKind(observations, "turn_ended").length, 0, "a booting runtime has no turn to end");
-    assert.equal(ofKind(observations, "exited")[0]?.exitCause, "clean", "exit code 0 remains a clean exit fact");
+    driver.start("agy-key", 1);
+    await drainUntil(driver, (e) => ofKind(e, "booted").length > 0, 5000);
+    const methods = readFileSync(requestsPath, "utf8").trim().split("\n").map((line) => JSON.parse(line).method as string);
+    assert.deepEqual(methods.slice(-4), ["initialize", "session/new", "authenticate", "session/new"]);
   } finally {
     driver.disposeAll();
   }

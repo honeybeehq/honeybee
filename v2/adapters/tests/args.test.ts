@@ -95,31 +95,13 @@ test("args.compose.6: grokSpawnPlan lifts --model/--effort in front of stdio", (
 });
 
 test("args.compose.7: agy valued flags use later-wins composition and permission bypass is idempotent", () => {
-  const valueFlags = [
-    "--model",
-    "--effort",
-    "--conversation",
-    "--print-timeout",
-    "--agent",
-    "--project",
-    "--log-file",
-    "--add-dir",
-    "--mode",
-  ];
-  assert.deepEqual([...agyArgGrammar.valueFlags], valueFlags);
+  assert.deepEqual([...agyArgGrammar.valueFlags], ["--model", "--effort", "--mode", "--agent", "--log-file", "--add-dir"]);
   const argv = composeArgv(agyArgGrammar, [
-    ["--print=", "--dangerously-skip-permissions", "--model", "default", "--print-timeout", "12h"],
-    ["--dangerously-skip-permissions", "--model=gemini-3.8-flash-low", "--effort", "high"],
-    ["--conversation", "recorded-session"],
+    ["acp"],
+    ["--dangerously-skip-permissions", "--model", "gemini-4-argon", "--mode", "plan"],
+    ["--dangerously-skip-permissions", "--model=gemini-3.8-flash", "--effort", "high"],
   ]);
-  assert.deepEqual(argv, [
-    "--print=",
-    "--dangerously-skip-permissions",
-    "--print-timeout", "12h",
-    "--model=gemini-3.8-flash-low",
-    "--effort", "high",
-    "--conversation", "recorded-session",
-  ]);
+  assert.deepEqual(argv, ["acp", "--dangerously-skip-permissions", "--mode", "plan", "--model=gemini-3.8-flash", "--effort", "high"]);
 });
 
 test("args.compose.8: agy preserves repeatable --add-dir values across layers", () => {

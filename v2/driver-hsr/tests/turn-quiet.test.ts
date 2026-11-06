@@ -119,3 +119,20 @@ test("ACP successful completion stays quiet and foreign sessions cannot replace 
     assert.equal(turn.end(), true);
   }
 });
+
+test("agy ACP: only a prompt that ended end_turn classifies its answer", () => {
+  const session = "agy-session";
+  const row = (value: Record<string, unknown>) => JSON.stringify({ jsonrpc: "2.0", ...value });
+  const prompt = row({ id: 1006, method: "session/prompt", params: { sessionId: session, prompt: [{ type: "text", text: "anything new?" }] } });
+  const answer = (text: string) => row({ method: "session/update", params: { sessionId: session, update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text } } } });
+  const run = (lines: string[]): boolean | undefined => {
+    const turn = new TurnQuiet("agy");
+    for (const line of lines) turn.pushLine(line, session);
+    return turn.end({ requireTerminal: true });
+  };
+  assert.equal(run([prompt, answer("<quiet/>"), row({ id: 1006, result: { stopReason: "end_turn" } })]), true);
+  assert.equal(run([prompt, answer("Please review"), row({ id: 1006, result: { stopReason: "end_turn" } })]), false);
+  assert.equal(run([prompt, answer("<quiet/>"), row({ id: 1006, result: { stopReason: "cancelled" } })]), undefined);
+  assert.equal(run([prompt, answer("<quiet/>"), row({ id: 1006, error: { code: -32603, message: "Internal error" } })]), undefined);
+  assert.equal(run([prompt, answer("<quiet/>")]), undefined);
+});

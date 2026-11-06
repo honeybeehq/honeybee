@@ -40,42 +40,6 @@ const FAKE_MUSE = join(here, "..", "..", "driver-hsr", "test-agent", "fake-muse-
 const CLI_READY_TIMEOUT_MS = 60_000;
 const SENTINEL_KEY = "sk-SENTINEL-API-KEY-0123456789abcdef";
 const SENTINEL_CODE = "SENTINEL-AUTH-CODE-9f8e7d6c";
-const FAKE_AGY_LOGIN = String.raw`
-const { mkdirSync, writeFileSync } = require("node:fs");
-const { dirname, join } = require("node:path");
-const { createInterface } = require("node:readline");
-const home = process.env.HOME;
-if (!home) process.exit(2);
-if (process.env.SSH_CONNECTION !== "127.0.0.1 1 127.0.0.1 1") process.exit(3);
-console.error("Authentication required. Please visit the URL to log in:");
-console.error("  https://accounts.google.com/o/oauth2/auth?client_id=fake-agy");
-console.error("");
-console.error("Waiting for authentication (timeout 60s)...");
-console.error("Or, paste the authorization code here and press Enter:");
-const fail = () => {
-  console.error("Error: authentication timed out.");
-  console.log(JSON.stringify({ event: "result", result: { status: "ERROR", error: "authentication failed or timed out" } }));
-  process.exit(0);
-};
-if (process.env.FAKE_AGY_FAIL === "1") {
-  setTimeout(fail, 50);
-} else {
-  const input = createInterface({ input: process.stdin, terminal: false });
-  input.once("line", (code) => {
-    if (code.trim() !== process.env.FAKE_AGY_EXPECT) return fail();
-    for (const [file, content] of [
-      [".gemini/antigravity-cli/antigravity-oauth-token", "fake-agy-token"],
-      [".gemini/antigravity/antigravity_state.pbtxt", "fake-agy-state"],
-    ]) {
-      const path = join(home, file);
-      mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
-      writeFileSync(path, content, { mode: 0o600 });
-    }
-    process.exit(0);
-  });
-}
-`;
-
 interface Rig {
   dir: string;
   store: CoreStore;
@@ -175,10 +139,6 @@ function account(r: Rig, harness: string, label: string, status: "ok" | "auth_ne
 
 function fakeCliAgent(harness: string, homeEnv: string, file: string, env: Record<string, string>) {
   return { [harness]: { command: process.execPath, args: [], adapter: harness, login: { command: process.execPath, args: [FAKE_CLI] }, env: { FAKE_LOGIN_HOME_ENV: homeEnv, FAKE_LOGIN_FILE: file, ...env } } };
-}
-
-function fakeAgyAgent(env: Record<string, string>) {
-  return { agy: { command: process.execPath, args: [], adapter: "agy", login: { command: process.execPath, args: ["-e", FAKE_AGY_LOGIN] }, env } };
 }
 
 function fakeMuseAgent(env: Record<string, string> = {}) {
@@ -500,39 +460,6 @@ test("flows.cli-prompt: url → prompt (waiting_input) → wrong code re-asks wi
     }, "succeeded", 8000, 25);
     assert.equal(r.store.getAccount(acct.id)?.status, "ok");
     assert.doesNotMatch(leakSurfaces(r), /SENTINEL|wrong/);
-  } finally {
-    r.cleanup();
-  }
-});
-
-test("flows.agy-cli: the captured OAuth cues request a code and token landing under the account HOME completes the flow", async () => {
-  const r = rig({ agents: fakeAgyAgent({ FAKE_AGY_EXPECT: SENTINEL_CODE }) });
-  try {
-    const { flows, completed } = services(r);
-    const acct = account(r, "agy", "personal");
-    const { flow } = await flows.start(acct);
-    assert.equal(flow.methodId, "agy-cli");
-    const asking = await waitFor(() => {
-      const current = r.store.getLoginFlow(flow.id) as LoginFlowRow;
-      return current.phase === "waiting_input" && current.authorizationUrl ? current : null;
-    }, "agy authorization code prompt", 5000, 20);
-    assert.equal(asking.authorizationUrl, "https://accounts.google.com/o/oauth2/auth?client_id=fake-agy");
-    assert.deepEqual(asking.inputFields.map((field) => field.id), ["code"]);
-
-    await flows.submit(flow.id, { code: SENTINEL_CODE });
-    await waitFor(() => {
-      flows.tick();
-      return r.store.getLoginFlow(flow.id)?.phase === "succeeded" ? true : null;
-    }, "agy credential landing", 5000, 20);
-    const tokenFile = ".gemini/antigravity-cli/antigravity-oauth-token";
-    const configFile = ".gemini/antigravity/antigravity_state.pbtxt";
-    assert.equal(readFileSync(join(acct.homePath, tokenFile), "utf8"), "fake-agy-token");
-    assert.equal(readFileSync(join(r.vault, "agy", acct.id, tokenFile), "utf8"), "fake-agy-token");
-    assert.equal(readFileSync(join(r.vault, "agy", acct.id, configFile), "utf8"), "fake-agy-state");
-    assert.equal(mode(join(acct.homePath, tokenFile)), 0o600);
-    assert.equal(r.store.getAccount(acct.id)?.status, "ok");
-    assert.deepEqual(completed, [acct.id]);
-    assert.doesNotMatch(leakSurfaces(r), /SENTINEL/);
   } finally {
     r.cleanup();
   }
@@ -981,25 +908,6 @@ test("flows.muse-api-key: the key reaches `muse auth set` only on stdin, lands i
   }
 });
 
-test("flows.agy-cli: a captured auth failure exits zero but still fails the flow", async () => {
-  const r = rig({ agents: fakeAgyAgent({ FAKE_AGY_FAIL: "1" }) });
-  try {
-    const { flows } = services(r);
-    const acct = account(r, "agy", "timeout");
-    const { flow } = await flows.start(acct);
-    const failed = await waitFor(() => {
-      const current = r.store.getLoginFlow(flow.id) as LoginFlowRow;
-      return current.phase === "failed" ? current : null;
-    }, "agy auth failure", 5000, 20);
-    assert.equal(failed.error?.code, "cli_failed");
-    assert.equal(failed.retryable, true);
-    assert.equal(existsSync(join(acct.homePath, ".gemini/antigravity-cli/antigravity-oauth-token")), false);
-    assert.equal(r.store.getAccount(acct.id)?.status, "auth_needed");
-  } finally {
-    r.cleanup();
-  }
-});
-
 test("flows.cli-exit: a CLI that exits without a credential fails typed (process_exited, retryable); retry starts revision 2 with a new worker that succeeds", async () => {
   const r = rig({ agents: fakeCliAgent("kimi", "KIMI_CODE_HOME", "credentials/kimi-code.json", { FAKE_CLI_URL: "https://kimi.example/login", FAKE_CLI_EXIT_NO_CRED_MS: "150" }) });
   try {
@@ -1351,7 +1259,7 @@ test("redaction: thrown input and encoded variants never reach flow, audit, mirr
 
 test("redaction: every CLI recipe strips credential queries and fragments before persistence", async () => {
   const words = ["code", "token", "access_token", "id_token", "refresh_token", "password", "secret", "apikey", "api_key", "key", "auth", "assertion", "session", "credential", "passwd", "cookie", "signature", "sig", "secrets", "tokens", "credentials", "secret_ref", "secret-ref", "secretref", "authorization", "bearer", "otp", "passphrase", "pin", "private-key", "accessKey", "signing_key", "sessionKey", "auth-key", "encryption_key", "masterKey", "code_verifier", "client_secret", "codeChallengeEvil", "Code", "ToKeNs"];
-  for (const [harness, homeEnv, file, host] of [["grok", "GROK_HOME", "auth.json", "accounts.x.ai"], ["kimi", "KIMI_CODE_HOME", "credentials/kimi-code.json", "auth.kimi.com"], ["agy", "HOME", ".gemini/antigravity-cli/antigravity-oauth-token", "accounts.google.com"], ["codex", "CODEX_HOME", "auth.json", "auth.openai.com"], ["muse", "XDG_CONFIG_HOME", "muse/auth.json", "auth.meta.com"], ["cursor", "CURSOR_CONFIG_DIR", "auth.json", "cursor.com"]]) {
+  for (const [harness, homeEnv, file, host] of [["grok", "GROK_HOME", "auth.json", "accounts.x.ai"], ["kimi", "KIMI_CODE_HOME", "credentials/kimi-code.json", "auth.kimi.com"], ["codex", "CODEX_HOME", "auth.json", "auth.openai.com"], ["muse", "XDG_CONFIG_HOME", "muse/auth.json", "auth.meta.com"], ["cursor", "CURSOR_CONFIG_DIR", "auth.json", "cursor.com"]]) {
     const url = new URL(`https://${host}/oauth/authorize?client_id=app&redirect_uri=https%3A%2F%2Fcallback.example%2Fdone&state=nonce&nonce=public-nonce&scope=openid&code_challenge=public-challenge&code_challenge_method=S256`);
     for (const word of words) url.searchParams.set(word, `planted-${word}-value`);
     url.hash = "fragment-credential";
@@ -1390,7 +1298,7 @@ test("redaction: userinfo and nested credentials refuse; Claude flag is restrict
 });
 
 test("redaction: unsafe CLI URLs fail typed without reaching persisted or mirrored fields", async () => {
-  for (const [harness, homeEnv, file] of [["grok", "GROK_HOME", "auth.json"], ["kimi", "KIMI_CODE_HOME", "credentials/kimi-code.json"], ["agy", "HOME", ".gemini/antigravity-cli/antigravity-oauth-token"], ["codex", "CODEX_HOME", "auth.json"], ["muse", "XDG_CONFIG_HOME", "muse/auth.json"], ["cursor", "CURSOR_CONFIG_DIR", "auth.json"]]) {
+  for (const [harness, homeEnv, file] of [["grok", "GROK_HOME", "auth.json"], ["kimi", "KIMI_CODE_HOME", "credentials/kimi-code.json"], ["codex", "CODEX_HOME", "auth.json"], ["muse", "XDG_CONFIG_HOME", "muse/auth.json"], ["cursor", "CURSOR_CONFIG_DIR", "auth.json"]]) {
     for (const url of ["https://user:planted-pass@auth.openai.com/oauth/authorize?client_id=app", "https://auth.openai.com/oauth/authorize?redirect_uri=https%3A%2F%2Fcallback.example%2F%3Ftoken%3Dplanted-nested", "https://auth.openai.com/oauth/authorize?state=sk-planted-key-0123456789abcdef", "https://auth.openai.com/oauth/authorize?redirect_uri=https%3A%2F%2Fu%3Aplanted-nested-pass%40callback.example%2Fdone", "https://auth.openai.com/oauth/authorize?state=%7B%22access_token%22%3A%22planted-json%22%7D"]) {
       const r = rig({ agents: fakeCliAgent(harness!, homeEnv!, file!, { FAKE_CLI_URL: url, FAKE_CLI_HANG: "1" }) });
       const { flows } = services(r);
@@ -1409,7 +1317,7 @@ test("redaction: unsafe CLI URLs fail typed without reaching persisted or mirror
 });
 
 test("redaction: CLI-echoed callback URLs never project codes, tokens or fragments", async () => {
-  for (const [harness, homeEnv, file] of [["grok", "GROK_HOME", "auth.json"], ["kimi", "KIMI_CODE_HOME", "credentials/kimi-code.json"], ["agy", "HOME", ".gemini/antigravity-cli/antigravity-oauth-token"], ["codex", "CODEX_HOME", "auth.json"], ["muse", "XDG_CONFIG_HOME", "muse/auth.json"], ["cursor", "CURSOR_CONFIG_DIR", "auth.json"]]) {
+  for (const [harness, homeEnv, file] of [["grok", "GROK_HOME", "auth.json"], ["kimi", "KIMI_CODE_HOME", "credentials/kimi-code.json"], ["codex", "CODEX_HOME", "auth.json"], ["muse", "XDG_CONFIG_HOME", "muse/auth.json"], ["cursor", "CURSOR_CONFIG_DIR", "auth.json"]]) {
     const r = rig({ agents: fakeCliAgent(harness!, homeEnv!, file!, { FAKE_CLI_URL: "https://callback.example/callback?code=planted-code&token=planted-token&client_secret=planted-secret#planted-fragment", FAKE_CLI_EXIT_NO_CRED_MS: "200" }) });
     const { flows } = services(r);
     try {
@@ -1425,11 +1333,11 @@ test("redaction: CLI-echoed callback URLs never project codes, tokens or fragmen
 });
 
 test("redaction: encoded submitted values in CLI state or userCode are held before projection", async () => {
-  for (const [harness, homeEnv, file] of [["grok", "GROK_HOME", "auth.json"], ["kimi", "KIMI_CODE_HOME", "credentials/kimi-code.json"], ["agy", "HOME", ".gemini/antigravity-cli/antigravity-oauth-token"]]) {
-    for (const channel of harness === "agy" ? ["url"] : ["url", "userCode"]) {
+  for (const [harness, homeEnv, file] of [["grok", "GROK_HOME", "auth.json"], ["kimi", "KIMI_CODE_HOME", "credentials/kimi-code.json"]]) {
+    for (const channel of ["url", "userCode"]) {
       const input = channel === "url" ? "short/planted" : "ABC";
       const encoded = channel === "url" ? encodeURIComponent(input) : Buffer.from(input).toString("base64");
-      const r = rig({ agents: fakeCliAgent(harness!, homeEnv!, file!, { FAKE_CLI_URL: "https://auth.example/authorize?state=public", FAKE_CLI_PROMPT: harness === "agy" ? "agy" : "code", FAKE_CLI_EXPECT: input, ...(channel === "url" ? { FAKE_CLI_AFTER_INPUT_URL: `https://auth.example/authorize?state=${encoded}` } : { FAKE_CLI_AFTER_INPUT_CODE: `${encoded}-AAAA` }) }) });
+      const r = rig({ agents: fakeCliAgent(harness!, homeEnv!, file!, { FAKE_CLI_URL: "https://auth.example/authorize?state=public", FAKE_CLI_PROMPT: "code", FAKE_CLI_EXPECT: input, ...(channel === "url" ? { FAKE_CLI_AFTER_INPUT_URL: `https://auth.example/authorize?state=${encoded}` } : { FAKE_CLI_AFTER_INPUT_CODE: `${encoded}-AAAA` }) }) });
       const { flows } = services(r);
       try {
         const { flow } = await flows.start(account(r, harness!, "encoded"));

@@ -1488,7 +1488,7 @@ test("budget.5: immediate-exit runtime → bounded revives with backoff, spawn_f
   }
 });
 
-test("budget.5auth: pre-init agy auth exits consume the budget and suppress churn", () => {
+test("budget.5auth: auth-flagged exits before boot consume the budget and suppress churn", () => {
   const rig = makeRig({ i1DeadlineSteps: 200 });
   try {
     rig.driver.authBootFailure = true;
@@ -1517,7 +1517,7 @@ test("budget.5auth: pre-init agy auth exits consume the budget and suppress chur
     for (let i = 0; i < 20; i++) rig.core.step();
     assert.equal(rig.driver.starts.length, startsAtSuppression, "spawn_failed suppresses further generations");
 
-    rig.store.clearFlag("bee-1", "auth_needed", "operator completed agy login");
+    rig.store.clearFlag("bee-1", "auth_needed", "operator signed in again");
     rig.driver.authBootFailure = false;
     rig.store.enqueueCommand("revive", "bee-1");
     for (let i = 0; i < 4; i++) rig.core.step();

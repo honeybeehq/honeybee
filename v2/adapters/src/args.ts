@@ -27,6 +27,7 @@
  * Pure functions; the daemon's resolveSpawnSpec is the one caller.
  */
 
+import { AGY_EFFORTS, AGY_MODES, type AgyEffort, type AgyMode } from "./agy.ts";
 import { MUSE_EFFORTS, type MuseApprovalMode, type MuseEffort } from "./muse.ts";
 
 export interface ArgGrammar {
@@ -183,24 +184,50 @@ export const claudeArgGrammar: ArgGrammar = {
 // agy
 // ---------------------------------------------------------------------------
 
-/** `agy` print-mode flags the composer knows. */
+/** `agy acp` flags the composer knows. */
 export const agyArgGrammar: ArgGrammar = {
-  valueFlags: new Set([
-    "--model",
-    "--effort",
-    "--conversation",
-    "--print-timeout",
-    "--agent",
-    "--project",
-    "--log-file",
-    "--add-dir",
-    "--mode",
-  ]),
+  valueFlags: new Set(["--model", "--effort", "--mode", "--agent", "--log-file", "--add-dir"]),
   repeatableValueFlags: new Set(["--add-dir"]),
   booleanFlags: new Set(["--dangerously-skip-permissions"]),
   keyedFlags: new Set(),
   aliases: {},
 };
+
+/**
+ * `agy acp` takes model, reasoning and mode on the wire, not argv:
+ *   `--model X`  → session/set_config_option `model` (a family such as
+ *                  `gemini-4-argon`); a concrete id (`gemini-4-argon-high`)
+ *                  the option refuses goes through session/set_model
+ *   `--effort low|medium|high` → session/set_config_option `thought_level`
+ *   `--mode default|accept-edits|plan` → session/set_config_option `mode`
+ * `--dangerously-skip-permissions` stays on argv and also answers permission
+ * requests with allow-once. Everything else (`acp`, `--add-dir`, `--agent`,
+ * `--log-file`) stays on argv in place.
+ */
+export function agySpawnPlan(argv: readonly string[]): { argv: string[]; model?: string; effort?: AgyEffort; mode?: AgyMode; skipPermissions: boolean } {
+  const out: string[] = [];
+  let model: string | undefined;
+  let effort: AgyEffort | undefined;
+  let mode: AgyMode | undefined;
+  let skipPermissions = false;
+  for (const u of parseArgUnits(agyArgGrammar, argv)) {
+    if (u.flag === "--model" && u.value !== null) {
+      if (u.value.length === 0) throw new Error("agy --model requires a value");
+      model = u.value;
+    } else if (u.flag === "--effort" && u.value !== null) {
+      if (!(AGY_EFFORTS as readonly string[]).includes(u.value)) throw new Error(`agy --effort must be one of ${AGY_EFFORTS.join("|")}`);
+      effort = u.value as AgyEffort;
+    } else if (u.flag === "--mode" && u.value !== null) {
+      if (!(AGY_MODES as readonly string[]).includes(u.value)) throw new Error(`agy --mode must be one of ${AGY_MODES.join("|")}`);
+      mode = u.value as AgyMode;
+    } else {
+      if (u.flag === "--dangerously-skip-permissions") skipPermissions = true;
+      out.push(...u.tokens);
+    }
+  }
+  // The subcommand stays where the spec put it (a wrapper's own arguments may precede it).
+  return { argv: out.includes("acp") ? out : ["acp", ...out], ...(model ? { model } : {}), ...(effort ? { effort } : {}), ...(mode ? { mode } : {}), skipPermissions };
+}
 
 // ---------------------------------------------------------------------------
 // codex

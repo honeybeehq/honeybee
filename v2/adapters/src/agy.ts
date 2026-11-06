@@ -1,155 +1,298 @@
 /**
- * agy print-mode adapter. agy emits NDJSON on stdout and accepts one NDJSON
- * user envelope per turn on stdin. The protocol was captured from agy 1.1.24
- * on 2026-09-02; unknown events remain replayable log noise.
+ * Antigravity CLI over ACP (`agy acp`, agy 1.5.1 or newer). Newline-delimited
+ * JSON-RPC 2.0 on stdio; the adapter is pure protocol translation. Sign-in is
+ * agy's own: the adapter never reads a credential, and Honeybee holds no agy
+ * account (core `machineSignInOnly`).
+ *
+ *   we write : initialize {protocolVersion:1, clientCapabilities, clientInfo:{name:"Honeybee",version:"2"}}
+ *   server   : initialize result                       → respond:
+ *   we write :   session/new {cwd, mcpServers}  (session/resume {sessionId, cwd, mcpServers})
+ *   server   : auth-required error                     → with GEMINI_API_KEY in the spawn env:
+ *   we write :   authenticate {methodId:"gemini-api-key"}, then the session request once more
+ *                (without the key: `auth_needed`; the user signs in with agy itself)
+ *   server   : session result {sessionId}              → respond, each only when requested:
+ *   we write :   session/set_config_option model        (`--model`; a refusal retries as session/set_model,
+ *                                                        which takes the concrete model ids)
+ *   we write :   session/set_config_option thought_level (`--effort`)
+ *   we write :   session/set_config_option mode          (`--mode`; a refusal retries as session/set_mode)
+ *   server   : last configuration result               → booted (idle)
+ *   we write : session/prompt {sessionId, prompt:[{type:"text",text}]}
+ *   server   : session/update chunks and tool calls    → turn_started
+ *   server   : session/prompt result {stopReason}      → turn_ended
+ *   we write : session/cancel {sessionId}              (interrupt; the prompt then ends `cancelled`)
+ *   server   : session/request_permission              → allow once under
+ *                `--dangerously-skip-permissions`, else decline
+ *
+ * Request ids carry the session id, so every signal derives from the input
+ * line alone and a daemon that adopts the host mid-handshake replays the same
+ * decisions. Captured from agy 1.5.2 on 2026-11-06 (initialize, session/new);
+ * the remaining shapes follow ACP v1.
  */
 import {
   asObject,
   bootedToIdle,
   isAuthNeededMessage,
   isResourceBlockedMessage,
-  nonEmptyString,
   parseJsonLine,
   successfulTurnClears,
   toNumber as finiteNumber,
   type AdapterSignal,
-  type EncodeContext,
   type HarnessAdapter,
 } from "./types.ts";
+import { createGrokProjector, isGrokCheckpointState, type GrokCheckpointState, type GrokMcpServerStdio } from "./grok.ts";
 import {
-  projectorCheckpoint, checkpointRecord, checkpointEntries, checkpointNullable,
-  checkpointString, checkpointStrings, checkpointBoolean, checkpointNumber,
+  projectorCheckpoint,
   type TranscriptFamily, type TranscriptProjectedEvent, type TranscriptProjector, type TranscriptTokenUsage,
 } from "./transcript.ts";
 
-function resultSignals(resultValue: unknown): AdapterSignal[] {
-  const result = asObject(resultValue);
-  if (!result || typeof result.status !== "string") return [];
-
-  if (result.status === "SUCCESS") {
-    return [...successfulTurnClears(), { kind: "turn_ended" }];
-  }
-
-  if (result.status === "ERROR") {
-    const message = typeof result.error === "string"
-      ? result.error
-      : typeof result.response === "string" && result.response.length > 0
-        ? result.response
-        : "agy result error";
-    const signals: AdapterSignal[] = [];
-    if (isAuthNeededMessage(message)) {
-      signals.push({ kind: "flag", flag: "auth_needed", action: "set", detail: message.slice(0, 500) });
-    } else if (isResourceBlockedMessage(message)) {
-      signals.push({ kind: "flag", flag: "resource_blocked", action: "set", detail: message.slice(0, 500) });
-    }
-    signals.push({ kind: "turn_ended" });
-    return signals;
-  }
-
-  // CANCELED is a normal terminal result. In request-review mode, a queued
-  // next message can cancel a tool approval without crashing the process.
-  return [{ kind: "turn_ended" }];
-}
-
-export function parseAgyLine(line: string): AdapterSignal[] {
-  const message = parseJsonLine(line);
-  if (!message || typeof message.event !== "string") return [];
-
-  switch (message.event) {
-    case "init": {
-      const sessionId = typeof message.conversation_id === "string" && message.conversation_id.length > 0
-        ? message.conversation_id
-        : undefined;
-      return bootedToIdle(sessionId);
-    }
-    case "step_update": {
-      const update = asObject(message.step_update);
-      return update?.step_type === "agent_response" ? [{ kind: "turn_started" }] : [];
-    }
-    case "result":
-      return resultSignals(message.result);
-    default:
-      return [];
-  }
-}
-
-/** One stream-json input line in the shape accepted by agy 1.1.24. */
-export function encodeAgyMessage(body: string): string {
-  return JSON.stringify({
-    event: "user",
-    message: { content: [{ type: "text", text: body }] },
-  });
-}
-
-export function agyResumeArgs(providerSessionId: string): string[] {
-  return ["--conversation", providerSessionId];
-}
-
-export const agyAdapter: HarnessAdapter = {
-  harness: "agy",
-  acceptsMidTurn: false,
-  confirmsDelivery: false,
-  readyAtSpawn: false,
-  bootLines(): string[] {
-    return [];
-  },
-  parseLine: parseAgyLine,
-  encodeMessage(body: string, _ctx: EncodeContext): string | null {
-    return encodeAgyMessage(body);
-  },
-  resumeArgs: agyResumeArgs,
-};
+export const AGY_MODES = ["default", "accept-edits", "plan"] as const;
+export type AgyMode = (typeof AGY_MODES)[number];
+export const AGY_EFFORTS = ["low", "medium", "high"] as const;
+export type AgyEffort = (typeof AGY_EFFORTS)[number];
 
 /**
- * agy stream-json projection, captured from agy 1.1.24 on 2026-09-02.
- * HSR logs both the user envelopes written to stdin and agy's stdout lines.
+ * `agy acp` exists from 1.5.0. 1.5.1 is the floor: it is the first release
+ * that stops sending session/update after the session/prompt reply, and a late
+ * update would reopen a turn that nothing closes.
  */
-type JsonObject = Record<string, unknown>;
-interface AssistantFragment {
-  text: string;
-  providerEventId?: string;
+export const AGY_MIN_VERSION = "1.5.1";
+
+export interface AgyAdapterOptions {
+  cwd: string;
+  /** A model family (`gemini-4-argon`) or a concrete model id (`gemini-4-argon-high`). */
+  model?: string;
+  /** The `thought_level` configuration option. */
+  effort?: AgyEffort;
+  mode?: AgyMode;
+  /** The spawn carries `--dangerously-skip-permissions`: answer permission requests with allow-once. */
+  skipPermissions?: boolean;
+  /** The spawn env carries GEMINI_API_KEY: an auth-required session request authenticates with `gemini-api-key`. */
+  apiKeyAuth?: boolean;
+  resumeSessionId?: string;
+  /** Live operator gateways, passed as this session's MCP servers. */
+  mcpServers?: readonly GrokMcpServerStdio[];
 }
 
-const TERMINAL_TOOL_STATES = new Set(["DONE", "ERROR", "FAILED", "CANCELED"]);
-const ERROR_TOOL_STATES = new Set(["ERROR", "FAILED", "CANCELED"]);
-const USAGE_KEYS = ["input", "output", "cacheRead", "cacheWrite", "reasoning", "total"] as const;
-
-/** Each emitted-identity set retains its most recent distinct emissions in FIFO order. */
-export const AGY_DEDUPE_LIMIT = 1024;
-
-function rememberEmission(identities: Set<string>, id: string): void {
-  identities.add(id);
-  if (identities.size > AGY_DEDUPE_LIMIT) {
-    const oldest = identities.values().next();
-    if (!oldest.done) identities.delete(oldest.value);
+/** Why the installed agy cannot run `agy acp`, from the first line of `agy --version`; null when it can or the version is unreadable. */
+export function agyVersionRefusal(versionLine: string | null): string | null {
+  const found = versionLine?.match(/(\d+)\.(\d+)\.(\d+)/);
+  if (!found) return null;
+  const installed = found.slice(1, 4).map(Number);
+  const floor = AGY_MIN_VERSION.split(".").map(Number);
+  for (let i = 0; i < 3; i += 1) {
+    if (installed[i]! > floor[i]!) return null;
+    if (installed[i]! < floor[i]!) {
+      return `agy ${found[0]} is too old for Honeybee: it runs agy over ACP (\`agy acp\`), which needs agy ${AGY_MIN_VERSION} or newer. Update agy on this computer.`;
+    }
   }
+  return null;
 }
 
-function isEmittedIdentities(value: unknown): boolean {
-  return Array.isArray(value) && value.length <= AGY_DEDUPE_LIMIT && checkpointStrings(value);
+const INITIALIZE_ID = 1;
+const SESSION_ID = 2;
+const SESSION_AFTER_AUTH_ID = 3;
+const AUTHENTICATE_ID = "agy:auth";
+const PROMPT_BASE = 1000;
+const ACP_AUTH_REQUIRED = -32000;
+const METHOD_NOT_FOUND = -32601;
+const SIGN_IN_HINT = "Sign in with agy on this computer (run `agy`, or `agy acp --login` on a headless host), or set GEMINI_API_KEY.";
+
+type Step = "model" | "set_model" | "effort" | "mode" | "set_mode";
+const STEP_ID = /^agy:(model|set_model|effort|mode|set_mode):(.+)$/s;
+
+function line(message: Record<string, unknown>): string {
+  return JSON.stringify({ jsonrpc: "2.0", ...message });
 }
 
-function textFromContent(value: unknown): string | undefined {
-  if (typeof value === "string") return nonEmptyString(value);
-  if (!Array.isArray(value)) return undefined;
-  const text = value.flatMap((entry) => {
-    const block = asObject(entry);
-    return block?.type === "text" && typeof block.text === "string" && block.text.trim().length > 0
-      ? [block.text]
-      : [];
+function respond(...lines: string[]): AdapterSignal[] {
+  return [{ kind: "respond", lines }];
+}
+
+/** agy reports provider failures as a generic message with the cause in `data`; classify on both. */
+function errorText(error: Record<string, unknown> | undefined, fallback: string): string {
+  const message = typeof error?.message === "string" && error.message.length > 0 ? error.message : fallback;
+  const data = error?.data;
+  if (data === undefined || data === null) return message;
+  const detail = typeof data === "string" ? data : JSON.stringify(data);
+  return detail.length > 0 && detail !== "{}" ? `${message}: ${detail}` : message;
+}
+
+function isAuthRequired(error: Record<string, unknown> | undefined, text: string): boolean {
+  return error?.code === ACP_AUTH_REQUIRED || isAuthNeededMessage(text);
+}
+
+function failure(error: Record<string, unknown> | undefined, fallback: string, startup: boolean): AdapterSignal[] {
+  const text = errorText(error, fallback);
+  if (isAuthRequired(error, text)) {
+    return [{ kind: "flag", flag: "auth_needed", action: "set", detail: `${text.slice(0, 300)}. ${SIGN_IN_HINT}` }];
+  }
+  const flag = isResourceBlockedMessage(text) ? "resource_blocked" : startup ? "spawn_failed" : undefined;
+  return flag ? [{ kind: "flag", flag, action: "set", detail: text.slice(0, 500) }] : [];
+}
+
+/** Decline unless the spawn skips permissions; then pick the provider's own allow-once option. */
+function permissionOutcome(params: unknown, allow: boolean): Record<string, unknown> {
+  const raw = asObject(params)?.options;
+  const options = (Array.isArray(raw) ? raw : []).flatMap((entry) => {
+    const option = asObject(entry);
+    return typeof option?.optionId === "string" && typeof option.kind === "string" ? [{ optionId: option.optionId, kind: option.kind }] : [];
   });
-  return text.length > 0 ? text.join("\n") : undefined;
+  const pick = (...kinds: string[]) => kinds.map((kind) => options.find((option) => option.kind === kind)).find((option) => option !== undefined);
+  const selected = allow ? pick("allow_once", "allow_always") : pick("reject_once", "reject_always");
+  return selected ? { outcome: "selected", optionId: selected.optionId } : { outcome: "cancelled" };
 }
 
-function usageFrom(value: unknown): TranscriptTokenUsage | undefined {
+export function agyAdapter(opts: AgyAdapterOptions): HarnessAdapter {
+  const sessionRequest = (id: number): string => line({
+    id,
+    method: opts.resumeSessionId ? "session/resume" : "session/new",
+    params: {
+      cwd: opts.cwd,
+      mcpServers: (opts.mcpServers ?? []).map((server) => ({ ...server, args: [...server.args], env: server.env.map((entry) => ({ ...entry })) })),
+      ...(opts.resumeSessionId ? { sessionId: opts.resumeSessionId } : {}),
+    },
+  });
+
+  function configure(step: Step, sessionId: string): AdapterSignal[] {
+    const id = `agy:${step}:${sessionId}`;
+    switch (step) {
+      case "model": return respond(line({ id, method: "session/set_config_option", params: { sessionId, configId: "model", value: opts.model } }));
+      case "set_model": return respond(line({ id, method: "session/set_model", params: { sessionId, modelId: opts.model } }));
+      case "effort": return respond(line({ id, method: "session/set_config_option", params: { sessionId, configId: "thought_level", value: opts.effort } }));
+      case "mode": return respond(line({ id, method: "session/set_config_option", params: { sessionId, configId: "mode", value: opts.mode } }));
+      case "set_mode": return respond(line({ id, method: "session/set_mode", params: { sessionId, modeId: opts.mode } }));
+    }
+  }
+
+  /** The configuration request after `done`, or readiness when nothing requested remains. */
+  function next(done: "session" | "model" | "effort" | "mode", sessionId: string): AdapterSignal[] {
+    if (done === "session" && opts.model) return configure("model", sessionId);
+    if ((done === "session" || done === "model") && opts.effort) return configure("effort", sessionId);
+    if (done !== "mode" && opts.mode) return configure("mode", sessionId);
+    return bootedToIdle(sessionId);
+  }
+
+  function responseSignals(row: Record<string, unknown>): AdapterSignal[] {
+    const error = "error" in row ? asObject(row.error) ?? {} : undefined;
+    if (!error && !("result" in row)) return [];
+
+    if (row.id === INITIALIZE_ID) {
+      if (error) return failure(error, "agy initialize failed", true);
+      if (opts.resumeSessionId) {
+        const result = asObject(row.result);
+        const capabilities = asObject(result?.agentCapabilities);
+        const sessions = capabilities?.sessionCapabilities ?? result?.sessionCapabilities;
+        const resumes = Array.isArray(sessions) ? sessions.includes("resume") : "resume" in (asObject(sessions) ?? {});
+        if (!resumes) return failure(undefined, "The installed agy does not advertise session/resume; update agy", true);
+      }
+      return respond(sessionRequest(SESSION_ID));
+    }
+
+    if (row.id === SESSION_ID || row.id === SESSION_AFTER_AUTH_ID) {
+      if (error) {
+        const retry = row.id === SESSION_ID && opts.apiKeyAuth === true && isAuthRequired(error, errorText(error, ""));
+        if (retry) return respond(line({ id: AUTHENTICATE_ID, method: "authenticate", params: { methodId: "gemini-api-key" } }));
+        return failure(error, "agy session request failed", true);
+      }
+      const sessionId = asObject(row.result)?.sessionId ?? opts.resumeSessionId;
+      if (typeof sessionId !== "string" || sessionId.length === 0) return failure(undefined, "agy returned no sessionId", true);
+      return next("session", sessionId);
+    }
+
+    if (row.id === AUTHENTICATE_ID) {
+      if (error) {
+        return [{ kind: "flag", flag: "auth_needed", action: "set", detail: `agy refused GEMINI_API_KEY: ${errorText(error, "authenticate failed").slice(0, 300)}. ${SIGN_IN_HINT}` }];
+      }
+      return respond(sessionRequest(SESSION_AFTER_AUTH_ID));
+    }
+
+    const step = typeof row.id === "string" ? STEP_ID.exec(row.id) : null;
+    if (step) {
+      const kind = step[1] as Step;
+      const sessionId = step[2]!;
+      if (error) {
+        // The option takes model families; the concrete model ids go through session/set_model.
+        if (kind === "model") return configure("set_model", sessionId);
+        if (kind === "mode") return configure("set_mode", sessionId);
+        const what = kind === "set_model" ? `model ${opts.model}` : kind === "effort" ? `effort ${opts.effort}` : `mode ${opts.mode}`;
+        const flags = failure(error, "configuration refused", true);
+        return flags.map((signal) => signal.kind === "flag" && signal.flag === "spawn_failed"
+          ? { ...signal, detail: `agy refused ${what}: ${signal.detail}`.slice(0, 500) }
+          : signal);
+      }
+      return next(kind === "set_model" ? "model" : kind === "set_mode" ? "mode" : kind, sessionId);
+    }
+
+    if (typeof row.id === "number" && row.id >= PROMPT_BASE) {
+      if (error) return [...failure(error, "agy session/prompt failed", false), { kind: "turn_ended" }];
+      // A cancelled prompt proves nothing about the provider; every other stop reason was served.
+      const served = asObject(row.result)?.stopReason !== "cancelled";
+      return [...(served ? successfulTurnClears() : []), { kind: "turn_ended" }];
+    }
+    return [];
+  }
+
+  return {
+    harness: "agy",
+    acceptsMidTurn: false,
+    readyAtSpawn: false,
+    bootLines: () => [line({ id: INITIALIZE_ID, method: "initialize", params: {
+      protocolVersion: 1,
+      clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false },
+      clientInfo: { name: "Honeybee", version: "2" },
+    } })],
+    parseLine(raw) {
+      const row = parseJsonLine(raw);
+      if (!row) return [];
+      if (typeof row.method !== "string") return responseSignals(row);
+      if (row.id !== undefined && row.id !== null) {
+        if (row.method === "session/request_permission") {
+          return respond(line({ id: row.id, result: { outcome: permissionOutcome(row.params, opts.skipPermissions === true) } }));
+        }
+        return respond(line({ id: row.id, error: { code: METHOD_NOT_FOUND, message: `unsupported client method: ${row.method}` } }));
+      }
+      if (row.method !== "session/update") return [];
+      const params = asObject(row.params);
+      if (asObject(params?._meta)?.isReplay === true) return [];
+      const kind = asObject(params?.update)?.sessionUpdate;
+      return kind === "agent_message_chunk" || kind === "agent_thought_chunk" || kind === "tool_call" || kind === "tool_call_update"
+        ? [{ kind: "turn_started" }]
+        : [];
+    },
+    encodeMessage(body, ctx) {
+      if (!ctx.sessionId) return null;
+      return line({ id: PROMPT_BASE + ctx.messageId, method: "session/prompt", params: { sessionId: ctx.sessionId, prompt: [{ type: "text", text: body }] } });
+    },
+    encodeInterrupt(ctx) {
+      return ctx.sessionId ? line({ method: "session/cancel", params: { sessionId: ctx.sessionId } }) : null;
+    },
+  };
+}
+
+/** agy titles an MCP call `Run mcp_<server>_<tool>`; the tool is the name. */
+const MCP_TITLE = /^Run (mcp_[A-Za-z0-9_.-]+)$/;
+
+/** The same row with an MCP tool call named by its tool; null when the row needs no change. */
+function withToolName(row: Record<string, unknown>): string | null {
+  if (row.method !== "session/update") return null;
+  const params = asObject(row.params);
+  const update = asObject(params?.update);
+  if (!update || (update.sessionUpdate !== "tool_call" && update.sessionUpdate !== "tool_call_update")) return null;
+  const tool = typeof update.title === "string" ? MCP_TITLE.exec(update.title)?.[1] : undefined;
+  return tool ? JSON.stringify({ ...row, params: { ...params, update: { ...update, title: tool } } }) : null;
+}
+
+/** ACP prompt usage. Gemini counts cached reads inside the input; the projection's `input` is uncached. */
+function promptUsage(value: unknown): TranscriptTokenUsage | undefined {
   const usage = asObject(value);
   if (!usage) return undefined;
-  const input = finiteNumber(usage.input_tokens);
-  const output = finiteNumber(usage.output_tokens);
-  const cacheRead = finiteNumber(usage.cache_read_tokens);
-  const cacheWrite = finiteNumber(usage.cache_write_tokens);
-  const reasoning = finiteNumber(usage.thinking_tokens);
-  const total = finiteNumber(usage.total_tokens);
+  const inputInclusive = finiteNumber(usage.inputTokens);
+  const cacheRead = finiteNumber(usage.cachedReadTokens);
+  const input = inputInclusive !== undefined && cacheRead !== undefined ? Math.max(0, inputInclusive - cacheRead) : inputInclusive;
+  const output = finiteNumber(usage.outputTokens);
+  const cacheWrite = finiteNumber(usage.cachedWriteTokens);
+  const reasoning = finiteNumber(usage.thoughtTokens);
+  const total = finiteNumber(usage.totalTokens);
   const projected: TranscriptTokenUsage = {
     ...(input !== undefined ? { input } : {}),
     ...(output !== undefined ? { output } : {}),
@@ -161,295 +304,40 @@ function usageFrom(value: unknown): TranscriptTokenUsage | undefined {
   return Object.keys(projected).length > 0 ? projected : undefined;
 }
 
-function usageDelta(
-  current: TranscriptTokenUsage,
-  previous: TranscriptTokenUsage | undefined,
-  subtractPrevious: boolean,
-): TranscriptTokenUsage {
-  const projected: TranscriptTokenUsage = {};
-  for (const key of USAGE_KEYS) {
-    const value = current[key];
-    if (value === undefined) continue;
-    const before = previous?.[key];
-    projected[key] = subtractPrevious && before !== undefined && value >= before
-      ? value - before
-      : value;
-  }
-  return projected;
-}
-
-function printableOutput(value: unknown): string | undefined {
-  if (typeof value === "string") return value;
-  if (value === undefined) return undefined;
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return String(value);
-  }
-}
-
 // checkpoint-digest:start
-interface AgyCheckpointState {
-  threadId: string | null;
-  sawAssistantText: boolean;
-  previousResultUsage: TranscriptTokenUsage | null;
-  previousNumTurns: number | null;
-  previousDurationSeconds: number | null;
-  assistantFragments: Array<[string, AssistantFragment]>;
-  emittedAssistantMessages: string[];
-  emittedToolCalls: string[];
-  emittedToolResults: string[];
-}
-function isUsage(value: unknown): boolean {
-  const v = asObject(value);
-  return !!v && Object.keys(v).every((key) => USAGE_KEYS.some((allowed) => allowed === key) && checkpointNumber(v[key]));
-}
-function isFragment(value: unknown): boolean {
-  const v = asObject(value);
-  return !!v && checkpointRecord(v, { text: checkpointString,
-    ...(Object.hasOwn(v, "providerEventId") ? { providerEventId: checkpointString } : {}),
-  });
-}
-
-export function isAgyCheckpointState(value: unknown): value is AgyCheckpointState {
-  return checkpointRecord(value, {
-    threadId: checkpointNullable(checkpointString),
-    sawAssistantText: checkpointBoolean,
-    previousResultUsage: checkpointNullable(isUsage),
-    previousNumTurns: checkpointNullable(checkpointNumber),
-    previousDurationSeconds: checkpointNullable(checkpointNumber),
-    assistantFragments: checkpointEntries(isFragment),
-    emittedAssistantMessages: isEmittedIdentities,
-    emittedToolCalls: isEmittedIdentities,
-    emittedToolResults: isEmittedIdentities,
-  });
-}
-export function createAgyProjector(restored?: AgyCheckpointState): TranscriptProjector {
-  let threadId: string | undefined = restored?.threadId ?? undefined;
-  let sawAssistantText = restored?.sawAssistantText ?? false;
-  let previousResultUsage: TranscriptTokenUsage | undefined = restored?.previousResultUsage ?? undefined;
-  let previousNumTurns: number | undefined = restored?.previousNumTurns ?? undefined;
-  let previousDurationSeconds: number | undefined = restored?.previousDurationSeconds ?? undefined;
-  const assistantFragments = new Map<string, AssistantFragment>(restored?.assistantFragments);
-  const emittedAssistantMessages = new Set<string>(restored?.emittedAssistantMessages);
-  const emittedToolCalls = new Set<string>(restored?.emittedToolCalls);
-  const emittedToolResults = new Set<string>(restored?.emittedToolResults);
-
-  function rememberThread(value: unknown): void {
-    const next = nonEmptyString(value);
-    if (!next) return;
-    if (threadId !== undefined && threadId !== next) {
-      previousResultUsage = undefined;
-      previousNumTurns = undefined;
-      previousDurationSeconds = undefined;
-      assistantFragments.clear();
-      emittedAssistantMessages.clear();
-      emittedToolCalls.clear();
-      emittedToolResults.clear();
-    }
-    threadId = next;
-  }
-
-  function thread(): { threadId?: string } {
-    return threadId ? { threadId } : {};
-  }
-
-  function toolCallId(update: JsonObject): string {
-    const stepIndex = finiteNumber(update.step_index);
-    return `agy:${threadId ?? "unknown"}:${stepIndex ?? "unknown"}`;
-  }
-
-  function assistantMessage(fragment: AssistantFragment): TranscriptProjectedEvent {
-    return {
-      kind: "message",
-      ts: null,
-      ...thread(),
-      role: "assistant",
-      text: fragment.text,
-      ...(fragment.providerEventId ? { providerEventId: fragment.providerEventId } : {}),
-    };
-  }
-
-  function projectStep(update: JsonObject): TranscriptProjectedEvent[] {
-    rememberThread(update.conversation_id);
-    const stepType = nonEmptyString(update.step_type);
-    if (stepType === "user_input") return [];
-
-    if (stepType === "agent_response") {
-      const stepIndex = finiteNumber(update.step_index);
-      const eventId = `agy:${threadId ?? "unknown"}:${stepIndex ?? "unknown"}`;
-      const delta = typeof update.text_delta === "string" ? update.text_delta : "";
-      if (!emittedAssistantMessages.has(eventId) && delta.length > 0) {
-        const held = assistantFragments.get(eventId);
-        assistantFragments.set(eventId, {
-          text: `${held?.text ?? ""}${delta}`,
-          ...(stepIndex !== undefined ? { providerEventId: eventId } : {}),
-        });
-      }
-      const state = nonEmptyString(update.state)?.toUpperCase();
-      if (state !== "DONE" || emittedAssistantMessages.has(eventId)) return [];
-      const fragment = assistantFragments.get(eventId);
-      assistantFragments.delete(eventId);
-      if (!fragment || fragment.text.trim().length === 0) return [];
-      rememberEmission(emittedAssistantMessages, eventId);
-      sawAssistantText = true;
-      return [assistantMessage(fragment)];
-    }
-
-    if (stepType !== "tool") return [];
-    const state = nonEmptyString(update.state)?.toUpperCase();
-    const info = asObject(update.tool_info);
-    const name = nonEmptyString(update.tool_name) ?? nonEmptyString(info?.name) ?? "tool";
-    const callId = toolCallId(update);
-    if (state === "ACTIVE" && !emittedToolCalls.has(callId)) {
-      rememberEmission(emittedToolCalls, callId);
-      return [{
-        kind: "tool_call",
-        ts: null,
-        ...thread(),
-        callId,
-        name,
-        ...(info?.parameters !== undefined ? { input: info.parameters } : {}),
-      }];
-    }
-    if (state && TERMINAL_TOOL_STATES.has(state) && !emittedToolResults.has(callId)) {
-      rememberEmission(emittedToolResults, callId);
-      const output = printableOutput(info?.output) ?? printableOutput(info?.error);
-      return [{
-        kind: "tool_result",
-        ts: null,
-        ...thread(),
-        callId,
-        name,
-        isError: ERROR_TOOL_STATES.has(state),
-        ...(output !== undefined ? { output } : {}),
-      }];
-    }
-    return [];
-  }
-
-  function projectResult(result: JsonObject): TranscriptProjectedEvent[] {
-    rememberThread(result.conversation_id);
-    const events: TranscriptProjectedEvent[] = [];
-    const response = nonEmptyString(result.response);
-    const numTurns = finiteNumber(result.num_turns);
-    const turnId = threadId && numTurns !== undefined ? `${threadId}:${numTurns}` : undefined;
-    if (response && !sawAssistantText) {
-      events.push({ kind: "message", ts: null, ...thread(), role: "assistant", text: response });
-    }
-
-    const cumulativeUsage = usageFrom(result.usage);
-    if (cumulativeUsage) {
-      const canSubtract = previousResultUsage !== undefined
-        && previousNumTurns !== undefined
-        && numTurns !== undefined
-        && numTurns > previousNumTurns;
-      events.push({
-        kind: "token_usage",
-        ts: null,
-        ...thread(),
-        usage: usageDelta(cumulativeUsage, previousResultUsage, canSubtract),
-        scope: "turn",
-        ...(turnId ? { providerTurnId: turnId } : {}),
-      });
-    }
-
-    const status = nonEmptyString(result.status);
-    if (status === "ERROR") {
-      const reason = nonEmptyString(result.error) ?? response ?? "agy result error";
-      events.push({ kind: "interrupt", ts: null, ...thread(), reason });
-    }
-    const durationSeconds = finiteNumber(result.duration_seconds);
-    let turnDurationSeconds: number | undefined;
-    if (previousNumTurns === undefined && numTurns === 1) {
-      turnDurationSeconds = durationSeconds;
-    } else if (
-      durationSeconds !== undefined
-      && previousDurationSeconds !== undefined
-      && previousNumTurns !== undefined
-      && numTurns !== undefined
-      && numTurns > previousNumTurns
-      && durationSeconds >= previousDurationSeconds
-    ) {
-      turnDurationSeconds = durationSeconds - previousDurationSeconds;
-    }
-    events.push({
-      kind: "turn_end",
-      ts: null,
-      ...thread(),
-      ...(turnId ? { turnId } : {}),
-      ...(turnDurationSeconds !== undefined
-        ? { durationMs: Math.round(turnDurationSeconds * 1_000_000) / 1_000 }
-        : {}),
-      ...(status ? { finishReason: status } : {}),
-      ...((status === "CANCELED" || status === "ERROR") ? { interrupted: true } : {}),
-    });
-    if (durationSeconds !== undefined) previousDurationSeconds = durationSeconds;
-    previousResultUsage = cumulativeUsage;
-    previousNumTurns = numTurns;
-    assistantFragments.clear();
-    sawAssistantText = false;
-    return events;
-  }
-
+/**
+ * agy speaks the ACP chunks and tool calls the Grok projector already folds;
+ * its turns close on the session/prompt response, which also carries the stop
+ * reason and the turn's usage.
+ */
+export function createAgyProjector(restored?: GrokCheckpointState): TranscriptProjector {
+  const acp = createGrokProjector(restored);
   return {
     harness: "agy",
-    checkpoint() {
-      return projectorCheckpoint("agy", {
-        threadId: threadId ?? null,
-        sawAssistantText: sawAssistantText,
-        previousResultUsage: previousResultUsage ?? null,
-        previousNumTurns: previousNumTurns ?? null,
-        previousDurationSeconds: previousDurationSeconds ?? null,
-        assistantFragments: [...assistantFragments],
-        emittedAssistantMessages: [...emittedAssistantMessages],
-        emittedToolCalls: [...emittedToolCalls],
-        emittedToolResults: [...emittedToolResults],
-      } satisfies AgyCheckpointState);
-    },
-
-    pushLine(line: string): TranscriptProjectedEvent[] {
-      const row = parseJsonLine(line);
+    checkpoint: () => projectorCheckpoint("agy", acp.checkpoint().state),
+    pushLine(raw) {
+      const row = parseJsonLine(raw);
       if (!row) return [];
-      const event = nonEmptyString(row.event);
-      if (!event) return [];
-
-      if (event === "init") {
-        rememberThread(row.conversation_id);
-        sawAssistantText = false;
-        return [];
-      }
-      if (event === "user") {
-        const message = asObject(row.message);
-        const text = textFromContent(message?.content);
-        if (!text) return [];
-        sawAssistantText = false;
-        return [
-          { kind: "turn_start", ts: null, ...thread() },
-          { kind: "message", ts: null, ...thread(), role: "user", text },
-        ];
-      }
-      if (event === "step_update") {
-        const update = asObject(row.step_update);
-        return update ? projectStep(update) : [];
-      }
-      if (event === "result") {
+      const promptResponse = row.method === undefined && typeof row.id === "number" && row.id >= PROMPT_BASE && ("result" in row || "error" in row);
+      if (!promptResponse) return acp.pushLine(withToolName(row) ?? raw);
+      const events = acp.pushLine(JSON.stringify({ method: "session/prompt_complete" }));
+      const end = events.pop();
+      if (end?.kind !== "turn_end") return end ? [...events, end] : events;
+      const closing: TranscriptProjectedEvent[] = [];
+      let finish: { finishReason?: string; interrupted?: boolean };
+      if ("error" in row) {
+        closing.push({ kind: "interrupt", ts: null, reason: errorText(asObject(row.error), "agy session/prompt failed") });
+        finish = { finishReason: "error", interrupted: true };
+      } else {
         const result = asObject(row.result);
-        return result ? projectResult(result) : [];
+        const usage = promptUsage(result?.usage);
+        if (usage) closing.push({ kind: "token_usage", ts: null, usage, scope: "turn" });
+        const stopReason = typeof result?.stopReason === "string" ? result.stopReason : undefined;
+        finish = { ...(stopReason ? { finishReason: stopReason } : {}), ...(stopReason === "cancelled" ? { interrupted: true } : {}) };
       }
-      return [{ kind: "unknown", ts: null, ...thread(), nativeType: event }];
+      return [...events, ...closing, { ...end, ...finish }];
     },
-    flush(): TranscriptProjectedEvent[] {
-      const events: TranscriptProjectedEvent[] = [];
-      for (const [eventId, fragment] of assistantFragments) {
-        if (fragment.text.trim().length === 0) continue;
-        rememberEmission(emittedAssistantMessages, eventId);
-        events.push(assistantMessage(fragment));
-      }
-      assistantFragments.clear();
-      if (events.length > 0) sawAssistantText = true;
-      return events;
-    },
+    flush: () => acp.flush(),
   };
 }
 // checkpoint-digest:end
@@ -457,5 +345,5 @@ export function createAgyProjector(restored?: AgyCheckpointState): TranscriptPro
 export const agyTranscripts: TranscriptFamily = {
   harness: "agy",
   createProjector: () => createAgyProjector(),
-  restoreProjector: (state) => isAgyCheckpointState(state) ? createAgyProjector(state) : undefined,
+  restoreProjector: (state) => isGrokCheckpointState(state) ? createAgyProjector(state) : undefined,
 };

@@ -74,7 +74,7 @@ async function main() {
     out(`Enter this one-time code: ${process.env.FAKE_CLI_CODE}\n`);
   }
   if (process.env.FAKE_CLI_PROMPT) {
-    const prompt = process.env.FAKE_CLI_PROMPT === "agy" ? "Or, paste the authorization code here and press Enter: " : process.env.FAKE_CLI_PROMPT === "apikey" ? "Paste your API key here: " : "Paste code here if prompted: ";
+    const prompt = process.env.FAKE_CLI_PROMPT === "apikey" ? "Paste your API key here: " : "Paste code here if prompted: ";
     const expected = process.env.FAKE_CLI_EXPECT ?? "good";
     const rl = createInterface({ input: process.stdin, terminal: false });
     out(prompt);

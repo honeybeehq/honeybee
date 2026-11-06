@@ -891,46 +891,35 @@ test("limits.1: fetch writes the table (claude via the home token + injected usa
   }
 });
 
-test("limits.agy: an imported HOME-scoped token clears auth_needed while provider limits remain unsupported", async () => {
+test("agy.no-account: a row left by the removed agy recipe binds no home, has no probe and is never read; the old registry's agy entries are not imported", async () => {
   const r = rig();
   try {
     const svc = service(r);
     const tokenFile = ".gemini/antigravity-cli/antigravity-oauth-token";
-    const account = addAccount(r, "agy", "personal", { status: "auth_needed", vault: { [tokenFile]: "agy-oauth-token" } });
-    assert.deepEqual(svc.homeEnvOf(account), {
-      HOME: account.homePath,
-      SSH_CONNECTION: "127.0.0.1 1 127.0.0.1 1",
-    });
-    assert.equal(svc.hasCredentialProbe("agy"), true);
-    assert.equal(svc.credentialProbeOf("agy"), "credential_file");
-    assert.equal(svc.credentialed(account), true);
-    assert.equal(svc.credentialHealthOf(account), "unverified");
-    assert.equal(r.store.getAccount(account.id)?.status, "auth_needed");
+    const legacy = addAccount(r, "agy", "personal", { vault: { [tokenFile]: "agy-oauth-token" } });
+    assert.deepEqual(svc.homeEnvOf(legacy), {}, "no HOME redirect and no SSH_CONNECTION");
+    assert.deepEqual(svc.credentialEnvOf(legacy), {});
+    assert.equal(svc.hasCredentialProbe("agy"), false);
+    assert.equal(svc.credentialProbeOf("agy"), "none");
+    assert.equal(svc.nativeRecipe("agy"), null);
+    assert.equal(svc.leaseMaterialCodecs.has("agy"), false);
+    const [limits] = await svc.refreshLimits([legacy.id]);
+    assert.deepEqual([limits?.readable, limits?.unreadableReason, limits?.error], [false, "unsupported", "agy has no limits source"]);
+    const verified = await svc.verifyCredentials(legacy);
+    assert.deepEqual([verified.probe, verified.outcome, verified.limits?.unreadableReason], ["none", "unverified", "unsupported"]);
+    assert.equal(readFileSync(join(r.vault, "agy", legacy.id, tokenFile), "utf8"), "agy-oauth-token", "the leftover vault file is neither rewritten nor removed");
+    assert.equal(existsSync(join(legacy.homePath, tokenFile)), false, "nothing is activated into a home");
 
-    const [unsupported] = await svc.refreshLimits([account.id]);
-    assert.equal(unsupported?.readable, false);
-    assert.equal(unsupported?.unreadableReason, "unsupported");
-    assert.equal(unsupported?.error, "agy has no limits source");
-    assert.equal(r.store.getAccount(account.id)?.status, "ok");
-    const refreshedAccount = r.store.getAccount(account.id);
-    assert.ok(refreshedAccount);
-    assert.equal(svc.credentialHealthOf(refreshedAccount), "unverified");
-    assert.ok(r.log.some((line) => line === `account.auth_ok account=${account.id} by=credential_probe`));
-
-    const present = await svc.verifyCredentials(refreshedAccount);
-    assert.equal(present.outcome, "unverified");
-    assert.equal(present.probe, "credential_file");
-    assert.equal(present.limits, null, "a credential-file check does not return provider limits");
-    assert.equal(r.store.getAccountLimits(account.id)?.unreadableReason, "unsupported", "usage keeps the accepted unsupported-limits row");
-
-    rmSync(join(r.vault, "agy", account.id, tokenFile));
-    const missing = await svc.verifyCredentials(present.account);
-    assert.equal(missing.outcome, "absent");
-    assert.equal(missing.probe, "credential_file");
-    assert.equal(missing.limits, null);
-    assert.equal(svc.credentialed(account), false);
-    assert.equal(missing.account.status, "auth_needed");
-    assert.equal(r.store.getAccount(account.id)?.status, "auth_needed");
+    const root = join(r.dir, "old-hive");
+    mkdirSync(join(root, "vault"), { recursive: true });
+    writeFileSync(join(root, "vault", "accounts.json"), JSON.stringify([
+      { id: "agy-work", tool: "agy", label: "work", addedAt: "2026-06-16T10:29:20.174Z" },
+      { id: "grok-x", tool: "grok", label: "x", addedAt: "2026-06-16T10:29:20.174Z" },
+    ]));
+    const report = svc.importRegistry(root);
+    assert.deepEqual(report.entries.map((entry) => [entry.id, entry.action, entry.reason]), [["agy-work", "skip", "machine_sign_in_only"], ["grok-x", "import", undefined]]);
+    assert.equal(r.store.getAccount("agy-work"), null);
+    assert.ok(r.store.getAccount("grok-x"));
   } finally {
     r.cleanup();
   }

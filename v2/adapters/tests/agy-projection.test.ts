@@ -1,557 +1,111 @@
 /**
- * Trimmed, sanitized agy 1.1.24 stream-json captured on 2026-09-02.
- * Source captures: /tmp/agy-fixtures/two-turn-tooluse.jsonl,
- * /tmp/agy-fixtures/tooluse-skip-perms.jsonl, and auth-error.jsonl.
+ * agy ACP projection. Rows follow ACP v1 as `agy acp` 1.5.2 speaks it; the
+ * `Run mcp_<server>_<tool>` title is agy's own.
  */
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { AGY_DEDUPE_LIMIT, isAgyCheckpointState } from "../src/agy.ts";
 import { checkpointVerifiedProjector } from "./checkpoint-helpers.ts";
-const createAgyProjector = () => checkpointVerifiedProjector("agy");
-import type { TranscriptProjectedEvent } from "../src/transcript.ts";
 import { lastAssistantText } from "../src/transcript.ts";
-import {
-  createTranscriptProjector,
-  restoreTranscriptProjector,
-  renderTranscriptLines,
-} from "../src/transcripts.ts";
+import { createTranscriptProjector, renderTranscriptLines, restoreTranscriptProjector } from "../src/transcripts.ts";
 
-const SESSION_ID = "agy-recorded-session";
+const SESSION = "agy-session-1";
 const j = (value: unknown): string => JSON.stringify(value);
+const update = (payload: Record<string, unknown>): string =>
+  j({ jsonrpc: "2.0", method: "session/update", params: { sessionId: SESSION, update: payload } });
+const prompt = (id: number, text: string): string =>
+  j({ jsonrpc: "2.0", id, method: "session/prompt", params: { sessionId: SESSION, prompt: [{ type: "text", text }] } });
+const chunk = (text: string): string => update({ sessionUpdate: "agent_message_chunk", content: { type: "text", text } });
+const thought = (text: string): string => update({ sessionUpdate: "agent_thought_chunk", content: { type: "text", text } });
 
-const USER_LINE = j({
-  event: "user",
-  message: { content: [{ type: "text", text: "run the command" }] },
-});
+const TOOL_TURN = [
+  j({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: 1, clientInfo: { name: "Honeybee", version: "2" } } }),
+  j({ jsonrpc: "2.0", id: 1, result: { protocolVersion: 1, agentInfo: { name: "Antigravity ACP Server", version: "1.5.2" } } }),
+  j({ jsonrpc: "2.0", id: 2, method: "session/new", params: { cwd: "/work", mcpServers: [] } }),
+  j({ jsonrpc: "2.0", id: 2, result: { sessionId: SESSION, models: { currentModelId: "gemini-3.8-flash-low" } } }),
+  prompt(1001, "send the report"),
+  thought("The user wants the report"),
+  thought(" sent to the parent."),
+  update({ sessionUpdate: "tool_call", toolCallId: "call-1", title: "Run mcp_apiary_agent_send", kind: "other", status: "pending", rawInput: { sessionId: "parent", message: "done" } }),
+  j({ jsonrpc: "2.0", id: "perm-1", method: "session/request_permission", params: { sessionId: SESSION, toolCall: { toolCallId: "call-1" }, options: [] } }),
+  update({ sessionUpdate: "tool_call_update", toolCallId: "call-1", status: "in_progress" }),
+  update({ sessionUpdate: "tool_call_update", toolCallId: "call-1", status: "completed", content: [{ type: "content", content: { type: "text", text: "delivered" } }] }),
+  chunk("The report "),
+  chunk("is sent."),
+  j({ jsonrpc: "2.0", id: 1001, result: { stopReason: "end_turn", usage: { inputTokens: 1200, cachedReadTokens: 200, outputTokens: 40, thoughtTokens: 12, totalTokens: 1252 } } }),
+];
 
-const TOOL_TURN_FIXTURE = [
-  j({
-    event: "init",
-    conversation_id: SESSION_ID,
-    init: { cwd: "/tmp", tools: ["run_command"], permission_mode: "always-proceed" },
-  }),
-  USER_LINE,
-  j({
-    event: "step_update",
-    step_update: { conversation_id: SESSION_ID, step_index: 0, state: "DONE", step_type: "user_input" },
-  }),
-  j({
-    event: "step_update",
-    step_update: {
-      conversation_id: SESSION_ID,
-      step_index: 1,
-      state: "DONE",
-      step_type: "agent_response",
-      usage: {
-        input_tokens: 15_372,
-        output_tokens: 1_013,
-        thinking_tokens: 943,
-        cache_read_tokens: 0,
-        total_tokens: 16_385,
-      },
-    },
-  }),
-  j({
-    event: "step_update",
-    step_update: {
-      conversation_id: SESSION_ID,
-      step_index: 2,
-      state: "ACTIVE",
-      step_type: "tool",
-      tool_name: "run_command",
-      tool_info: { name: "run_command", parameters: { CommandLine: "echo hello-agy" } },
-    },
-  }),
-  j({
-    event: "step_update",
-    step_update: {
-      conversation_id: SESSION_ID,
-      step_index: 2,
-      state: "DONE",
-      step_type: "tool",
-      duration_seconds: 0.042175,
-      tool_name: "run_command",
-      tool_info: {
-        name: "run_command",
-        parameters: { CommandLine: "echo hello-agy" },
-        output: "hello-agy\n",
-      },
-    },
-  }),
-  j({
-    event: "step_update",
-    step_update: {
-      conversation_id: SESSION_ID,
-      step_index: 3,
-      state: "DONE",
-      step_type: "agent_response",
-      text_delta: "Hi! Ready to build something great today.\n\n`hello-agy`\n",
-      usage: {
-        input_tokens: 16_474,
-        output_tokens: 87,
-        thinking_tokens: 72,
-        cache_read_tokens: 0,
-        total_tokens: 16_561,
-      },
-    },
-  }),
-  j({
-    event: "result",
-    result: {
-      conversation_id: SESSION_ID,
-      status: "SUCCESS",
-      response: "Hi! Ready to build something great today.\n\n`hello-agy`\n",
-      duration_seconds: 5.198275,
-      num_turns: 1,
-      usage: {
-        input_tokens: 31_846,
-        output_tokens: 1_100,
-        thinking_tokens: 1_015,
-        cache_read_tokens: 0,
-        total_tokens: 32_946,
-      },
-    },
-  }),
-] as const;
-
-function project(lines: readonly string[]): TranscriptProjectedEvent[] {
-  const projector = createAgyProjector();
+function project(lines: readonly string[]) {
+  const projector = checkpointVerifiedProjector("agy");
   const events = lines.flatMap((line) => projector.pushLine(line));
-  events.push(...projector.flush());
-  return events;
+  return [...events, ...projector.flush()];
 }
 
-test("agy projector: replayed calls, results and replies stay deduplicated across checkpoints", () => {
-  const projector = createAgyProjector();
-  for (const line of TOOL_TURN_FIXTURE) {
-    const events = projector.pushLine(line);
-    if (events.some((event) => event.kind === "tool_call" || event.kind === "tool_result"
-      || (event.kind === "message" && event.role === "assistant"))) {
-      // Includes the assistant text_delta, so forgetting its ID would emit it again.
-      assert.deepEqual(projector.pushLine(line), []);
-    }
-  }
-});
-
-test("agy projector: bounded FIFO dedupe preserves replay and eviction order after restore", () => {
-  const uninterrupted = createTranscriptProjector("agy");
-  const lines = (index: number) => [
-    { step_type: "tool", state: "ACTIVE" },
-    { step_type: "tool", state: "DONE" },
-    { step_type: "agent_response", state: "DONE", text_delta: `reply ${index}` },
-  ].map((update) => j({ event: "step_update", step_update: {
-    conversation_id: SESSION_ID, step_index: index, ...update,
-  } }));
-  for (let index = 0; index < AGY_DEDUPE_LIMIT; index++) {
-    for (const line of lines(index)) assert.equal(uninterrupted.pushLine(line).length, 1);
-  }
-  // Replaying the oldest ID does not refresh its FIFO position.
-  for (const line of lines(0)) assert.deepEqual(uninterrupted.pushLine(line), []);
-  // A result is not proof that prior step IDs cannot recur.
-  uninterrupted.pushLine(j({ event: "result", result: { conversation_id: SESSION_ID, status: "SUCCESS" } }));
-  const checkpoint = uninterrupted.checkpoint();
-  const restored = restoreTranscriptProjector("agy", JSON.parse(JSON.stringify(checkpoint)));
-  assert.ok(restored.ok);
-  const resumed = restored.projector;
-  const push = (index: number, expected: number) => {
-    for (const line of lines(index)) {
-      const events = uninterrupted.pushLine(line);
-      assert.equal(events.length, expected);
-      assert.deepEqual(resumed.pushLine(line), events);
-    }
-  };
-  push(0, 0); // Still retained across result and checkpoint.
-  push(AGY_DEDUPE_LIMIT, 1); // Evicts zero in each set.
-  push(1, 0); // Next-oldest remains retained.
-  push(0, 1); // Outside the window: both streams emit again.
-  for (let index = AGY_DEDUPE_LIMIT + 1; index < AGY_DEDUPE_LIMIT * 2; index++) push(index, 1);
-  assert.deepEqual(resumed.checkpoint(), uninterrupted.checkpoint());
-  const state = resumed.checkpoint().state;
-  assert.ok(isAgyCheckpointState(state));
-  for (const field of ["emittedToolCalls", "emittedToolResults", "emittedAssistantMessages"] as const) {
-    assert.equal(state[field].length, AGY_DEDUPE_LIMIT);
-    assert.equal(state[field][0], `agy:${SESSION_ID}:0`);
-    assert.deepEqual(restoreTranscriptProjector("agy", {
-      ...checkpoint, state: { ...state, [field]: [...state[field], "one-too-many"] },
-    }), { ok: false, reason: "invalid_checkpoint" });
-  }
-  assert.ok(Buffer.byteLength(JSON.stringify(resumed.checkpoint())) < 200_000);
-});
-
-test("agy projector: flushed assistant fragments also obey the dedupe bound", () => {
-  const projector = createTranscriptProjector("agy");
-  for (let index = 0; index <= AGY_DEDUPE_LIMIT; index++) {
-    projector.pushLine(j({ event: "step_update", step_update: {
-      conversation_id: SESSION_ID, step_index: index, step_type: "agent_response",
-      state: "ACTIVE", text_delta: `reply ${index}`,
-    } }));
-  }
-  const restored = restoreTranscriptProjector("agy", JSON.parse(JSON.stringify(projector.checkpoint())));
-  assert.ok(restored.ok);
-  const events = projector.flush();
-  assert.equal(events.length, AGY_DEDUPE_LIMIT + 1);
-  assert.deepEqual(restored.projector.flush(), events);
-  const state = restored.projector.checkpoint().state;
-  assert.ok(isAgyCheckpointState(state));
-  assert.equal(state.emittedAssistantMessages.length, AGY_DEDUPE_LIMIT);
-  assert.equal(state.emittedAssistantMessages[0], `agy:${SESSION_ID}:1`);
-});
-
-test("agy projector: captured tool turn maps user, tool pair, reply, usage suffix, and result", () => {
-  const events = project(TOOL_TURN_FIXTURE);
-  assert.deepEqual(events.map((event) => event.kind), [
-    "turn_start",
-    "message",
-    "tool_call",
-    "tool_result",
-    "message",
-    "token_usage",
-    "turn_end",
+test("agy projector: prompt, thoughts, an MCP tool call named by its tool, the answer, usage and the turn end", () => {
+  assert.deepEqual(project(TOOL_TURN), [
+    { kind: "turn_start", ts: null },
+    { kind: "message", ts: null, role: "user", text: "send the report" },
+    { kind: "thinking", ts: null, redacted: false, text: "The user wants the report sent to the parent." },
+    { kind: "tool_call", ts: null, callId: "call-1", name: "mcp_apiary_agent_send", input: { sessionId: "parent", message: "done" } },
+    { kind: "tool_result", ts: null, callId: "call-1", name: "mcp_apiary_agent_send", isError: false, output: "delivered" },
+    { kind: "message", ts: null, role: "assistant", text: "The report is sent." },
+    { kind: "token_usage", ts: null, usage: { input: 1000, output: 40, cacheRead: 200, reasoning: 12, total: 1252 }, scope: "turn" },
+    { kind: "turn_end", ts: null, finishReason: "end_turn" },
   ]);
-  assert.equal(events.every((event) => event.threadId === SESSION_ID), true);
-
-  const user = events[1] as Extract<typeof events[number], { kind: "message" }>;
-  assert.deepEqual({ role: user.role, text: user.text }, { role: "user", text: "run the command" });
-
-  const call = events[2] as Extract<typeof events[number], { kind: "tool_call" }>;
-  const result = events[3] as Extract<typeof events[number], { kind: "tool_result" }>;
-  assert.equal(call.callId, result.callId);
-  assert.equal(call.name, "run_command");
-  assert.deepEqual(call.input, { CommandLine: "echo hello-agy" });
-  assert.equal(result.output, "hello-agy\n");
-  assert.equal(result.isError, false);
-
-  const reply = events[4] as Extract<typeof events[number], { kind: "message" }>;
-  assert.equal(reply.role, "assistant");
-  assert.equal(reply.text, "Hi! Ready to build something great today.\n\n`hello-agy`\n");
-
-  const usage = events[5] as Extract<typeof events[number], { kind: "token_usage" }>;
-  assert.equal(usage.scope, "turn");
-  assert.equal(usage.providerTurnId, `${SESSION_ID}:1`);
-  assert.deepEqual(usage.usage, {
-    input: 31_846,
-    output: 1_100,
-    cacheRead: 0,
-    reasoning: 1_015,
-    total: 32_946,
-  });
-
-  const end = events[6] as Extract<typeof events[number], { kind: "turn_end" }>;
-  assert.equal(end.durationMs, 5_198.275);
-  assert.equal(end.finishReason, "SUCCESS");
-  assert.equal(end.turnId, `${SESSION_ID}:1`);
-});
-
-test("agy projector: failed tool without output projects tool_info error", () => {
-  const events = project([
-    j({
-      event: "step_update",
-      step_update: {
-        conversation_id: SESSION_ID,
-        step_index: 8,
-        state: "ACTIVE",
-        step_type: "tool",
-        tool_name: "run_command",
-        tool_info: { name: "run_command", parameters: { CommandLine: "exit 1" } },
-      },
-    }),
-    j({
-      event: "step_update",
-      step_update: {
-        conversation_id: SESSION_ID,
-        step_index: 8,
-        state: "ERROR",
-        step_type: "tool",
-        tool_name: "run_command",
-        tool_info: { name: "run_command", error: "command failed" },
-      },
-    }),
-  ]);
-
-  const result = events[1] as Extract<typeof events[number], { kind: "tool_result" }>;
-  assert.equal(result.kind, "tool_result");
-  assert.equal(result.isError, true);
-  assert.equal(result.output, "command failed");
-});
-
-test("agy projector: result response is a fallback and never duplicates text_delta", () => {
-  const withDelta = project([
-    j({ event: "init", conversation_id: SESSION_ID }),
-    USER_LINE,
-    j({
-      event: "step_update",
-      step_update: {
-        conversation_id: SESSION_ID,
-        step_index: 1,
-        state: "DONE",
-        step_type: "agent_response",
-        text_delta: "SECOND\n",
-      },
-    }),
-    j({
-      event: "result",
-      result: { conversation_id: SESSION_ID, status: "SUCCESS", response: "SECOND\n", num_turns: 1 },
-    }),
-  ]);
-  assert.deepEqual(
-    withDelta
-      .filter((event): event is Extract<typeof event, { kind: "message" }> =>
-        event.kind === "message" && event.role === "assistant")
-      .map((event) => event.text),
-    ["SECOND\n"],
-  );
-
-  const resultOnly = project([
-    j({ event: "init", conversation_id: SESSION_ID }),
-    USER_LINE,
-    j({
-      event: "result",
-      result: { conversation_id: SESSION_ID, status: "SUCCESS", response: "fallback reply", num_turns: 1 },
-    }),
-  ]);
-  assert.deepEqual(
-    resultOnly
-      .filter((event): event is Extract<typeof event, { kind: "message" }> =>
-        event.kind === "message" && event.role === "assistant")
-      .map((event) => event.text),
-    ["fallback reply"],
-  );
-});
-
-test("agy projector: agent response fragments emit once when the step completes", () => {
-  const projector = createAgyProjector();
-  const active = projector.pushLine(j({
-    event: "step_update",
-    step_update: {
-      conversation_id: SESSION_ID,
-      step_index: 4,
-      state: "ACTIVE",
-      step_type: "agent_response",
-      text_delta: "SECOND",
-    },
-  }));
-  const done = projector.pushLine(j({
-    event: "step_update",
-    step_update: {
-      conversation_id: SESSION_ID,
-      step_index: 4,
-      state: "DONE",
-      step_type: "agent_response",
-      text_delta: "\n",
-    },
-  }));
-  const duplicateDone = projector.pushLine(j({
-    event: "step_update",
-    step_update: {
-      conversation_id: SESSION_ID,
-      step_index: 4,
-      state: "DONE",
-      step_type: "agent_response",
-      text_delta: "\n",
-    },
-  }));
-
-  assert.deepEqual(active, []);
-  assert.deepEqual(done, [{
-    kind: "message",
-    ts: null,
-    threadId: SESSION_ID,
-    role: "assistant",
-    text: "SECOND\n",
-    providerEventId: `agy:${SESSION_ID}:4`,
-  }]);
-  assert.deepEqual(duplicateDone, []);
-});
-
-test("agy projector: flush emits an in-progress assistant response once", () => {
-  const projector = createAgyProjector();
-  assert.deepEqual(projector.pushLine(j({
-    event: "step_update",
-    step_update: {
-      conversation_id: SESSION_ID,
-      step_index: 5,
-      state: "ACTIVE",
-      step_type: "agent_response",
-      text_delta: "reply before crash",
-    },
-  })), []);
-  assert.deepEqual(projector.flush(), [{
-    kind: "message",
-    ts: null,
-    threadId: SESSION_ID,
-    role: "assistant",
-    text: "reply before crash",
-    providerEventId: `agy:${SESSION_ID}:5`,
-  }]);
-  assert.deepEqual(projector.flush(), []);
-});
-
-test("agy projector: captured cumulative result usage becomes per-turn usage", () => {
-  const events = project([
-    j({ event: "init", conversation_id: SESSION_ID }),
-    j({
-      event: "result",
-      result: {
-        conversation_id: SESSION_ID,
-        status: "CANCELED",
-        response: "",
-        duration_seconds: 4.208199,
-        num_turns: 1,
-        usage: {
-          input_tokens: 15_365,
-          output_tokens: 1_012,
-          thinking_tokens: 956,
-          cache_read_tokens: 0,
-          total_tokens: 16_377,
-        },
-      },
-    }),
-    j({
-      event: "result",
-      result: {
-        conversation_id: SESSION_ID,
-        status: "SUCCESS",
-        response: "SECOND\n",
-        duration_seconds: 12.949869,
-        num_turns: 2,
-        usage: {
-          input_tokens: 31_889,
-          output_tokens: 3_092,
-          thinking_tokens: 3_035,
-          cache_read_tokens: 0,
-          total_tokens: 34_981,
-        },
-      },
-    }),
-  ]);
-  const usage = events.filter((event) => event.kind === "token_usage");
-  assert.equal(usage.length, 2);
-  assert.deepEqual(usage[1]?.usage, {
-    input: 16_524,
-    output: 2_080,
-    cacheRead: 0,
-    reasoning: 2_079,
-    total: 18_604,
-  });
-  const ends = events.filter((event) => event.kind === "turn_end");
-  assert.equal(ends[0]?.finishReason, "CANCELED");
-  assert.equal(ends[0]?.interrupted, true);
-  assert.equal(ends[0]?.durationMs, 4_208.199);
-  assert.equal(ends[1]?.durationMs, 8_741.67);
-});
-
-test("agy projector: missing usage invalidates the cumulative baseline", () => {
-  const events = project([
-    j({ event: "init", conversation_id: SESSION_ID }),
-    j({
-      event: "result",
-      result: {
-        conversation_id: SESSION_ID,
-        status: "SUCCESS",
-        num_turns: 1,
-        usage: { input_tokens: 100, output_tokens: 10, total_tokens: 110 },
-      },
-    }),
-    j({
-      event: "result",
-      result: { conversation_id: SESSION_ID, status: "SUCCESS", num_turns: 2 },
-    }),
-    j({
-      event: "result",
-      result: {
-        conversation_id: SESSION_ID,
-        status: "SUCCESS",
-        num_turns: 3,
-        usage: { input_tokens: 300, output_tokens: 30, total_tokens: 330 },
-      },
-    }),
-  ]);
-
-  const usage = events.filter((event) => event.kind === "token_usage");
-  assert.deepEqual(usage.map((event) => event.usage), [
-    { input: 100, output: 10, total: 110 },
-    { input: 300, output: 30, total: 330 },
-  ]);
-});
-
-test("agy projector: resumed cumulative duration waits for a baseline", () => {
-  const events = project([
-    j({ event: "init", conversation_id: SESSION_ID }),
-    j({
-      event: "result",
-      result: {
-        conversation_id: SESSION_ID,
-        status: "SUCCESS",
-        response: "resumed",
-        duration_seconds: 42,
-        num_turns: 3,
-      },
-    }),
-    j({
-      event: "result",
-      result: {
-        conversation_id: SESSION_ID,
-        status: "SUCCESS",
-        response: "next",
-        duration_seconds: 47.25,
-        num_turns: 4,
-      },
-    }),
-  ]);
-  const ends = events.filter((event) => event.kind === "turn_end");
-  assert.equal(ends[0]?.durationMs, undefined);
-  assert.equal(ends[1]?.durationMs, 5_250);
-});
-
-test("agy projector: captured auth error stays visible as an interrupt and terminal result", () => {
-  const events = project([
-    j({
-      event: "result",
-      result: {
-        conversation_id: "",
-        status: "ERROR",
-        response: "",
-        error: "authentication failed or timed out",
-        duration_seconds: 0,
-        num_turns: 0,
-        usage: {
-          input_tokens: 0,
-          output_tokens: 0,
-          thinking_tokens: 0,
-          cache_read_tokens: 0,
-          total_tokens: 0,
-        },
-      },
-    }),
-  ]);
-  assert.deepEqual(events.map((event) => event.kind), ["token_usage", "interrupt", "turn_end"]);
-  assert.equal((events[1] as Extract<typeof events[number], { kind: "interrupt" }>).reason, "authentication failed or timed out");
-  assert.equal((events[2] as Extract<typeof events[number], { kind: "turn_end" }>).finishReason, "ERROR");
-});
-
-test("agy projector: init and known progress are noise; malformed and future events are safe", () => {
-  const projector = createAgyProjector();
-  assert.deepEqual(projector.pushLine("not json"), []);
-  assert.deepEqual(projector.pushLine(j({ event: "init", conversation_id: SESSION_ID })), []);
-  assert.deepEqual(projector.pushLine(j({
-    event: "step_update",
-    step_update: { conversation_id: SESSION_ID, step_index: 0, state: "DONE", step_type: "user_input" },
-  })), []);
-  assert.deepEqual(projector.pushLine(j({ event: "future_event" })), [
-    { kind: "unknown", ts: null, threadId: SESSION_ID, nativeType: "future_event" },
-  ]);
-  assert.deepEqual(projector.flush(), []);
-});
-
-test("agy projector factory is registered for CLI transcripts", () => {
-  const projector = createTranscriptProjector("agy");
-  assert.equal(projector.harness, "agy");
-  assert.deepEqual(projector.pushLine(TOOL_TURN_FIXTURE[4]).map((event) => event.kind), ["tool_call"]);
-});
-
-test("agy CLI rendering shows the user, tools, and reply once; last returns the reply", () => {
-  const turns = renderTranscriptLines("agy", TOOL_TURN_FIXTURE);
+  const turns = renderTranscriptLines("agy", TOOL_TURN);
   assert.deepEqual(turns.map((turn) => turn.role), ["user", "tool", "tool", "assistant"]);
-  assert.equal(turns.filter((turn) => turn.role === "assistant").length, 1);
-  assert.equal(lastAssistantText(turns), "Hi! Ready to build something great today.\n\n`hello-agy`\n");
+  assert.equal(turns[1]!.text, "[tool_use: mcp_apiary_agent_send]");
+  assert.equal(lastAssistantText(turns), "The report is sent.");
+});
+
+test("agy projector: other tool titles stay as agy wrote them, and a failed tool is an error result", () => {
+  const events = project([
+    prompt(1002, "list files"),
+    update({ sessionUpdate: "tool_call", toolCallId: "call-2", title: "Run ls -la", kind: "execute", status: "pending", rawInput: { command: "ls -la" } }),
+    update({ sessionUpdate: "tool_call_update", toolCallId: "call-2", status: "failed", rawOutput: "permission denied" }),
+    update({ sessionUpdate: "tool_call", toolCallId: "call-3", title: "Run mcp_apiary_agent_send now", kind: "other", status: "pending" }),
+  ]);
+  assert.deepEqual(events.slice(2), [
+    { kind: "tool_call", ts: null, callId: "call-2", name: "Run ls -la", input: { command: "ls -la" } },
+    { kind: "tool_result", ts: null, callId: "call-2", name: "Run ls -la", isError: true, output: "permission denied" },
+    { kind: "tool_call", ts: null, callId: "call-3", name: "Run mcp_apiary_agent_send now" },
+  ]);
+});
+
+test("agy projector: a cancelled prompt and a failed prompt both close the turn as interrupted", () => {
+  const cancelled = project([prompt(1003, "count to 200"), chunk("1\n2\n"), j({ jsonrpc: "2.0", id: 1003, result: { stopReason: "cancelled" } })]);
+  assert.deepEqual(cancelled.slice(2), [
+    { kind: "message", ts: null, role: "assistant", text: "1\n2\n" },
+    { kind: "turn_end", ts: null, finishReason: "cancelled", interrupted: true },
+  ]);
+  const failed = project([prompt(1004, "hello"), j({ jsonrpc: "2.0", id: 1004, error: { code: -32603, message: "Internal error", data: { details: "Quota exceeded" } } })]);
+  assert.deepEqual(failed.slice(2), [
+    { kind: "interrupt", ts: null, reason: 'Internal error: {"details":"Quota exceeded"}' },
+    { kind: "turn_end", ts: null, finishReason: "error", interrupted: true },
+  ]);
+  // Handshake and configuration responses are not turns.
+  assert.deepEqual(project([j({ id: 2, result: { sessionId: SESSION } }), j({ id: "agy:model:s", result: {} }), j({ id: 3, error: { message: "x" } })]), []);
+});
+
+test("agy projector: an open answer survives a checkpoint restore, and print-mode checkpoints do not restore", () => {
+  let projector = createTranscriptProjector("agy");
+  projector.pushLine(prompt(1005, "hello"));
+  projector.pushLine(chunk("AGY_"));
+  const checkpoint = projector.checkpoint();
+  assert.equal(checkpoint.harness, "agy");
+  const restored = restoreTranscriptProjector("agy", JSON.parse(JSON.stringify(checkpoint)));
+  if (!restored.ok) assert.fail(restored.reason);
+  projector = restored.projector;
+  projector.pushLine(chunk("OK"));
+  const events = projector.pushLine(j({ id: 1005, result: { stopReason: "end_turn" } }));
+  assert.deepEqual(events, [
+    { kind: "message", ts: null, role: "assistant", text: "AGY_OK" },
+    { kind: "turn_end", ts: null, finishReason: "end_turn" },
+  ]);
+  assert.deepEqual(projector.flush(), []);
+  // The state the print-mode projector checkpointed.
+  const printMode = { ...checkpoint, state: {
+    threadId: null, sawAssistantText: false, previousResultUsage: null, previousNumTurns: null, previousDurationSeconds: null,
+    assistantFragments: [], emittedAssistantMessages: [], emittedToolCalls: [], emittedToolResults: [],
+  } };
+  assert.deepEqual(restoreTranscriptProjector("agy", printMode), { ok: false, reason: "invalid_checkpoint" });
 });

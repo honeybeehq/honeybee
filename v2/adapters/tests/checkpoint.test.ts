@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { createTranscriptProjector, restoreTranscriptProjector } from "../src/transcripts.ts";
 import { serializeTranscriptCheckpoint, TRANSCRIPT_CHECKPOINT_MAX_BYTES } from "../src/transcript.ts";
 
-for (const harness of ["codex", "grok", "agy", "muse", "claude", "stub", "unknown-provider"]) {
+for (const harness of ["codex", "grok", "agy", "kimi", "muse", "claude", "stub", "unknown-provider"]) {
   test(`${harness}: exact checkpoint validation`, () => {
     const checkpoint = createTranscriptProjector(harness).checkpoint();
     assert.equal(restoreTranscriptProjector(harness, checkpoint).ok, true);
@@ -72,8 +72,8 @@ test("provider-owned nested state rejects unknown fields, bad types and duplicat
     ["grok", { openChunk: { kind: "message", role: "tool", text: "x", ts: null } }],
     ["grok", { tools: [["t", { name: "tool", callEmitted: true, resultEmitted: false, status: 4 }]] }],
     ["grok", { tools: [["t", { name: "tool", callEmitted: true, resultEmitted: false, extra: true }]] }],
-    ["agy", { previousResultUsage: { bogus: 1 } }],
-    ["agy", { assistantFragments: [["m", { text: "x", extra: true }]] }],
+    ["agy", { openChunk: { kind: "message", role: "tool", text: "x", ts: null } }],
+    ["agy", { tools: [["t", { name: "tool", callEmitted: true, resultEmitted: false, extra: true }]] }],
     ["muse", { openItems: ["t", "t"] }],
     ["muse", { turnUsage: [["turn", { usage: { bogus: 1 }, model: null }]] }],
     ["muse", { turnUsage: [["turn", { usage: {}, model: null, extra: true }]] }],
