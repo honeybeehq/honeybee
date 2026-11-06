@@ -11,14 +11,14 @@ atomic cursor/event/checkpoint commits belong to the consumer.
 | --- | --- |
 | Snapshot provider state | Preserves open chunks, pairing and dedupe without replaying the prefix. Selected. |
 | Save and replay all consumed lines | Preserves semantics but storage and restore work grow with transcript length. |
-| Flush and restart at a cursor | Changes Grok chunk boundaries, loses Codex item starts and dedupe, and loses Agy cumulative baselines. |
+| Flush and restart at a cursor | Changes Grok chunk boundaries, and loses Codex item starts and dedupe. |
 | Consumer reconstructs internal state from events | Events omit pending data and dedupe identities. Couples consumers to provider internals. |
 
 Source grounding: Codex closes over started items, model attribution, rollout message
 identities, fork request IDs and the rollout turn-open flag. Grok closes over its open
 message/thinking chunk, prompt mirror remainder, tool states and compaction identities.
-Agy closes over thread identity, fragment buffers, emitted identities and cumulative
-usage/duration baselines. Claude and renderer fallbacks have no retained state.
+Agy and Kimi speak ACP and reuse the Grok state unchanged. Claude and renderer fallbacks
+have no retained state.
 
 ## Contract
 
@@ -52,9 +52,8 @@ One projects uninterrupted. The other checkpoints, JSON serializes, restores at 
 empty boundary and after every push and flush, and compares each emitted batch and
 complete checkpoint. This includes item starts, fork responses, rollout message dedupe,
 repeated Codex turn opens, open thinking/message chunks, prompt mirrors, Grok tool
-updates and compaction dedupe. Explicit Agy replays cross checkpoint boundaries after
-an emitted tool ACTIVE, tool terminal update and assistant DONE with text, proving that
-all three emitted-identity sets suppress duplicates after restore.
+updates and compaction dedupe. The Agy fixtures cross checkpoint boundaries inside an
+open thought, an open tool call and an open answer.
 Separate tests cover malformed envelopes and nested state, exact versions, mismatched
 harnesses, empty stateless/unknown state, alias isolation and the byte limit.
 
@@ -100,11 +99,6 @@ Grok retains tool pairing and dedupe flags but drops tool input after emitting i
 The event already contains that input, and future updates never re-emit the call. This
 keeps large file-write arguments out of every subsequent checkpoint without evicting IDs.
 
-Agy retains at most 1,024 identities in each of its emitted call, result and assistant
-message sets. Each set evicts the oldest distinct emission first; duplicate updates do
-not refresh that order. Checkpoints preserve FIFO order, including across result records,
-so retained identities dedupe identically after restore. Replays older than the window
-can emit again. A thread change clears the sets. Restore rejects sets over the limit;
-the projection and state version bumps fence the former unbounded behavior and schema.
-Tests exercise all three sets at capacity, eviction immediately after restore, repeated
-identities on both sides of the window, and assistant fragments emitted by `flush()`.
+Agy checkpoints are the Grok state under the `agy` key. A checkpoint written by the
+removed print-mode projector has another shape, fails exact validation and is rebuilt
+from the log, so the change needed no version bump.

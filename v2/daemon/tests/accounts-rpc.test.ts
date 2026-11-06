@@ -1069,21 +1069,20 @@ test("rpc.accounts.f2: add refuses pre-existing credentials by default; importEx
     const bareVerify = await client.request<AccountVerifyResult>("account.verify", { id: fresh.account.id });
     assert.deepEqual([bareVerify.outcome, bareVerify.probe], ["absent", "none"]);
 
+    // agy takes no account in any form: nothing of the machine's agy sign-in is imported, vaulted or adopted.
     const agyHome = join(dir, "machine-agy-home");
     const agyToken = ".gemini/antigravity-cli/antigravity-oauth-token";
     mkdirSync(join(agyHome, ".gemini", "antigravity-cli"), { recursive: true });
     writeFileSync(join(agyHome, agyToken), "agy-oauth-token");
-    const agy = await client.request<AccountAddResult>("account.add", {
-      harness: "agy",
-      label: "personal",
-      homePath: agyHome,
-      importExisting: true,
-    });
-    assert.equal(agy.verification, "credential_file");
-    const agyVerify = await client.request<AccountVerifyResult>("account.verify", { id: agy.account.id });
-    assert.equal(agyVerify.probe, "credential_file");
-    assert.equal(agyVerify.outcome, "unverified");
-    assert.equal(agyVerify.limits, null);
+    for (const params of [
+      { harness: "agy", label: "personal" },
+      { harness: "agy", label: "personal", homePath: agyHome, importExisting: true },
+      { harness: "agy", native: true },
+    ]) await rejects(() => client.request("account.add", params), "account_unavailable");
+    await rejects(() => client.request("account.import", { harness: "agy" }), "account_unavailable");
+    assert.deepEqual((await client.request<{ accounts: unknown[] }>("account.list", { harness: "agy" })).accounts, []);
+    assert.equal(existsSync(join(dir, "vault", "agy")), false);
+    assert.equal(readFileSync(join(agyHome, agyToken), "utf8"), "agy-oauth-token");
 
     await rejects(() => client.request("account.capture", { id: adopted.account.id }), "invalid_request");
     await rejects(() => client.request("account.config.preview", { id: adopted.account.id }), "config_import_refused");

@@ -200,24 +200,56 @@ test("args.daemon.2c: composeSpawn injects live gateways into Grok session setup
   assert.deepEqual(setup.params.mcpServers, mcpServers);
 });
 
-test("args.daemon.2d: composeSpawn agy keeps model and effort on argv, de-duplicates yolo, and resumes by conversation", () => {
-  const spec = { ...BUILTIN_AGENTS.agy!, defaultArgs: ["--model", "default", "--dangerously-skip-permissions"] };
-  const r = composeSpawn(spec, "agy", bee({
-    args: ["--model", "gemini-3.8-flash-low", "--effort", "high", "--conversation", "stale"],
-    providerSessionId: "conversation-1",
-  }));
-  assert.deepEqual(r.args, [
-    "--print=",
-    "--input-format", "stream-json",
-    "--output-format", "stream-json",
-    "--dangerously-skip-permissions",
-    "--print-timeout", "12h",
-    "--model", "gemini-3.8-flash-low",
-    "--effort", "high",
-    "--conversation", "conversation-1",
+test("args.daemon.2d: composeSpawn agy runs `agy acp`, lifts model, effort and mode into ACP configuration, and resumes through session/resume", () => {
+  assert.deepEqual(BUILTIN_AGENTS.agy, { command: "agy", args: ["acp"], adapter: "agy", env: { AGY_CLI_DISABLE_AUTO_UPDATE: "1" } });
+  const mcpServers = [{ name: "apiary", command: "/usr/bin/node", args: ["shim.mjs"], env: [{ name: "HONEYBEE_GATEWAY", value: "apiary" }] }];
+  const spec = { ...BUILTIN_AGENTS.agy!, defaultArgs: ["--model", "gemini-4-argon", "--effort", "medium"] };
+  const fresh = composeSpawn(spec, "agy", bee({
+    args: ["--model", "gemini-3.8-flash", "--effort", "high", "--mode", "plan", "--dangerously-skip-permissions", "--add-dir", "/shared"],
+  }), mcpServers);
+  assert.deepEqual(fresh.args, ["acp", "--dangerously-skip-permissions", "--add-dir", "/shared"], "no print-mode flag, and nothing the wire carries");
+  assert.equal(fresh.model, "gemini-3.8-flash");
+  assert.equal(fresh.adapter?.harness, "agy");
+  const initialized = JSON.stringify({ id: 1, result: { agentCapabilities: { sessionCapabilities: { resume: {} } } } });
+  const request = (adapter: typeof fresh.adapter, line: string) => {
+    const signal = adapter!.parseLine(line)[0];
+    if (signal?.kind !== "respond") assert.fail(`expected a request for ${line}`);
+    return JSON.parse(signal.lines[0]!) as { id: unknown; method: string; params: Record<string, unknown> };
+  };
+  assert.deepEqual(JSON.parse(fresh.adapter!.bootLines()[0]!).params.clientInfo, { name: "Honeybee", version: "2" });
+  const setup = request(fresh.adapter, initialized);
+  assert.deepEqual([setup.method, setup.params], ["session/new", { cwd: "/tmp/w", mcpServers }]);
+  const steps = [];
+  let reply = JSON.stringify({ id: 2, result: { sessionId: "s-1" } });
+  for (let i = 0; i < 3; i += 1) {
+    const step = request(fresh.adapter, reply);
+    steps.push([step.method, step.params.configId, step.params.value]);
+    reply = JSON.stringify({ id: step.id, result: {} });
+  }
+  assert.deepEqual(steps, [
+    ["session/set_config_option", "model", "gemini-3.8-flash"],
+    ["session/set_config_option", "thought_level", "high"],
+    ["session/set_config_option", "mode", "plan"],
   ]);
-  assert.equal(r.model, undefined);
-  assert.equal(r.adapter?.harness, "agy");
+  assert.equal(fresh.adapter!.parseLine(reply)[0]?.kind, "booted");
+
+  // The builtin carries no permission bypass: without the flag a permission request is declined.
+  const plain = composeSpawn(BUILTIN_AGENTS.agy!, "agy", bee({ providerSessionId: "s-old" }), mcpServers);
+  assert.deepEqual(plain.args, ["acp"], "resume is not an argv flag");
+  assert.equal(plain.adapter?.resumeArgs, undefined);
+  const resume = request(plain.adapter, initialized);
+  assert.deepEqual([resume.method, resume.params], ["session/resume", { cwd: "/tmp/w", mcpServers, sessionId: "s-old" }]);
+  assert.equal(plain.adapter!.parseLine(JSON.stringify({ id: 2, result: {} }))[0]?.kind, "booted", "nothing requested: no configuration call");
+  const ask = JSON.stringify({ id: "p", method: "session/request_permission", params: { options: [{ optionId: "yes", kind: "allow_once" }, { optionId: "no", kind: "reject_once" }] } });
+  assert.deepEqual(request(plain.adapter, ask), { jsonrpc: "2.0", id: "p", result: { outcome: { outcome: "selected", optionId: "no" } } } as unknown);
+  assert.deepEqual(request(fresh.adapter, ask), { jsonrpc: "2.0", id: "p", result: { outcome: { outcome: "selected", optionId: "yes" } } } as unknown);
+
+  // GEMINI_API_KEY in the spawn env: authenticate only after agy asks for auth.
+  const authRequired = JSON.stringify({ id: 2, error: { code: -32000, message: "Authentication required" } });
+  assert.equal(plain.adapter!.parseLine(authRequired)[0]?.kind, "flag");
+  const keyed = composeSpawn(BUILTIN_AGENTS.agy!, "agy", bee({}), [], null, true);
+  assert.deepEqual(request(keyed.adapter, authRequired).params, { methodId: "gemini-api-key" });
+  assert.throws(() => composeSpawn(BUILTIN_AGENTS.agy!, "agy", bee({ args: ["--effort", "max"] })), /--effort must be one of low\|medium\|high/);
 });
 
 test("args.daemon.3: composeSpawn stub/unknown — verbatim concatenation, no de-dup, no resume; unknown adapter → null", () => {

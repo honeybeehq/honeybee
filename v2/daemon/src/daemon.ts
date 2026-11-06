@@ -49,7 +49,7 @@ import { threadOperationView, type ThreadOperationRow } from "../../core/src/thr
  *  - behavior 7 (config)           → config.ts
  */
 import { closeSync, copyFileSync, cpSync, existsSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, readlinkSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { execFile } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import type { InterruptOutcome } from "../../harness/src/driver.ts";
 import { appendFileSync } from "node:fs";
 import { homedir, tmpdir, hostname } from "node:os";
@@ -100,6 +100,7 @@ import {
   type ActionQueueView,
   type ActionStatus,
   recipeFor,
+  machineSignInOnly,
   requireBeeId,
   resolveExecutable,
   resolveSpawnCommand,
@@ -220,6 +221,8 @@ import { renderTranscriptLines } from "../../adapters/src/transcripts.ts";
 import {
   agyAdapter,
   agyArgGrammar,
+  agySpawnPlan,
+  agyVersionRefusal,
   claudeAdapter,
   claudeArgGrammar,
   codexAdapter,
@@ -464,7 +467,7 @@ function adapterFor(
 ): HarnessAdapter | null {
   switch (name) {
     case "agy":
-      return agyAdapter;
+      return agyAdapter({ cwd, mcpServers: grokMcpServers, ...(providerSessionId ? { resumeSessionId: providerSessionId } : {}) });
     case "claude":
       return claudeAdapter;
     case "codex": {
@@ -533,6 +536,8 @@ export function composeSpawn(
   bee: { cwd: string; args: string[] | null; providerSessionId: string | null; forkSeed?: string | null },
   grokMcpServers: readonly GrokMcpServerStdio[] = [],
   placementInstruction?: string | null,
+  /** agy only: the spawn env carries GEMINI_API_KEY. */
+  apiKeyAuth = false,
 ): { adapter: HarnessAdapter | null; args: string[]; model: string | undefined } {
   const grammar = grammarFor(adapterName);
   // v6 fork: a fork with no session of its own yet forks the SOURCE's
@@ -550,6 +555,14 @@ export function composeSpawn(
     ? ["--append-system-prompt", placementInstruction]
     : [];
   const composed = composeArgv(grammar, [spec.args, spec.defaultArgs, bee.args, resume, startup]);
+  if (adapterName === "agy") {
+    const plan = agySpawnPlan(composed);
+    return {
+      adapter: agyAdapter({ cwd: bee.cwd, model: plan.model, effort: plan.effort, mode: plan.mode, skipPermissions: plan.skipPermissions,
+        apiKeyAuth, mcpServers: grokMcpServers, ...(bee.providerSessionId ? { resumeSessionId: bee.providerSessionId } : {}) }),
+      args: plan.argv, model: plan.model,
+    };
+  }
   if (adapterName === "kimi") {
     const plan = kimiSpawnPlan(composed);
     return {
@@ -1023,7 +1036,7 @@ export class HiveDaemon {
       resolveExecutionAdapter: (beeId: string) => {
         const bee = store.getBee(beeId), spec = bee ? this.cfg.agents[bee.agent] : null;
         if (!bee || !spec) throw new ExecutionFenceError("rpc_execution_history_unknown","Fenced adapter cannot be resolved read-only");
-        const adapter = composeSpawn(spec,spec.adapter ?? bee.agent,bee,[],null).adapter;
+        const adapter = composeSpawn(spec,spec.adapter ?? bee.agent,bee,[],null,this.agyApiKeyAuth(bee, spec)).adapter;
         if (!adapter) throw new ExecutionFenceError("rpc_execution_history_unknown","Fenced adapter is unavailable");
         return adapter;
       },
@@ -1774,7 +1787,7 @@ export class HiveDaemon {
     const fence = store.beeEpoch(beeId);
     if (fence.fencedAt != null) throw new Error(`resolve: bee ${beeId} is fenced at epoch ${fence.epoch}; another executor owns it`);
     const adapterName = spec.adapter ?? bee.agent;
-    const grokMcpServers: GrokMcpServerStdio[] = adapterName === "grok" || adapterName === "kimi" || adapterName === "muse"
+    const grokMcpServers: GrokMcpServerStdio[] = adapterName === "grok" || adapterName === "kimi" || adapterName === "muse" || adapterName === "agy"
       ? this.gateways().flatMap((gateway) => gateway.kind === "stdio" ? [{
         name: gateway.name,
         command: gateway.shim.command,
@@ -1790,7 +1803,7 @@ export class HiveDaemon {
         cellId: instructionMove.retainedCellId,
       })
       : null;
-    const composed = composeSpawn(spec, adapterName, bee, grokMcpServers, placementInstruction);
+    const composed = composeSpawn(spec, adapterName, bee, grokMcpServers, placementInstruction, this.agyApiKeyAuth(bee, spec));
     const operation = store.threadOperationForSuccessor(beeId);
     let adapter = operation && bee.providerSessionId === operation.successorProviderSessionId && adapterName === "codex"
       ? codexAdapter({ cwd: bee.cwd, model: composed.model, modelProvider: operation.source.modelProvider, resumeThreadId: bee.providerSessionId ?? undefined, resumePath: operation.sessionPath })
@@ -1822,6 +1835,10 @@ export class HiveDaemon {
     // keeps the bare name — the OS ENOENT stays the honest diagnostic and
     // the driver's exit detail names the executable.
     const { command, resolution } = resolveSpawnCommand(spec.command, { env });
+    if (adapterName === "agy" && resolution.path) {
+      const refusal = agyVersionRefusal(this.harnessVersionSync(resolution.path, env));
+      if (refusal) throw new Error(refusal);
+    }
     if (resolution.source !== "configured_path") {
       this.log(`spawn.resolve bee=${beeId} executable=${resolution.executable} source=${resolution.source}${resolution.path ? ` path=${resolution.path}` : ""}`);
     }
@@ -3574,6 +3591,12 @@ export class HiveDaemon {
   ): { account: AccountRow | null; reason: string | null; allocation?: AccountAllocationReceipt; reservationId?: string; claim?: AccountAdmissionClaim } {
     const store = this.mustStore();
     if (request === null) return { account: null, reason: null };
+    const ownSignIn = machineSignInOnly(agent);
+    if (ownSignIn) {
+      // Never an account, a claim or a rotation: the bee runs unbound on the machine's own sign-in.
+      if (request !== "auto" || this.allocationClaimParam(params) || this.admissionAccountIdsParam(params, "onlyAccountIds")) throw new RpcError("account_unavailable", ownSignIn);
+      return { account: null, reason: null };
+    }
     const unisolated = this.accounts?.isolationRefusal(agent) ?? null;
     if (unisolated && !this.accounts!.nativeRecipe(agent)) throw new RpcError("account_unavailable", unisolated);
     const onlyAccountIds = this.admissionAccountIdsParam(params, "onlyAccountIds");
@@ -6903,7 +6926,8 @@ export class HiveDaemon {
    * spec's no-auto-update switch holds), cached by (path, mtime, the spec's
    * version stamps) — a failure or timeout is a null version, never an
    * error. `unavailable` is the recipe's reason this platform cannot run the
-   * harness at all. A harness whose accounts are unisolated here is never
+   * harness at all, or that the installed agy is older than its ACP floor. A
+   * harness whose accounts are unisolated here is never
    * executed, not even for its version: that is read from its first version
    * stamp instead, and it stays available when it runs under the native
    * account (the machine's own login).
@@ -6916,14 +6940,16 @@ export class HiveDaemon {
       const kinds = [harness, spec.adapter ?? harness];
       const unisolated = kinds.map((kind) => this.accounts?.isolationRefusal(kind) ?? null).find((reason) => reason !== null) ?? null;
       const native = kinds.some((kind) => this.accounts?.nativeRecipe(kind));
+      const version = !resolved ? null : unisolated ? readVersionStamp(resolved.path, spec.versionStamps ?? []) : await this.probeHarnessVersion(resolved.path, env, spec.versionStamps ?? []);
       harnesses.push({
         harness,
         command: spec.command,
         present: resolved !== null,
         path: resolved?.path ?? null,
         source: resolved?.source ?? null,
-        version: !resolved ? null : unisolated ? readVersionStamp(resolved.path, spec.versionStamps ?? []) : await this.probeHarnessVersion(resolved.path, env, spec.versionStamps ?? []),
-        unavailable: native ? null : unisolated,
+        version,
+        // An agy too old for `agy acp` is installed and still cannot run: the spawn refuses it with the same words.
+        unavailable: native ? null : unisolated ?? (kinds.includes("agy") ? agyVersionRefusal(version) : null),
       });
     }
     return { harnesses };
@@ -6958,6 +6984,37 @@ export class HiveDaemon {
         resolvePromise(version);
       });
     });
+  }
+
+  /**
+   * The same `--version` line for a spawn that must know it before it execs
+   * (agy's ACP floor). It shares the probe's cache, so the binary is run at
+   * most once per (path, mtime); a failure or timeout is null, never an error.
+   */
+  private harnessVersionSync(path: string, env: Record<string, string>): string | null {
+    let key: string;
+    try {
+      key = `${path}\0${statSync(path).mtimeMs}`;
+    } catch {
+      return null;
+    }
+    const hit = this.harnessVersionCache.get(key);
+    if (hit !== undefined) return hit;
+    let version: string | null = null;
+    try {
+      const stdout = execFileSync(path, ["--version"], { env, timeout: 2000, maxBuffer: 64 * 1024, stdio: ["ignore", "pipe", "ignore"] });
+      version = String(stdout).split("\n").map((l) => l.trim()).find((l) => l.length > 0)?.slice(0, 120) ?? null;
+    } catch {
+      version = null;
+    }
+    this.harnessVersionCache.set(key, version);
+    return version;
+  }
+
+  /** Whether an agy bee's spawn env carries the user's GEMINI_API_KEY (the adapter then authenticates with it when agy asks). */
+  private agyApiKeyAuth(bee: BeeRow, spec: AgentSpecConfig): boolean {
+    if ((spec.adapter ?? bee.agent) !== "agy") return false;
+    return (bee.env.GEMINI_API_KEY ?? spec.env?.GEMINI_API_KEY ?? process.env.GEMINI_API_KEY ?? "").length > 0;
   }
 
   private rpcHealth(params: Record<string, unknown> = {}): HealthResult {
@@ -7172,6 +7229,8 @@ export class HiveDaemon {
     const store = this.mustStore();
     const accounts = this.mustAccounts();
     const harness = this.param(params, "harness");
+    const ownSignIn = machineSignInOnly(harness);
+    if (ownSignIn) throw new RpcError("account_unavailable", `account.add: ${ownSignIn}`);
     if (params.native !== undefined && typeof params.native !== "boolean") throw new RpcError("invalid_request", "account.add: native must be a boolean");
     if (params.native === true) return this.withAsyncIdempotency("account.add", params, async () => this.addNativeAccount(harness, params));
     const label = this.param(params, "label");
@@ -8041,6 +8100,8 @@ export class HiveDaemon {
     if (target.harness !== bee.agent) {
       throw new RpcError("harness_mismatch", `account ${target.id} is a ${target.harness} account; bee ${bee.name} runs ${bee.agent}`);
     }
+    const ownSignIn = machineSignInOnly(bee.agent);
+    if (ownSignIn) throw new RpcError("account_unavailable", ownSignIn);
     const from = bee.account;
     if (from === target.id && !quotaRecoveryId) {
       const noop: SwapAccountResult = { beeId: bee.id, from, to: target.id, action: "noop", commandId: null, rekeyed: false, transcript: "none" };

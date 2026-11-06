@@ -6,7 +6,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openCoreStore } from "../../core/src/index.ts";
@@ -53,17 +53,20 @@ test("cli.accounts.1: account verbs over RPC + spawn --account + bee swap-accoun
     const freshList = capture();
     assert.equal(await runV2Cli(["account", "list", "--harness", "codex", ...base], freshList.io), 0);
     assert.ok(freshList.out.some((l) => l.includes("codex-fresh") && l.includes("auth_needed") && l.includes("creds=absent")), freshList.out.join("\n"));
-    // agy schedules a file-presence probe, never a provider-authentication probe.
+    // agy takes no account: it runs on the machine's own sign-in, and nothing of it is imported.
     const agyHome = join(dir, "agy-home");
     const agyToken = join(agyHome, ".gemini", "antigravity-cli", "antigravity-oauth-token");
     mkdirSync(join(agyHome, ".gemini", "antigravity-cli"), { recursive: true });
     writeFileSync(agyToken, "agy-oauth-token");
-    const agyAdd = capture();
-    assert.equal(await runV2Cli(["account", "add", "agy", "personal", "--home", agyHome, "--import-existing", ...base], agyAdd.io), 0);
-    assert.match(agyAdd.out[0] ?? "", /checking the required credential file/);
-    const agyVerify = capture();
-    assert.equal(await runV2Cli(["account", "verify", "agy-personal", ...base], agyVerify.io), 1);
-    assert.match(agyVerify.out[0] ?? "", /probe=credential_file\s+the required credential file is present/);
+    for (const extra of [[], ["--home", agyHome, "--import-existing"], ["--native"]]) {
+      const agyAdd = capture();
+      assert.notEqual(await runV2Cli(["account", "add", "agy", "personal", ...extra, ...base], agyAdd.io), 0);
+      assert.match([...agyAdd.out, ...agyAdd.err].join("\n"), /agy runs on this computer's own agy sign-in/);
+    }
+    const agyList = capture();
+    assert.equal(await runV2Cli(["account", "list", "--harness", "agy", ...base], agyList.io), 0);
+    assert.equal(agyList.out.some((l) => l.includes("agy-personal")), false);
+    assert.equal(existsSync(join(dir, "vault", "agy")), false, "no agy vault entry is ever written");
     // pause / unpause / penalty
     const pause = capture();
     assert.equal(await runV2Cli(["account", "pause", "stub-two", ...base], pause.io), 0);

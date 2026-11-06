@@ -535,18 +535,7 @@ export const BUILTIN_AGENTS: Record<string, AgentSpecConfig> = {
     // The launcher stays put across updates; the installer rewrites this.
     versionStamps: [".muse-version"],
   },
-  agy: {
-    command: "agy",
-    args: [
-      "--print=",
-      "--input-format", "stream-json",
-      "--output-format", "stream-json",
-      "--dangerously-skip-permissions",
-      "--print-timeout", "12h",
-    ],
-    adapter: "agy",
-    env: { AGY_CLI_DISABLE_AUTO_UPDATE: "1" },
-  },
+  agy: { command: "agy", args: ["acp"], adapter: "agy", env: { AGY_CLI_DISABLE_AUTO_UPDATE: "1" } },
   claude: {
     command: "claude",
     args: ["-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose"],

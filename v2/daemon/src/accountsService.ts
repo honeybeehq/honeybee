@@ -56,6 +56,7 @@ import {
   prunePendingPicks,
   recipeEnvFor,
   recipeFor,
+  machineSignInOnly,
   resolveVendorHome,
   rotateNearTie,
   selectAccountAdmission,
@@ -416,9 +417,9 @@ export interface VerifyOutcome {
 }
 
 /** Harnesses with either an authenticated limits read or an explicit credential-file probe. */
-const PROBE_CAPABLE_HARNESSES: ReadonlySet<string> = new Set(["claude", "codex", "grok", "kimi", "cursor", "opencode", "agy", "muse"]);
+const PROBE_CAPABLE_HARNESSES: ReadonlySet<string> = new Set(["claude", "codex", "grok", "kimi", "cursor", "opencode", "muse"]);
 /** Harnesses whose probe reads only the required credential file (no provider limits source). */
-const CREDENTIAL_FILE_PROBE_HARNESSES: ReadonlySet<string> = new Set(["agy", "muse"]);
+const CREDENTIAL_FILE_PROBE_HARNESSES: ReadonlySet<string> = new Set(["muse"]);
 
 // ---------------------------------------------------------------------------
 // v19: account.lease — the credential-lease mint (RN7a; a port of v1
@@ -3092,9 +3093,9 @@ export class AccountsService {
       }
       const row = keepLastGood ? previous! : this.store.putAccountLimits(id, fetched);
       // The probe is the authentication check account health keys on: a REAL
-      // auth failure sets auth_needed; a readable answer or agy's successful
-      // token-file probe is contrary evidence. The agy limits row stays
-      // unsupported and its credential health stays unverified.
+      // auth failure sets auth_needed; a readable answer or a successful
+      // credential-file probe is contrary evidence. A file-probed limits row
+      // stays unsupported and its credential health stays unverified.
       // The probe awaited the provider: judge the account as it is NOW (an
       // operator or lease may have paused it meanwhile; the store keeps a pause
       // through auth-health updates either way).
@@ -3310,10 +3311,6 @@ export class AccountsService {
       case "cursor":
       case "opencode":
         return this.fetchSecondaryProvider(account);
-      case "agy":
-        return this.credentialed(account)
-          ? { readable: false, unreadableReason: "unsupported", error: "agy has no limits source" }
-          : { readable: false, unreadableReason: "auth_failed", error: "agy OAuth token file is missing from the account home and vault" };
       case "muse": {
         // Muse has no usage probe: MSP usage/read reports only what one
         // process observed on its own model calls.
@@ -3736,8 +3733,8 @@ export class AccountsService {
 
   /**
    * v18: verify credentials off the caller path through the shared background
-   * lane. Provider-backed probes read limits; agy checks its required OAuth
-   * token and leaves limits unsupported. The ids actually queued are returned.
+   * lane. Provider-backed probes read limits; a credential-file probe checks
+   * the required file and leaves limits unsupported. The ids actually queued are returned.
    */
   scheduleVerification(accountIds: readonly string[]): string[] {
     const ids = accountIds.filter((id) => {
@@ -3750,9 +3747,9 @@ export class AccountsService {
 
   /**
    * v18: `account.verify` runs the cheapest probe the harness has. A provider
-   * limits read can verify a credential. agy's file probe can prove only that
-   * its required token is present or absent, so a present imported token stays
-   * unverified until login records fresh evidence.
+   * limits read can verify a credential. A credential-file probe can prove only
+   * that the required file is present or absent, so a present imported
+   * credential stays unverified until login records fresh evidence.
    */
   async verifyCredentials(account: AccountRow): Promise<VerifyOutcome> {
     knownAccountLease(account);
@@ -4617,7 +4614,10 @@ export class AccountsService {
         status: typeof r.pausedAt === "string" ? "paused" : vaultHasCredentials || homeHasCredentials ? "ok" : "auth_needed",
         addedAt: typeof r.addedAt === "string" && Number.isFinite(Date.parse(r.addedAt)) ? Date.parse(r.addedAt) : null,
       };
-      if (this.store.getAccount(id)) {
+      if (machineSignInOnly(harness)) {
+        entry.action = "skip";
+        entry.reason = "machine_sign_in_only";
+      } else if (this.store.getAccount(id)) {
         entry.action = "skip";
         entry.reason = "already_imported";
       } else if (id !== accountIdFor(harness, r.label)) {
@@ -4677,7 +4677,7 @@ export interface RegistryImportEntry {
   id: string;
   harness: string;
   action: "import" | "skip";
-  reason?: "unusable_record" | "already_imported";
+  reason?: "unusable_record" | "already_imported" | "machine_sign_in_only";
   note?: string;
   homePath?: string;
   vaultDir?: string;
