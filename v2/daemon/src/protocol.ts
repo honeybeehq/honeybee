@@ -315,6 +315,14 @@ export const DAEMON_CAPABILITIES = [
    * home activated later. Audit kind `skills.installed`.
    */
   "skills.install.v1",
+  /**
+   * 2026-11-06 (additive, no schema change): the `agy` harness runs over ACP
+   * (`agy acp`, agy 1.5.1 or newer) with a truthful client name, on the
+   * machine's own agy sign-in; it takes no Honeybee account. A daemon without
+   * this tag runs agy in print mode: a client offers agy only where the tag
+   * is advertised.
+   */
+  "agy.acp.v1",
 ] as const;
 export type DaemonCapability = (typeof DAEMON_CAPABILITIES)[number];
 

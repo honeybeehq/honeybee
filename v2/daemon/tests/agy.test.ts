@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { openCoreStore } from "../../core/src/index.ts";
-import { RpcError, type NodeHarnessesResult, type SendRpcResult, type SpawnResult, type ViewResult } from "../src/protocol.ts";
+import { DAEMON_CAPABILITIES, RpcError, type DeployInfoResult, type NodeHarnessesResult, type SendRpcResult, type SpawnResult, type ViewResult } from "../src/protocol.ts";
 import { makeDaemonDir, startDaemon, waitFor, type DaemonHandle } from "./helpers.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -49,6 +49,10 @@ test("agy: --account auto runs unbound on the machine's own sign-in, beside a le
     store.close();
     daemon = await startDaemon(dir);
     const client = await daemon.client();
+    // A client tells an ACP daemon from a print-mode one by this tag, in the hello and in deployInfo.
+    assert.ok((DAEMON_CAPABILITIES as readonly string[]).includes("agy.acp.v1"));
+    assert.ok(client.capabilities.includes("agy.acp.v1"), "advertised in the connection hello");
+    assert.ok((await client.request<DeployInfoResult>("deployInfo")).capabilities.includes("agy.acp.v1"), "and in deployInfo");
     const idle = (beeId: string) => waitFor(async () => {
       const view = await client.request<ViewResult>("view", { beeId });
       return view.view.runtimeState === "idle" ? view : null;
