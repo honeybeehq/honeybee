@@ -1,8 +1,9 @@
-import { createHmac } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { RpcClient } from "../../cli/src/client.ts";
 import { localTrustMessage, type LocalTrustChallenge } from "../src/localRpcTrust.ts";
+import type { SendRpcResult } from "../src/protocol.ts";
 import { makeDaemonDir, type DaemonConfigOverrides } from "./helpers.ts";
 
 export function makeRegisteredServiceDir(overrides: DaemonConfigOverrides = {}): ReturnType<typeof makeDaemonDir> {
@@ -19,4 +20,9 @@ export async function registerService(client: RpcClient, dir: string): Promise<v
     key.fill(0);
   }
   await client.request("rpc.localTrust.register", { pid: process.pid, challengeId: challenge.challengeId, token });
+}
+
+export function sendHumanChat(client: RpcClient, beeId: string, body: string, idempotencyKey: string, timeoutMs = 2000): Promise<SendRpcResult> {
+  const humanChat = { version: 1 as const, authorityId: "fixture-ui", admissionId: idempotencyKey, beeId, bodySha256: createHash("sha256").update(body).digest("hex"), idempotencyKey };
+  return client.request<SendRpcResult>("send", { beeId, body, idempotencyKey }, timeoutMs, { humanChat });
 }

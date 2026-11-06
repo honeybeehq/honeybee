@@ -195,19 +195,30 @@ test("int.3: watch — snapshot + contiguous seq deltas; induced gap forces a sn
     let cursor = -1;
     let chainBroken = false;
     let refetchedSeq: number | null = null;
+    let refetch: Promise<void> | null = null;
+    const held: Array<Extract<WatchFrame, { type: "delta" }>> = [];
+    const applyDelta = (frame: Extract<WatchFrame, { type: "delta" }>): void => {
+      if (frame.baseSeq !== cursor) chainBroken = true; // the client-side gap detector
+      cursor = frame.seq;
+      deltas.push({ baseSeq: frame.baseSeq, seq: frame.seq, count: frame.events.length });
+    };
     watcher.onEvent = (frame: WatchFrame) => {
       if (frame.type === "gap") {
         gaps += 1;
         // Fail-closed cursor: refetch the snapshot on any gap.
-        void watcher.request<SnapshotResult>("snapshot").then((snap) => {
+        held.length = 0;
+        const pending: Promise<void> = (refetch ?? Promise.resolve()).then(() => watcher.request<SnapshotResult>("snapshot")).then((snap) => {
+          if (refetch !== pending) return;
+          refetch = null;
           refetchedSeq = snap.seq;
           cursor = snap.seq;
+          for (const delta of held.splice(0)) if (delta.seq > snap.seq) applyDelta(delta);
         });
+        refetch = pending;
         return;
       }
-      if (frame.baseSeq !== cursor) chainBroken = true; // the client-side gap detector
-      cursor = frame.seq;
-      deltas.push({ baseSeq: frame.baseSeq, seq: frame.seq, count: frame.events.length });
+      if (refetch) { held.push(frame); return; }
+      applyDelta(frame);
     };
     const snap = await watcher.request<SnapshotResult>("watch");
     assert.ok(snap.seq > 0, "versioned snapshot");

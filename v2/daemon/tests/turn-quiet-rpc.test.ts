@@ -3,21 +3,23 @@ import { test } from "node:test";
 import { DatabaseSync } from "node:sqlite";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { makeDaemonDir, sleep, startDaemon, waitFor } from "./helpers.ts";
-import type { SendRpcResult, SpawnResult, ViewResult } from "../src/protocol.ts";
+import { sleep, startDaemon, waitFor } from "./helpers.ts";
+import { makeRegisteredServiceDir, registerService, sendHumanChat } from "./registered-service-fixture.ts";
+import type { SpawnResult, ViewResult } from "../src/protocol.ts";
 
 const fixture = new URL("./fixtures/quiet-claude.mjs", import.meta.url).pathname;
 
 test("quiet facts through a throwaway daemon: root/child isolation, failure, interruption and mid-turn restart", { timeout: 90_000 }, async () => {
-  const rig = makeDaemonDir({ agents: { claude: { command: process.execPath, args: [fixture], adapter: "claude" } } });
+  const rig = makeRegisteredServiceDir({ agents: { claude: { command: process.execPath, args: [fixture], adapter: "claude" } } });
   let daemon = await startDaemon(rig.dir);
   let client = await daemon.client();
   try {
+    await registerService(client, rig.dir);
     const spawned = await client.request<SpawnResult>("spawn", { name: "quiet-lab", agent: "claude", substrate: "hsr", cwd: rig.dir });
     const beeId = spawned.beeId;
     const view = () => client.request<ViewResult>("view", { beeId });
     await waitFor(async () => (await view()).runtime?.state === "idle", "fixture ready");
-    const send = (body: string) => client.request<SendRpcResult>("send", { beeId, body });
+    const send = (body: string) => sendHumanChat(client, beeId, body, body);
     const ended = (messageId: number) => waitFor(async () => {
       const value = await view();
       return value.bee?.lastTurnTrigger?.messageId === messageId && value.bee.lastTurnTrigger.endedAt !== null ? value : null;
@@ -82,15 +84,16 @@ test("quiet facts through a throwaway daemon: root/child isolation, failure, int
 for (const harness of ["grok", "kimi"] as const) {
   test(`quiet ACP facts through a throwaway ${harness} daemon`, { timeout: 60_000 }, async () => {
     const acpFixture = new URL("./fixtures/quiet-acp.mjs", import.meta.url).pathname;
-    const rig = makeDaemonDir({ agents: { [harness]: { command: acpFixture, args: [], adapter: harness } } });
+    const rig = makeRegisteredServiceDir({ agents: { [harness]: { command: acpFixture, args: [], adapter: harness } } });
     const daemon = await startDaemon(rig.dir);
     const client = await daemon.client();
     try {
+      await registerService(client, rig.dir);
       const spawned = await client.request<SpawnResult>("spawn", { name: `quiet-${harness}`, agent: harness, substrate: "hsr", cwd: rig.dir });
       const beeId = spawned.beeId;
       await waitFor(async () => (await client.request<ViewResult>("view", { beeId })).runtime?.state === "idle", `${harness} fixture ready`, 20_000);
       for (const [body, expected] of [["@success", true], ["@content-quiet", false], ["@error", undefined], ["@cancelled", undefined], ["@refusal", undefined]] as const) {
-        const sent = await client.request<SendRpcResult>("send", { beeId, body });
+        const sent = await sendHumanChat(client, beeId, body, body);
         const value = await waitFor(async () => {
           const current = await client.request<ViewResult>("view", { beeId });
           return current.bee?.lastTurnTrigger?.messageId === sent.messageId && current.bee.lastTurnTrigger.endedAt !== null ? current : null;

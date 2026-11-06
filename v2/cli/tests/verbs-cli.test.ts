@@ -11,7 +11,7 @@ import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openCoreStore } from "../../core/src/index.ts";
-import { BUZ_INJECTION_MARKER } from "../../daemon/src/envelope.ts";
+import { AUTOMATION_INJECTION_MARKER, BUZ_INJECTION_MARKER } from "../../daemon/src/envelope.ts";
 import { makeDaemonDir, startDaemon, waitFor, type DaemonHandle } from "../../daemon/tests/helpers.ts";
 import {
   agentAccountSelection,
@@ -987,7 +987,7 @@ test("handles.live: spawn returns the minted handle; ls leads with it and keeps 
   }
 });
 
-test("verbs.send-sender: hive send binds the ambient bee identity while operator sends stay human", async () => {
+test("verbs.send-sender: hive send binds the ambient bee identity; unclaimed and operator sends are delivered as automation", async () => {
   const { dir, cleanup } = makeDaemonDir();
   let daemon: DaemonHandle | null = null;
   const savedBee = process.env.HIVE_BEE;
@@ -1011,8 +1011,7 @@ test("verbs.send-sender: hive send binds the ambient bee identity while operator
     process.env.HIVE_BEE = "sender";
     delete process.env.HIVE_BEE_ID;
     const missingId = capture();
-    assert.equal(await runV2Cli(["send", "recipient", "missing id", "--data-dir", dir], missingId.io), 1);
-    assert.match(missingId.err.join("\n"), /HIVE_BEE_ID/);
+    assert.equal(await runV2Cli(["send", "recipient", "unclaimed", "--data-dir", dir], missingId.io), 0, "a name without a bee id claims nothing");
 
     process.env.HIVE_BEE = "sender";
     process.env.HIVE_BEE_ID = "00000000-0000-0000-0000-000000000000";
@@ -1061,6 +1060,7 @@ test("verbs.send-sender: hive send binds the ambient bee identity while operator
     }).messages;
     assert.equal(messages.find((message) => message.body === "from bee")?.sender, senderId);
     assert.equal(messages.find((message) => message.body === "from operator")?.sender, "operator");
+    assert.equal(messages.find((message) => message.body === "unclaimed")?.sender, "operator");
     assert.equal(messages.filter((message) => message.body === "from bee").length, 1);
 
     const view = capture();
@@ -1071,20 +1071,23 @@ test("verbs.send-sender: hive send binds the ambient bee identity while operator
       if (!existsSync(sessionLogPath)) return false;
       const events = readFileSync(sessionLogPath, "utf8").trim().split("\n").flatMap((line) => {
         try {
-          return [JSON.parse(line) as { event?: string; text?: string }];
+          return [JSON.parse(line) as { event?: string; text?: string; type?: string; body?: string }];
         } catch {
           return [];
         }
       });
       const beeEcho = events.find((event) => event.event === "text" && event.text?.includes("from bee"))?.text;
       const operatorEcho = events.find((event) => event.event === "text" && event.text?.includes("from operator"))?.text;
-      if (!beeEcho || !operatorEcho) return false;
+      const operatorDelivery = events.find((event) => event.type === "message" && event.body?.endsWith("\n\nfrom operator"))?.body;
+      if (!beeEcho || !operatorEcho || !operatorDelivery) return false;
       assert.ok(beeEcho.startsWith(`echo:${BUZ_INJECTION_MARKER}\n`));
       assert.ok(beeEcho.includes(`\"from\":\"${senderId}\"`));
       assert.ok(beeEcho.endsWith("\n\nfrom bee"));
-      assert.equal(operatorEcho, "echo:from operator");
+      assert.ok(operatorDelivery.startsWith(`${AUTOMATION_INJECTION_MARKER}\n`), "a bare operator send is delivered as automation");
+      assert.ok(operatorDelivery.includes("\"senderKind\":\"automation\""));
+      assert.equal(operatorEcho, "echo:from operator", "the stub works the body after the envelope");
       return true;
-    }, "peer envelope and bare operator delivery", 10_000);
+    }, "peer envelope and automation-enveloped operator delivery", 10_000);
   } finally {
     if (savedBee === undefined) delete process.env.HIVE_BEE;
     else process.env.HIVE_BEE = savedBee;
@@ -1140,7 +1143,7 @@ test("verbs.buz: v1 compat — buz send maps tiers onto urgency + sender; buz in
     assert.equal(row?.sender, senderId);
     assert.equal(row?.urgency, "idle", "tier queue maps to urgency idle");
 
-    // --sender-human → human:<name>; positional body works like plain send.
+    // --sender-human is refused: human input only enters through the authenticated Apiary UI.
     delete process.env.HIVE_BEE;
     delete process.env.HIVE_BEE_ID;
     const unauthenticatedPeer = capture();
@@ -1152,14 +1155,13 @@ test("verbs.buz: v1 compat — buz send maps tiers onto urgency + sender; buz in
     const b = capture();
     assert.equal(
       await runV2Cli(["buz", "send", "peer", "hello", "there", "--sender-human", "tormod", "--data-dir", dir, "--json"], b.io),
-      0,
+      1,
     );
+    assert.match(b.err.join("\n"), /authenticated Apiary UI/);
     const m2 = capture();
     await runV2Cli(["mailbox", "peer", "--data-dir", dir, "--json"], m2.io);
     const mail2 = JSON.parse(m2.out[0] ?? "{}") as { messages: Array<{ sender: string; body: string; urgency: string }> };
-    const row2 = mail2.messages.find((x) => x.body === "hello there");
-    assert.equal(row2?.sender, "human:tormod");
-    assert.equal(row2?.urgency, "next", "no tier → the v2 default");
+    assert.equal(mail2.messages.find((x) => x.body === "hello there"), undefined, "a refused human claim enqueues nothing");
 
     // Ambient sender: HIVE_BEE_ID fills --sender, exactly the old default.
     process.env.HIVE_BEE = "buzzer";
@@ -1169,7 +1171,7 @@ test("verbs.buz: v1 compat — buz send maps tiers onto urgency + sender; buz in
       await runV2Cli(["buz", "send", "peer", "--sender-human", "tormod", "-p", "forged human", "--data-dir", dir], forgedHuman.io),
       1,
     );
-    assert.match(forgedHuman.err.join("\n"), /cannot claim a human sender/);
+    assert.match(forgedHuman.err.join("\n"), /authenticated Apiary UI/);
     const c = capture();
     assert.equal(await runV2Cli(["buz", "send", "peer", "-p", "ambient", "--data-dir", dir, "--json"], c.io), 0);
     const m3 = capture();

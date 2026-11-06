@@ -8,6 +8,7 @@ import { RpcClient } from "../../cli/src/client.ts";
 import { RpcError, type BeeTellResult, type BeeReactResult, type SnapshotResult, type SpawnResult, type SendRpcResult, type ViewResult, type WatchFrame } from "../src/protocol.ts";
 import { localTrustMessage, type LocalTrustChallenge } from "../src/localRpcTrust.ts";
 import { startDaemon, waitFor, type DaemonHandle } from "./helpers.ts";
+import { sendHumanChat } from "./registered-service-fixture.ts";
 
 const code = (expected: string) => (error: unknown) => error instanceof RpcError && error.code === expected;
 
@@ -31,8 +32,11 @@ test("human output daemon: explicit output, exact replies, strict validation, mi
     await assert.rejects(client.request("bee.tell", { beeId, text: "not opted in", idempotencyKey: "legacy" }, 1000, context), code("human_output_mode_legacy"));
     await client.request("bee.setHumanOutputMode", { beeId, mode: "explicit", idempotencyKey: "enable" });
     await assert.rejects(client.request("bee.setHumanOutputMode", { beeId, mode: "legacy", idempotencyKey: "self" }, 1000, context), code("caller_not_trusted"));
-    const one = await client.request<SendRpcResult>("send", { beeId, body: "human one", senderKind: "human" });
-    const two = await client.request<SendRpcResult>("send", { beeId, body: "human two", senderKind: "human" });
+    const unadmitted = await client.request<SendRpcResult>("send", { beeId, body: "labelled, not admitted", senderKind: "human" });
+    assert.equal((await client.request<ViewResult>("view", { beeId })).view.unansweredHumanMessage, null, "a senderKind label without admission is automation");
+    await client.request("mail.ack", { beeId, throughId: unadmitted.messageId });
+    const one = await sendHumanChat(client, beeId, "human one", "human-one");
+    const two = await sendHumanChat(client, beeId, "human two", "human-two");
     await client.request("mail.ack", { beeId, throughId: two.messageId });
     const view = await client.request<ViewResult>("view", { beeId });
     assert.equal(view.view.unansweredHumanMessage!.messageId, one.messageId);
