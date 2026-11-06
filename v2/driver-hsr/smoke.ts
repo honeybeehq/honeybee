@@ -112,7 +112,7 @@ function specFor(): SpawnSpec {
  * agy: every smoke turn runs on a Gemini model (the session default may be
  * another vendor's), with one stdio MCP server in session/new. smoke-1 takes
  * the model family and effort through configuration options; smoke-2 takes a
- * concrete model id, which goes through session/set_model.
+ * concrete model id.
  */
 const AGY_MODEL = model ?? "gemini-3.8-flash";
 const AGY_EFFORT = effort ?? "low";
@@ -307,7 +307,7 @@ async function agySmoke(): Promise<void> {
   }
   driver.stop("smoke-1", 2, "stopped_by_user");
 
-  // A concrete model id: the option refuses it and session/set_model takes it. No turn.
+  // A concrete model id, through the model option or its session/set_model retry. No turn.
   events.length = 0;
   driver.start("smoke-2", 1);
   const concrete = await agyBoot("smoke-2");
@@ -324,13 +324,19 @@ async function agySmoke(): Promise<void> {
   const kinds = new Map<string, number>();
   for (const update of updates) kinds.set(String(update.sessionUpdate), (kinds.get(String(update.sessionUpdate)) ?? 0) + 1);
   const initialized = rows.find((row) => row.id === 1 && "result" in row)?.result as Record<string, unknown> | undefined;
-  let late = 0;
+  // Updates outside a prompt: harmless unless they are of a kind that opens a turn.
+  const outside = new Map<string, number>();
   let open = false;
   for (const row of rows) {
     if (row.method === "session/prompt") open = true;
     else if (typeof row.id === "number" && row.id >= 1000 && row.method === undefined) open = false;
-    else if (row.method === "session/update" && !open) late += 1;
+    else if (row.method === "session/update" && !open) {
+      const kind = String((((row.params as Record<string, unknown> | undefined)?.update ?? {}) as Record<string, unknown>).sessionUpdate);
+      outside.set(kind, (outside.get(kind) ?? 0) + 1);
+    }
   }
+  const opening = ["agent_message_chunk", "agent_thought_chunk", "tool_call", "tool_call_update"].filter((kind) => outside.has(kind));
+  check("no turn-opening update arrives outside a prompt", opening.length === 0, opening.join(", "));
   console.log("\nagy protocol facts:");
   console.log(`  agentInfo: ${JSON.stringify(initialized?.agentInfo ?? null)}`);
   console.log(`  authMethods: ${JSON.stringify(Array.isArray(initialized?.authMethods) ? initialized.authMethods.map((m) => (m as Record<string, unknown>).id) : null)}`);
@@ -339,10 +345,10 @@ async function agySmoke(): Promise<void> {
   console.log(`  configuration (smoke-2): ${routes.join(" ")}`);
   console.log(`  authenticate sent: ${rows.some((row) => row.method === "authenticate")}`);
   console.log(`  session/update kinds: ${[...kinds].map(([kind, count]) => `${kind}×${count}`).join(", ")}`);
-  console.log(`  session/update outside a prompt: ${late}`);
+  console.log(`  session/update outside a prompt: ${[...outside].map(([kind, count]) => `${kind}×${count}`).join(", ") || "none"}`);
   console.log(`  permission requests: ${rows.filter((row) => row.method === "session/request_permission").length}`);
   for (const update of updates.filter((u) => u.sessionUpdate === "tool_call" || u.sessionUpdate === "tool_call_update")) {
-    console.log(`  ${String(update.sessionUpdate)}: ${JSON.stringify({ title: update.title, kind: update.kind, status: update.status, keys: Object.keys(update).sort(), rawInput: update.rawInput, content: update.content, rawOutput: update.rawOutput }).slice(0, 700)}`);
+    console.log(`  ${String(update.sessionUpdate)}: ${JSON.stringify({ title: update.title, name: update.name, kind: update.kind, status: update.status, keys: Object.keys(update).sort(), args: update.args, rawInput: update.rawInput, content: update.content, rawOutput: update.rawOutput }).slice(0, 900)}`);
   }
   for (const row of rows.filter((r) => typeof r.id === "number" && r.id >= 1000 && r.method === undefined)) {
     console.log(`  prompt ${row.id} response: ${JSON.stringify("error" in row ? { error: row.error } : row.result).slice(0, 500)}`);
