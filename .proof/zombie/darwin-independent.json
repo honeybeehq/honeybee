@@ -1,0 +1,19 @@
+{
+  "checkerSession": "d7222dca-7237-4d67-8153-d002a91f3446",
+  "node": "mini02-erebor",
+  "platform": "Darwin 25.6.0 arm64",
+  "nodeVersion": "v24.22.2",
+  "workersPerLoop": 50,
+  "evidenceSource": "Authenticated agent_send results, 2026-11-07; checker restored tracked source and submitted no proof",
+  "fixture": "Actual upstream.ts imported in eval Workers; allowlisted environment with owned Cell HOME/HIVE paths",
+  "baselineTwice": [[0,50,50],[0,50,50]],
+  "retainHandleTwice": [[0,0,0],[0,0,0]],
+  "retainHandleForcedTermination": [0,50,50],
+  "finalNestedWorkerNaturalTwice": [[0,0,0],[0,0,0]],
+  "finalNestedWorkerForcedAfterRelease": [0,0,0],
+  "finalNestedWorkerForcedWithoutRelease": [0,0,0],
+  "countsMeaning": ["before", "after owner exit", "after another 1000ms"],
+  "mtimeRefreshWhileOwnerAtomicsWaitBlocked": true,
+  "mtimeStableAfterForcedOwnerTermination": true,
+  "verificationGap": "Checker lacked node_modules; typecheck/build performed successfully in parent Cell instead"
+}

@@ -1,0 +1,41 @@
+✔ child census counts only the daemon's zombie children (1.139774ms)
+✔ child census is single-flight, warns above threshold and clears on recovery (0.47836ms)
+✔ failed census reports unavailable rather than a healthy zero (0.87496ms)
+✔ real process listing observes this test process (50.980192ms)
+✔ identity recovery is bounded, fair, retries failures and warns at ten minutes (1.898919ms)
+✔ stop intent remains queued and deduplicated across restart until proof, without signaling (50.691882ms)
+✔ archive intent remains queued and deduplicated across restart until proof, without signaling (35.240934ms)
+✔ proven gone still reconciles to stopped while unresolved rows stay reachable (27.540635ms)
+✔ resolved RPC results omit diagnostics; overdue unresolved rows carry doctor and CLI text (29.425006ms)
+✔ identity loss during stop holds the same durable command without a signal or retry exhaustion (28.450682ms)
+✔ a queued unresolved stop settles after restart when the process is proven gone (28.602287ms)
+✔ boot absence cannot settle a malformed or unbound persisted identity (26.687257ms)
+✔ recovery persists an owned late capture through the store and never replaces malformed content (28.306362ms)
+✔ shutdown preserves default ordering and confines early disposal (preserve=true) (1.287301ms)
+✔ shutdown preserves default ordering and confines early disposal (preserve=false) (0.823079ms)
+✔ mirror heartbeat is reaped before its spawning worker exits (1215.5623ms)
+✔ terminating a refresh worker cannot abandon an OS heartbeat child (1214.030384ms)
+✔ upstream.ancestry: work landed upstream but missing from the stale origin is landed once the mirror fetched it (595.912913ms)
+✔ upstream.rebased: work rebased onto the upstream under new SHAs is landed by the existing content checks against the mirror (564.544572ms)
+✔ upstream.unmerged: a pushed branch that never reached the upstream default branch stays unlanded (357.534903ms)
+✔ upstream.fallbacks: no upstream URL is unmirrored; a failing fetch keeps the last good ref (437.498983ms)
+✔ resolveCellBase: HEAD until a fetch moves the upstream tip ahead, then the tip (264.13521ms)
+✔ resolveCellBase: local commits not on the upstream keep HEAD (259.813384ms)
+✔ resolveCellBase: no upstream configured is plain HEAD (49.510527ms)
+✔ syncOriginFromMirror: an unreachable upstream leaves the origin's tracking ref alone (189.322207ms)
+✔ syncOriginFromMirror: an origin tracking a non-default branch is not moved to the upstream default (260.436354ms)
+✔ clone-provisioned Cell points origin at the real upstream, not the local origin path (433.666538ms)
+✔ pool claim refreshes the Cell's origin/main to the current upstream tip (467.38828ms)
+✔ upstream.lock: a refresh waits for a concurrent one instead of failing into backoff, and a stale lock is taken over (509.684823ms)
+✔ syncOriginFromMirror: a busy origin (index.lock, merge in progress) is skipped with a reason and left untouched (486.711682ms)
+✔ upstream.lock heartbeat: the holder keeps the lock's mtime fresh until it releases (2304.352112ms)
+✔ adoptOriginRemote never writes the origin checkout: clone provision and pool claim leave its origin url, pushurl and origin/* refs unchanged (547.770865ms)
+✔ pool claim whose member lacks the origin's new upstream tip still provisions: stale origin/* refs are dropped, the tracking ref is not moved (406.999701ms)
+ℹ tests 33
+ℹ suites 0
+ℹ pass 33
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 8320.576131

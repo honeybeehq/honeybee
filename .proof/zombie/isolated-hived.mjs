@@ -1,0 +1,34 @@
+import {mkdtempSync, mkdirSync, writeFileSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join, resolve} from 'node:path';
+import {Worker} from 'node:worker_threads';
+import {execFile, execFileSync} from 'node:child_process';
+const cleanupHome = process.env.HOME;
+const root = mkdtempSync(join(tmpdir(),'hb-zombie-'));
+for(const key of Object.keys(process.env)) if(key.startsWith('HIVE_')) delete process.env[key];
+process.env.HOME = join(root,'home'); mkdirSync(process.env.HOME);
+process.env.HIVE_V2_DATA_DIR = join(root,'data'); mkdirSync(process.env.HIVE_V2_DATA_DIR);
+process.env.HIVE_STORE_ROOT = root;
+process.env.HIVE_NODE_PATH = process.execPath;
+process.env.HIVE_NO_KEYCHAIN = '1';
+const data = process.env.HIVE_V2_DATA_DIR;
+writeFileSync(join(data,'config.json'),JSON.stringify({naming:{auto:false},accounts:{vaultDir:join(root,'vault'),homesDir:join(root,'homes'),limitsRefreshMs:0},cells:{root:join(root,'cells'),retention:{enabled:false}},tickMs:1000}));
+const {HiveDaemon} = await import('../../v2/daemon/src/daemon.ts');
+const {loadNodeConfig} = await import('../../v2/daemon/src/config.ts');
+const {RpcClient} = await import('../../v2/cli/src/client.ts');
+const cfg=loadNodeConfig(data), daemon=new HiveDaemon(cfg);
+const upstream=new URL('../../v2/driver-cell/src/upstream.ts',import.meta.url).href;
+let client;
+try {
+ await daemon.start();
+ client=await RpcClient.connect(cfg.socketPath);
+ const count=()=>execFileSync('ps',['-axo','ppid=,stat='],{encoding:'utf8'}).split('\n').filter(l=>{const [p,s]=l.trim().split(/\s+/);return +p===process.pid&&s?.startsWith('Z')}).length;
+ const before=count();
+ for(let i=0;i<50;i++)await new Promise((resolve,reject)=>{const w=new Worker(`import {holdMirrorLock} from ${JSON.stringify(upstream)}; holdMirrorLock(${JSON.stringify(join(root,'lock'))},1000).release();`,{eval:true});w.once('error',reject);w.once('exit',code=>code===0?resolve():reject(Error(`exit ${code}`)))});
+ await new Promise(r=>setTimeout(r,100));
+ await daemon.childHealth.check();
+ const health=await client.request('health',{}), after=count();
+ const doctor = await new Promise(resolveDoctor => execFile(process.execPath,['dist/cli.js','doctor','--data-dir',data,'--socket',cfg.socketPath],{env:process.env},(error,stdout,stderr)=>resolveDoctor({code:error?.code??0,stderr:stderr.trim()})));
+ console.log(JSON.stringify({doctor,platform:process.platform,node:process.version,fixture:root,pid:process.pid,loops:50,before,after,health:health.childHealth}));
+ if(after!==before||health.childHealth.state!=='ok')process.exitCode=1;
+} finally { await client?.close(); await daemon.shutdown(); execFileSync('trash',[root],{env:{...process.env,HOME:cleanupHome}}); }

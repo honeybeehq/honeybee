@@ -1,3 +1,4 @@
+import { ChildHealthMonitor } from "./childHealth.ts";
 import type { SchedulingStatus } from "../../core/src/processScheduling.ts";
 import { assertConfinedSpawn, ConfinedAdmission, assertConfinedVerb, bwrapMode, classifyPeer, peerConfinement, peerOwner, runtimeUserNamespace, strictConfinementReasons, type PeerOwner } from "./confinedPeer.ts";
 import { admitSecretExecution } from "./secretExecution.ts";
@@ -780,6 +781,7 @@ export class HiveDaemon {
   private readonly identityRecovery = new IdentityRecovery();
   private identityWarningAt = 0;
   private identityRecoveryTimer: NodeJS.Timeout | null = null;
+  private readonly childHealth = new ChildHealthMonitor(line => this.log(line));
   private loopDelayTimer: NodeJS.Timeout | null = null;
   private readonly startedAt = Date.now();
   readonly instanceId = randomUUID();
@@ -1250,7 +1252,9 @@ export class HiveDaemon {
     // shell-outs) — at most one log line per minute, when the loop stalled.
     this.loopDelay = monitorEventLoopDelay({ resolution: 20 });
     this.loopDelay.enable();
+    void this.childHealth.check();
     this.loopDelayTimer = setInterval(() => {
+      void this.childHealth.check();
       const h = this.loopDelay;
       if (!h) return;
       const maxMs = Math.round(h.max / 1e6);
@@ -6964,6 +6968,7 @@ export class HiveDaemon {
     const store = this.mustStore();
     return {
       ...(this.identityRecovery.counts(Date.now()).overdue ? {identityDiagnostic: {warning: "process_identity_unresolved" as const, count: this.identityRecovery.counts(Date.now()).overdue}} : {}),
+      childHealth: this.childHealth.status,
       protocol: PROTOCOL,
       pid: process.pid,
       startedAt: this.startedAt,

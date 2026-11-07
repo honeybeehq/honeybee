@@ -2258,6 +2258,7 @@ export interface HarnessFact {
 }
 
 export interface HealthResult {
+  childHealth?: import("./childHealth.ts").ChildHealth;
   confinement?: {strict: boolean; reasons: string[]; bwrap: {path: string | null; setuid: boolean}};
   paneInputUnknown?: number;
   deliveryHoldUnknown?: number;

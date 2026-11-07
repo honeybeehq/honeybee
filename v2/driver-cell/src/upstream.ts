@@ -1,4 +1,4 @@
-import { childNodePath, nativeNodeEnv } from "../../core/src/nodeRuntime.ts";
+import { Worker } from "node:worker_threads";
 /**
  * Honeybee-owned upstream mirrors: one bare repository per origin URL under
  * `<data-dir>/upstream/`, fetch-only, whose `refs/upstream/head` is the
@@ -8,7 +8,7 @@ import { childNodePath, nativeNodeEnv } from "../../core/src/nodeRuntime.ts";
  * transfers what the origin lacks. Nothing here writes to the origin checkout
  * or to a Cell, and nothing ever pushes.
  */
-import { spawn, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { devNull } from "node:os";
@@ -20,12 +20,9 @@ const MIN_FAILURE_BACKOFF_MS = 5 * 60_000;
 const MIRROR_LOCK_STALE_MS = 5 * 60_000;
 const MIRROR_LOCK_HEARTBEAT_MS = 30_000;
 const LOCK_HEARTBEAT_SOURCE = `const fs = require("node:fs");
-const dir = process.argv[1];
-const touch = () => { try { const now = new Date(); fs.utimesSync(dir, now, now); } catch { process.exit(0); } };
-setInterval(touch, Number(process.argv[2]));
-process.stdin.on("end", () => process.exit(0));
-process.stdin.on("error", () => process.exit(0));
-process.stdin.resume();`;
+const { workerData } = require("node:worker_threads");
+const touch = () => { try { const now = new Date(); fs.utimesSync(workerData.lockDir, now, now); } catch { process.exit(0); } };
+setInterval(touch, workerData.heartbeatMs);`;
 const FETCHED_AT_FILE = "honeybee-fetched-at";
 const FAILED_AT_FILE = "honeybee-fetch-failed-at";
 
@@ -140,13 +137,15 @@ export function refreshUpstreamMirror(
 
 export function holdMirrorLock(lockDir: string, heartbeatMs = MIRROR_LOCK_HEARTBEAT_MS): { release(): void } {
   try {
-    const child = spawn(childNodePath(), ["-e", LOCK_HEARTBEAT_SOURCE, lockDir, String(heartbeatMs)], {
-      stdio: ["pipe", "ignore", "ignore"],
-      env: nativeNodeEnv(),
+    // This timer must run while its owner blocks on synchronous git calls.
+    // Use an owned thread, not an OS child: a short-lived/terminated refresh
+    // worker can discard a child's libuv wait handle and leave hived zombies.
+    // Node tears down nested workers even when the owning worker is terminated.
+    const heartbeat = new Worker(LOCK_HEARTBEAT_SOURCE, {
+      eval: true, workerData: { lockDir, heartbeatMs },
     });
-    child.on("error", () => {});
-    child.unref();
-    return { release: () => { child.kill("SIGKILL"); } };
+    heartbeat.on("error", () => {});
+    return { release: () => { void heartbeat.terminate(); } };
   } catch {
     return { release: () => {} };
   }

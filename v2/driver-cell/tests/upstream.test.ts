@@ -328,7 +328,8 @@ test("upstream.lock heartbeat: the holder keeps the lock's mtime fresh until it 
     const old = new Date(Date.now() - 10 * 60_000);
     utimesSync(lockDir, old, old);
     const held = holdMirrorLock(lockDir, 100);
-    await new Promise((r) => setTimeout(r, 1_500));
+    // The refresh owner blocks on synchronous git; heartbeat must still run.
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1_500);
     assert.ok(Date.now() - statSync(lockDir).mtimeMs < 1_000, "heartbeat refreshed the mtime");
     held.release();
     await new Promise((r) => setTimeout(r, 300));

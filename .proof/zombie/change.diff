@@ -1,0 +1,217 @@
+diff --git a/v2/cli/src/main.ts b/v2/cli/src/main.ts
+index 5c7e9456..385d579c 100644
+--- a/v2/cli/src/main.ts
++++ b/v2/cli/src/main.ts
+@@ -5104,0 +5105,2 @@ export async function runV2Cli(argv: string[], io: CliIo = defaultIo): Promise<n
++        const childWarning = health.childHealth?.state === "warning";
++        if (health.childHealth?.state === "warning") ctx.io.err(`warning: daemon zombie children count=${health.childHealth.zombies}`);
+@@ -5109,2 +5111,2 @@ export async function runV2Cli(argv: string[], io: CliIo = defaultIo): Promise<n
+-        emit(ctx, [confirm(degraded ? "warn" : "ok", "local RPC peer credentials:", security ? `${security.peerCredentials.state} (${security.peerCredentials.target}; ${security.peerCredentials.artifactPath})` : "not reported by this daemon"), confirm(helperUnavailable ? "warn" : "ok", "delivery file native helper:", helper ? `${helper.state} (${helper.target}; ${helper.artifactPath})` : "not reported by this daemon"), confirm(paneInputUnknown ? "warn" : "ok", "pane_input_unknown:", String(paneInputUnknown)), confirm(deliveryHoldUnknown ? "warn" : "ok", "delivery_hold_state_unknown:", String(deliveryHoldUnknown)), confirm(deliveryPrepareAuditUnknown ? "warn" : "ok", "delivery_prepare_audit_unknown:", String(deliveryPrepareAuditUnknown))], {localSecurity: security ?? null, deliveryFileHelper: helper ?? null, paneInputUnknown, deliveryHoldUnknown, deliveryPrepareAuditUnknown, ...(health.identityDiagnostic ? {identityDiagnostic: health.identityDiagnostic} : {})}, false);
+-        return degraded || helperUnavailable || paneInputUnknown || deliveryHoldUnknown || deliveryPrepareAuditUnknown || health.identityDiagnostic?.warning ? 1 : 0;
++        emit(ctx, [confirm(degraded ? "warn" : "ok", "local RPC peer credentials:", security ? `${security.peerCredentials.state} (${security.peerCredentials.target}; ${security.peerCredentials.artifactPath})` : "not reported by this daemon"), confirm(helperUnavailable ? "warn" : "ok", "delivery file native helper:", helper ? `${helper.state} (${helper.target}; ${helper.artifactPath})` : "not reported by this daemon"), confirm(paneInputUnknown ? "warn" : "ok", "pane_input_unknown:", String(paneInputUnknown)), confirm(deliveryHoldUnknown ? "warn" : "ok", "delivery_hold_state_unknown:", String(deliveryHoldUnknown)), confirm(deliveryPrepareAuditUnknown ? "warn" : "ok", "delivery_prepare_audit_unknown:", String(deliveryPrepareAuditUnknown))], {childHealth: health.childHealth ?? null, localSecurity: security ?? null, deliveryFileHelper: helper ?? null, paneInputUnknown, deliveryHoldUnknown, deliveryPrepareAuditUnknown, ...(health.identityDiagnostic ? {identityDiagnostic: health.identityDiagnostic} : {})}, false);
++        return childWarning || degraded || helperUnavailable || paneInputUnknown || deliveryHoldUnknown || deliveryPrepareAuditUnknown || health.identityDiagnostic?.warning ? 1 : 0;
+diff --git a/v2/daemon/src/childHealth.ts b/v2/daemon/src/childHealth.ts
+new file mode 100644
+index 00000000..e6f70d1d
+--- /dev/null
++++ b/v2/daemon/src/childHealth.ts
+@@ -0,0 +1,48 @@
++import { execFile } from "node:child_process";
++
++export const ZOMBIE_CHILD_THRESHOLD = 3;
++export type ChildHealth =
++  | { state: "unchecked" }
++  | { state: "unavailable"; checkedAt: number }
++  | { state: "ok" | "warning"; checkedAt: number; zombies: number; threshold: number };
++
++/** Only parent PID and state: never command arguments or environments. */
++export function countZombieChildren(listing: string, parentPid: number): number {
++  return listing.split("\n").filter(line => {
++    const [parent, state] = line.trim().split(/\s+/);
++    return Number(parent) === parentPid && state?.startsWith("Z");
++  }).length;
++}
++
++export function readZombieChildren(pid: number): Promise<number> {
++  return new Promise((resolve, reject) => {
++    execFile("ps", ["-axo", "ppid=,stat="], { encoding: "utf8", timeout: 5_000, maxBuffer: 4 * 1024 * 1024 }, (error, stdout) => {
++      if (error) reject(error);
++      else resolve(countZombieChildren(stdout, pid));
++    });
++  });
++}
++
++/** One bounded census per minute, with no overlapping subprocesses. */
++export class ChildHealthMonitor {
++  status: ChildHealth = { state: "unchecked" };
++  private pending: Promise<void> | null = null;
++  private readonly log: (line: string) => void;
++  private readonly read: () => Promise<number>;
++  constructor(log: (line: string) => void, read = () => readZombieChildren(process.pid)) {
++    this.log = log;
++    this.read = read;
++  }
++
++  check(): Promise<void> {
++    if (this.pending) return this.pending;
++    this.pending = this.read().then(zombies => {
++      this.status = { state: zombies > ZOMBIE_CHILD_THRESHOLD ? "warning" : "ok", checkedAt: Date.now(), zombies, threshold: ZOMBIE_CHILD_THRESHOLD };
++      if (this.status.state === "warning") this.log(`daemon.children.zombies warning count=${zombies} threshold=${ZOMBIE_CHILD_THRESHOLD} pid=${process.pid}`);
++    }, () => {
++      this.status = { state: "unavailable", checkedAt: Date.now() };
++      this.log("daemon.children.census_unavailable");
++    }).finally(() => { this.pending = null; });
++    return this.pending;
++  }
++}
+diff --git a/v2/daemon/src/daemon.ts b/v2/daemon/src/daemon.ts
+index 1cb2eebe..6b24208d 100644
+--- a/v2/daemon/src/daemon.ts
++++ b/v2/daemon/src/daemon.ts
+@@ -0,0 +1 @@
++import { ChildHealthMonitor } from "./childHealth.ts";
+@@ -782,0 +784 @@ export class HiveDaemon {
++  private readonly childHealth = new ChildHealthMonitor(line => this.log(line));
+@@ -1252,0 +1255 @@ export class HiveDaemon {
++    void this.childHealth.check();
+@@ -1253,0 +1257 @@ export class HiveDaemon {
++      void this.childHealth.check();
+@@ -6966,0 +6971 @@ export class HiveDaemon {
++      childHealth: this.childHealth.status,
+diff --git a/v2/daemon/src/protocol.ts b/v2/daemon/src/protocol.ts
+index 6a4caf9f..9b833aa4 100644
+--- a/v2/daemon/src/protocol.ts
++++ b/v2/daemon/src/protocol.ts
+@@ -2260,0 +2261 @@ export interface HealthResult {
++  childHealth?: import("./childHealth.ts").ChildHealth;
+diff --git a/v2/daemon/tests/child-health.test.ts b/v2/daemon/tests/child-health.test.ts
+new file mode 100644
+index 00000000..0cf30bb5
+--- /dev/null
++++ b/v2/daemon/tests/child-health.test.ts
+@@ -0,0 +1,38 @@
++import { test } from "node:test";
++import assert from "node:assert/strict";
++import { ChildHealthMonitor, countZombieChildren, readZombieChildren } from "../src/childHealth.ts";
++
++test("child census counts only the daemon's zombie children", () => {
++  assert.equal(countZombieChildren(" 123 Z\n123 Z+\n123 S\n124 Z\n", 123), 2);
++});
++
++test("child census is single-flight, warns above threshold and clears on recovery", async () => {
++  const logs: string[] = [];
++  let finish!: (value: number) => void;
++  let calls = 0;
++  const monitor = new ChildHealthMonitor(line => logs.push(line), () => { calls++; return new Promise(resolve => { finish = resolve; }); });
++  const pending = monitor.check();
++  assert.equal(monitor.check(), pending);
++  assert.equal(calls, 1);
++  finish(4);
++  await pending;
++  assert.equal(monitor.status.state, "warning");
++  assert.match(logs[0]!, /warning count=4 threshold=3/);
++  const recovery = monitor.check(); finish(0); await recovery;
++  assert.equal(monitor.status.state, "ok");
++  const boundary = monitor.check(); finish(3); await boundary;
++  assert.equal(monitor.status.state, "ok");
++  assert.equal(logs.length, 1);
++});
++
++test("failed census reports unavailable rather than a healthy zero", async () => {
++  const logs: string[] = [];
++  const monitor = new ChildHealthMonitor(line => logs.push(line), async () => { throw new Error("EAGAIN"); });
++  await monitor.check();
++  assert.equal(monitor.status.state, "unavailable");
++  assert.deepEqual(logs, ["daemon.children.census_unavailable"]);
++});
++
++test("real process listing observes this test process", { skip: process.platform === "win32" }, async () => {
++  assert.equal(await readZombieChildren(process.pid), 0);
++});
+diff --git a/v2/driver-cell/src/upstream.ts b/v2/driver-cell/src/upstream.ts
+index be1e482e..2355a7de 100644
+--- a/v2/driver-cell/src/upstream.ts
++++ b/v2/driver-cell/src/upstream.ts
+@@ -1 +1 @@
+-import { childNodePath, nativeNodeEnv } from "../../core/src/nodeRuntime.ts";
++import { Worker } from "node:worker_threads";
+@@ -11 +11 @@ import { childNodePath, nativeNodeEnv } from "../../core/src/nodeRuntime.ts";
+-import { spawn, spawnSync } from "node:child_process";
++import { spawnSync } from "node:child_process";
+@@ -23,6 +23,3 @@ const LOCK_HEARTBEAT_SOURCE = `const fs = require("node:fs");
+-const dir = process.argv[1];
+-const touch = () => { try { const now = new Date(); fs.utimesSync(dir, now, now); } catch { process.exit(0); } };
+-setInterval(touch, Number(process.argv[2]));
+-process.stdin.on("end", () => process.exit(0));
+-process.stdin.on("error", () => process.exit(0));
+-process.stdin.resume();`;
++const { workerData } = require("node:worker_threads");
++const touch = () => { try { const now = new Date(); fs.utimesSync(workerData.lockDir, now, now); } catch { process.exit(0); } };
++setInterval(touch, workerData.heartbeatMs);`;
+@@ -143,3 +140,6 @@ export function holdMirrorLock(lockDir: string, heartbeatMs = MIRROR_LOCK_HEARTB
+-    const child = spawn(childNodePath(), ["-e", LOCK_HEARTBEAT_SOURCE, lockDir, String(heartbeatMs)], {
+-      stdio: ["pipe", "ignore", "ignore"],
+-      env: nativeNodeEnv(),
++    // This timer must run while its owner blocks on synchronous git calls.
++    // Use an owned thread, not an OS child: a short-lived/terminated refresh
++    // worker can discard a child's libuv wait handle and leave hived zombies.
++    // Node tears down nested workers even when the owning worker is terminated.
++    const heartbeat = new Worker(LOCK_HEARTBEAT_SOURCE, {
++      eval: true, workerData: { lockDir, heartbeatMs },
+@@ -147,3 +147,2 @@ export function holdMirrorLock(lockDir: string, heartbeatMs = MIRROR_LOCK_HEARTB
+-    child.on("error", () => {});
+-    child.unref();
+-    return { release: () => { child.kill("SIGKILL"); } };
++    heartbeat.on("error", () => {});
++    return { release: () => { void heartbeat.terminate(); } };
+diff --git a/v2/driver-cell/tests/heartbeat-reaping.test.ts b/v2/driver-cell/tests/heartbeat-reaping.test.ts
+new file mode 100644
+index 00000000..19719536
+--- /dev/null
++++ b/v2/driver-cell/tests/heartbeat-reaping.test.ts
+@@ -0,0 +1,37 @@
++import { test } from "node:test";
++import assert from "node:assert/strict";
++import { Worker } from "node:worker_threads";
++import { execFileSync } from "node:child_process";
++
++function zombies(): number {
++  return execFileSync("ps", ["-axo", "ppid=,stat="], { encoding: "utf8" }).split("\n").filter(line => {
++    const [parent, state] = line.trim().split(/\s+/);
++    return Number(parent) === process.pid && state?.startsWith("Z");
++  }).length;
++}
++
++test("mirror heartbeat is reaped before its spawning worker exits", { skip: process.platform === "win32", timeout: 30_000 }, async () => {
++  const before = zombies();
++  const upstream = new URL("../src/upstream.ts", import.meta.url).href;
++  for (let i = 0; i < 20; i++) {
++    await new Promise<void>((resolve, reject) => {
++      const worker = new Worker(`import {holdMirrorLock} from ${JSON.stringify(upstream)}; holdMirrorLock('/nonexistent-fixture-lock', 1000).release();`, { eval: true });
++      worker.once("error", reject);
++      worker.once("exit", code => code === 0 ? resolve() : reject(new Error(`worker exit ${code}`)));
++    });
++  }
++  await new Promise(resolve => setTimeout(resolve, 100));
++  assert.equal(zombies(), before, "short-lived workers must not abandon heartbeat child wait handles");
++});
++
++test("terminating a refresh worker cannot abandon an OS heartbeat child", { skip: process.platform === "win32", timeout: 30_000 }, async () => {
++  const before = zombies();
++  const upstream = new URL("../src/upstream.ts", import.meta.url).href;
++  for (let i = 0; i < 20; i++) {
++    const worker = new Worker(`import {parentPort} from 'node:worker_threads'; import {holdMirrorLock} from ${JSON.stringify(upstream)}; const held=holdMirrorLock('/nonexistent-fixture-lock',1000); parentPort.postMessage('held'); Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0);`, { eval: true });
++    await new Promise<void>((resolve, reject) => { worker.once("message", () => resolve()); worker.once("error", reject); });
++    await worker.terminate();
++  }
++  await new Promise(resolve => setTimeout(resolve, 100));
++  assert.equal(zombies(), before, "forced owner teardown must not create zombie children");
++});
+diff --git a/v2/driver-cell/tests/upstream.test.ts b/v2/driver-cell/tests/upstream.test.ts
+index fb5736ca..79708d5c 100644
+--- a/v2/driver-cell/tests/upstream.test.ts
++++ b/v2/driver-cell/tests/upstream.test.ts
+@@ -331 +331,2 @@ test("upstream.lock heartbeat: the holder keeps the lock's mtime fresh until it
+-    await new Promise((r) => setTimeout(r, 1_500));
++    // The refresh owner blocks on synchronous git; heartbeat must still run.
++    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1_500);
