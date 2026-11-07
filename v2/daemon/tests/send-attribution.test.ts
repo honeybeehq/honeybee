@@ -16,7 +16,7 @@ test("session-only CLI identity is retained outside a Cell", () => {
   assert.throws(() => resolveSendSender([], undefined, "/fixture", { HIVE_SESSION_ID: "one", HIVE_BEE_ID: "two" }), /identity/);
 });
 
-test("isolated owner records agent, unattributed and authenticated UI sends distinctly", async () => {
+test("isolated owner records agent, human and authenticated UI sends distinctly", async () => {
   const { dir } = makeRegisteredServiceDir();
   const daemon = await startDaemon(dir, { platform: process.platform });
   const client = await daemon.client();
@@ -29,7 +29,7 @@ test("isolated owner records agent, unattributed and authenticated UI sends dist
     await client.request("send", { beeId: target.beeId, body: "unattributed report", senderKind: "human" });
     const initial = await client.request<{ messages: MessageRow[] }>("mailbox", { beeId: target.beeId });
     assert.equal(initial.messages[0]!.sender, agent.beeId);
-    assert.equal(initial.messages[1]!.senderKind, "automation");
+    assert.equal(initial.messages[1]!.senderKind, "human");
     await assert.rejects(client.request("send", { beeId: target.beeId, body: "untrusted principal" }, 2000, { sessionPrincipal: { beeId: agent.beeId } }), { code: "caller_not_trusted" });
     await registerService(client, dir);
     await client.request("send", { beeId: target.beeId, body: "authenticated agent", sender: "operator" }, 2000, { sessionPrincipal: { beeId: agent.beeId } });
@@ -40,13 +40,30 @@ test("isolated owner records agent, unattributed and authenticated UI sends dist
     const { messages } = await client.request<{ messages: MessageRow[] }>("mailbox", { beeId: target.beeId });
     assert.equal(messages[0]!.sender, agent.beeId);
     assert.ok(deliveryText(messages[0]!, true).startsWith(BUZ_INJECTION_MARKER));
-    assert.equal(messages[1]!.senderKind, "automation");
+    assert.equal(messages[1]!.senderKind, "human");
     assert.equal(messages[1]!.humanChat, undefined);
-    assert.ok(deliveryText(messages[1]!, false).startsWith(AUTOMATION_INJECTION_MARKER));
+    assert.equal(deliveryText(messages[1]!, false), "unattributed report");
     assert.equal(messages[2]!.sender, agent.beeId);
     assert.equal(messages[3]!.senderKind, "human");
     assert.ok(messages[3]!.humanChat);
     assert.equal(deliveryText(messages[3]!, false), body);
+    // Apiary chat and flag sends omit senderKind; automation supplies it explicitly.
+    for (const sender of [undefined, "operator", "human:Tormod"]) {
+      for (const senderKind of [undefined, "human", "automation"] as const) {
+        const body = `typed message or ⌘⌥X flag\n${sender ?? "default"}/${senderKind ?? "absent"}`;
+        const sent = await client.request<{ messageId: number }>("send", {
+          beeId: target.beeId, body, ...(sender ? { sender } : {}), ...(senderKind ? { senderKind } : {}),
+        });
+        const { messages } = await client.request<{ messages: MessageRow[] }>("mailbox", { beeId: target.beeId });
+        const message = messages.find(message => message.id === sent.messageId)!;
+        assert.equal(message.sender, sender ?? "operator");
+        assert.equal(message.senderKind, senderKind);
+        assert.equal(message.humanChat, undefined);
+        const delivered = deliveryText(message, false);
+        if (senderKind === "automation") assert.ok(delivered.startsWith(AUTOMATION_INJECTION_MARKER));
+        else assert.equal(delivered, body);
+      }
+    }
     await assert.rejects(client.request("send", { beeId: target.beeId, body, idempotencyKey: "mixed" }, 2000, {
       sessionPrincipal: { beeId: agent.beeId },
       humanChat: { version: 1, authorityId: "fixture-ui", admissionId: "mixed", beeId: target.beeId, bodySha256: createHash("sha256").update(body).digest("hex"), idempotencyKey: "mixed" },

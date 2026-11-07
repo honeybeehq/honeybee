@@ -33,8 +33,10 @@ test("human output daemon: explicit output, exact replies, strict validation, mi
     await client.request("bee.setHumanOutputMode", { beeId, mode: "explicit", idempotencyKey: "enable" });
     await assert.rejects(client.request("bee.setHumanOutputMode", { beeId, mode: "legacy", idempotencyKey: "self" }, 1000, context), code("caller_not_trusted"));
     const unadmitted = await client.request<SendRpcResult>("send", { beeId, body: "labelled, not admitted", senderKind: "human" });
-    assert.equal((await client.request<ViewResult>("view", { beeId })).view.unansweredHumanMessage, null, "a senderKind label without admission is automation");
+    assert.equal((await client.request<ViewResult>("view", { beeId })).view.unansweredHumanMessage, null, "pending mail is not an unanswered delivery");
     await client.request("mail.ack", { beeId, throughId: unadmitted.messageId });
+    assert.equal((await client.request<ViewResult>("view", { beeId })).view.unansweredHumanMessage!.messageId, unadmitted.messageId, "explicit human attribution survives delivery without policy admission");
+    const legacyReaction = await client.request<BeeReactResult>("bee.react", { beeId, messageId: unadmitted.messageId, emoji: "👍", idempotencyKey: "legacy-human" }, 1000, context);
     const one = await sendHumanChat(client, beeId, "human one", "human-one");
     const two = await sendHumanChat(client, beeId, "human two", "human-two");
     await client.request("mail.ack", { beeId, throughId: two.messageId });
@@ -64,7 +66,9 @@ test("human output daemon: explicit output, exact replies, strict validation, mi
     assert.deepEqual(events.find(event => event.kind === "bee.reacted")!.payload.reaction, reaction.reaction);
     assert.equal(events.find(event => event.kind === "bee.reacted")!.payload.unansweredHumanMessage, null);
     const snapshot = await client.request<SnapshotResult>("snapshot");
-    assert.deepEqual(snapshot.tells, [tell.tell]); assert.deepEqual(snapshot.reactions, [reaction.reaction]);
+    assert.deepEqual(snapshot.tells, [tell.tell]);
+    assert.equal(snapshot.reactions!.length, 2);
+    for (const expected of [legacyReaction.reaction, reaction.reaction]) assert.deepEqual(snapshot.reactions!.find(row => row.id === expected.id), expected);
     assert.equal(snapshot.views.find(row => row.view.beeId === beeId)!.view.unansweredHumanMessage, null);
     assert.equal(snapshot.views.find(row => row.view.beeId === beeId)!.bee!.lastHumanOutputAt, tell.tell.at);
     for (const c of clients) c.close();

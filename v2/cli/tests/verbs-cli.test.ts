@@ -11,7 +11,7 @@ import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openCoreStore } from "../../core/src/index.ts";
-import { AUTOMATION_INJECTION_MARKER, BUZ_INJECTION_MARKER } from "../../daemon/src/envelope.ts";
+import { BUZ_INJECTION_MARKER } from "../../daemon/src/envelope.ts";
 import { makeDaemonDir, startDaemon, waitFor, type DaemonHandle } from "../../daemon/tests/helpers.ts";
 import {
   agentAccountSelection,
@@ -1078,16 +1078,15 @@ test("verbs.send-sender: hive send binds the ambient bee identity; unclaimed and
       });
       const beeEcho = events.find((event) => event.event === "text" && event.text?.includes("from bee"))?.text;
       const operatorEcho = events.find((event) => event.event === "text" && event.text?.includes("from operator"))?.text;
-      const operatorDelivery = events.find((event) => event.type === "message" && event.body?.endsWith("\n\nfrom operator"))?.body;
+      const operatorDelivery = events.find((event) => event.type === "message" && event.body === "from operator")?.body;
       if (!beeEcho || !operatorEcho || !operatorDelivery) return false;
       assert.ok(beeEcho.startsWith(`echo:${BUZ_INJECTION_MARKER}\n`));
       assert.ok(beeEcho.includes(`\"from\":\"${senderId}\"`));
       assert.ok(beeEcho.endsWith("\n\nfrom bee"));
-      assert.ok(operatorDelivery.startsWith(`${AUTOMATION_INJECTION_MARKER}\n`), "a bare operator send is delivered as automation");
-      assert.ok(operatorDelivery.includes("\"senderKind\":\"automation\""));
-      assert.equal(operatorEcho, "echo:from operator", "the stub works the body after the envelope");
+      assert.equal(operatorDelivery, "from operator", "a bare operator send is delivered verbatim");
+      assert.equal(operatorEcho, "echo:from operator", "the stub receives the human body verbatim");
       return true;
-    }, "peer envelope and automation-enveloped operator delivery", 10_000);
+    }, "peer envelope and verbatim operator delivery", 10_000);
   } finally {
     if (savedBee === undefined) delete process.env.HIVE_BEE;
     else process.env.HIVE_BEE = savedBee;

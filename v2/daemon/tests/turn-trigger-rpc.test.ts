@@ -15,7 +15,7 @@ async function turnFor(client: RpcClient, beeId: string, messageId: number) {
   return view!.bee!;
 }
 
-test("turn-trigger.rpc: bare, labelled and automation operator sends open other turns; only admitted human chat opens a human turn; bad kinds are refused", async () => {
+test("turn-trigger.rpc: bare, labelled and admitted human chat open human turns; explicit automation opens other turns; bad kinds are refused", async () => {
   const { dir, cleanup } = makeRegisteredServiceDir();
   let daemon: DaemonHandle | null = null;
   try {
@@ -26,18 +26,20 @@ test("turn-trigger.rpc: bare, labelled and automation operator sends open other 
 
     const prompt = await client.request<SendRpcResult>("send", { beeId: champion.beeId, body: "hello" });
     const bare = await turnFor(client, champion.beeId, prompt.messageId);
-    assert.deepEqual([bare.lastTurnTrigger!.kind, bare.lastTurnTrigger!.from, bare.lastTurnTrigger!.humanAt], ["other", "operator", null]);
-    assert.equal(bare.lastHumanOutputAt, null, "a bare operator send is automation, never human output");
+    assert.deepEqual([bare.lastTurnTrigger!.kind, bare.lastTurnTrigger!.from], ["human", "operator"]);
+    assert.ok(bare.lastTurnTrigger!.humanAt !== null);
+    assert.equal(bare.lastHumanOutputAt, bare.lastOutputAt);
 
     const labelled = await client.request<SendRpcResult>("send", { beeId: champion.beeId, body: "labelled human", senderKind: "human" });
     const unadmitted = await turnFor(client, champion.beeId, labelled.messageId);
-    assert.deepEqual([unadmitted.lastTurnTrigger!.kind, unadmitted.lastTurnTrigger!.from, unadmitted.lastTurnTrigger!.humanAt], ["other", "operator", null]);
-    assert.equal(unadmitted.lastHumanOutputAt, null, "a senderKind label without admission never establishes human provenance");
+    assert.deepEqual([unadmitted.lastTurnTrigger!.kind, unadmitted.lastTurnTrigger!.from], ["human", "operator"]);
+    assert.ok(unadmitted.lastTurnTrigger!.humanAt !== null);
+    assert.equal(unadmitted.lastHumanOutputAt, unadmitted.lastOutputAt);
 
     const notice = await client.request<SendRpcResult>("send", { beeId: champion.beeId, body: "proof landed", senderKind: "automation" });
     const automated = await turnFor(client, champion.beeId, notice.messageId);
     assert.deepEqual([automated.lastTurnTrigger!.kind, automated.lastTurnTrigger!.from, automated.lastTurnTrigger!.humanAt], ["other", "operator", null]);
-    assert.equal(automated.lastHumanOutputAt, null, "automated notices never count as human output");
+    assert.equal(automated.lastHumanOutputAt, unadmitted.lastHumanOutputAt, "automated notices never count as human output");
 
     await registerService(client, dir);
     const typed = await sendHumanChat(client, champion.beeId, "typed in the composer", "composer");
@@ -46,7 +48,7 @@ test("turn-trigger.rpc: bare, labelled and automation operator sends open other 
     assert.ok(composer.lastTurnTrigger!.humanAt !== null);
     assert.equal(composer.lastHumanOutputAt, composer.lastOutputAt, "admitted human chat opens a human turn whose output is human output");
 
-    const later = await client.request<SendRpcResult>("send", { beeId: champion.beeId, body: "follow-up notice" });
+    const later = await client.request<SendRpcResult>("send", { beeId: champion.beeId, body: "follow-up notice", senderKind: "automation" });
     const afterHuman = await turnFor(client, champion.beeId, later.messageId);
     assert.equal(afterHuman.lastTurnTrigger!.kind, "other");
     assert.equal(afterHuman.lastHumanOutputAt, composer.lastHumanOutputAt, "the human cursor stays where the admitted turn left it");

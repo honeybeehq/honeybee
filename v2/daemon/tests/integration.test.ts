@@ -181,8 +181,8 @@ test("int.2: typed errors — closed list only (bee_not_found, invalid_request, 
 });
 
 test("int.3: watch — snapshot + contiguous seq deltas; induced gap forces a snapshot refetch", async () => {
-  // watchMaxBatch 5 with a burst of writes inside one tick = a guaranteed gap.
-  const { dir, cleanup } = makeDaemonDir({ watchMaxBatch: 5, tickMs: 120 });
+  // Allow one human turn's delivery/output ledger rows, but overflow on a burst.
+  const { dir, cleanup } = makeDaemonDir({ watchMaxBatch: 10, tickMs: 120 });
   let daemon: DaemonHandle | null = null;
   try {
     daemon = await startDaemon(dir);

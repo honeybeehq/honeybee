@@ -1916,9 +1916,11 @@ Interrupts require explicit opt-in per bee.
 
 In v2, CLI sends use `HIVE_BEE_ID` or `HIVE_SESSION_ID` from the calling
 process; the daemon also attributes known runtime descendants to their bee.
-Without a session identity, a CLI send is unattributed operator automation.
-Human input comes through the authenticated Apiary UI; the legacy
-`--sender-human` flag is refused. Bee-sent
+Without a session identity, a CLI send retains operator attribution; automation
+callers must pass `--sender-kind automation` to request the automation envelope.
+Authenticated Apiary human-chat admission controls human-first scheduling; an
+operator label or `--sender-kind human` alone does not grant that admission.
+The legacy `--sender-human` flag is refused. Bee-sent
 messages are delivered to the recipient wrapped in a sender-attribution
 envelope — a stable marker line plus one JSON metadata line
 (`{version, from, tier, id, sentAt, subject?}`) ahead of the body — so the
