@@ -75,3 +75,43 @@ import {mkdirSync, readFileSync, writeFileSync} from "node:fs";
 import {canonicalDigest, type JsonValue} from "../../core/src/canonical.ts";
 
 import {dirname} from "node:path";
+
+for (const lost of [false, true]) test(`legacy archived runtime recovers authenticated birth with ${lost ? "lost" : "empty"} status`, {skip: process.platform !== "linux", timeout: 15000}, async () => {
+  const h = harness(), store = h.open(), rig = makeRig({runtimeIdentity: store.runtimeIdentityHooks()});
+  let successor: RuntimeHost | null = null;
+  try {
+    const {bee} = makeBee(store), generation = store.currentRuntime(bee.id)!.generation;
+    rig.driver.start(bee.id, generation);
+    await drainUntil(rig.driver, rows => rows.some(row => row.kind === "booted"));
+    const proc = rig.driver.procOf(bee.id, generation)!;
+    store.recordRuntimeProc(bee.id, generation, proc);
+    store.updateRuntimeState(bee.id, generation, "running");
+    store.updateRuntimeState(bee.id, generation, "idle"); store.archiveBee(bee.id);
+    const paths = (rig.driver as unknown as {runnerPaths(id: string, generation: number): {status: string}}).runnerPaths(bee.id, generation);
+    rig.driver.detachAll();
+    if (lost) renameSync(paths.status, `${paths.status}.saved`); else writeFileSync(paths.status, "");
+    (store as unknown as {db: DatabaseSync}).db.prepare("UPDATE runtimes SET process_identity=NULL WHERE bee_id=?").run(bee.id);
+    assert.equal(legacyRunnerCommandProof(proc.processIdentity!, proc.pidStartedAt, join(rig.dir, "runners", `${bee.id}.${generation}.json`), paths.status), true);
+    assert.equal(legacyRunnerCommandProof(proc.processIdentity!, proc.pidStartedAt, join(rig.dir, "runners", `${bee.id}.${generation + 1}.json`), paths.status), false);
+    writeFileSync(paths.status, "{corrupt");
+    assert.equal(legacyRunnerCommandProof(proc.processIdentity!, proc.pidStartedAt, join(rig.dir, "runners", `${bee.id}.${generation}.json`), paths.status), false);
+    writeFileSync(paths.status, "");
+    if (lost) renameSync(paths.status, `${paths.status}.checked`);
+    successor = new RuntimeHost({runtimeIdentity: store.runtimeIdentityHooks(), sessionLogDir: join(rig.dir, "logs"), resolve: () => ({adapter: stubAdapter, command: process.execPath, args: [AGENT_PATH], cwd: rig.dir})});
+    const db = (store as unknown as {db: DatabaseSync}).db;
+    db.prepare("UPDATE runtimes SET process_identity=? WHERE bee_id=?").run("{corrupt", bee.id);
+    assert.equal(successor.adopt(bee.id, generation, proc.pid, proc.pidStartedAt, "idle"), false, "corrupt token never replaced");
+    db.prepare("UPDATE runtimes SET process_identity=NULL WHERE bee_id=?").run(bee.id);
+    assert.equal(successor.adopt(bee.id, generation, proc.pid, proc.pidStartedAt - 10000, "idle"), false);
+    assert.equal(successor.adopt(bee.id, generation, proc.pid, proc.pidStartedAt, "idle"), true);
+    const deadline = Date.now() + 2000;
+    while (store.runtimeProcessIdentity(bee.id, generation).kind !== "bound" && Date.now() < deadline) { successor.observe(); await sleep(10); }
+    assert.equal(store.runtimeProcessIdentity(bee.id, generation).kind, "bound");
+    assert.equal(successor.isDegraded(bee.id, generation), true, "lost observation evidence stays degraded");
+    successor.stop(bee.id, generation, "stopped_by_user");
+    await drainUntil(successor, rows => rows.some(row => row.kind === "exited"));
+    assert.equal(store.getBee(bee.id)!.lifecycle, "archived");
+  } finally {successor?.disposeAll(); rig.cleanup(); store.close(); h.cleanup();}
+});
+import {renameSync} from "node:fs";
+import {legacyRunnerCommandProof} from "../src/legacyRunnerProof.ts";

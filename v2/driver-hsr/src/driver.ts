@@ -20,6 +20,7 @@ import { connect, type Socket } from "node:net";
 import { dirname, extname, join, resolve as resolvePath } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readRunnerStatus, type RunnerHostConfig } from "./runner-host.ts";
+import {legacyRunnerCommandProof} from "./legacyRunnerProof.ts";
 import type {
   DeliverOutcome,
   DeliveryConfirmationPlan,
@@ -683,7 +684,10 @@ export class RuntimeHost implements RuntimeDriver {
         const value = legacyProcessCandidate(p.pid, p.pidStartedAt);
         const fd = (attempt as unknown as {_handle?: {fd?: number}})._handle?.fd;
         const identity = value ? {pid: value.pid, birth: value.birth, bootId: value.bootId} : null;
-        if (!identity || !status || status.beeId !== p.beeId || status.generation !== p.generation || status.hostPid !== p.pid || status.exited || fd === undefined || !authenticatedProcessPeer(fd, identity) || !this.cfg.runtimeIdentity?.bindLegacy(p.beeId, p.generation, p.pidStartedAt, identity, "authenticated-host-generation")) {
+        const generationProof = status
+          ? status.beeId === p.beeId && status.generation === p.generation && status.hostPid === p.pid && !status.exited
+          : identity && p.statusPath && legacyRunnerCommandProof(identity, p.pidStartedAt, this.runnerPaths(p.beeId, p.generation).config, p.statusPath);
+        if (!identity || !generationProof || fd === undefined || !authenticatedProcessPeer(fd, identity) || !this.cfg.runtimeIdentity?.bindLegacy(p.beeId, p.generation, p.pidStartedAt, identity, "authenticated-host-generation")) {
           this.rejectHostPeer(p, attempt); return;
         }
         p.processIdentity = identity;
@@ -1429,9 +1433,10 @@ export class RuntimeHost implements RuntimeDriver {
     }
     if (execution || pendingStart) return false;
     const receiptHost = status ? status.hostPid === pid && status.beeId === beeId && status.generation === generation && !status.exited
-      : (() => { try { return statSync(paths.status).isFile(); } catch { return false; } })();
+      : storedIdentity.kind === "legacy" && value.kind === "present" && legacyRunnerCommandProof(value, pidStartedAt, paths.config, paths.status);
     this.procs.set(beeId, {
       processIdentity,
+      legacyBirthPending: storedIdentity.kind === "legacy",
       beeId,
       generation,
       pid,

@@ -129,13 +129,14 @@ test("boot absence cannot settle a malformed or unbound persisted identity", () 
     const {bee} = makeBee(store), generation = store.currentRuntime(bee.id)!.generation;
     store.recordRuntimeProc(bee.id, generation, {pid: 2147483647, pidStartedAt: 1000});
     const daemon = new HiveDaemon(loadNodeConfig(rig.dir));
-    const owner = daemon as unknown as {store: CoreStore; adoptSurvivors(store: CoreStore, driver: unknown): Array<{beeId: string; generation: number}>};
+    const owner = daemon as unknown as {store: CoreStore; opLog: string[]; adoptSurvivors(store: CoreStore, driver: unknown): Array<{beeId: string; generation: number}>};
     owner.store = store;
     const driver = {adopt: () => false, isDegraded: () => false};
     const db = (store as unknown as {db: DatabaseSync}).db;
     for (const content of [null, "{bad", JSON.stringify({pid: "wrong"})]) {
       db.prepare("UPDATE runtimes SET process_identity=? WHERE bee_id=?").run(content, bee.id);
       assert.deepEqual(owner.adoptSurvivors(store, driver), [{beeId: bee.id, generation}]);
+      assert.match(owner.opLog.findLast(line => line.startsWith("boot.adopt "))!, new RegExp(`identityReason=${content === null ? "legacy_null_token" : "identity_record_invalid"}`));
       assert.notEqual(store.currentRuntime(bee.id)!.state, "stopped");
     }
   } finally {store.close(); h.cleanup(); rig.cleanup();}

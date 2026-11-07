@@ -1969,7 +1969,10 @@ export class HiveDaemon {
       this.driver!.retryProcessIdentity(row.beeId, row.generation);
       if (!this.driver!.hasProcess(row.beeId, row.generation)) this.driver!.adopt(row.beeId, row.generation, rt.pid, rt.pidStartedAt, rt.state, store.runtimeObservationCursor(row.beeId, row.generation));
       const fresh = store.runtimeProcessIdentity(row.beeId, row.generation);
-      if (fresh.kind === "bound" && sameProcess(fresh.identity, inspectProcess(rt.pid)) && this.driver!.hasProcess(row.beeId, row.generation)) { this.core!.resolveProcessIdentity(row.beeId, row.generation); return true; }
+      if (fresh.kind === "bound" && sameProcess(fresh.identity, inspectProcess(rt.pid)) && this.driver!.hasProcess(row.beeId, row.generation)) {
+        this.log(`doctor.runtime_identity_resolved bee=${row.beeId} gen=${row.generation}`);
+        this.core!.resolveProcessIdentity(row.beeId, row.generation); return true;
+      }
       return false;
     });
     const counts = this.identityRecovery.counts(Date.now());
@@ -2006,7 +2009,12 @@ export class HiveDaemon {
       const exactExited = binding.kind === "bound" && (observed.kind === "gone" || sameProcess(binding.identity, observed) && observed.state === "zombie");
       if (!exactLive && !exactExited || !adopted && !exactExited) unresolved.push({beeId: bee.id, generation: rt.generation});
       const degraded = adopted && driver.isDegraded(bee.id, rt.generation);
-      this.log(`boot.adopt bee=${bee.id} gen=${rt.generation} pid=${rt.pid} ok=${adopted}${degraded ? " degraded=true" : ""}`);
+      const identityReason = binding.kind === "legacy" ? "legacy_null_token"
+        : binding.kind === "unavailable" ? binding.reason === "pending-new-start" ? "pending_new_start" : "identity_record_invalid"
+        : observed.kind === "unavailable" ? "process_inspection_unavailable"
+        : observed.kind === "present" && !sameProcess(binding.identity, observed) ? "process_birth_mismatch"
+        : !adopted && !exactExited ? "host_adoption_refused" : "resolved";
+      this.log(`boot.adopt bee=${bee.id} gen=${rt.generation} pid=${rt.pid} ok=${adopted} identityReason=${identityReason}${degraded ? " degraded=true" : ""}`);
     }
     if (unresolved.length) this.log(`doctor.runtime_identity unresolved=${unresolved.length}`);
     return unresolved;
