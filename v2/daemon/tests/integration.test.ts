@@ -20,6 +20,7 @@ import { createConnection } from "node:net";
 import { join } from "node:path";
 import { pidAlive } from "../../driver-hsr/src/psutil.ts";
 import type {
+  ActionEnqueueResult,
   AuditTailResult,
   CommandsResult,
   HealthResult,
@@ -181,13 +182,15 @@ test("int.2: typed errors — closed list only (bee_not_found, invalid_request, 
 });
 
 test("int.3: watch — snapshot + contiguous seq deltas; induced gap forces a snapshot refetch", async () => {
-  // Allow one human turn's delivery/output ledger rows, but overflow on a burst.
-  const { dir, cleanup } = makeDaemonDir({ watchMaxBatch: 10, tickMs: 120 });
+  // One human turn fits; a single transaction below exceeds this bound.
+  const watchMaxBatch = 10;
+  const { dir, cleanup } = makeDaemonDir({ watchMaxBatch, tickMs: 120 });
   let daemon: DaemonHandle | null = null;
   try {
     daemon = await startDaemon(dir);
     const worker = await daemon.client();
     const beeId = await spawnAndSettle(worker, "watched");
+    await worker.request("action.queue.pause", { beeId, idempotencyKey: "watch-pause" });
 
     const watcher = await daemon.client();
     const deltas: Array<{ baseSeq: number; seq: number; count: number }> = [];
@@ -195,6 +198,7 @@ test("int.3: watch — snapshot + contiguous seq deltas; induced gap forces a sn
     let cursor = -1;
     let chainBroken = false;
     let refetchedSeq: number | null = null;
+    let refetchedSnapshot: SnapshotResult | null = null;
     let refetch: Promise<void> | null = null;
     const held: Array<Extract<WatchFrame, { type: "delta" }>> = [];
     const applyDelta = (frame: Extract<WatchFrame, { type: "delta" }>): void => {
@@ -211,6 +215,7 @@ test("int.3: watch — snapshot + contiguous seq deltas; induced gap forces a sn
           if (refetch !== pending) return;
           refetch = null;
           refetchedSeq = snap.seq;
+          refetchedSnapshot = snap;
           cursor = snap.seq;
           for (const delta of held.splice(0)) if (delta.seq > snap.seq) applyDelta(delta);
         });
@@ -229,14 +234,24 @@ test("int.3: watch — snapshot + contiguous seq deltas; induced gap forces a sn
     const m1 = await worker.request<SendRpcResult>("send", { beeId, body: "one" });
     await waitDelivered(worker, beeId, m1.messageId, "one delivered");
     await waitFor(() => deltas.length >= 1, "deltas flowing");
-    assert.equal(chainBroken, false, "delta chain must be contiguous before the burst");
+    assert.equal(chainBroken, false, "delta chain must be contiguous before the gap");
 
-    // Burst: > watchMaxBatch audit rows within one tick → server sends a gap.
-    for (let i = 0; i < 10; i++) {
-      await worker.request<SendRpcResult>("send", { beeId, body: `burst ${i}` });
-    }
-    await waitFor(() => gaps >= 1, "induced gap", 10_000);
-    await waitFor(() => refetchedSeq != null, "snapshot refetched after gap");
+    // Enqueue commits one action.put per item in a single transaction. No tick
+    // can split these rows, even when separate RPC round-trips would be slow.
+    // The paused queue keeps the gap fixture from dispatching agent work.
+    const gapsBefore = gaps;
+    const accepted = await worker.request<ActionEnqueueResult>("action.enqueue", {
+      beeId,
+      idempotencyKey: "watch-gap",
+      items: Array.from({ length: watchMaxBatch + 1 }, (_, i) => ({
+        kind: "instruction", inputs: { instruction: `watch fixture ${i}` },
+      })),
+    });
+    assert.equal(accepted.actions.length, watchMaxBatch + 1);
+    await waitFor(() => gaps > gapsBefore, "induced gap", 10_000);
+    const recovered = await waitFor(() => refetchedSnapshot?.actions.some(action => action.id === accepted.actions[0]!.id) ? refetchedSnapshot : null, "snapshot contains the gap transaction");
+    assert.deepEqual(recovered.actions.filter(action => action.beeId === beeId).map(action => action.id).sort(), accepted.actions.map(action => action.id).sort());
+    assert.equal(recovered.actionQueues.find(queue => queue.beeId === beeId)?.paused, true);
 
     // After the refetch the stream must be consistent again.
     chainBroken = false;
