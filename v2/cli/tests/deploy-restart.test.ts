@@ -1,7 +1,7 @@
 import { persistNodePin, probeNativeNode } from "../../core/src/nodeRuntime.ts";
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { copyNodeExecutable } from "../../core/tests/helpers.ts";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -10,7 +10,7 @@ import { DeployActivationHeldError, DeployRollbackError } from "../src/deploy/ru
 import { chmod } from "node:fs/promises";
 
 test("fresh verified activation executes installed current v2 CLI with scoped data directory", { skip: process.platform !== "darwin" && process.platform !== "linux" }, async () => {
-  const dir = await mkdtemp(join(tmpdir(), "hon8-restart-"));
+  const dir = await realpath(await mkdtemp(join(tmpdir(), "hon8-restart-")));
   const previousServiceDir = process.env.HIVE_V2_SERVICE_DIR;
   const previousHome = process.env.HOME;
   const previousNodeOptions = process.env.NODE_OPTIONS;

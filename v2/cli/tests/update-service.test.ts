@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { mock, test } from "node:test";
 import { spawn } from "node:child_process";
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { tmpdir } from "node:os";
+import os, { tmpdir } from "node:os";
+import { syncBuiltinESMExports } from "node:module";
 import { fileURLToPath } from "node:url";
 import { createServiceManager } from "../../daemon/src/service.ts";
 import { nodePinEnv, probeNativeNode, persistNodePin } from "../../core/src/nodeRuntime.ts";
@@ -54,7 +55,7 @@ const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "
 const SERVICE_ENV_KEYS = ["PATH", "HOME", "HIVE_V2_SERVICE_DIR", "HIVE_V2_SERVICE_LABEL", "HIVE_CELL", "HIVE_V2_DATA_DIR", "HIVE_V2_SOCKET_PATH", "HIVE_NODE_PATH"] as const;
 
 function serviceSandbox(): { root: string; nodeDir: string; scratch: string; units: string; calls: () => string[]; resetCalls: () => void; installUnit: (dir: string, label: string, dataDir: string) => Promise<void>; restore: () => void } {
-  const root = mkdtempSync(join(tmpdir(), "hb-service-guard-"));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "hb-service-guard-")));
   const shim = join(root, "bin"), units = join(root, "units"), nodeDir = join(root, "node", "v2"), scratch = join(root, "scratch"), log = join(root, "calls.log");
   mkdirSync(shim, { recursive: true }); mkdirSync(units, { recursive: true }); mkdirSync(nodeDir, { recursive: true }); mkdirSync(scratch, { recursive: true });
   for (const tool of ["systemctl", "launchctl"]) {
@@ -62,6 +63,10 @@ function serviceSandbox(): { root: string; nodeDir: string; scratch: string; uni
   }
   writeFileSync(log, "");
   const saved = Object.fromEntries(SERVICE_ENV_KEYS.map(key => [key, process.env[key]]));
+  const account = os.userInfo();
+  const userInfo = mock.method(os, "userInfo", () => ({ ...account, homedir: root }));
+  syncBuiltinESMExports();
+  process.env.HOME = root;
   process.env.PATH = `${shim}:${process.env.PATH ?? ""}`;
   process.env.HIVE_V2_SERVICE_DIR = units;
   process.env.HIVE_V2_SERVICE_LABEL = "hb.guard.test";
@@ -74,6 +79,8 @@ function serviceSandbox(): { root: string; nodeDir: string; scratch: string; uni
     resetCalls: () => writeFileSync(log, ""),
     installUnit: (dir, label, dataDir) => createServiceManager(process.platform, { label, execArgs: [process.execPath, "/nowhere/dist/cli.js", "v2", "daemon", "run", "--data-dir", dataDir], logPath: join(root, "hived.log") }, { exec: noExec, dir, uid: process.getuid?.() ?? 0 }).install(),
     restore: () => {
+      userInfo.mock.restore();
+      syncBuiltinESMExports();
       for (const key of SERVICE_ENV_KEYS) { if (saved[key] === undefined) delete process.env[key]; else process.env[key] = saved[key]; }
       rmSync(root, { recursive: true, force: true });
     },
