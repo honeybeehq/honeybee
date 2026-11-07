@@ -1,9 +1,10 @@
+import { exactProcessBirth, inspectProcess } from "../../harness/src/processIdentity.ts";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
-import { existsSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { forceStopTestDaemon, makeDaemonDir, type DaemonHandle } from "./helpers.ts";
+import { forceStopTestDaemon, liveRunnerHostPids, makeDaemonDir, waitFor, type DaemonHandle } from "./helpers.ts";
 
 const MARKER = "hb-teardown-writer";
 
@@ -40,4 +41,51 @@ setInterval(() => spawn(process.execPath, [writer, dir, marker], { stdio: "ignor
     if (proc.exitCode === null && proc.signalCode === null) proc.kill("SIGKILL");
     rig.cleanup();
   }
+});
+
+// Keep an exited child as a zombie while its parent is synchronously blocked.
+// This is the adopted-host shape: the observing daemon is not its wait parent.
+test("runner cleanup excludes exited zombies while their wait parent is still alive", { timeout: 15_000 }, async () => {
+  const rig = makeDaemonDir();
+  const parent = spawn(process.execPath, ["--eval", `
+    const {spawn} = require('node:child_process');
+    const {readSync} = require('node:fs');
+    const child = spawn(process.execPath, ['--eval', 'process.exit(0)'], {stdio:'ignore'});
+    process.stdout.write(String(child.pid) + '\\n');
+    readSync(0, Buffer.alloc(1), 0, 1, null);
+  `], { stdio: ["pipe", "pipe", "pipe"] });
+  const exited = new Promise<void>((resolve, reject) => {
+    parent.once("exit", () => resolve());
+    parent.once("error", reject);
+  });
+  try {
+    const pid = await new Promise<number>(resolve => parent.stdout!.once("data", chunk => resolve(Number(String(chunk).trim()))));
+    await waitFor(() => { const value = inspectProcess(pid); return value.kind === "present" && value.state === "zombie"; }, "owned child exited but not waited", 5000);
+    process.kill(pid, 0); // The old helper mistakes this for liveness.
+    const runners = join(rig.dir, "runners");
+    mkdirSync(runners);
+    writeFileSync(join(runners, "owned.1.status.json"), JSON.stringify({ hostPid: pid }));
+    await waitFor(() => liveRunnerHostPids(rig.dir).length === 0, "test daemon runner hosts reaped", 100);
+  } finally {
+    parent.stdin!.end("\n");
+    await exited;
+    rig.cleanup();
+  }
+});
+
+test("runner cleanup retains a running host even after exited status, and excludes a reused PID with another birth", () => {
+  const rig = makeDaemonDir();
+  try {
+    const runners = join(rig.dir, "runners");
+    mkdirSync(runners);
+    const file = join(runners, "owned.1.status.json");
+    const birth = exactProcessBirth(process.pid);
+    assert.ok(birth);
+    writeFileSync(file, JSON.stringify({ hostPid: process.pid, hostBirth: birth, exited: true }));
+    assert.deepEqual(liveRunnerHostPids(rig.dir), [process.pid]);
+    writeFileSync(file, JSON.stringify({ hostPid: process.pid, hostBirth: process.platform === "darwin" ? "darwin:0:0" : "linux:0" }));
+    assert.deepEqual(liveRunnerHostPids(rig.dir), []);
+    writeFileSync(file, JSON.stringify({ hostPid: process.pid, hostBirth: "malformed" }));
+    assert.deepEqual(liveRunnerHostPids(rig.dir), [process.pid]);
+  } finally { rig.cleanup(); }
 });

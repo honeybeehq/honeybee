@@ -1,4 +1,4 @@
-import { exactProcessBirth } from "../../harness/src/processIdentity.ts";
+import { inspectProcess, exactProcessBirth } from "../../harness/src/processIdentity.ts";
 /**
  * WP4 test helpers. SAFETY: everything runs against fresh OS temp dirs
  * (mkdtemp) — store, socket, logs, session logs. Never ~/.hive, never the
@@ -390,7 +390,10 @@ export async function startDaemon(dir: string, opts: { env?: Record<string, stri
         () => liveRunnerHostPids(dir).length === 0,
         `test daemon runner hosts reaped (${liveRunnerHostPids(dir).join(", ")})`,
         4000,
-      );
+      ).catch(error => {
+        const remaining = liveRunnerHostPids(dir).map(pid => inspectProcess(pid));
+        throw new Error(`${(error as Error).message}; remaining=${JSON.stringify(remaining)}`, { cause: error });
+      });
     },
   };
   // Ready when the socket accepts a hello.
@@ -428,7 +431,7 @@ export async function startDaemon(dir: string, opts: { env?: Record<string, stri
   return handle;
 }
 
-/** Test postcondition: a successful graceful stop leaves no detached host. */
+/** Test postcondition: a successful graceful stop leaves no running detached host. */
 export function liveRunnerHostPids(dir: string): number[] {
   const runnersDir = join(dir, "runners");
   let names: string[];
@@ -440,8 +443,19 @@ export function liveRunnerHostPids(dir: string): number[] {
   const pids: number[] = [];
   for (const name of names) {
     try {
-      const status = JSON.parse(readFileSync(join(runnersDir, name), "utf8")) as { hostPid?: unknown };
-      if (typeof status.hostPid === "number" && status.hostPid > 0 && pidAlive(status.hostPid)) pids.push(status.hostPid);
+      const status = JSON.parse(readFileSync(join(runnersDir, name), "utf8")) as { hostPid?: unknown; hostBirth?: unknown };
+      if (typeof status.hostPid !== "number" || !Number.isSafeInteger(status.hostPid) || status.hostPid <= 0) continue;
+      const host = inspectProcess(status.hostPid);
+      // Adopted hosts are not children of the successor daemon. Their wait
+      // parent may retain an exited zombie; signal 0 still succeeds for it.
+      // Status files also outlive hosts, so a reused PID is not this runner.
+      if (host.kind === "gone") continue;
+      if (host.kind === "present") {
+        if (host.state === "zombie") continue;
+        const recordedBirth = typeof status.hostBirth === "string" && /^(?:linux:[0-9]+|darwin:[0-9]+:[0-9]+)$/.test(status.hostBirth) ? status.hostBirth : null;
+        if (recordedBirth && host.birth !== recordedBirth) continue;
+      }
+      if (host.kind === "present" || pidAlive(status.hostPid)) pids.push(status.hostPid);
     } catch {
       // A status write racing shutdown is retried by waitFor.
     }
