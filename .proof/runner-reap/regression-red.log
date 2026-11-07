@@ -1,0 +1,47 @@
+✔ test teardown: a daemon stand-in that keeps spawning writers into its data dir is stopped to the last process before the dir is removed (8079.391535ms)
+✖ runner cleanup excludes exited zombies while their wait parent is still alive (189.262452ms)
+✖ runner cleanup retains a running host even after exited status, and excludes a reused PID with another birth (4.048886ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 1
+ℹ fail 2
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 8411.473383
+
+✖ failing tests:
+
+test at v2/daemon/tests/helpers-teardown.test.ts:48:1
+✖ runner cleanup excludes exited zombies while their wait parent is still alive (189.262452ms)
+  Error: waitFor timeout: test daemon runner hosts reaped
+      at waitFor (file:///home/trmd/.hive/v2/cells/hb-runner-reap-flake-6f2c46a8697f/github-com-honeybeehq-honeybee-a9015b303498-space-6f2c46a8697f/v2/daemon/tests/helpers.ts:38:38)
+      at async TestContext.<anonymous> (file:///home/trmd/.hive/v2/cells/hb-runner-reap-flake-6f2c46a8697f/github-com-honeybeehq-honeybee-a9015b303498-space-6f2c46a8697f/v2/daemon/tests/helpers-teardown.test.ts:68:5)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7)
+
+test at v2/daemon/tests/helpers-teardown.test.ts:76:1
+✖ runner cleanup retains a running host even after exited status, and excludes a reused PID with another birth (4.048886ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+  
+  + [
+  +   832601
+  + ]
+  - []
+  
+      at TestContext.<anonymous> (file:///home/trmd/.hive/v2/cells/hb-runner-reap-flake-6f2c46a8697f/github-com-honeybeehq-honeybee-a9015b303498-space-6f2c46a8697f/v2/daemon/tests/helpers-teardown.test.ts:87:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:911:18)
+      at Test.postRun (node:internal/test_runner/test:1465:19)
+      at Test.run (node:internal/test_runner/test:1390:12)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: [ 832601 ],
+    expected: [],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }

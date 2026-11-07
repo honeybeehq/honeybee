@@ -1,0 +1,32 @@
+✔ champions.0: verbs and capabilities are published; a node with no Champions answers empty and its snapshot carries no champions table (480.569675ms)
+✔ champions.1: put prepares the home, start spawns in it with the Apiary tags, the incarnation is resident, a turn end bundles the home, a second daemon restores it before its first runtime, archive and delete keep the home (3610.946006ms)
+✔ test teardown: a daemon stand-in that keeps spawning writers into its data dir is stopped to the last process before the dir is removed (7271.303135ms)
+✔ runner cleanup excludes exited zombies while their wait parent is still alive (73.938786ms)
+✔ runner cleanup retains a running host even after exited status, and excludes a reused PID with another birth (2.372128ms)
+LAB root reply + quiet sidechains: endedQuiet=false, human cursor advances
+LAB visible text + trailing token: endedQuiet=false, human cursor advances
+LAB quiet then native error: endedQuiet absent
+LAB quiet then explicit interrupt: endedQuiet absent
+LAB committed final message boundary=1711, cursor=1711
+LAB restart after committed quiet message: same PID/generation, endedQuiet=true, human cursor preserved
+✔ quiet facts through a throwaway daemon: root/child isolation, failure, interruption and mid-turn restart (6043.053372ms)
+LAB grok @success: endedQuiet=true
+LAB grok @content-quiet: endedQuiet=false
+LAB grok @error: endedQuiet=undefined
+LAB grok @cancelled: endedQuiet=undefined
+LAB grok @refusal: endedQuiet=undefined
+✔ quiet ACP facts through a throwaway grok daemon (1009.372266ms)
+LAB kimi @success: endedQuiet=true
+LAB kimi @content-quiet: endedQuiet=false
+LAB kimi @error: endedQuiet=undefined
+LAB kimi @cancelled: endedQuiet=undefined
+LAB kimi @refusal: endedQuiet=undefined
+✔ quiet ACP facts through a throwaway kimi daemon (1024.010703ms)
+ℹ tests 8
+ℹ suites 0
+ℹ pass 8
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 8170.443966

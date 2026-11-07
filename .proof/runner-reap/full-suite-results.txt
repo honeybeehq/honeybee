@@ -1,0 +1,43 @@
+Base: 8f5456e45ecdbc01c5a8b435b9735cbba55bb9eb
+Fix: 2f459c34
+Host: metal-3 Linux, Node v24.18.0
+Each run: full v2/daemon/tests/*.test.ts (157 files), process isolation,
+concurrency 2, CPU affinity [0,1,2,3], one owned CPU stress worker.
+Both ran simultaneously with separate short /tmp/hb-rs-* roots, HOME,
+HIVE_HOME, HIVE_STORE_ROOT, HIVE_V2_DATA_DIR and HIVE_SOCKET paths.
+Inherited Node version/hash pins cleared; executable pinned to native Node.
+
+python3 .proof/runner-reap/run-stressed-suite.py verified-1 'v2/daemon/tests/*.test.ts'
+Exit: 1
+Tests: 1531; pass: 1472; fail: 52; cancelled: 1; skipped: 6
+Duration: 687303.303526 ms
+Runner-reap timeouts: 0
+champions.0/1 and all three turn-quiet-rpc tests: PASS
+
+python3 .proof/runner-reap/run-stressed-suite.py verified-2 'v2/daemon/tests/*.test.ts'
+Exit: 1
+Tests: 1531; pass: 1384; fail: 141; cancelled: 0; skipped: 6
+Duration: 778951.300348 ms
+Runner-reap timeouts: 0
+champions.0/1 and all three turn-quiet-rpc tests: PASS
+The failed lease-enrol-rpc test worker retained open handles >4 minutes;
+its exact PID/parent/birth were checked and only that owned worker was
+terminated with SIGTERM to let the full runner finish. This is not a green gate.
+
+Other failures, not attributed to the helper change, include ENOSPC creating fixture dirs/files,
+retention auto-eviction timeout, sandbox fixture mount/path preconditions,
+gateway discovery, and (run 2) credential-review assertions.
+The cause of ENOSPC is not established. Later df showed ample bytes/inodes.
+Do not interpret zero runner-reap timeouts as a full deploy gate passing.
+The new cleanup regressions also encountered fixture ENOSPC during full runs;
+they passed separately before and after these runs.
+
+A supplemental serial diagnostic pass was stopped after the two required
+complete stress runs finished; it also encountered broad ENOSPC failures.
+Earlier exploratory runs were stopped after inherited TMPDIR caused overlong
+Unix sockets. Those runs are not counted as completed full-suite verification.
+The same temporary-directory file passed 17/17 with TMPDIR=/tmp.
+
+Final combined cleanup/champions/quiet check: 8 tests, 8 pass, 0 fail,
+8170.443966 ms (see targeted-final.log).
+Full local raw logs: .audit/runner-reap/verified-{1,2}/suite.log

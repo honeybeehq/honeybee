@@ -1,0 +1,16 @@
+reviewed by gpt-6.1-sol
+Source-contract and reported-evidence audit by owned child
+01bcab9a-9996-4cf9-b985-b8d79dc84ead; no independent rerun or diff inspection.
+Worker harness/model followed the requested codex/gpt-6.1-sol routing, so this
+was not a different-model-family audit.
+
+- Both full stress runs failed. Their other failures have not been attributed
+  to this helper change; ENOSPC cause is not established.
+- Run 2 required termination of an already-failed test worker with retained
+  handles. No unassisted green full-suite or deploy gate is claimed.
+- Original unchanged quiet test fails at line 79 under controlled orphan wait
+  retention; its exact error PID is collected exited (wait status 9). The fixed
+  helper passes the same setup. That is the strongest causal evidence.
+- Historical CI/Studio PIDs were not inspected. Their states remain unknown.
+- Legacy status without birth and unavailable native inspection retain
+  conservative false-positive possibilities. No production lifecycle change.

@@ -1,0 +1,11 @@
+
+> honeybee@0.0.1 build
+> node scripts/build-peercred.mjs --optional && node scripts/build-delivery-file.mjs --optional && node scripts/probe-peercred.mjs --optional && node scripts/probe-delivery-file.mjs --optional && node scripts/build-v2-artifact.mjs
+
+peer credential bridge linux-x64 (145 C lines)
+{"passed":true,"target":"linux-x64","node":"v24.18.0","uid":1001,"pid":935923,"processBirth":"linux:469022336","pidfd":true}
+hive entry staged at dist/cli.js; v2 artifacts staged at dist/v2/cli.js, dist/v2/provision-worker.js, dist/v2/pool-worker.js, dist/v2/retention-worker.js, dist/v2/transcript-segment-worker.js, and dist/v2/runner-host.js (25777 bytes)
+
+> honeybee@0.0.1 postbuild
+> chmod +x dist/cli.js
+
