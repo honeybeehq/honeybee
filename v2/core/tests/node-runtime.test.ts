@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { appendFileSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { childNodePath, nativeNodeEnv, nodePinFile, persistNodePin, probeNativeNode, resolveNodePin, withoutInspectorArgs } from "../src/nodeRuntime.ts";
 import { copyNodeExecutable } from "./helpers.ts";
 
 function fixture(run: (dir: string) => void): void {
-  const dir = mkdtempSync(join(tmpdir(), "hb-pin-"));
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), "hb-pin-")));
   try { run(dir); } finally { rmSync(dir, { recursive: true, force: true }); }
 }
 
