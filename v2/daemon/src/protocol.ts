@@ -149,6 +149,7 @@ export const DAEMON_CAPABILITIES = [
   "account.limits.observation.v1",
   "account.lease.install.v1",
   "account.lease.enrol.v1",
+  "account.lease.enrolled_renewal.v1",
   "account.lease.export.v1",
   "account.lease.fence_forwarding.v1",
   "account.lease.remove_native_guard.v1",

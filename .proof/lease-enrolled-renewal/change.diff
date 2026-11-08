@@ -1,0 +1,570 @@
+diff --git a/.agents/skills/verify-lease-verbs/LeaseVerbs-broken-audit.cfg b/.agents/skills/verify-lease-verbs/LeaseVerbs-broken-audit.cfg
+index 0f92b037..45f1d81f 100644
+--- a/.agents/skills/verify-lease-verbs/LeaseVerbs-broken-audit.cfg
++++ b/.agents/skills/verify-lease-verbs/LeaseVerbs-broken-audit.cfg
+@@ -7,5 +7,7 @@ CONSTANTS
+   OwnerSignsAuthority = TRUE
+   ReplayChecksItems = TRUE
+   AuditReplay = FALSE
+-INVARIANTS TypeOK WindowNeverShrinks EpochNeverFalls AuthorityMatchesEpoch ReplayIsQuiet ReplayAnswersOwnItems EveryMintAudited
++  SupersedeEnrolled = TRUE
++  ForeignSupersedes = FALSE
++INVARIANTS TypeOK WindowNeverShrinks EpochNeverFalls AuthorityMatchesEpoch ReplayIsQuiet ReplayAnswersOwnItems EveryMintAudited OwnerRenews
+ CONSTRAINT Bounded
+diff --git a/.agents/skills/verify-lease-verbs/LeaseVerbs-broken-authority.cfg b/.agents/skills/verify-lease-verbs/LeaseVerbs-broken-authority.cfg
+index 5845b637..ed348b8b 100644
+--- a/.agents/skills/verify-lease-verbs/LeaseVerbs-broken-authority.cfg
++++ b/.agents/skills/verify-lease-verbs/LeaseVerbs-broken-authority.cfg
+@@ -7,5 +7,7 @@ CONSTANTS
+   OwnerSignsAuthority = FALSE
+   ReplayChecksItems = TRUE
+   AuditReplay = TRUE
+-INVARIANTS TypeOK WindowNeverShrinks EpochNeverFalls AuthorityMatchesEpoch ReplayIsQuiet ReplayAnswersOwnItems EveryMintAudited
++  SupersedeEnrolled = TRUE
++  ForeignSupersedes = FALSE
++INVARIANTS TypeOK WindowNeverShrinks EpochNeverFalls AuthorityMatchesEpoch ReplayIsQuiet ReplayAnswersOwnItems EveryMintAudited OwnerRenews
+ CONSTRAINT Bounded
+diff --git a/.agents/skills/verify-lease-verbs/LeaseVerbs-broken-foreign.cfg b/.agents/skills/verify-lease-verbs/LeaseVerbs-broken-foreign.cfg
+new file mode 100644
+index 00000000..0a5a1412
+--- /dev/null
++++ b/.agents/skills/verify-lease-verbs/LeaseVerbs-broken-foreign.cfg
+@@ -0,0 +1,13 @@
++SPECIFICATION Spec
++CONSTANTS
++  W = 2
++  MaxEpoch = 2
++  RegressCheck = TRUE
++  ReplayReusesReceipt = TRUE
++  OwnerSignsAuthority = TRUE
++  ReplayChecksItems = TRUE
++  AuditReplay = TRUE
++  SupersedeEnrolled = TRUE
++  ForeignSupersedes = TRUE
++INVARIANTS TypeOK WindowNeverShrinks EpochNeverFalls AuthorityMatchesEpoch ReplayIsQuiet ReplayAnswersOwnItems EveryMintAudited OwnerRenews
++CONSTRAINT Bounded
+diff --git a/.agents/skills/verify-lease-verbs/LeaseVerbs-broken-items.cfg b/.agents/skills/verify-lease-verbs/LeaseVerbs-broken-items.cfg
+index 5accbea6..41153390 100644
+--- a/.agents/skills/verify-lease-verbs/LeaseVerbs-broken-items.cfg
++++ b/.agents/skills/verify-lease-verbs/LeaseVerbs-broken-items.cfg
+@@ -7,5 +7,7 @@ CONSTANTS
+   OwnerSignsAuthority = TRUE
+   ReplayChecksItems = FALSE
+   AuditReplay = TRUE
+-INVARIANTS TypeOK WindowNeverShrinks EpochNeverFalls AuthorityMatchesEpoch ReplayIsQuiet ReplayAnswersOwnItems EveryMintAudited
++  SupersedeEnrolled = TRUE
++  ForeignSupersedes = FALSE
++INVARIANTS TypeOK WindowNeverShrinks EpochNeverFalls AuthorityMatchesEpoch ReplayIsQuiet ReplayAnswersOwnItems EveryMintAudited OwnerRenews
+ CONSTRAINT Bounded
+diff --git a/.agents/skills/verify-lease-verbs/LeaseVerbs-broken-regress.cfg b/.agents/skills/verify-lease-verbs/LeaseVerbs-broken-regress.cfg
+index 189d1479..3405b90c 100644
+--- a/.agents/skills/verify-lease-verbs/LeaseVerbs-broken-regress.cfg
++++ b/.agents/skills/verify-lease-verbs/LeaseVerbs-broken-regress.cfg
+@@ -7,5 +7,7 @@ CONSTANTS
+   OwnerSignsAuthority = TRUE
+   ReplayChecksItems = TRUE
+   AuditReplay = TRUE
+-INVARIANTS TypeOK WindowNeverShrinks EpochNeverFalls AuthorityMatchesEpoch ReplayIsQuiet ReplayAnswersOwnItems EveryMintAudited
++  SupersedeEnrolled = TRUE
++  ForeignSupersedes = FALSE
++INVARIANTS TypeOK WindowNeverShrinks EpochNeverFalls AuthorityMatchesEpoch ReplayIsQuiet ReplayAnswersOwnItems EveryMintAudited OwnerRenews
+ CONSTRAINT Bounded
+diff --git a/.agents/skills/verify-lease-verbs/LeaseVerbs-broken-replay.cfg b/.agents/skills/verify-lease-verbs/LeaseVerbs-broken-replay.cfg
+index 70890834..db181d4c 100644
+--- a/.agents/skills/verify-lease-verbs/LeaseVerbs-broken-replay.cfg
++++ b/.agents/skills/verify-lease-verbs/LeaseVerbs-broken-replay.cfg
+@@ -7,5 +7,7 @@ CONSTANTS
+   OwnerSignsAuthority = TRUE
+   ReplayChecksItems = TRUE
+   AuditReplay = TRUE
+-INVARIANTS TypeOK WindowNeverShrinks EpochNeverFalls AuthorityMatchesEpoch ReplayIsQuiet ReplayAnswersOwnItems EveryMintAudited
++  SupersedeEnrolled = TRUE
++  ForeignSupersedes = FALSE
++INVARIANTS TypeOK WindowNeverShrinks EpochNeverFalls AuthorityMatchesEpoch ReplayIsQuiet ReplayAnswersOwnItems EveryMintAudited OwnerRenews
+ CONSTRAINT Bounded
+diff --git a/.agents/skills/verify-lease-verbs/LeaseVerbs-broken-supersede.cfg b/.agents/skills/verify-lease-verbs/LeaseVerbs-broken-supersede.cfg
+new file mode 100644
+index 00000000..5738f68a
+--- /dev/null
++++ b/.agents/skills/verify-lease-verbs/LeaseVerbs-broken-supersede.cfg
+@@ -0,0 +1,13 @@
++SPECIFICATION Spec
++CONSTANTS
++  W = 2
++  MaxEpoch = 2
++  RegressCheck = TRUE
++  ReplayReusesReceipt = TRUE
++  OwnerSignsAuthority = TRUE
++  ReplayChecksItems = TRUE
++  AuditReplay = TRUE
++  SupersedeEnrolled = FALSE
++  ForeignSupersedes = FALSE
++INVARIANTS TypeOK WindowNeverShrinks EpochNeverFalls AuthorityMatchesEpoch ReplayIsQuiet ReplayAnswersOwnItems EveryMintAudited OwnerRenews
++CONSTRAINT Bounded
+diff --git a/.agents/skills/verify-lease-verbs/LeaseVerbs.cfg b/.agents/skills/verify-lease-verbs/LeaseVerbs.cfg
+index 191f948b..f50d620d 100644
+--- a/.agents/skills/verify-lease-verbs/LeaseVerbs.cfg
++++ b/.agents/skills/verify-lease-verbs/LeaseVerbs.cfg
+@@ -7,5 +7,7 @@ CONSTANTS
+   OwnerSignsAuthority = TRUE
+   ReplayChecksItems = TRUE
+   AuditReplay = TRUE
+-INVARIANTS TypeOK WindowNeverShrinks EpochNeverFalls AuthorityMatchesEpoch ReplayIsQuiet ReplayAnswersOwnItems EveryMintAudited
++  SupersedeEnrolled = TRUE
++  ForeignSupersedes = FALSE
++INVARIANTS TypeOK WindowNeverShrinks EpochNeverFalls AuthorityMatchesEpoch ReplayIsQuiet ReplayAnswersOwnItems EveryMintAudited OwnerRenews
+ CONSTRAINT Bounded
+diff --git a/.agents/skills/verify-lease-verbs/LeaseVerbs.tla b/.agents/skills/verify-lease-verbs/LeaseVerbs.tla
+index c0751524..9a7509ba 100644
+--- a/.agents/skills/verify-lease-verbs/LeaseVerbs.tla
++++ b/.agents/skills/verify-lease-verbs/LeaseVerbs.tla
+@@ -4,6 +4,9 @@
+ (* Satellite side: v2/daemon/src/accountsService.ts installLease (the      *)
+ (*   "Lease origin conflicts with the installed lease" rule) and removeLease *)
+ (* Bulk key: v2/daemon/src/daemon.ts rpcAccountLeaseBatch                  *)
++(* Enrolled row: installLease's enrolment re-proof gate (a plain payload     *)
++(*   from the row's own share and authority republishes an enrolled row     *)
++(*   whose last publication was left unknown, without a local primary)      *)
+ EXTENDS Naturals, FiniteSets
+ 
+ CONSTANTS W,                   \* lease windows are 1..W (larger = later expiresAt)
+@@ -12,7 +15,9 @@ CONSTANTS W,                   \* lease windows are 1..W (larger = later expires
+           ReplayReusesReceipt, \* TRUE = a replayed batch key answers from its receipt
+           OwnerSignsAuthority, \* TRUE = account.lease.grant stamps its own node as authorityNodeId (M2)
+           ReplayChecksItems,   \* TRUE = a replayed key must carry the recorded items digest (M1)
+-          AuditReplay          \* TRUE = every re-mint on replay writes account.lease.granted replay:true (M1)
++          AuditReplay,         \* TRUE = every re-mint on replay writes account.lease.granted replay:true (M1)
++          SupersedeEnrolled,   \* TRUE = a payload from the row's own authority republishes an enrolled row whose publication is unknown (FALSE = 9d95df22: refused unknown_material)
++          ForeignSupersedes    \* TRUE (broken) = an enrolled row also takes a same-epoch payload from another node
+ 
+ Windows == 1..W
+ Epochs == 1..MaxEpoch
+@@ -24,6 +29,9 @@ VARIABLES ownerEpoch,   \* the share's authority epoch on the owner's account ro
+           window,       \* satellite row: the installed lease window (expiresAt)
+           authority,    \* satellite row: authorityNodeId of the installed lease
+           revoked,      \* satellite row: lease.remove ran (disposition revoked)
++          enrolled,     \* satellite row: carries an enrolment receipt (installed with enrol: true under the old scheme)
++          published,    \* satellite row: the enrolled material's last publication completed (leasedFrom.materialPublished)
++          ownerRefused, \* history: the row's own authority sent a payload the ordering rule admits and the row refused it
+           accepted,     \* history of every install the satellite accepted
+           keyState,     \* the one bulk key: "none" | "recorded"
+           receipt,      \* what the key recorded: the grant window and whether the install item was accepted
+@@ -33,16 +41,18 @@ VARIABLES ownerEpoch,   \* the share's authority epoch on the owner's account ro
+           mints,        \* how many times material was minted on the owner
+           audits        \* how many account.lease.granted audit rows the owner wrote
+ 
+-vars == <<ownerEpoch, payloads, epoch, window, authority, revoked, accepted, keyState, receipt, installRuns, replayWindow, replayAsked, mints, audits>>
++vars == <<ownerEpoch, payloads, epoch, window, authority, revoked, enrolled, published, ownerRefused, accepted, keyState, receipt, installRuns, replayWindow, replayAsked, mints, audits>>
+ 
+ Payload(e, w) == [epoch |-> e, window |-> w, node |-> OwnerOf(e)]
+ ForgedPayload(e, w) == [epoch |-> e, window |-> w, node |-> OwnerOf(e + 1)]   \* a caller-chosen authorityNodeId
++ForeignPayload(w) == [epoch |-> epoch, window |-> w, node |-> OwnerOf(epoch + 1)]  \* another node's material at the row's epoch
+ Max(S) == CHOOSE m \in S : \A x \in S : x <= m
+ 
+ Init ==
+   /\ ownerEpoch = 1
+   /\ payloads = {}
+   /\ epoch = 0 /\ window = 0 /\ authority = "none" /\ revoked = FALSE
++  /\ enrolled = FALSE /\ published = FALSE /\ ownerRefused = FALSE
+   /\ accepted = {}
+   /\ keyState = "none"
+   /\ receipt = [grantWindow |-> 0, installOk |-> FALSE]
+@@ -55,14 +65,35 @@ Init ==
+ GrantWindow(w) ==
+   /\ payloads' = payloads \cup {Payload(ownerEpoch, w)} \cup (IF OwnerSignsAuthority THEN {} ELSE {ForgedPayload(ownerEpoch, w)})
+   /\ mints' = mints + 1 /\ audits' = audits + 1
+-  /\ UNCHANGED <<ownerEpoch, epoch, window, authority, revoked, accepted, keyState, receipt, installRuns, replayWindow, replayAsked>>
++  /\ UNCHANGED <<ownerEpoch, epoch, window, authority, revoked, enrolled, published, ownerRefused, accepted, keyState, receipt, installRuns, replayWindow, replayAsked>>
++
++\* Another node (not the row's authority) hands the satellite material stamped with the row's share and epoch.
++ForeignGrantWindow(w) ==
++  /\ epoch > 0
++  /\ payloads' = payloads \cup {ForeignPayload(w)}
++  /\ UNCHANGED <<ownerEpoch, epoch, window, authority, revoked, enrolled, published, ownerRefused, accepted, keyState, receipt, installRuns, replayWindow, replayAsked, mints, audits>>
++
++\* The old scheme: the satellite's own access-only login is enrolled in place under the owner's share and
++\* epoch (account.lease.install with enrol: true); the row keeps an enrolment receipt.
++Enrol ==
++  /\ epoch = 0
++  /\ epoch' = ownerEpoch /\ window' = 1 /\ authority' = OwnerOf(ownerEpoch) /\ revoked' = FALSE /\ enrolled' = TRUE /\ published' = TRUE
++  /\ accepted' = accepted \cup {<<ownerEpoch, 1>>}
++  /\ UNCHANGED <<ownerEpoch, payloads, ownerRefused, keyState, receipt, installRuns, replayWindow, replayAsked, mints, audits>>
++
++\* A republish of the enrolled material whose outcome was lost (installLease wrote materialPublished: false and
++\* never reached its final write: a crash, or a Keychain publish that failed); the row stays enrolled.
++PublishLost ==
++  /\ enrolled /\ published
++  /\ published' = FALSE
++  /\ UNCHANGED <<ownerEpoch, payloads, epoch, window, authority, revoked, enrolled, ownerRefused, accepted, keyState, receipt, installRuns, replayWindow, replayAsked, mints, audits>>
+ 
+ \* A take-over through the credential handoff plane: the new owner's row adopts at epoch + 1
+ \* (credentialHandoff.ts export derives it from the row; store.putCredentialAuthorityEpoch raises share_epoch).
+ TakeOver ==
+   /\ ownerEpoch < MaxEpoch
+   /\ ownerEpoch' = ownerEpoch + 1
+-  /\ UNCHANGED <<payloads, epoch, window, authority, revoked, accepted, keyState, receipt, installRuns, replayWindow, replayAsked, mints, audits>>
++  /\ UNCHANGED <<payloads, epoch, window, authority, revoked, enrolled, published, ownerRefused, accepted, keyState, receipt, installRuns, replayWindow, replayAsked, mints, audits>>
+ 
+ \* installLease's origin rule for a row that already holds a lease.
+ Admits(p) ==
+@@ -72,21 +103,37 @@ Admits(p) ==
+      /\ p.node = authority
+      /\ (RegressCheck => p.window >= window)
+ 
++\* An enrolled row whose publication is unknown re-proves its local material before installing (installLease's
++\* enrolment gate). The swept material of a revoked row proves nothing, so in 9d95df22 (SupersedeEnrolled off)
++\* every payload is refused unknown_material; now the row's own authority republishes without a local primary,
++\* and every other refusal of the gate (native, refresh chain, busy, locked Keychain) stays.
++Admitted(p) ==
++  IF enrolled
++    THEN \/ Admits(p) /\ (published \/ SupersedeEnrolled /\ p.node = authority)
++         \/ ForeignSupersedes /\ p.epoch = epoch /\ (RegressCheck => p.window >= window)
++    ELSE Admits(p)
++
+ Apply(p) ==
+   /\ epoch' = p.epoch /\ window' = p.window /\ authority' = p.node /\ revoked' = FALSE
++  /\ published' = enrolled
+   /\ accepted' = accepted \cup {<<p.epoch, p.window>>}
++  /\ UNCHANGED enrolled
++
++Refuse(p) ==
++  /\ UNCHANGED <<epoch, window, authority, revoked, enrolled, published, accepted>>
++  /\ ownerRefused' = ownerRefused \/ (Admits(p) /\ p.node = authority)
+ 
+ \* account.lease.install (or an install item of account.lease.batch) with any payload minted so far.
+ InstallPayload(p) ==
+   /\ p \in payloads
+-  /\ IF Admits(p) THEN Apply(p) ELSE UNCHANGED <<epoch, window, authority, revoked, accepted>>
++  /\ IF Admitted(p) THEN Apply(p) /\ UNCHANGED ownerRefused ELSE Refuse(p)
+   /\ UNCHANGED <<ownerEpoch, payloads, keyState, receipt, installRuns, replayWindow, replayAsked, mints, audits>>
+ 
+-\* account.lease.remove (or a release item): the row stays, its lease is revoked.
++\* account.lease.remove (or a release item): the row stays, its lease is revoked; an enrolled row stays enrolled.
+ Release ==
+   /\ epoch > 0 /\ ~revoked
+   /\ revoked' = TRUE
+-  /\ UNCHANGED <<ownerEpoch, payloads, epoch, window, authority, accepted, keyState, receipt, installRuns, replayWindow, replayAsked, mints, audits>>
++  /\ UNCHANGED <<ownerEpoch, payloads, epoch, window, authority, enrolled, published, ownerRefused, accepted, keyState, receipt, installRuns, replayWindow, replayAsked, mints, audits>>
+ 
+ \* account.lease.batch under the one key, first time: [grant w, install Payload(1,1)].
+ BatchFirstWindow(w) ==
+@@ -94,9 +141,9 @@ BatchFirstWindow(w) ==
+   /\ Payload(1, 1) \in payloads
+   /\ keyState' = "recorded"
+   /\ installRuns' = installRuns + 1
+-  /\ IF Admits(Payload(1, 1))
+-       THEN Apply(Payload(1, 1)) /\ receipt' = [grantWindow |-> w, installOk |-> TRUE]
+-       ELSE UNCHANGED <<epoch, window, authority, revoked, accepted>> /\ receipt' = [grantWindow |-> w, installOk |-> FALSE]
++  /\ IF Admitted(Payload(1, 1))
++       THEN Apply(Payload(1, 1)) /\ UNCHANGED ownerRefused /\ receipt' = [grantWindow |-> w, installOk |-> TRUE]
++       ELSE Refuse(Payload(1, 1)) /\ receipt' = [grantWindow |-> w, installOk |-> FALSE]
+   /\ payloads' = payloads \cup {Payload(ownerEpoch, w)}
+   /\ mints' = mints + 1 /\ audits' = audits + 1
+   /\ UNCHANGED <<ownerEpoch, replayWindow, replayAsked>>
+@@ -107,26 +154,27 @@ BatchFirstWindow(w) ==
+ BatchReplayWindow(w) ==
+   /\ keyState = "recorded"
+   /\ IF ReplayChecksItems /\ w /= receipt.grantWindow
+-       THEN UNCHANGED <<epoch, window, authority, revoked, accepted, installRuns, payloads, replayWindow, replayAsked, mints, audits>>
++       THEN UNCHANGED <<epoch, window, authority, revoked, enrolled, published, ownerRefused, accepted, installRuns, payloads, replayWindow, replayAsked, mints, audits>>
+        ELSE IF ReplayReusesReceipt
+        THEN /\ replayAsked' = w
+             /\ replayWindow' = receipt.grantWindow
+             /\ mints' = mints + 1 /\ audits' = IF AuditReplay THEN audits + 1 ELSE audits
+-            /\ UNCHANGED <<epoch, window, authority, revoked, accepted, installRuns, payloads>>
++            /\ UNCHANGED <<epoch, window, authority, revoked, enrolled, published, ownerRefused, accepted, installRuns, payloads>>
+        ELSE /\ replayAsked' = w
+             /\ replayWindow' = w
+             /\ installRuns' = installRuns + 1
+             /\ mints' = mints + 1 /\ audits' = audits + 1
+             /\ payloads' = payloads \cup {Payload(ownerEpoch, w)}
+-            /\ IF Admits(Payload(1, 1)) THEN Apply(Payload(1, 1)) ELSE UNCHANGED <<epoch, window, authority, revoked, accepted>>
++            /\ IF Admitted(Payload(1, 1)) THEN Apply(Payload(1, 1)) /\ UNCHANGED ownerRefused ELSE Refuse(Payload(1, 1))
+   /\ UNCHANGED <<ownerEpoch, keyState, receipt>>
+ 
+ Grant == \E w \in Windows : GrantWindow(w)
++ForeignGrant == \E w \in Windows : ForeignGrantWindow(w)
+ Install == \E p \in payloads : InstallPayload(p)
+ BatchFirst == \E w \in Windows : BatchFirstWindow(w)
+ BatchReplay == \E w \in Windows : BatchReplayWindow(w)
+ 
+-Next == Grant \/ TakeOver \/ Install \/ Release \/ BatchFirst \/ BatchReplay
++Next == Grant \/ ForeignGrant \/ Enrol \/ PublishLost \/ TakeOver \/ Install \/ Release \/ BatchFirst \/ BatchReplay
+ 
+ Spec == Init /\ [][Next]_vars
+ 
+@@ -137,7 +185,8 @@ AuthorityMatchesEpoch == epoch > 0 => authority = OwnerOf(epoch)
+ ReplayIsQuiet == installRuns <= 1 /\ (replayWindow = 0 \/ replayWindow = receipt.grantWindow)
+ ReplayAnswersOwnItems == replayWindow = 0 \/ replayAsked = receipt.grantWindow
+ EveryMintAudited == audits = mints
+-TypeOK == epoch \in 0..MaxEpoch /\ window \in 0..W /\ ownerEpoch \in Epochs
++OwnerRenews == ~ownerRefused
++TypeOK == epoch \in 0..MaxEpoch /\ window \in 0..W /\ ownerEpoch \in Epochs /\ enrolled \in BOOLEAN /\ published \in BOOLEAN
+ \* Mint and audit counters only grow; bound them so TLC explores a finite space (three mints suffice for every rule).
+ Bounded == mints <= 3
+ =============================================================================
+diff --git a/.agents/skills/verify-lease-verbs/SKILL.md b/.agents/skills/verify-lease-verbs/SKILL.md
+index d9389bde..ff2cdbac 100644
+--- a/.agents/skills/verify-lease-verbs/SKILL.md
++++ b/.agents/skills/verify-lease-verbs/SKILL.md
+@@ -12,6 +12,7 @@ description: Check the account-lease ordering rules and the bulk-key replay of a
+ - **A replayed bulk key is quiet.** Harm: a retried `account.lease.batch` installs or releases twice, or opens a second lease window for the same grant.
+ - **A replayed key answers only its own items, and every mint is audited.** Harm if broken: anyone holding a key (it appears in the `rpc.dedup` log line) pulls fresh credential material for other items, unaudited.
+ - **The owner signs the authority.** Harm if broken: a caller names another node as `authorityNodeId`, and node X's material renews node Q's lease on a satellite while the audit blames Q.
++- **An enrolled row renews from its own authority, and from nobody else at its epoch.** Harm if broken: a row enrolled under the old scheme (`enrol: true`, the satellite's own access-only login handed to the authority's share) whose last publication was left unknown (`materialPublished: false`) and whose expired material hived swept re-proves local material on every install and finds none, so the authority's renewal is refused `account_lease_enrol_refused` (unknown_material) for ever (claude-tormod-polytext.io on mini05 and mini06, Nov 2026). Now a plain payload from the row's own share and authority republishes it without a local primary; the gate's other refusals (native row, private authority or refresh chain, busy, locked Keychain, foreign home) and the ordering rule (same epoch, other authority is `account_lease_conflict`) stay.
+ 
+ ## Does my change touch the verified code?
+ 
+@@ -20,6 +21,7 @@ The model describes these places. If a diff touches any of them, run the check a
+ | model part | code |
+ |---|---|
+ | `Admits(p)` | `v2/daemon/src/accountsService.ts`, `installLease`, the `throw new RpcError("account_lease_conflict", "Lease origin conflicts with the installed lease.")` rule (shareId / epoch / authorityNodeId / expiresAt comparison) |
++| `Enrol`, `PublishLost`, `Admitted(p)` | same function: the enrolment branch (`enrolment`, `materialPublished`), the gate `if (input.enrol || enrolment && previous?.materialPublished !== true)` with `assertEnrolmentQuiescent` and `assertEnrolmentMaterial(current, codec, state, !republish)` where `republish` is a plain install whose `shareId`/`authorityNodeId` match the row (`sameOrigin`); `PublishLost` is the `setAccountLease(id, { ...origin, materialPublished: false })` write that never reached the final `setAccountLease(id, origin)` |
+ | `Apply(p)` | same function: `this.store.setAccountLease(id, origin)` with `revokedAt: null` |
+ | `Release` | `v2/daemon/src/accountsService.ts`, `removeLease` (disposition `revoked`, row kept) |
+ | `GrantWindow(w)` | `v2/daemon/src/daemon.ts`, `leaseGrantParams` (authorityNodeId must be `ownNodeIds()`; `shareId`/`epoch` optional) and `mintLeaseGrant` (share facts from `deriveShareFacts`: the account row's `shareId`/`shareEpoch`, seeded once; window = `grantedAt + ttlMs`, carried as `install.expiresAt`; audits `account.lease.granted`) |
+@@ -31,17 +33,25 @@ Sync commit: the commit that added this skill (`git log -1 --format=%H -- .agent
+ 
+ ## Run
+ 
+-Two parts, both from the repository root.
++Three parts, all from the repository root.
+ 
+-1. The model. Use `/statechart` on `.agents/skills/verify-lease-verbs/LeaseVerbs.tla` with `LeaseVerbs.cfg` and `view.mjs`, in a scratch folder outside the repo. Read every result with `/statechart`; it names the rule that breaks and the shortest path in plain words. Without `/statechart`, plain TLC also works:
++1. The model, without Java. `lease-verbs.ts` is the same model (one action per TLA+ action, the same constants and invariants) searched breadth-first by the pinned Node, the way the Champion lifecycle model is checked; it is what runs on a satellite with no Java:
++
++   ```sh
++   node --experimental-strip-types .agents/skills/verify-lease-verbs/lease-verbs.ts
++   ```
++
++   Expected: `Model checking completed. No error has been found.` with 20685 distinct states (W 2, MaxEpoch 2, at most 3 mints), in about a second, exit 0. A violation prints the rule, the state in the code's words and the shortest path of verbs, exit 12. Keep `lease-verbs.ts` and `LeaseVerbs.tla` in step: a change to one is a change to the other.
++
++2. The model under TLC, where Java exists. Use `/statechart` on `.agents/skills/verify-lease-verbs/LeaseVerbs.tla` with `LeaseVerbs.cfg` and `view.mjs`, in a scratch folder outside the repo, or plain TLC:
+ 
+    ```sh
+    java -cp "$TLA2TOOLS" tlc2.TLC -workers 1 -config LeaseVerbs.cfg LeaseVerbs.tla
+    ```
+ 
+-   where `TLA2TOOLS` points at a `tla2tools.jar` (TLA+ tools 1.8.x, Java 11+). Expected: `Model checking completed. No error has been found.` with about 378 distinct states (the `Bounded` constraint caps mints at 3), in a few seconds.
++   where `TLA2TOOLS` points at a `tla2tools.jar` (TLA+ tools 1.8.x, Java 11+). Expected: `Model checking completed. No error has been found.`; the state count should match the Node checker's. The enrolment extension (`Enrol`, `PublishLost`, `ForeignGrant`, `Admitted`, `OwnerRenews`) was written on a satellite without Java and has not yet been run under TLC; the first run with Java confirms it and may move this line.
+ 
+-2. The real code. The security cases (caller gate, owner-signed authority, node-bound payloads, key binding, audited replays, redacted CLI) are the `hb-lease-fix` test in `v2/daemon/tests/lease-export-rpc.test.ts`; run it under the fixture warden (needs the native bridge once: `node scripts/build-peercred.mjs`):
++3. The real code. The security cases (caller gate, owner-signed authority, node-bound payloads, key binding, audited replays, redacted CLI) are the `hb-lease-fix` test in `v2/daemon/tests/lease-export-rpc.test.ts`; run it under the fixture warden (needs the native bridge once: `node scripts/build-peercred.mjs`):
+ 
+    ```sh
+    HB_LEASE_PROOF_LOG=/tmp/lease-run.md node scripts/with-fixture-warden.mjs node scripts/run-v2-daemon-tests.mjs v2/daemon/tests/lease-export-rpc.test.ts
+@@ -49,6 +59,14 @@ Two parts, both from the repository root.
+ 
+    Expected: `pass 2`, and `/tmp/lease-run.md` holds the readable transcript. The original grant/install/renew/release/move/bulk driver stays as evidence at `.proof/hb-lease-verbs/lease-grant-rpc.e2e-driver.ts.txt` (recorded run: `.proof/hb-lease-verbs/e2e-two-daemons.md`); copy it into `v2/daemon/tests/` to rerun it, do not commit it.
+ 
++   The enrolled-row rule is the three-daemon driver `.proof/lease-enrolled-renewal/driver.ts` (authority, satellite with a row enrolled the old way and left revoked with an unknown publication, and a foreign node), with every `HIVE_*` variable unset:
++
++   ```sh
++   HB_LEASE_RENEWAL_LOG=/tmp/lease-renewal.md node scripts/with-fixture-warden.mjs node --experimental-strip-types .proof/lease-enrolled-renewal/driver.ts --expect after
++   ```
++
++   Expected: `AFTER THE FIX: ALL CHECKS PASSED` (recorded: `.proof/lease-enrolled-renewal/run-after.md`); `--expect before` on the code without the fix records the refusal (`.proof/lease-enrolled-renewal/run-before.md`). The gate's own refusals (native row, refresh chain in home, vault, mirror, Keychain, profile or temp copy, private authority, busy, symlinks) are `v2/daemon/tests/lease-enrol.test.ts`.
++
+ ## Make sure the check can still fail
+ 
+ Each rule has a broken variant of the model that must fail:
+@@ -58,6 +76,10 @@ Each rule has a broken variant of the model that must fail:
+ - `LeaseVerbs-broken-authority.cfg` (`OwnerSignsAuthority = FALSE`, the caller's authorityNodeId is copied in) must break **AuthorityMatchesEpoch** in 2 steps.
+ - `LeaseVerbs-broken-items.cfg` (`ReplayChecksItems = FALSE`, a key answers for other items) must break **ReplayAnswersOwnItems** in 3 steps.
+ - `LeaseVerbs-broken-audit.cfg` (`AuditReplay = FALSE`, re-mints on replay are silent) must break **EveryMintAudited** in 3 steps.
++- `LeaseVerbs-broken-supersede.cfg` (`SupersedeEnrolled = FALSE`, the 9d95df22 gate: an enrolled row with an unknown publication refuses every payload) must break **OwnerRenews** in 4 steps: grant, enrol, publication lost, the owner's install refused.
++- `LeaseVerbs-broken-foreign.cfg` (`ForeignSupersedes = TRUE`, an enrolled row also takes a same-epoch payload from another node) must break **AuthorityMatchesEpoch** in 3 steps: enrol, foreign grant, install.
++
++With the Node checker the same variants are `--break regress|replay|authority|items|audit|supersede|foreign`, each exit 12 with the path above (recorded: `.proof/lease-enrolled-renewal/checker-run.log`).
+ 
+ The same break in the real code (delete the `input.expiresAt < knownAccountLease(account)!.expiresAt!` clause in `installLease`) makes the two-daemon driver fail at "a shorter window at the same epoch is refused". Last seen: `.proof/hb-lease-verbs/formal/scratch-break-run.log`.
+ 
+@@ -76,5 +98,5 @@ When the contract changes (for example a release that frees the window for a sho
+ 
+ - One share, one satellite row, one bulk key; windows 1..2, epochs 1..2 (`W = 2`, `MaxEpoch = 2`), at most 3 mints per behaviour. Payloads may be delivered in any order and any number of times.
+ - The caller gate (registered local authority, confined peers, relayed lanes) and the principal binding of a key are checked by the test, not the model.
+-- Not modelled: adoption / enrolment / forwarded fences / native backups in `installLease`, keychain state, authority-instance and generation floors, interleaving of other RPCs inside one batch, time (a window is an ordinal, not a clock).
++- Enrolment is modelled as the row's receipt (`enrolled`) and the state of its last publication (`published`); the owner's payloads are what `account.lease.grant` mints. Not modelled: adoption, forwarded fences and native backups in `installLease`, keychain state, authority-instance and generation floors, the local material the gate inspects (its refusals are tests), interleaving of other RPCs inside one batch, time (a window is an ordinal, not a clock).
+ - The model's `TakeOver` is Apiary's epoch bump as an assumption, not Honeybee code.
+diff --git a/.agents/skills/verify-lease-verbs/lease-verbs.ts b/.agents/skills/verify-lease-verbs/lease-verbs.ts
+new file mode 100644
+index 00000000..2b95a269
+--- /dev/null
++++ b/.agents/skills/verify-lease-verbs/lease-verbs.ts
+@@ -0,0 +1,130 @@
++// Explicit-state checker for LeaseVerbs.tla: the same Init, actions, constants and invariants, searched
++// breadth-first over every reachable state so a violation prints its shortest path. It exists because the
++// satellites have no Java for TLC; keep it in step with LeaseVerbs.tla (one action here per TLA+ action).
++// Run: node --experimental-strip-types .agents/skills/verify-lease-verbs/lease-verbs.ts [--break <rule>]...
++// Rules (TLA+ constant each one flips): regress RegressCheck=FALSE, replay ReplayReusesReceipt=FALSE,
++// authority OwnerSignsAuthority=FALSE, items ReplayChecksItems=FALSE, audit AuditReplay=FALSE,
++// supersede SupersedeEnrolled=FALSE, foreign ForeignSupersedes=TRUE.
++
++type Node = "A" | "C" | "none";
++interface Payload { epoch: number; window: number; node: Node }
++interface State {
++  ownerEpoch: number; payloads: Payload[]; epoch: number; window: number; authority: Node; revoked: boolean; enrolled: boolean; published: boolean; ownerRefused: boolean;
++  accepted: Array<[number, number]>; keyState: "none" | "recorded"; receipt: { grantWindow: number; installOk: boolean };
++  installRuns: number; replayWindow: number; replayAsked: number; mints: number; audits: number;
++}
++interface Step { action: string; to: State }
++
++const RULES = {
++  regress: "installLease refuses a shorter window at the same epoch (RegressCheck)",
++  replay: "a replayed batch key answers from its receipt (ReplayReusesReceipt)",
++  authority: "account.lease.grant stamps its own node as authorityNodeId (OwnerSignsAuthority)",
++  items: "a replayed key must carry the recorded items digest (ReplayChecksItems)",
++  audit: "every re-mint on replay writes account.lease.granted replay:true (AuditReplay)",
++  supersede: "the row's own authority republishes an enrolled row whose publication is unknown (SupersedeEnrolled)",
++  foreign: "an enrolled row refuses a same-epoch payload from another node (ForeignSupersedes stays FALSE)",
++} as const;
++type Rule = keyof typeof RULES;
++const broken = new Set<Rule>();
++const args = process.argv.slice(2);
++for (let i = 0; i < args.length; i += 1) {
++  if (args[i] === "--break") { const r = args[++i] as Rule; if (!(r in RULES)) throw new Error(`unknown rule ${r}; one of ${Object.keys(RULES).join(", ")}`); broken.add(r); }
++  else throw new Error(`unknown argument ${args[i]}`);
++}
++const W = 2, MaxEpoch = 2, MaxMints = 3;
++const RegressCheck = !broken.has("regress"), ReplayReusesReceipt = !broken.has("replay"), OwnerSignsAuthority = !broken.has("authority");
++const ReplayChecksItems = !broken.has("items"), AuditReplay = !broken.has("audit"), SupersedeEnrolled = !broken.has("supersede"), ForeignSupersedes = broken.has("foreign");
++const Windows = Array.from({ length: W }, (_, i) => i + 1);
++const OwnerOf = (e: number): Node => (e % 2 === 1 ? "A" : "C");
++const Payload = (epoch: number, window: number, node: Node = OwnerOf(epoch)): Payload => ({ epoch, window, node });
++const payloadKey = (p: Payload) => `${p.epoch}:${p.window}:${p.node}`;
++const withPayloads = (s: State, add: Payload[]): Payload[] => { const m = new Map(s.payloads.map(p => [payloadKey(p), p])); for (const p of add) m.set(payloadKey(p), p); return [...m.values()].sort((a, b) => payloadKey(a).localeCompare(payloadKey(b))); };
++const withAccepted = (s: State, e: number, w: number): Array<[number, number]> => { const set = new Set(s.accepted.map(a => `${a[0]}:${a[1]}`)); set.add(`${e}:${w}`); return [...set].sort().map(k => k.split(":").map(Number) as [number, number]); };
++const clone = (s: State): State => JSON.parse(JSON.stringify(s)) as State;
++const key = (s: State): string => JSON.stringify(s);
++
++const init: State = { ownerEpoch: 1, payloads: [], epoch: 0, window: 0, authority: "none", revoked: false, enrolled: false, published: false, ownerRefused: false, accepted: [], keyState: "none", receipt: { grantWindow: 0, installOk: false }, installRuns: 0, replayWindow: 0, replayAsked: 0, mints: 0, audits: 0 };
++
++// installLease's origin rule for a row that already holds a lease.
++const Admits = (s: State, p: Payload) => s.epoch === 0 || p.epoch > s.epoch || p.epoch === s.epoch && p.node === s.authority && (!RegressCheck || p.window >= s.window);
++// The enrolment gate: an enrolled row whose publication is unknown re-proves local material; the swept material of a
++// revoked row proves nothing, so only the row's own authority may republish it (SupersedeEnrolled).
++const Admitted = (s: State, p: Payload) => s.enrolled
++  ? Admits(s, p) && (s.published || SupersedeEnrolled && p.node === s.authority) || ForeignSupersedes && p.epoch === s.epoch && (!RegressCheck || p.window >= s.window)
++  : Admits(s, p);
++const apply = (t: State, p: Payload) => { t.epoch = p.epoch; t.window = p.window; t.authority = p.node; t.revoked = false; t.published = t.enrolled; t.accepted = withAccepted(t, p.epoch, p.window); };
++const refuse = (s: State, t: State, p: Payload) => { t.ownerRefused = s.ownerRefused || Admits(s, p) && p.node === s.authority; };
++const installInto = (s: State, t: State, p: Payload): boolean => { if (Admitted(s, p)) { apply(t, p); return true; } refuse(s, t, p); return false; };
++
++function next(s: State): Step[] {
++  const out: Step[] = [];
++  for (const w of Windows) {
++    // account.lease.grant on the owner (GrantWindow)
++    const t = clone(s); t.payloads = withPayloads(s, [Payload(s.ownerEpoch, w), ...(OwnerSignsAuthority ? [] : [Payload(s.ownerEpoch, w, OwnerOf(s.ownerEpoch + 1))])]); t.mints += 1; t.audits += 1;
++    out.push({ action: `Grant(window ${w}) by ${OwnerOf(s.ownerEpoch)} at epoch ${s.ownerEpoch}`, to: t });
++    // another node's material stamped with the row's share and epoch (ForeignGrantWindow)
++    if (s.epoch > 0) { const f = clone(s); f.payloads = withPayloads(s, [Payload(s.epoch, w, OwnerOf(s.epoch + 1))]); out.push({ action: `ForeignGrant(window ${w}) by ${OwnerOf(s.epoch + 1)} at epoch ${s.epoch}`, to: f }); }
++  }
++  // the old scheme enrols the satellite's own login under the owner's share (Enrol)
++  if (s.epoch === 0) { const t = clone(s); t.epoch = s.ownerEpoch; t.window = 1; t.authority = OwnerOf(s.ownerEpoch); t.revoked = false; t.enrolled = true; t.published = true; t.accepted = withAccepted(s, s.ownerEpoch, 1); out.push({ action: `Enrol under ${OwnerOf(s.ownerEpoch)} at epoch ${s.ownerEpoch}`, to: t }); }
++  // a republish whose outcome was lost: materialPublished stays false (PublishLost)
++  if (s.enrolled && s.published) { const t = clone(s); t.published = false; out.push({ action: "PublishLost (materialPublished false, material swept)", to: t }); }
++  // the credential handoff plane moves the share to a new owner (TakeOver)
++  if (s.ownerEpoch < MaxEpoch) { const t = clone(s); t.ownerEpoch += 1; out.push({ action: `TakeOver to ${OwnerOf(s.ownerEpoch + 1)} (epoch ${s.ownerEpoch + 1})`, to: t }); }
++  // account.lease.install with any payload minted so far (InstallPayload)
++  for (const p of s.payloads) { const t = clone(s); const ok = installInto(s, t, p); out.push({ action: `Install(epoch ${p.epoch}, window ${p.window}, node ${p.node})${ok ? "" : " [refused]"}`, to: t }); }
++  // account.lease.remove keeps the row (Release)
++  if (s.epoch > 0 && !s.revoked) { const t = clone(s); t.revoked = true; out.push({ action: "Release", to: t }); }
++  // account.lease.batch under the one key (BatchFirstWindow / BatchReplayWindow)
++  const p11 = Payload(1, 1);
++  for (const w of Windows) {
++    if (s.keyState === "none" && s.payloads.some(p => payloadKey(p) === payloadKey(p11))) {
++      const t = clone(s); t.keyState = "recorded"; t.installRuns += 1;
++      const ok = installInto(s, t, p11); t.receipt = { grantWindow: w, installOk: ok };
++      t.payloads = withPayloads(t, [Payload(s.ownerEpoch, w)]); t.mints += 1; t.audits += 1;
++      out.push({ action: `BatchFirst(grant window ${w}, install epoch 1 window 1)${ok ? "" : " [install refused]"}`, to: t });
++    }
++    if (s.keyState === "recorded") {
++      const t = clone(s);
++      if (ReplayChecksItems && w !== s.receipt.grantWindow) out.push({ action: `BatchReplay(window ${w}) [idempotency_conflict items]`, to: t });
++      else if (ReplayReusesReceipt) { t.replayAsked = w; t.replayWindow = s.receipt.grantWindow; t.mints += 1; if (AuditReplay) t.audits += 1; out.push({ action: `BatchReplay(window ${w}) answers the receipt`, to: t }); }
++      else { t.replayAsked = w; t.replayWindow = w; t.installRuns += 1; t.mints += 1; t.audits += 1; t.payloads = withPayloads(s, [Payload(s.ownerEpoch, w)]); installInto(s, t, p11); out.push({ action: `BatchReplay(window ${w}) re-executes`, to: t }); }
++    }
++  }
++  return out;
++}
++
++const invariants: Record<string, (s: State) => string | null> = {
++  TypeOK: s => s.epoch >= 0 && s.epoch <= MaxEpoch && s.window >= 0 && s.window <= W && s.ownerEpoch >= 1 && s.ownerEpoch <= MaxEpoch && (s.enrolled || !s.published) ? null : `epoch ${s.epoch}, window ${s.window}, owner epoch ${s.ownerEpoch}`,
++  WindowNeverShrinks: s => { if (s.epoch === 0) return null; const max = Math.max(...s.accepted.filter(a => a[0] === s.epoch).map(a => a[1])); return s.window === max ? null : `the row holds window ${s.window} at epoch ${s.epoch} after accepting window ${max}`; },
++  EpochNeverFalls: s => s.accepted.every(a => a[0] <= s.epoch) ? null : `the row is at epoch ${s.epoch} after accepting epoch ${Math.max(...s.accepted.map(a => a[0]))}`,
++  AuthorityMatchesEpoch: s => s.epoch === 0 || s.authority === OwnerOf(s.epoch) ? null : `the row names ${s.authority} as authority at epoch ${s.epoch}, which ${OwnerOf(s.epoch)} owns`,
++  ReplayIsQuiet: s => s.installRuns <= 1 && (s.replayWindow === 0 || s.replayWindow === s.receipt.grantWindow) ? null : `install item ran ${s.installRuns} times, replay answered window ${s.replayWindow} against receipt window ${s.receipt.grantWindow}`,
++  ReplayAnswersOwnItems: s => s.replayWindow === 0 || s.replayAsked === s.receipt.grantWindow ? null : `the key answered a replay that asked for window ${s.replayAsked} with its recorded window ${s.receipt.grantWindow}`,
++  EveryMintAudited: s => s.audits === s.mints ? null : `${s.mints} mints, ${s.audits} account.lease.granted rows`,
++  OwnerRenews: s => s.ownerRefused ? "the row refused a payload from its own share and authority that the ordering rule admits" : null,
++};
++
++const seen = new Map<string, { parent: string | null; via: string | null }>();
++const queue: State[] = [init];
++seen.set(key(init), { parent: null, via: null });
++let violations = 0;
++const failed = new Set<string>();
++const report = (name: string, detail: string, at: State) => {
++  violations += 1;
++  const path: string[] = [];
++  let k: string | null = key(at);
++  while (k) { const e = seen.get(k)!; if (e.via) path.unshift(e.via); k = e.parent; }
++  console.log(`\nVIOLATION ${name}: ${detail}\n  shortest path (${path.length} steps):\n    ${path.join("\n    ")}`);
++};
++while (queue.length > 0 && violations < 1) {
++  const s = queue.shift()!;
++  for (const [name, check] of Object.entries(invariants)) { const d = check(s); if (d && !failed.has(name)) { failed.add(name); report(name, d, s); } }
++  if (s.mints > MaxMints) continue;
++  for (const st of next(s)) {
++    const k = key(st.to);
++    if (!seen.has(k)) { seen.set(k, { parent: key(s), via: st.action }); queue.push(st.to); }
++  }
++}
++console.log(`\n${violations === 0 ? "Model checking completed. No error has been found." : `Model checking found ${violations} violation(s).`}\n  distinct states: ${seen.size}; W ${W}, MaxEpoch ${MaxEpoch}, at most ${MaxMints} mints; broken rules: ${broken.size ? [...broken].join(", ") : "none"}`);
++process.exit(violations === 0 ? 0 : 12);
+diff --git a/v2/daemon/src/accountsService.ts b/v2/daemon/src/accountsService.ts
+index 9d3185ff..4a3beda0 100644
+--- a/v2/daemon/src/accountsService.ts
++++ b/v2/daemon/src/accountsService.ts
+@@ -1539,7 +1539,7 @@ export class AccountsService {
+     return [rel, ...entries.filter(entry => entry.startsWith(prefix) && /^[0-9a-f-]{36}$/.test(entry.slice(prefix.length))).map(entry => join(dirname(rel), entry))];
+   }
+ 
+-  private assertEnrolmentMaterial(account: AccountRow, codec: LeaseMaterialCodec, state: KeychainState): void {
++  private assertEnrolmentMaterial(account: AccountRow, codec: LeaseMaterialCodec, state: KeychainState, requirePrimary = true): boolean {
+     if (!codec.provesAccessOnly) throw new RpcError("lease_unsupported", "This harness has no access-only enrolment proof codec.");
+     if (state.status === "unreadable") throw new RpcError("account_lease_enrol_refused", "Unlock the account Keychain before enrolling its credentials.", { reason: "unknown_material" });
+     let primary = false;
+@@ -1564,7 +1564,8 @@ export class AccountsService {
+       check(raw, rel === codec.primaryFile || codec.mirrors[codec.primaryFile] === rel, `${root === account.homePath ? "home" : "vault"}/${copy}`, copy === rel);
+     }
+     if (state.status === "present") check(state.raw, true, "per-home Keychain");
+-    if (!primary) throw new RpcError("account_lease_enrol_refused", "No existing access-only primary credential can be proved; enrolment does not create a native account.", { reason: "unknown_material" });
++    if (!primary && requirePrimary) throw new RpcError("account_lease_enrol_refused", "No existing access-only primary credential can be proved; enrolment does not create a native account.", { reason: "unknown_material" });
++    return primary;
+   }
+ 
+   exportLeasedMaterial(id: string): Promise<AccountLeaseExportResult> {
+@@ -1710,7 +1711,9 @@ export class AccountsService {
+             const current = this.store.getAccount(id)!;
+             if (current.homePath !== target.homePath || current.harness !== target.harness || current.source !== target.source) throw new RpcError("account_lease_conflict", "Account storage changed while enrolment waited.");
+             this.assertEnrolmentQuiescent(current);
+-            this.assertEnrolmentMaterial(current, codec, state);
++            const republish = !input.enrol && sameOrigin;
++            const proved = this.assertEnrolmentMaterial(current, codec, state, !republish);
++            if (republish && !proved) this.log(`account.lease.enrolment_republished account=${id} enrolment=${enrolment!.id} authority=${input.authorityNodeId} epoch=${input.epoch} local_primary=absent`);
+           }
+           if (state.status === "unreadable") throw new RpcError("lease_unavailable", "Account Keychain is unreadable; unlock it before installing a lease.");
+           if (adopted && !explicit && target.status !== "auth_needed" && state.status === "present" && this.validPrimaryCredential(target.harness, codec.primaryFile, state.raw)) throw new RpcError("account_adopt_refused", "The native account has a Keychain credential; it cannot be adopted.");
+diff --git a/v2/daemon/src/protocol.ts b/v2/daemon/src/protocol.ts
+index 9b833aa4..41df748b 100644
+--- a/v2/daemon/src/protocol.ts
++++ b/v2/daemon/src/protocol.ts
+@@ -149,6 +149,7 @@ export const DAEMON_CAPABILITIES = [
+   "account.limits.observation.v1",
+   "account.lease.install.v1",
+   "account.lease.enrol.v1",
++  "account.lease.enrolled_renewal.v1",
+   "account.lease.export.v1",
+   "account.lease.fence_forwarding.v1",
+   "account.lease.remove_native_guard.v1",

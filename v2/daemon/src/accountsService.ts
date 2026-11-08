@@ -1539,7 +1539,7 @@ export class AccountsService {
     return [rel, ...entries.filter(entry => entry.startsWith(prefix) && /^[0-9a-f-]{36}$/.test(entry.slice(prefix.length))).map(entry => join(dirname(rel), entry))];
   }
 
-  private assertEnrolmentMaterial(account: AccountRow, codec: LeaseMaterialCodec, state: KeychainState): void {
+  private assertEnrolmentMaterial(account: AccountRow, codec: LeaseMaterialCodec, state: KeychainState, requirePrimary = true): boolean {
     if (!codec.provesAccessOnly) throw new RpcError("lease_unsupported", "This harness has no access-only enrolment proof codec.");
     if (state.status === "unreadable") throw new RpcError("account_lease_enrol_refused", "Unlock the account Keychain before enrolling its credentials.", { reason: "unknown_material" });
     let primary = false;
@@ -1564,7 +1564,8 @@ export class AccountsService {
       check(raw, rel === codec.primaryFile || codec.mirrors[codec.primaryFile] === rel, `${root === account.homePath ? "home" : "vault"}/${copy}`, copy === rel);
     }
     if (state.status === "present") check(state.raw, true, "per-home Keychain");
-    if (!primary) throw new RpcError("account_lease_enrol_refused", "No existing access-only primary credential can be proved; enrolment does not create a native account.", { reason: "unknown_material" });
+    if (!primary && requirePrimary) throw new RpcError("account_lease_enrol_refused", "No existing access-only primary credential can be proved; enrolment does not create a native account.", { reason: "unknown_material" });
+    return primary;
   }
 
   exportLeasedMaterial(id: string): Promise<AccountLeaseExportResult> {
@@ -1710,7 +1711,9 @@ export class AccountsService {
             const current = this.store.getAccount(id)!;
             if (current.homePath !== target.homePath || current.harness !== target.harness || current.source !== target.source) throw new RpcError("account_lease_conflict", "Account storage changed while enrolment waited.");
             this.assertEnrolmentQuiescent(current);
-            this.assertEnrolmentMaterial(current, codec, state);
+            const republish = !input.enrol && sameOrigin;
+            const proved = this.assertEnrolmentMaterial(current, codec, state, !republish);
+            if (republish && !proved) this.log(`account.lease.enrolment_republished account=${id} enrolment=${enrolment!.id} authority=${input.authorityNodeId} epoch=${input.epoch} local_primary=absent`);
           }
           if (state.status === "unreadable") throw new RpcError("lease_unavailable", "Account Keychain is unreadable; unlock it before installing a lease.");
           if (adopted && !explicit && target.status !== "auth_needed" && state.status === "present" && this.validPrimaryCredential(target.harness, codec.primaryFile, state.raw)) throw new RpcError("account_adopt_refused", "The native account has a Keychain credential; it cannot be adopted.");

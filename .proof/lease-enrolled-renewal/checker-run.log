@@ -1,0 +1,64 @@
+== --break regress
+VIOLATION WindowNeverShrinks: the row holds window 1 at epoch 1 after accepting window 2
+  shortest path (4 steps):
+    Grant(window 1) by A at epoch 1
+    Grant(window 2) by A at epoch 1
+    Install(epoch 1, window 2, node A)
+    Install(epoch 1, window 1, node A)
+Model checking found 1 violation(s).
+  distinct states: 587; W 2, MaxEpoch 2, at most 3 mints; broken rules: regress
+exit 12
+== --break replay
+VIOLATION ReplayIsQuiet: install item ran 2 times, replay answered window 1 against receipt window 1
+  shortest path (3 steps):
+    Grant(window 1) by A at epoch 1
+    BatchFirst(grant window 1, install epoch 1 window 1)
+    BatchReplay(window 1) re-executes
+Model checking found 1 violation(s).
+  distinct states: 241; W 2, MaxEpoch 2, at most 3 mints; broken rules: replay
+exit 12
+== --break authority
+VIOLATION AuthorityMatchesEpoch: the row names C as authority at epoch 1, which A owns
+  shortest path (2 steps):
+    Grant(window 1) by A at epoch 1
+    Install(epoch 1, window 1, node C)
+Model checking found 1 violation(s).
+  distinct states: 61; W 2, MaxEpoch 2, at most 3 mints; broken rules: authority
+exit 12
+== --break items
+VIOLATION ReplayAnswersOwnItems: the key answered a replay that asked for window 2 with its recorded window 1
+  shortest path (3 steps):
+    Grant(window 1) by A at epoch 1
+    BatchFirst(grant window 1, install epoch 1 window 1)
+    BatchReplay(window 2) answers the receipt
+Model checking found 1 violation(s).
+  distinct states: 253; W 2, MaxEpoch 2, at most 3 mints; broken rules: items
+exit 12
+== --break audit
+VIOLATION EveryMintAudited: 3 mints, 2 account.lease.granted rows
+  shortest path (3 steps):
+    Grant(window 1) by A at epoch 1
+    BatchFirst(grant window 1, install epoch 1 window 1)
+    BatchReplay(window 1) answers the receipt
+Model checking found 1 violation(s).
+  distinct states: 241; W 2, MaxEpoch 2, at most 3 mints; broken rules: audit
+exit 12
+== --break supersede
+VIOLATION OwnerRenews: the row refused a payload from its own share and authority that the ordering rule admits
+  shortest path (4 steps):
+    Grant(window 1) by A at epoch 1
+    Enrol under A at epoch 1
+    PublishLost (materialPublished false, material swept)
+    Install(epoch 1, window 1, node A) [refused]
+Model checking found 1 violation(s).
+  distinct states: 663; W 2, MaxEpoch 2, at most 3 mints; broken rules: supersede
+exit 12
+== --break foreign
+VIOLATION AuthorityMatchesEpoch: the row names C as authority at epoch 1, which A owns
+  shortest path (3 steps):
+    Enrol under A at epoch 1
+    ForeignGrant(window 1) by C at epoch 1
+    Install(epoch 1, window 1, node C)
+Model checking found 1 violation(s).
+  distinct states: 326; W 2, MaxEpoch 2, at most 3 mints; broken rules: foreign
+exit 12
