@@ -1,0 +1,42 @@
+✔ test teardown with no runner hosts does not require an RPC caller (809.824833ms)
+✔ test teardown waits for survivor ownership before stopping recovery (4067.752167ms)
+✔ test teardown retries a torn survivor receipt before stopping recovery (3955.460041ms)
+✔ test teardown fails and reaps its survivor when ownership recovery stays unresolved (2357.840083ms)
+✔ test teardown: a daemon stand-in that keeps spawning writers into its data dir is stopped to the last process before the dir is removed (3206.658375ms)
+✔ runner cleanup excludes exited zombies while their wait parent is still alive (197.788291ms)
+✔ runner cleanup retains a running host even after exited status, and excludes a reused PID with another birth (3.012583ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 14909.687541
+LAB root reply + quiet sidechains: endedQuiet=false, human cursor advances
+LAB visible text + trailing token: endedQuiet=false, human cursor advances
+LAB quiet then native error: endedQuiet absent
+LAB quiet then explicit interrupt: endedQuiet absent
+LAB committed final message boundary=1711, cursor=1711
+LAB restart after committed quiet message: same PID/generation, endedQuiet=true, human cursor preserved
+✔ quiet facts through a throwaway daemon: root/child isolation, failure, interruption and mid-turn restart (6950.920042ms)
+LAB grok @success: endedQuiet=true
+LAB grok @content-quiet: endedQuiet=false
+LAB grok @error: endedQuiet=undefined
+LAB grok @cancelled: endedQuiet=undefined
+LAB grok @refusal: endedQuiet=undefined
+✔ quiet ACP facts through a throwaway grok daemon (1824.576292ms)
+LAB kimi @success: endedQuiet=true
+LAB kimi @content-quiet: endedQuiet=false
+LAB kimi @error: endedQuiet=undefined
+LAB kimi @cancelled: endedQuiet=undefined
+LAB kimi @refusal: endedQuiet=undefined
+✔ quiet ACP facts through a throwaway kimi daemon (1629.318708ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 10569.917625

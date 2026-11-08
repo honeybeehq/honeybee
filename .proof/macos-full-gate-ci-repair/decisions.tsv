@@ -1,0 +1,5 @@
+ts	phase	decision	why	evidence	result
+2026-11-08T14:16:03Z	placement	Use metal-2 for native Linux validation	Mini05 is Darwin despite the earlier node assumption	Linux worker receipt	actual Linux confirmed
+2026-11-08T14:19:17Z	diagnosis	Retain strict confinement and repair teardown authority/order	Exact a365 failure matched both reported cleanup stacks	linux-receipt.json baseline; authenticated message530 stacks	4 pass 2 fail
+2026-11-08T14:20:07Z	baseline	Compare parent on the same native Linux host	Distinguish introduced helper regression from unrelated flake	linux-receipt.json parent_result	6 pass zero skips
+2026-11-08T14:21:50Z	verification	Keep existing survivor and strict reap tests in the repair gate	Skipping empty-fixture RPC must not skip ownership recovery	linux-receipt.json patched and repeats	16 pass zero skips; both CI cases pass three repetitions

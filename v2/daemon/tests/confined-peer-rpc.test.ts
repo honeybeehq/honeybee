@@ -7,7 +7,8 @@ import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { localTrustMessage } from "../src/localRpcTrust.ts";
 import { fileURLToPath } from "node:url";
-import { makeDaemonDir, startDaemon, waitFor } from "./helpers.ts";
+import { makeDaemonDir, startDaemon, waitFor, type DaemonHandle } from "./helpers.ts";
+import type { RpcClient } from "../../cli/src/client.ts";
 import type { SpawnResult, HealthResult } from "../src/protocol.ts";
 
 const exec = promisify(execFile);
@@ -140,12 +141,16 @@ c.close(); console.log(JSON.stringify(codes));`;
 test("an explicitly unsandboxed Cell does not put a sandboxed satellite into strict host refusal", {skip: process.platform !== "linux", timeout: 60000}, async t => {
   const {makeOrigin} = await import("../../driver-cell/tests/helpers.ts");
   const rig = makeDaemonDir({nodeKind: "satellite", cells: {sandbox: true}});
-  t.after(() => rig.cleanup());
+  let cleanupDaemon: DaemonHandle | undefined;
+  let cleanupClient: RpcClient | undefined;
+  t.after(async () => {
+    cleanupClient?.close();
+    try { await cleanupDaemon?.stop(); }
+    finally { rig.cleanup(); }
+  });
   const origin = makeOrigin(rig.dir);
-  const daemon = await startDaemon(rig.dir);
-  t.after(() => daemon.stop());
-  const client = await daemon.client();
-  t.after(() => client.close());
+  const daemon = cleanupDaemon = await startDaemon(rig.dir);
+  const client = cleanupClient = await daemon.client();
   const cell = await client.request<SpawnResult>("spawn", {name: "open-cell", agent: "stub", account: null, cwd: "/ignored", substrate: "cell", cell: {originRepo: origin.repo, sandbox: false}});
   await waitFor(async () => {
     const view = await client.request<{runtime:{state:string} | null}>("view", {beeId: cell.beeId});

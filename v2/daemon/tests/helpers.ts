@@ -390,7 +390,11 @@ export async function startDaemon(dir: string, opts: { env?: Record<string, stri
         // Persisted idle does not prove survivor adoption. Shutdown freezes
         // identity retries, so keep recovery running for owned runner hosts.
         // Synthetic unresolved PIDs without a fixture host are not ours.
-        if (proc.exitCode === null && proc.signalCode === null) {
+        const initial = scanRunnerHosts(dir);
+        // An empty fixture has no survivor ownership to recover. In particular,
+        // strict-host tests intentionally deny this caller every ordinary RPC.
+        if (proc.exitCode === null && proc.signalCode === null
+          && (initial.pids.length > 0 || initial.unreadable.size > 0 || initial.directoryUnavailable)) {
           const client = await handle.client();
           try {
             await waitFor(async () => {

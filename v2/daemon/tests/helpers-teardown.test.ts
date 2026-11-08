@@ -10,6 +10,21 @@ import { openCoreStore } from "../../core/src/index.ts";
 
 const MARKER = "hb-teardown-writer";
 
+test("test teardown with no runner hosts does not require an RPC caller", { timeout: 60_000 }, async t => {
+  const rig = makeDaemonDir();
+  let daemon: DaemonHandle | undefined;
+  t.after(async () => {
+    try { if (daemon) await forceStopTestDaemon(daemon); }
+    finally { rig.cleanup(); }
+  });
+  daemon = await startDaemon(rig.dir);
+  assert.deepEqual(liveRunnerHostPids(rig.dir), []);
+  daemon.client = async () => { throw new Error("empty fixture teardown must not require RPC authorization"); };
+  await daemon.stop();
+  assert.notEqual(daemon.proc.exitCode ?? daemon.proc.signalCode, null);
+  assert.deepEqual(liveRunnerHostPids(rig.dir), []);
+});
+
 for (const mode of ["recover", "torn", "timeout"] as const) test(`test teardown ${mode === "timeout" ? "fails and reaps its survivor when ownership recovery stays unresolved" : mode === "torn" ? "retries a torn survivor receipt before stopping recovery" : "waits for survivor ownership before stopping recovery"}`, { timeout: 60_000 }, async () => {
   const recover = mode !== "timeout";
   const rig = makeDaemonDir();

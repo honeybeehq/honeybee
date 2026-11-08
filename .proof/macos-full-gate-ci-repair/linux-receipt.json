@@ -1,0 +1,39 @@
+{
+  "source": "Authenticated agent_send messages 529-532 from Linux worker 58fd3c0b-f5a0-482d-b5f8-bccbb4fc319c; transcribed by parent",
+  "host": "Linux trmd-metal-2 6.12.94+deb13-amd64 x86_64",
+  "node": "v24.18.0",
+  "npm": "11.16.0",
+  "base": "a36511e42195c7171756e85cf3ec7222b701e4cb",
+  "parent": "077d4519",
+  "baseline": {"pass": 4, "fail": 2, "skip": 0, "cancelled": 0, "exit": 1, "duration_ms": 10158.107866},
+  "parent_result": {"pass": 6, "fail": 0, "skip": 0, "cancelled": 0, "exit": 0, "duration_ms": 8944.302444},
+  "patched": [
+    {"file": "confined-peer-rpc.test.ts", "pass": 6, "fail": 0, "skip": 0, "cancelled": 0, "duration_ms": 9537.313952},
+    {"file": "helpers-teardown.test.ts", "pass": 7, "fail": 0, "skip": 0, "cancelled": 0, "duration_ms": 33718.432513},
+    {"file": "turn-quiet-rpc.test.ts", "pass": 3, "fail": 0, "skip": 0, "cancelled": 0, "duration_ms": 10160.179777}
+  ],
+  "patched_command_exit": 0,
+  "repeats": [
+    {"pass": 2, "fail": 0, "skip": 0, "cancelled": 0, "exit": 0, "duration_ms": 2838.488693},
+    {"pass": 2, "fail": 0, "skip": 0, "cancelled": 0, "exit": 0, "duration_ms": 2559.186073},
+    {"pass": 2, "fail": 0, "skip": 0, "cancelled": 0, "exit": 0, "duration_ms": 2721.56535}
+  ],
+  "check_exit": 0,
+  "build_exit": 0,
+  "remote_log_sha256": {
+    "baseline-clean.log": "2dcd67328989e76675bdde82fb844027fc67f3d822443db07c84a9b3b037e215",
+    "parent.log": "acc6253ee94b5cf423dbc86c62fd66468b250ea4292a64a25381eb881ef2a34c",
+    "patched.log": "93d53df77e88534114a69046b61db331c9daa636c4bcf0fa5bd93c829c1d69a3",
+    "repeat-1.log": "0294b48be649a6e25db71fde40d3727b5615c548a0416e1755fdd93fcddd7c0b",
+    "repeat-2.log": "8ede8ee5aa9364c5d66a7575b6870b902d070aefee52b9f7ff57af36422db4f0",
+    "repeat-3.log": "176efcc15c4ca5472fb01fea0765617c0e4870a8478026cce67edc562f58b506",
+    "check.log": "b11de4544c6a6784e7d6d4dd7b38ea55eb51d625d200efe75e62219feee87a7b",
+    "patched-build.log": "b43937800e54776522a6227ec1788c00cb03cab5b362ae053b418de9a8273b34"
+  },
+  "repaired_git_blobs": {
+    "confined-peer-rpc.test.ts": "e29588b988ea96a8da9db7b2499703ad0d1f7b54",
+    "helpers-teardown.test.ts": "665e3025a39717dfe5893c5538b192c61a14c7ec",
+    "helpers.ts": "5c5d89746a9b1b6048c2be2ecf938227c56e0f21"
+  },
+  "notes": ["Real unshare tests passed without permission skips", "Initial inherited Node pin drift was setup-only, not reproduction", "Worker applied exactly the supplied three-file patch and committed nothing", "No full Linux suite or exact-head hosted CI pass claimed"]
+}
