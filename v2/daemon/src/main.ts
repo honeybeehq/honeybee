@@ -100,7 +100,7 @@ export async function runDaemon(argv: string[]): Promise<number> {
   daemon.scheduling = () => scheduling.current();
   await daemon.start();
   process.stdout.write(`hived v2 listening on ${daemon.cfg.socketPath} (store ${cfg.storePath})\n`);
-  await new Promise<void>((resolve) => {
+  await new Promise<void>((resolve, reject) => {
     let stopping = false;
     const onSignal = (): void => {
       if (stopping) return;
@@ -115,6 +115,11 @@ export async function runDaemon(argv: string[]): Promise<number> {
           process.exit(0);
         }, 1000).unref();
         resolve();
+      }, error => {
+        // A rejected ephemeral disposal can retain a host socket. Preserve the
+        // failure even when that socket would otherwise pin the daemon alive.
+        setTimeout(() => process.exit(1), 1000).unref();
+        reject(error);
       });
     };
     process.once("SIGTERM", onSignal);

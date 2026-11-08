@@ -1,0 +1,44 @@
+✖ test shutdown retries a transient identity refusal after successor adoption (8716.524625ms)
+✖ test shutdown retries a transient signal refusal after successor adoption (8660.581416ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 0
+ℹ fail 2
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 17728.157959
+
+✖ failing tests:
+
+test at v2/daemon/tests/helpers-teardown.test.ts:13:53
+✖ test shutdown retries a transient identity refusal after successor adoption (8716.524625ms)
+  Error: waitFor timeout: test daemon runner hosts reaped (7620); remaining=[{"kind":"present","pid":7620,"birth":"darwin:1794153743:246065","bootId":"","uid":501,"ppid":1,"pgid":7620,"state":"live","startedAtMs":1794153743246,"waitStatus":null}]
+      at file:///Users/trmd/.hive/v2/cells/hb-macos-full-gate-timeouts-b52878e01f0b/github-com-honeybeehq-honeybee-a9015b303498-space-b52878e01f0b/v2/daemon/tests/helpers.ts:441:17
+      at async Object.stop (file:///Users/trmd/.hive/v2/cells/hb-macos-full-gate-timeouts-b52878e01f0b/github-com-honeybeehq-honeybee-a9015b303498-space-b52878e01f0b/v2/daemon/tests/helpers.ts:430:9)
+      ... 2 lines matching cause stack trace ...
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    [cause]: Error: waitFor timeout: test daemon runner hosts reaped (7620)
+        at waitFor (file:///Users/trmd/.hive/v2/cells/hb-macos-full-gate-timeouts-b52878e01f0b/github-com-honeybeehq-honeybee-a9015b303498-space-b52878e01f0b/v2/daemon/tests/helpers.ts:39:38)
+        at async Object.stop (file:///Users/trmd/.hive/v2/cells/hb-macos-full-gate-timeouts-b52878e01f0b/github-com-honeybeehq-honeybee-a9015b303498-space-b52878e01f0b/v2/daemon/tests/helpers.ts:430:9)
+        at async TestContext.<anonymous> (file:///Users/trmd/.hive/v2/cells/hb-macos-full-gate-timeouts-b52878e01f0b/github-com-honeybeehq-honeybee-a9015b303498-space-b52878e01f0b/v2/daemon/tests/helpers-teardown.test.ts:35:5)
+        at async Test.run (node:internal/test_runner/test:1332:7)
+        at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3)
+  }
+
+test at v2/daemon/tests/helpers-teardown.test.ts:13:53
+✖ test shutdown retries a transient signal refusal after successor adoption (8660.581416ms)
+  Error: waitFor timeout: test daemon runner hosts reaped (8172); remaining=[{"kind":"present","pid":8172,"birth":"darwin:1794153752:188228","bootId":"","uid":501,"ppid":1,"pgid":8172,"state":"live","startedAtMs":1794153752188,"waitStatus":null}]
+      at file:///Users/trmd/.hive/v2/cells/hb-macos-full-gate-timeouts-b52878e01f0b/github-com-honeybeehq-honeybee-a9015b303498-space-b52878e01f0b/v2/daemon/tests/helpers.ts:441:17
+      at async Object.stop (file:///Users/trmd/.hive/v2/cells/hb-macos-full-gate-timeouts-b52878e01f0b/github-com-honeybeehq-honeybee-a9015b303498-space-b52878e01f0b/v2/daemon/tests/helpers.ts:430:9)
+      ... 2 lines matching cause stack trace ...
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    [cause]: Error: waitFor timeout: test daemon runner hosts reaped (8172)
+        at waitFor (file:///Users/trmd/.hive/v2/cells/hb-macos-full-gate-timeouts-b52878e01f0b/github-com-honeybeehq-honeybee-a9015b303498-space-b52878e01f0b/v2/daemon/tests/helpers.ts:39:38)
+        at async Object.stop (file:///Users/trmd/.hive/v2/cells/hb-macos-full-gate-timeouts-b52878e01f0b/github-com-honeybeehq-honeybee-a9015b303498-space-b52878e01f0b/v2/daemon/tests/helpers.ts:430:9)
+        at async TestContext.<anonymous> (file:///Users/trmd/.hive/v2/cells/hb-macos-full-gate-timeouts-b52878e01f0b/github-com-honeybeehq-honeybee-a9015b303498-space-b52878e01f0b/v2/daemon/tests/helpers-teardown.test.ts:35:5)
+        at async Test.run (node:internal/test_runner/test:1332:7)
+        at async Test.processPendingSubtests (node:internal/test_runner/test:911:7)
+  }
+v2 daemon/cli test files failed (1 of 1):
+  v2/daemon/tests/helpers-teardown.test.ts (exit 1)

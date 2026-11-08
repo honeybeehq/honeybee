@@ -10,6 +10,42 @@ import { openCoreStore } from "../../core/src/index.ts";
 
 const MARKER = "hb-teardown-writer";
 
+for (const mode of ["identity", "signal", "permanent"] as const) test(`test shutdown ${mode === "permanent" ? "fails when signal identity never recovers" : `retries a transient ${mode} refusal`} after successor adoption`, { timeout: 60_000 }, async () => {
+  const rig = makeDaemonDir();
+  let daemon: DaemonHandle | undefined;
+  try {
+    daemon = await startDaemon(rig.dir);
+    let client = await daemon.client();
+    const { beeId } = await client.request<SpawnResult>("spawn", { name: "shutdown-retry", agent: "stub", cwd: rig.dir });
+    const before = await waitFor(async () => {
+      const value = await client.request<ViewResult>("view", { beeId });
+      return value.runtime?.state === "idle" ? value : null;
+    }, "original runner ready", 30_000);
+    client.close();
+    await daemon.kill();
+    const refusal = join(rig.dir, "signal-refused");
+    const loader = new URL("./fixtures/refuse-first-shutdown-signal.mjs", import.meta.url).pathname;
+    daemon = await startDaemon(rig.dir, { env: { NODE_OPTIONS: `--import=${loader}`, HIVE_TEST_SIGNAL_REFUSAL: refusal, HIVE_TEST_SIGNAL_REFUSAL_MODE: mode } });
+    client = await daemon.client();
+    await waitFor(async () => {
+      const value = await client.request<ViewResult>("view", { beeId });
+      return !value.identityDiagnostic && value.runtime?.pid === before.runtime!.pid
+        && value.runtime.generation === before.runtime!.generation;
+    }, "successor owns original runner", 30_000);
+    client.close();
+    if (mode === "permanent") {
+      await assert.rejects(daemon.stop(), /test daemon runner hosts reaped/);
+      assert.match(daemon.output(), /Runtime disposal timed out:/);
+      assert.equal(daemon.proc.exitCode, 1, "failed disposal exits the daemon nonzero");
+    } else await daemon.stop();
+    assert.equal(Number(readFileSync(refusal, "utf8")), before.runtime!.pid, "the adopted host's first shutdown signal was refused");
+    assert.deepEqual(liveRunnerHostPids(rig.dir), []);
+  } finally {
+    if (daemon) await forceStopTestDaemon(daemon);
+    rig.cleanup();
+  }
+});
+
 test("test teardown with no runner hosts does not require an RPC caller", { timeout: 60_000 }, async t => {
   const rig = makeDaemonDir();
   let daemon: DaemonHandle | undefined;
