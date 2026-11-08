@@ -1,0 +1,26 @@
+{
+  "workload": "question-egress-census",
+  "seriesId": "question-census-main077d-node24.18-ts6.0.3-count-v1",
+  "verdict": "pass",
+  "results": [
+    {
+      "workload": "question-egress-census",
+      "metric": "excessRootWalks",
+      "unit": "count",
+      "kind": "actual",
+      "aggregation": "max",
+      "samples": 1,
+      "discardedSamples": 0,
+      "aggregate": 0,
+      "findings": [],
+      "budget": {
+        "value": 0,
+        "unit": "count",
+        "comparator": "<=",
+        "status": "advisory",
+        "ok": true
+      },
+      "verdict": "pass"
+    }
+  ]
+}

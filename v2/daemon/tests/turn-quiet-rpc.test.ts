@@ -18,13 +18,18 @@ test("quiet facts through a throwaway daemon: root/child isolation, failure, int
     const spawned = await client.request<SpawnResult>("spawn", { name: "quiet-lab", agent: "claude", substrate: "hsr", cwd: rig.dir });
     const beeId = spawned.beeId;
     const view = () => client.request<ViewResult>("view", { beeId });
-    await waitFor(async () => (await view()).runtime?.state === "idle", "fixture ready");
+    await waitFor(async () => (await view()).runtime?.state === "idle", "fixture ready", 60_000);
     const send = (body: string) => sendHumanChat(client, beeId, body, body);
-    const ended = (messageId: number) => waitFor(async () => {
+    const ended = (messageId: number, timeoutMs = 20_000) => waitFor(async () => {
       const value = await view();
       return value.bee?.lastTurnTrigger?.messageId === messageId && value.bee.lastTurnTrigger.endedAt !== null ? value : null;
-    }, "native turn completed", 20_000);
-    const spoken = await ended((await send("@root-sub")).messageId);
+    }, "native turn completed", timeoutMs).catch(async error => {
+      const value = await view();
+      throw new Error(`${String(error)}; runtime=${JSON.stringify(value.runtime)} trigger=${JSON.stringify(value.bee?.lastTurnTrigger)}`, { cause: error });
+    });
+    // Synthetic idle precedes native startup. The first turn includes that
+    // remaining startup and readiness retry, not just synchronous fixture work.
+    const spoken = await ended((await send("@root-sub")).messageId, 60_000);
     assert.equal(spoken.bee!.lastTurnTrigger!.endedQuiet, false);
     assert.equal(spoken.bee!.lastHumanOutputAt, spoken.bee!.lastOutputAt);
     console.log("LAB root reply + quiet sidechains: endedQuiet=false, human cursor advances");

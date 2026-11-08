@@ -1,0 +1,11 @@
+file:///Users/trmd/.hive/v2/cells/hb-macos-full-gate-timeouts-b52878e01f0b/github-com-honeybeehq-honeybee-a9015b303498-space-b52878e01f0b/scripts/run-v2-daemon-tests.mjs:150
+  if (unknown.length > 0) throw new Error(`unknown v2 daemon/cli test file: ${unknown.join(", ")}`);
+                                ^
+
+Error: unknown v2 daemon/cli test file: v2/daemon/tests/proof-no-such-file.test.ts
+    at file:///Users/trmd/.hive/v2/cells/hb-macos-full-gate-timeouts-b52878e01f0b/github-com-honeybeehq-honeybee-a9015b303498-space-b52878e01f0b/scripts/run-v2-daemon-tests.mjs:150:33
+    at ModuleJob.run (node:internal/modules/esm/module_job:439:25)
+    at async node:internal/modules/esm/loader:643:26
+    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)
+
+Node.js v24.18.0

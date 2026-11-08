@@ -1,15 +1,16 @@
 {
   "version": 1,
-  "$comment": "Bounded spawn census, two action reconciliation methods and batch action views; other core entry points remain outside the census.",
+  "$comment": "Bounded spawn census, two action reconciliation methods and batch action views; other core entry points remain outside the census. One explicit dev-loop helper is included; all other test helpers remain excluded.",
   "sourceRoots": [
     "v2/driver-cell/src",
     "v2/driver-hsr/src",
     "v2/daemon/src",
     "v2/cli/src",
-    "v2/core/src"
+    "v2/core/src",
+    "v2/daemon/tests"
   ],
   "extensions": "\\.ts$",
-  "exclude": "(\\.test\\.|/tests/|/fixtures/)",
+  "exclude": "(\\.test\\.|/fixtures/|/tests/(?!questionEgressCensus\\.ts$))",
   "registries": [],
   "patterns": [
     {

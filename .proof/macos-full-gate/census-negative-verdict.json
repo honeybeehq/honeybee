@@ -1,0 +1,29 @@
+{
+  "workload": "question-egress-census",
+  "seriesId": "question-census-main077d-node24.18-ts6.0.3-count-v1",
+  "verdict": "fail",
+  "results": [
+    {
+      "workload": "question-egress-census",
+      "metric": "excessRootWalks",
+      "unit": "count",
+      "kind": "actual",
+      "aggregation": "max",
+      "samples": 1,
+      "discardedSamples": 0,
+      "aggregate": 1,
+      "findings": [
+        "invariant violated: Exact raw census parity; all independent defect and cyclic classification controls pass.",
+        "advisory budget <= 0 count exceeded: 1"
+      ],
+      "budget": {
+        "value": 0,
+        "unit": "count",
+        "comparator": "<=",
+        "status": "advisory",
+        "ok": false
+      },
+      "verdict": "fail"
+    }
+  ]
+}

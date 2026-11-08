@@ -1,0 +1,16 @@
+import assert from 'node:assert/strict';
+import {execFileSync} from 'node:child_process';
+import {writeFileSync} from 'node:fs';
+import {census,loadConfig,loadRecords,loadGaps,drift} from '../../scripts/perf-map.mjs';
+const base='077d451939928754f97ccd7e8d56a46d0e425a81';
+const folder='.agents/skills/perf-honeybee/workloads';
+const readBase=file=>JSON.parse(execFileSync('git',['show',`${base}:${folder}/${file}`],{encoding:'utf8'}));
+const old=readBase('census.config.json');
+const oldConfig={...loadConfig(),sourceRoots:old.sourceRoots,exclude:new RegExp(old.exclude)};
+const oldRecords=loadRecords().filter(x=>x.record.id!=='question-egress-census').map(x=>({file:x.file,record:readBase(x.file)}));
+const before=drift(census(undefined,oldConfig),oldRecords,readBase('gaps.json'));
+const after=drift(census(),loadRecords(),loadGaps());
+for(const key of ['unaccounted','dead','staleOwners'])assert.deepEqual(after[key],before[key],key+' must not grow');
+const result={baselineConfigAndRecords:base,scope:'Both inventories inspect this same source tree; no claim of an executed baseline gate.',before:before.summary,after:after.summary,newDrift:0};
+writeFileSync('.proof/macos-full-gate/perf-map-existing-drift.json',JSON.stringify(result,null,2)+'\n');
+console.log(JSON.stringify(result));

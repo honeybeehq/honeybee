@@ -1,0 +1,45 @@
+✖ cell-pressure.1: below the floor, clean archived then idle Cells go oldest first until the target; held, dirty, unlanded, live and fresh Cells stay; an unreachable floor is reported once (114803.79625ms)
+✔ cell-pressure.2: a Cell whose work landed upstream, past a stale origin checkout, is planned once the daemon's mirror fetched it (27003.933084ms)
+✖ cell-pressure.3: with no retention config a workstation runs no pressure pass and fetches no mirror, while a satellite does both; a byte floor above the volume is refused with a warning (9253.218792ms)
+✔ cell-pressure.4: retention passes evict at most maxEvictionsPerDay Cells in a rolling day, audit the cap once, and the window survives a restart (35004.690041ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 2
+ℹ fail 2
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 188538.143125
+
+✖ failing tests:
+
+test at v2/daemon/tests/cell-pressure.test.ts:64:1
+✖ cell-pressure.1: below the floor, clean archived then idle Cells go oldest first until the target; held, dirty, unlanded, live and fresh Cells stay; an unreachable floor is reported once (114803.79625ms)
+  AssertionError [ERR_ASSERTION]: the pass did retry
+      at TestContext.<anonymous> (file:///Users/trmd/.hive/v2/cells/hb-macos-full-gate-timeouts-b52878e01f0b/github-com-honeybeehq-honeybee-a9015b303498-space-b52878e01f0b/v2/daemon/tests/cell-pressure.test.ts:178:12)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at v2/daemon/tests/cell-pressure.test.ts:256:1
+✖ cell-pressure.3: with no retention config a workstation runs no pressure pass and fetches no mirror, while a satellite does both; a byte floor above the volume is refused with a warning (9253.218792ms)
+  AssertionError [ERR_ASSERTION]: the workstation warned once about being below its floor
+  
+  false !== true
+  
+      at TestContext.<anonymous> (file:///Users/trmd/.hive/v2/cells/hb-macos-full-gate-timeouts-b52878e01f0b/github-com-honeybeehq-honeybee-a9015b303498-space-b52878e01f0b/v2/daemon/tests/cell-pressure.test.ts:313:10)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

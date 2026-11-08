@@ -17,6 +17,7 @@ import type { DriverObservation, InterruptOutcome, LiveProcess, RuntimeDriver, S
 import type { FlagEvidenceLike, ObservationCursorEvidenceLike, SessionEvidenceLike } from "../src/loops.ts";
 import type { NodeConfigFile } from "../src/config.ts";
 import { RpcClient } from "../../cli/src/client.ts";
+import type { ListResult } from "../src/protocol.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 export const AGENT_PATH = join(here, "..", "..", "driver-hsr", "test-agent", "agent.mjs");
@@ -330,7 +331,7 @@ export function ownerBoundEnv(nodeOptions = ""): { HIVE_TEST_OWNER_PID: string; 
 }
 
 /** `platform` makes the daemon process report that OS (default linux, so a suite run on a Mac never trips platform guards). */
-export async function startDaemon(dir: string, opts: { env?: Record<string, string>; platform?: string; stopTimeoutMs?: number; socketPath?: string } = {}): Promise<DaemonHandle> {
+export async function startDaemon(dir: string, opts: { env?: Record<string, string>; platform?: string; stopTimeoutMs?: number; ownershipTimeoutMs?: number; socketPath?: string } = {}): Promise<DaemonHandle> {
   let socketPath = opts.socketPath ?? join(dir, "hived.sock");
   const storePath = join(dir, "core.sqlite3");
   const isolatedHome = mkdtempSync(join(dir, "test-home-"));
@@ -384,16 +385,64 @@ export async function startDaemon(dir: string, opts: { env?: Record<string, stri
       await waitFor(() => proc.exitCode != null || proc.signalCode != null, "daemon killed", 4000);
     },
     stop: async () => {
-      proc.kill("SIGTERM");
-      await waitFor(() => proc.exitCode != null || proc.signalCode != null, "daemon stopped", opts.stopTimeoutMs ?? 6000);
-      await waitFor(
-        () => liveRunnerHostPids(dir).length === 0,
-        `test daemon runner hosts reaped (${liveRunnerHostPids(dir).join(", ")})`,
-        4000,
-      ).catch(error => {
-        const remaining = liveRunnerHostPids(dir).map(pid => inspectProcess(pid));
-        throw new Error(`${(error as Error).message}; remaining=${JSON.stringify(remaining)}`, { cause: error });
-      });
+      const knownHosts = new Map<number, string | null>();
+      try {
+        // Persisted idle does not prove survivor adoption. Shutdown freezes
+        // identity retries, so keep recovery running for owned runner hosts.
+        // Synthetic unresolved PIDs without a fixture host are not ours.
+        if (proc.exitCode === null && proc.signalCode === null) {
+          const client = await handle.client();
+          try {
+            await waitFor(async () => {
+              const scan = scanRunnerHosts(dir);
+              const hosts = new Set(scan.pids);
+              for (const pid of hosts) {
+                if (knownHosts.has(pid)) continue;
+                const value = inspectProcess(pid);
+                knownHosts.set(pid, value.kind === "present" ? value.birth : null);
+              }
+              const { views } = await client.request<ListResult>("list", {});
+              for (const view of views) {
+                const pid = view.runtime?.pid;
+                if (pid == null || knownHosts.has(pid)) continue;
+                const value = inspectProcess(pid);
+                const receipt = `${view.view.beeId}.${view.runtime!.generation}.status.json`;
+                // Retain identities through torn status writes, including an
+                // owned child whose first status has not been written yet.
+                if (scan.unreadable.has(receipt) || scan.directoryUnavailable
+                  || value.kind === "present" && value.ppid === proc.pid) {
+                  knownHosts.set(pid, value.kind === "present" ? value.birth : null);
+                }
+              }
+              return views.every(view => !view.identityDiagnostic || view.runtime?.pid == null || (
+                !hosts.has(view.runtime.pid) && !scan.directoryUnavailable
+                && !scan.unreadable.has(`${view.view.beeId}.${view.runtime.generation}.status.json`)
+              ));
+            }, "test daemon survivor ownership recovered", opts.ownershipTimeoutMs ?? scaledMs(30_000), 100);
+          } finally { client.close(); }
+        }
+        proc.kill("SIGTERM");
+        await waitFor(() => proc.exitCode != null || proc.signalCode != null, "daemon stopped", opts.stopTimeoutMs ?? scaledMs(30_000));
+        await waitFor(
+          () => liveRunnerHostPids(dir).length === 0 && [...knownHosts].every(([pid, birth]) => {
+            const value = inspectProcess(pid);
+            return value.kind === "gone" || value.kind === "present" && (
+              value.state === "zombie" || birth !== null && value.birth !== birth
+            ) || !pidAlive(pid);
+          }),
+          `test daemon runner hosts reaped (${liveRunnerHostPids(dir).join(", ")})`,
+          4000,
+        ).catch(error => {
+          const remaining = liveRunnerHostPids(dir).map(pid => inspectProcess(pid));
+          throw new Error(`${(error as Error).message}; remaining=${JSON.stringify(remaining)}`, { cause: error });
+        });
+      } catch (error) {
+        // A failed postcondition must still fail, but must not pin the test
+        // process or contaminate later files with a disposable daemon tree.
+        try { await forceStopTestDaemon(handle); }
+        catch (cleanupError) { throw new AggregateError([error, cleanupError], "Test daemon stop and emergency cleanup failed"); }
+        throw error;
+      }
     },
   };
   // Ready when the socket accepts a hello.
@@ -433,18 +482,23 @@ export async function startDaemon(dir: string, opts: { env?: Record<string, stri
 
 /** Test postcondition: a successful graceful stop leaves no running detached host. */
 export function liveRunnerHostPids(dir: string): number[] {
+  return scanRunnerHosts(dir).pids;
+}
+
+function scanRunnerHosts(dir: string): { pids: number[]; unreadable: Set<string>; directoryUnavailable: boolean } {
   const runnersDir = join(dir, "runners");
+  const unreadable = new Set<string>();
   let names: string[];
   try {
     names = readdirSync(runnersDir).filter((name) => name.endsWith(".status.json"));
-  } catch {
-    return [];
+  } catch (error) {
+    return { pids: [], unreadable, directoryUnavailable: (error as NodeJS.ErrnoException).code !== "ENOENT" };
   }
   const pids: number[] = [];
   for (const name of names) {
     try {
       const status = JSON.parse(readFileSync(join(runnersDir, name), "utf8")) as { hostPid?: unknown; hostBirth?: unknown };
-      if (typeof status.hostPid !== "number" || !Number.isSafeInteger(status.hostPid) || status.hostPid <= 0) continue;
+      if (typeof status.hostPid !== "number" || !Number.isSafeInteger(status.hostPid) || status.hostPid <= 0) { unreadable.add(name); continue; }
       const host = inspectProcess(status.hostPid);
       // Adopted hosts are not children of the successor daemon. Their wait
       // parent may retain an exited zombie; signal 0 still succeeds for it.
@@ -458,9 +512,10 @@ export function liveRunnerHostPids(dir: string): number[] {
       if (host.kind === "present" || pidAlive(status.hostPid)) pids.push(status.hostPid);
     } catch {
       // A status write racing shutdown is retried by waitFor.
+      unreadable.add(name);
     }
   }
-  return pids;
+  return { pids, unreadable, directoryUnavailable: false };
 }
 
 function pidAlive(pid: number): boolean {

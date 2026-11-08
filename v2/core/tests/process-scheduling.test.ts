@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { getPriority } from "node:os";
 import { describeRepair, parseIoClass, promoteScheduling, sampleScheduling } from "../src/processScheduling.ts";
 
 function recordingExec(answers: Record<string, string[]>): { calls: string[]; exec: (file: string, args: string[]) => string } {
@@ -19,10 +20,15 @@ function recordingExec(answers: Record<string, string[]>): { calls: string[]; ex
   };
 }
 
-test("this process samples as foreground on its own platform", () => {
+test("this process exposes native scheduling facts on its own platform", () => {
+  // A sampler does not promote its caller. Cell/background launch policy is
+  // valid input; controlled samples below test foreground classification.
   const sample = sampleScheduling({ probeIo: false });
-  assert.equal(sample.nice, 0);
-  assert.equal(sample.demoted, false);
+  assert.equal(sample.nice, getPriority());
+  assert.equal(sample.ioClass, null);
+  if (process.platform === "darwin") assert.ok(Number.isInteger(sample.priority));
+  else assert.equal(sample.priority, null);
+  assert.equal(typeof sample.demoted, "boolean");
 });
 
 test("parseIoClass reads ionice output", () => {

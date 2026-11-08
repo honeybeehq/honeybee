@@ -1,0 +1,19 @@
+{
+  "protocolVersion": 1,
+  "workload": "question-egress-census",
+  "seriesId": "question-census-main077d-node24.18-ts6.0.3-count-v1",
+  "results": [
+    {
+      "metric": "excessRootWalks",
+      "samples": [
+        0
+      ],
+      "invariantHolds": true
+    }
+  ],
+  "evidence": {
+    "comparison": "census-count-parity.json",
+    "controls": "census-corrected-suite.log",
+    "loadedTimingBaseline": false
+  }
+}

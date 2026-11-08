@@ -1,0 +1,21 @@
+✖ failing tests:
+
+test at v2/daemon/tests/grok-central-credentials.test.ts:26:1
+✖ central Grok: isolated daemon rotates once, publishes access-only, refreshes early and stops at invalid_grant; native path stays native (11491.681917ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  3 !== 2
+  
+      at TestContext.<anonymous> (file:///Users/trmd/.hive/v2/cells/hb-macos-full-gate-timeouts-b52878e01f0b/github-com-honeybeehq-honeybee-a9015b303498-space-b52878e01f0b/v2/daemon/tests/grok-central-credentials.test.ts:115:12)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 3,
+    expected: 2,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+v2 daemon/cli test files failed (1 of 4):
+  v2/daemon/tests/grok-central-credentials.test.ts (exit 1)

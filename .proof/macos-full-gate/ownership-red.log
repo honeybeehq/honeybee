@@ -1,0 +1,28 @@
+✖ test teardown waits for survivor ownership before stopping recovery (25974.1855ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 0
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 28225.471917
+
+✖ failing tests:
+
+test at v2/daemon/tests/helpers-teardown.test.ts:13:61
+✖ test teardown waits for survivor ownership before stopping recovery (25974.1855ms)
+  Error: waitFor timeout: test daemon runner hosts reaped (56087); remaining=[{"kind":"present","pid":56087,"birth":"darwin:1794130679:996499","bootId":"","uid":501,"ppid":1,"pgid":56087,"state":"live","startedAtMs":1794130679996,"waitStatus":null}]
+      at file:///Users/trmd/.hive/v2/cells/hb-macos-full-gate-timeouts-b52878e01f0b/github-com-honeybeehq-honeybee-a9015b303498-space-b52878e01f0b/v2/daemon/tests/helpers.ts:403:17
+      at async Object.stop (file:///Users/trmd/.hive/v2/cells/hb-macos-full-gate-timeouts-b52878e01f0b/github-com-honeybeehq-honeybee-a9015b303498-space-b52878e01f0b/v2/daemon/tests/helpers.ts:392:9)
+      ... 2 lines matching cause stack trace ...
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    [cause]: Error: waitFor timeout: test daemon runner hosts reaped (56087)
+        at waitFor (file:///Users/trmd/.hive/v2/cells/hb-macos-full-gate-timeouts-b52878e01f0b/github-com-honeybeehq-honeybee-a9015b303498-space-b52878e01f0b/v2/daemon/tests/helpers.ts:39:38)
+        at async Object.stop (file:///Users/trmd/.hive/v2/cells/hb-macos-full-gate-timeouts-b52878e01f0b/github-com-honeybeehq-honeybee-a9015b303498-space-b52878e01f0b/v2/daemon/tests/helpers.ts:392:9)
+        at async TestContext.<anonymous> (file:///Users/trmd/.hive/v2/cells/hb-macos-full-gate-timeouts-b52878e01f0b/github-com-honeybeehq-honeybee-a9015b303498-space-b52878e01f0b/v2/daemon/tests/helpers-teardown.test.ts:50:7)
+        at async Test.run (node:internal/test_runner/test:1332:7)
+        at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3)
+  }
+v2 daemon/cli test files failed (1 of 1):
+  v2/daemon/tests/helpers-teardown.test.ts (exit 1)

@@ -1,0 +1,8 @@
+test at v2/daemon/tests/cell-retention.test.ts:206:1
+✖ cell-retention.3: the automatic pass runs on its interval and evicts a clean stopped Cell past the age floor (78179.586667ms)
+  Error: waitFor timeout: auto-evicted
+      at waitFor (file:///Users/trmd/.hive/v2/cells/hb-macos-full-gate-timeouts-b52878e01f0b/github-com-honeybeehq-honeybee-a9015b303498-space-b52878e01f0b/v2/daemon/tests/helpers.ts:39:38)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (file:///Users/trmd/.hive/v2/cells/hb-macos-full-gate-timeouts-b52878e01f0b/github-com-honeybeehq-honeybee-a9015b303498-space-b52878e01f0b/v2/daemon/tests/cell-retention.test.ts:216:5)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7)

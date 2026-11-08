@@ -1,0 +1,32 @@
+✖ quiet facts through a throwaway daemon: root/child isolation, failure, interruption and mid-turn restart (24215.427667ms)
+LAB grok @success: endedQuiet=true
+LAB grok @content-quiet: endedQuiet=false
+LAB grok @error: endedQuiet=undefined
+LAB grok @cancelled: endedQuiet=undefined
+LAB grok @refusal: endedQuiet=undefined
+✔ quiet ACP facts through a throwaway grok daemon (5508.161583ms)
+LAB kimi @success: endedQuiet=true
+LAB kimi @content-quiet: endedQuiet=false
+LAB kimi @error: endedQuiet=undefined
+LAB kimi @cancelled: endedQuiet=undefined
+LAB kimi @refusal: endedQuiet=undefined
+✔ quiet ACP facts through a throwaway kimi daemon (5310.592916ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 2
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 35399.880167
+
+✖ failing tests:
+
+test at v2/daemon/tests/turn-quiet-rpc.test.ts:12:1
+✖ quiet facts through a throwaway daemon: root/child isolation, failure, interruption and mid-turn restart (24215.427667ms)
+  Error: waitFor timeout: native turn completed
+      at waitFor (file:///Users/trmd/.hive/v2/cells/hb-macos-full-gate-timeouts-b52878e01f0b/github-com-honeybeehq-honeybee-a9015b303498-space-b52878e01f0b/v2/daemon/tests/helpers.ts:39:38)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (file:///Users/trmd/.hive/v2/cells/hb-macos-full-gate-timeouts-b52878e01f0b/github-com-honeybeehq-honeybee-a9015b303498-space-b52878e01f0b/v2/daemon/tests/turn-quiet-rpc.test.ts:27:20)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3)

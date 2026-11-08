@@ -204,10 +204,11 @@ test("cell-retention.2: cell.evict on one bee — refused dirty, forced parks, l
 });
 
 test("cell-retention.3: the automatic pass runs on its interval and evicts a clean stopped Cell past the age floor", { timeout: 180_000 }, async () => {
-  const rig = makeRig({ enabled: true, stoppedAfterDays: 0, archivedAfterDays: 0, intervalHours: 1 });
+  const rig = makeRig({ enabled: true, stoppedAfterDays: 0, archivedAfterDays: 0, intervalHours: 200 / 3_600_000 });
   let daemon: DaemonHandle | null = null;
   try {
-    // A short first-pass delay: the pass fires shortly after boot, then hourly.
+    // A pass may run before slow Cell startup/stop completes. Keep periodic
+    // passes short too, so a later pass observes the stopped candidate.
     daemon = await startDaemon(rig.dir, { env: { HIVE_TEST_RETENTION_INITIAL_DELAY_MS: "1500" } });
     const client = await daemon.client();
     const bee = await spawnIdle(client, "auto", rig.origin.repo);

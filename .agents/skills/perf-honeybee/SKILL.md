@@ -94,3 +94,5 @@ Referenced Cell projection is mapped by [fleet-cell-projection](workloads/fleet-
 Full watch transfer and RPC framing are mapped by [watch-snapshot](workloads/watch-snapshot.md).
 Its generated 20 MB fixture compares receiver algorithms against a disposable daemon;
 shared-host timing is recipe evidence, and cannot establish Apiary launch latency.
+
+[Question egress test census](workloads/question-egress-census.md) maps a dev-loop source scanner. Counts prove complete-query reuse; loaded shared-host timing is recipe evidence only. It adds no production latency claim.

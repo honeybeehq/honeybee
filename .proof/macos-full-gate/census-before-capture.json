@@ -1,0 +1,406 @@
+{
+  "counts": {
+    "recursiveWalks": 792588,
+    "rootWalks": 41691,
+    "rootQueries": 41691,
+    "distinctRootTypes": 9222,
+    "excessRootWalks": 32469
+  },
+  "raw": {
+    "productionFiles": 239,
+    "consumers": [
+      {
+        "file": "v2/core/src/store.ts",
+        "line": 7030,
+        "scope": "askQuestion",
+        "call": "this.audit",
+        "typedArguments": [
+          2
+        ]
+      },
+      {
+        "file": "v2/core/src/store.ts",
+        "line": 7102,
+        "scope": "withdrawQuestionWithKey",
+        "call": "JSON.stringify",
+        "typedArguments": [
+          0
+        ]
+      },
+      {
+        "file": "v2/core/src/store.ts",
+        "line": 7130,
+        "scope": "dismissQuestionWithKey",
+        "call": "this.audit",
+        "typedArguments": [
+          2
+        ]
+      },
+      {
+        "file": "v2/core/src/store.ts",
+        "line": 7135,
+        "scope": "dismissQuestionWithKey",
+        "call": "JSON.stringify",
+        "typedArguments": [
+          0
+        ]
+      },
+      {
+        "file": "v2/core/src/store.ts",
+        "line": 11541,
+        "scope": "reportAction",
+        "call": "finish",
+        "typedArguments": [
+          2
+        ]
+      },
+      {
+        "file": "v2/core/src/store.ts",
+        "line": 11547,
+        "scope": "reportAction",
+        "call": "finish",
+        "typedArguments": [
+          2
+        ]
+      },
+      {
+        "file": "v2/core/src/audit.ts",
+        "line": 543,
+        "scope": "replayAudit",
+        "call": "questions.set",
+        "typedArguments": [
+          1
+        ]
+      },
+      {
+        "file": "v2/daemon/src/loops.ts",
+        "line": 1504,
+        "scope": "buildHandoffContext",
+        "call": "buildExtractiveHandoffContext",
+        "typedArguments": [
+          0
+        ]
+      },
+      {
+        "file": "v2/cli/src/client.ts",
+        "line": 203,
+        "scope": "onFrame",
+        "call": "this.onEvent",
+        "typedArguments": [
+          0
+        ]
+      },
+      {
+        "file": "v2/daemon/src/rpc.ts",
+        "line": 356,
+        "scope": "flushWatch",
+        "call": "byCursor.set",
+        "typedArguments": [
+          1
+        ]
+      },
+      {
+        "file": "v2/daemon/src/rpc.ts",
+        "line": 367,
+        "scope": "flushWatch",
+        "call": "publicEnvRecords",
+        "typedArguments": [
+          0
+        ]
+      },
+      {
+        "file": "v2/daemon/src/rpc.ts",
+        "line": 368,
+        "scope": "flushWatch",
+        "call": "projectMailDeliveryDelta",
+        "typedArguments": [
+          0
+        ]
+      },
+      {
+        "file": "v2/daemon/src/daemon.ts",
+        "line": 1706,
+        "scope": "flushWatchers",
+        "call": "this.mirrorAuditRows",
+        "typedArguments": [
+          0
+        ]
+      },
+      {
+        "file": "v2/daemon/src/daemon.ts",
+        "line": 1712,
+        "scope": "mirrorAuditRows",
+        "call": "this.publicConfirmationAudit",
+        "typedArguments": [
+          0
+        ]
+      },
+      {
+        "file": "v2/daemon/src/daemon.ts",
+        "line": 1712,
+        "scope": "mirrorAuditRows",
+        "call": "publicAuditRow",
+        "typedArguments": [
+          0
+        ]
+      },
+      {
+        "file": "v2/daemon/src/daemon.ts",
+        "line": 4780,
+        "scope": "rpcActionReportIdempotent",
+        "call": "store.recordRpcResult",
+        "typedArguments": [
+          3
+        ]
+      },
+      {
+        "file": "v2/daemon/src/daemon.ts",
+        "line": 6845,
+        "scope": "rpcAuditTail",
+        "call": "this.publicConfirmationAudit",
+        "typedArguments": [
+          0
+        ]
+      },
+      {
+        "file": "v2/cli/src/main.ts",
+        "line": 1924,
+        "scope": "cmdAction",
+        "call": "emit",
+        "typedArguments": [
+          2
+        ]
+      },
+      {
+        "file": "v2/cli/src/main.ts",
+        "line": 2092,
+        "scope": "cmdAsk",
+        "call": "emit",
+        "typedArguments": [
+          2
+        ]
+      },
+      {
+        "file": "v2/cli/src/main.ts",
+        "line": 2130,
+        "scope": "cmdQuestion",
+        "call": "questionLine",
+        "typedArguments": [
+          0
+        ]
+      },
+      {
+        "file": "v2/cli/src/main.ts",
+        "line": 2131,
+        "scope": "cmdQuestion",
+        "call": "emit",
+        "typedArguments": [
+          2
+        ]
+      },
+      {
+        "file": "v2/cli/src/main.ts",
+        "line": 2151,
+        "scope": "cmdAnswer",
+        "call": "emit",
+        "typedArguments": [
+          2
+        ]
+      },
+      {
+        "file": "v2/cli/src/main.ts",
+        "line": 3609,
+        "scope": "cmdWatch",
+        "call": "printSnapshot",
+        "typedArguments": [
+          0
+        ]
+      },
+      {
+        "file": "v2/cli/src/main.ts",
+        "line": 4530,
+        "scope": "readRows",
+        "call": "publicAuditRow",
+        "typedArguments": [
+          0
+        ]
+      },
+      {
+        "file": "v2/cli/src/main.ts",
+        "line": 4535,
+        "scope": "cmdEvents",
+        "call": "emit",
+        "typedArguments": [
+          2
+        ]
+      },
+      {
+        "file": "v2/cli/src/main.ts",
+        "line": 4537,
+        "scope": "cmdEvents",
+        "call": "auditLine",
+        "typedArguments": [
+          0
+        ]
+      },
+      {
+        "file": "v2/cli/src/main.ts",
+        "line": 4558,
+        "scope": "cmdEvents",
+        "call": "withDaemonTarget",
+        "typedArguments": [
+          1
+        ]
+      },
+      {
+        "file": "v2/cli/src/main.ts",
+        "line": 4558,
+        "scope": "cmdEvents",
+        "call": "auditLine",
+        "typedArguments": [
+          0
+        ]
+      },
+      {
+        "file": "v2/harness/src/invariants.ts",
+        "line": 114,
+        "scope": "checkStep",
+        "call": "this.checkModel",
+        "typedArguments": [
+          1
+        ]
+      },
+      {
+        "file": "v2/harness/src/invariants.ts",
+        "line": 115,
+        "scope": "checkStep",
+        "call": "this.checkI1",
+        "typedArguments": [
+          2
+        ]
+      },
+      {
+        "file": "v2/harness/src/invariants.ts",
+        "line": 116,
+        "scope": "checkStep",
+        "call": "this.checkQueue",
+        "typedArguments": [
+          2
+        ]
+      },
+      {
+        "file": "v2/harness/src/invariants.ts",
+        "line": 385,
+        "scope": "checkReplay",
+        "call": "replayAudit",
+        "typedArguments": [
+          0
+        ]
+      },
+      {
+        "file": "v2/harness/src/invariants.ts",
+        "line": 390,
+        "scope": "checkReplay",
+        "call": "isDeepStrictEqual",
+        "typedArguments": [
+          0,
+          1
+        ]
+      }
+    ],
+    "sends": [
+      {
+        "file": "v2/daemon/src/rpc.ts",
+        "line": 361,
+        "scope": "flushWatch",
+        "argument": "frame",
+        "initializer": "{ type: \"gap\", seq: latestSeq }"
+      },
+      {
+        "file": "v2/daemon/src/rpc.ts",
+        "line": 368,
+        "scope": "flushWatch",
+        "argument": "projectQuestionDismissalDelta(projectAnswerTriggerDelta(projectMailDeliveryDelta(frame, conn.clientCapabilities), conn.clientCapabilities), conn.clientCapabilities)",
+        "initializer": null
+      },
+      {
+        "file": "v2/daemon/src/rpc.ts",
+        "line": 450,
+        "scope": "onConnection",
+        "argument": "{ protocol: PROTOCOL, capabilities: this.capabilities, identity: BUILD_IDENTITY, ...(this.opts.instance ? { instance: this.opts.instance } : {}) } satisfies HelloFrame",
+        "initializer": null
+      },
+      {
+        "file": "v2/daemon/src/rpc.ts",
+        "line": 470,
+        "scope": "onFrame",
+        "argument": "{ id: -1, ok: false, error: { code: \"invalid_request\", message: \"frame is not a json object\" } }",
+        "initializer": null
+      },
+      {
+        "file": "v2/daemon/src/rpc.ts",
+        "line": 475,
+        "scope": "onFrame",
+        "argument": "{\n          id: -1,\n          ok: false,\n          error: {\n            code: \"protocol_mismatch\",\n            message: `server speaks ${PROTOCOL}; client offered ${JSON.stringify(frame.protocol ?? null)}`,\n          },\n        }",
+        "initializer": null
+      },
+      {
+        "file": "v2/daemon/src/rpc.ts",
+        "line": 487,
+        "scope": "onFrame",
+        "argument": "{ id: -1, ok: false, error: { code: \"invalid_request\", message: \"clientLane can only mark node_relay or remote provenance.\" } }",
+        "initializer": null
+      },
+      {
+        "file": "v2/daemon/src/rpc.ts",
+        "line": 497,
+        "scope": "onFrame",
+        "argument": "{ id: -1, ok: false, error: { code: \"invalid_request\", message: \"caller must be {dataDir?: string, liveTarget?: boolean, expectedInstanceId?: string | null, allowForeignDaemon?: boolean}.\" } }",
+        "initializer": null
+      },
+      {
+        "file": "v2/daemon/src/rpc.ts",
+        "line": 509,
+        "scope": "onFrame",
+        "argument": "{ id, ok: false, error: { code: \"invalid_request\", message: `unknown verb: ${String(verb)}` } }",
+        "initializer": null
+      },
+      {
+        "file": "v2/daemon/src/rpc.ts",
+        "line": 521,
+        "scope": "onFrame",
+        "argument": "{ id, ok: false, error: { code: \"invalid_request\", message: \"params must be an object\" } }",
+        "initializer": null
+      },
+      {
+        "file": "v2/daemon/src/rpc.ts",
+        "line": 737,
+        "scope": "onFrame",
+        "argument": "{ id, ok: true, result: publicBeeResponse(verb, projectQuestionDismissalResult(verb, projectAnswerTriggerResult(verb, projectMailDeliveryResult(verb, value, conn.clientCapabilities), conn.clientCapabilities), conn.clientCapabilities), includeOperatorLocalHomes), ...(secretCapture && captureExpiresAt > Date.now() ? { secretCapture } : {}) }",
+        "initializer": null
+      },
+      {
+        "file": "v2/daemon/src/rpc.ts",
+        "line": 743,
+        "scope": "onFrame",
+        "argument": "{ id, ok: false, error: publicEnvRecords(projectQuestionDismissalError(toRpcError(err), conn.clientCapabilities)) }",
+        "initializer": null
+      },
+      {
+        "file": "v2/daemon/src/rpc.ts",
+        "line": 753,
+        "scope": "onFrame",
+        "argument": "{ id, ok: true, result: publicBeeResponse(verb, projectQuestionDismissalResult(verb, projectAnswerTriggerResult(verb, projectMailDeliveryResult(verb, result, conn.clientCapabilities), conn.clientCapabilities), conn.clientCapabilities), includeOperatorLocalHomes) }",
+        "initializer": null
+      },
+      {
+        "file": "v2/daemon/src/rpc.ts",
+        "line": 757,
+        "scope": "onFrame",
+        "argument": "{ id, ok: false, error: publicEnvRecords(projectQuestionDismissalError(toRpcError(err), conn.clientCapabilities)) }",
+        "initializer": null
+      }
+    ],
+    "mirrorReferences": []
+  }
+}

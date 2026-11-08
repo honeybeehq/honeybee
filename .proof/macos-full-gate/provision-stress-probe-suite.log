@@ -1,0 +1,33 @@
+node test file concurrency=1
+✖ provision-worker: a fresh image hit exits after ready without maintenance Git children (3191.02725ms)
+✔ provision-worker: a replayed ledger rebuilds a missing image after maintenance starts (3920.013209ms)
+✔ provision-worker: an incomplete image operation keeps maintenance after replay resumes (3655.676292ms)
+✔ provision-worker: image failure fallback keeps the deferred retry (2827.360792ms)
+✔ provision-worker: provisioning errors stay failed and do not enter maintenance (752.590458ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 4
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 16066.455167
+
+✖ failing tests:
+
+test at v2/driver-cell/tests/provision-worker.test.ts:117:1
+✖ provision-worker: a fresh image hit exits after ready without maintenance Git children (3191.02725ms)
+  AssertionError [ERR_ASSERTION]: fresh image placement must skip config and refresh children
+  
+  7 !== 6
+  
+      at TestContext.<anonymous> (file:///Users/trmd/.hive/v2/cells/hb-macos-full-gate-timeouts-b52878e01f0b/github-com-honeybeehq-honeybee-a9015b303498-space-b52878e01f0b/v2/driver-cell/tests/provision-worker.test.ts:140:12)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 7,
+    expected: 6,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

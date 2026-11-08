@@ -79,8 +79,12 @@ test("central Grok: isolated daemon rotates once, publishes access-only, refresh
     const nativeRaw = readFileSync(join(dir, "vault", "grok", native, "auth.json"), "utf8");
     const clockOffset = join(dir, "clock-offset");
     writeFileSync(clockOffset, "0");
+    // CLI startup can take longer than the refresh interval on a loaded Mac.
+    // Advance policy time at the intended boundaries, rather than racing the
+    // automatic refresh loop while asserting exact token generations.
+    const clockStart = Date.now();
     const preload = join(dir, "no-provider.mjs");
-    writeFileSync(preload, `import { readFileSync } from "node:fs"; const nativeNow = Date.now; Date.now = () => nativeNow() + Number(readFileSync(${JSON.stringify(clockOffset)}, "utf8")); const originalFetch = globalThis.fetch; globalThis.fetch = (url, options) => { const target = String(url); if (target.startsWith("http://127.0.0.1:")) return originalFetch(url, options); if (target === "https://cli-chat-proxy.grok.com/v1/billing?format=credits") return Promise.resolve(new Response(JSON.stringify({config:{creditUsagePercent:0}}), {status:200})); throw new Error("External provider access forbidden in isolated proof"); };`);
+    writeFileSync(preload, `import { readFileSync } from "node:fs"; Date.now = () => ${clockStart} + Number(readFileSync(${JSON.stringify(clockOffset)}, "utf8")); const originalFetch = globalThis.fetch; globalThis.fetch = (url, options) => { const target = String(url); if (target.startsWith("http://127.0.0.1:")) return originalFetch(url, options); if (target === "https://cli-chat-proxy.grok.com/v1/billing?format=credits") return Promise.resolve(new Response(JSON.stringify({config:{creditUsagePercent:0}}), {status:200})); throw new Error("External provider access forbidden in isolated proof"); };`);
     daemon = await startDaemon(dir, { env: { NODE_OPTIONS: `--import=${preload}`, HIVE_GROK_OAUTH_TOKEN_URL: `http://127.0.0.1:${(server.address() as AddressInfo).port}`, HOME: dir, GROK_HOME: join(dir, "unused") } });
     client = await daemon.client();
     const rpcResults: unknown[] = [];
@@ -169,6 +173,7 @@ test("central Grok: isolated daemon rotates once, publishes access-only, refresh
     assert.equal(requests.length, 4);
     assert.equal(new Set(requests).size, requests.length);
     console.log("distinct concurrent requests: serialized; each used its own rotated generation; no token double-spent");
+    writeFileSync(clockOffset, "2000");
     const early = await waitFor(async () => {
       const state = await rpc<AccountCredentialAuthority>("account.credentials.status", { id });
       return state.generation === 6 && state.phase === "ready" ? state : null;
@@ -187,7 +192,7 @@ test("central Grok: isolated daemon rotates once, publishes access-only, refresh
     assert.equal(pending.generation, 7);
     assert.ok(authority().document[scope].refresh_token === expected);
     assert.ok(home()[scope].key === previousAccess && home()[scope].refresh_token === undefined);
-    writeFileSync(clockOffset, "60000");
+    writeFileSync(clockOffset, "62000");
     const recovered = await waitFor(async () => {
       const state = await rpc<AccountCredentialAuthority>("account.credentials.status", { id });
       return state.phase === "ready" && state.generation === 8 ? state : null;
@@ -206,6 +211,7 @@ test("central Grok: isolated daemon rotates once, publishes access-only, refresh
     await assert.rejects(() => rpc("account.login.start", { id }), (error: unknown) => error instanceof RpcError && error.code === "login_flow_refused" && error.message.includes("credentials disable"));
     assert.equal(failed.failure?.error, "invalid_grant");
     assert.equal(failed.failure?.retryAt, null);
+    writeFileSync(clockOffset, "124000");
     await sleep(2200);
     assert.equal(requests.length, 8);
     await assert.rejects(() => rpc("account.lease", { account: id }), (error: unknown) => error instanceof RpcError && error.code === "credential_login_required");
@@ -277,7 +283,7 @@ test("central Grok review: live ownership fences, saved publication survives res
     await client.request("account.add", { harness: "grok", label: "review-example.com", importExisting: true });
     const spawn = async (name: string) => {
       const result = await client!.request<{ beeId: string }>("spawn", { name, agent: "grok", cwd: dir, account: id, tags: ["autoswap=false"] });
-      await waitFor(async () => ["running", "idle"].includes((await client!.request<{ view: { runtimeState: string } }>("view", { beeId: result.beeId })).view.runtimeState) ? true : null, "fake Grok running");
+      await waitFor(async () => ["running", "idle"].includes((await client!.request<{ view: { runtimeState: string } }>("view", { beeId: result.beeId })).view.runtimeState) ? true : null, "fake Grok running", 60_000);
       return result.beeId;
     };
     const stop = async (beeId: string) => {

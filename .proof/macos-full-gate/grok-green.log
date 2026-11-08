@@ -1,0 +1,25 @@
+CLI status: phase=ready generation=2 expiry=2026-11-08T08:33:36.615Z
+1 enable: ready generation=2 expiry=2026-11-08T08:33:36.615Z authority_refresh_present=true home_refresh_present=false authority_mode=0600 authority_dir_mode=0700 home_mode=0600 daemon_pid=73786
+ownership: foreign refresh chain and access-only principal refused without HTTP call or overwrite; central lease access-only
+2 concurrent refresh: generation=3 refresh_calls=1 previous_token_matched=true rotated=true
+distinct concurrent requests: serialized; each used its own rotated generation; no token double-spent
+3 automatic early refresh: generation=6 before_expiry=true
+rotated unusable access: new refresh chain retained, phase uncertain, prior access-only copy preserved; retry uses new token and reaches ready generation=8
+4 invalid_grant: login_required retry_at=null calls_after_wait=0 native_login_fenced=true actionable_disable_login_enable=true
+5 non-enabled account: native Grok auth unchanged; central status=native supported=true
+disable after refusal: disabled; unusable refresh token not restored
+6 secret scan: logs=0 SQLite/ledger=0 RPC_metadata=0; daemon_pid=73786 stopped=true
+cleanup: owned daemon stopped; stub listener closed
+✔ central Grok: isolated daemon rotates once, publishes access-only, refreshes early and stops at invalid_grant; native path stays native (10508.384ms)
+Grok ownership: live enable/disable refused; no native rotation before stopped
+Grok restart: saved rotated result published without another HTTP call; healthy disable restores latest native chain
+Grok malformed expiry: login_required invalid_token_response retryAt=null; new private chain retained; one HTTP call total even across restart/forced refresh
+✔ central Grok review: live ownership fences, saved publication survives restart, healthy disable restores chain (14912.707834ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 26170.427833

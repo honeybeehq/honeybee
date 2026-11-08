@@ -2,11 +2,67 @@ import { exactProcessBirth, inspectProcess } from "../../harness/src/processIden
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { forceStopTestDaemon, liveRunnerHostPids, makeDaemonDir, waitFor, type DaemonHandle } from "./helpers.ts";
+import { forceStopTestDaemon, liveRunnerHostPids, makeDaemonDir, startDaemon, waitFor, type DaemonHandle } from "./helpers.ts";
+import type { SpawnResult, ViewResult } from "../src/protocol.ts";
+import { openCoreStore } from "../../core/src/index.ts";
 
 const MARKER = "hb-teardown-writer";
+
+for (const mode of ["recover", "torn", "timeout"] as const) test(`test teardown ${mode === "timeout" ? "fails and reaps its survivor when ownership recovery stays unresolved" : mode === "torn" ? "retries a torn survivor receipt before stopping recovery" : "waits for survivor ownership before stopping recovery"}`, { timeout: 60_000 }, async () => {
+  const recover = mode !== "timeout";
+  const rig = makeDaemonDir();
+  let daemon: DaemonHandle | undefined;
+  let release: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const store = openCoreStore(join(rig.dir, "core.sqlite3"), { ephemeral: true });
+    const placeholder = store.createBee({ name: "unowned-placeholder", agent: "stub", substrate: "hsr", cwd: rig.dir });
+    store.updateRuntimeState(placeholder.bee.id, placeholder.runtime.generation, "running", { pid: 303, pidStartedAt: 3003 });
+    store.close();
+    daemon = await startDaemon(rig.dir);
+    let client = await daemon.client();
+    const { beeId } = await client.request<SpawnResult>("spawn", { name: "held-adoption", agent: "stub", cwd: rig.dir });
+    await waitFor(async () => (await client.request<ViewResult>("view", { beeId })).runtime?.state === "idle", "original runner ready", 30_000);
+    client.close();
+    await daemon.kill();
+    const releasePath = join(rig.dir, "release-adoption");
+    const loader = new URL("./fixtures/hold-runner-adoption.mjs", import.meta.url).pathname;
+    daemon = await startDaemon(rig.dir, { ownershipTimeoutMs: recover ? 30_000 : 100, env: { NODE_OPTIONS: `--import=${loader}`, HIVE_TEST_ADOPTION_RELEASE: releasePath } });
+    client = await daemon.client();
+    const view = await client.request<ViewResult>("view", { beeId });
+    assert.ok((await client.request<ViewResult>("view", { beeId: placeholder.bee.id })).identityDiagnostic,
+      "a synthetic PID may remain unresolved without belonging to the fixture");
+    client.close();
+    assert.equal(view.runtime?.state, "idle", "persisted idle alone does not prove recovered ownership");
+    assert.ok(view.identityDiagnostic);
+    assert.equal(liveRunnerHostPids(rig.dir).length, 1);
+    const nativeHost = inspectProcess(view.runtime!.pid!);
+    if (nativeHost.kind !== "present") throw new Error("Fixture runner identity unavailable");
+    const statusPath = join(rig.dir, "runners", `${beeId}.${view.runtime!.generation}.status.json`);
+    const status = readFileSync(statusPath, "utf8");
+    if (mode === "torn") writeFileSync(statusPath, "{");
+    if (recover) {
+      release = setTimeout(() => {
+        if (mode === "torn") writeFileSync(statusPath, status);
+        writeFileSync(releasePath, "");
+      }, 1500);
+      await daemon.stop();
+    } else {
+      await assert.rejects(daemon.stop(), /test daemon survivor ownership recovered/);
+    }
+    assert.notEqual(daemon.proc.exitCode ?? daemon.proc.signalCode, null);
+    assert.deepEqual(liveRunnerHostPids(rig.dir), []);
+    await waitFor(() => {
+      const value = inspectProcess(nativeHost.pid);
+      return value.kind === "gone" || value.kind === "present" && (value.state === "zombie" || value.birth !== nativeHost.birth);
+    }, "native fixture runner exited", 4000);
+  } finally {
+    if (release) clearTimeout(release);
+    if (daemon) await forceStopTestDaemon(daemon);
+    rig.cleanup();
+  }
+});
 
 test("test teardown: a daemon stand-in that keeps spawning writers into its data dir is stopped to the last process before the dir is removed", { timeout: 60_000 }, async () => {
   const rig = makeDaemonDir();

@@ -517,7 +517,7 @@ test("readyAtSpawn with NOTHING to deliver: the synthetic booted is paired with 
   });
   try {
     driver.start("ras-idle", 1);
-    const events = await drainUntil(driver, (e) => ofKind(e, "turn_ended").length > 0, 3000);
+    const events = await drainUntil(driver, (e) => ofKind(e, "turn_ended").length > 0);
     const booted = ofKind(events, "booted");
     const ended = ofKind(events, "turn_ended");
     assert.equal(booted.length, 1, "exactly the synthetic booted");

@@ -1,0 +1,512 @@
+
+> honeybee@0.0.1 v2:driver2
+> NODE_COMPILE_CACHE=.cache/node-compile node scripts/with-fixture-warden.mjs node scripts/run-node-tests.mjs "v2/driver-cell/tests/*.test.ts"
+
+node test file concurrency=1
+✔ shared no-tags clone keeps tag-only objects available by OID through its alternate (1840.966333ms)
+✔ packed source tags do not change clean merge, checkout-conflict, or rebase capture semantics (33062.547125ms)
+✔ parity: clean merges, attributes, renames, modes, gitlinks, conflicts, case collisions, and forced fallback (60222.060958ms)
+✔ capture.branch-create: cell work lands as a new branch; only that branch appears (3446.937375ms)
+✔ capture.fast-forward: existing target advances by CAS (2533.66225ms)
+✔ capture.merge: diverged target gets a merge commit; origin worktree untouched (4672.923917ms)
+✔ capture.rebase: cell commits replay onto the target tip (4047.878916ms)
+✔ capture.rebase: work already on the target in rewritten form reports nothing_to_capture (4308.695375ms)
+✔ capture.conflict: structured report, origin ref-set bit-identical, transient ref gone (6614.604875ms)
+✔ capture.refusals: checked-out target, moved target, nothing to capture (3963.935792ms)
+✔ unconfined v2 Cell child receives disabled implicit package confirmation (3080.469125ms)
+✔ cell-driver.roundtrip: start provisions the cell, runtime runs in the space, full turn cycle (3034.534709ms)
+✔ cell-driver.background: start returns before provisioning and later boots from the durable ledger (4269.180209ms)
+✔ cell-driver.background: first Cell ensures the image before boot and the next Cell stays hot (8565.192167ms)
+✔ cell-driver.background: satellites do not build the workstation-local Git image (3559.546708ms)
+✔ cell-driver.background: worker exit without a result becomes a boot failure (816.476541ms)
+✔ cell-driver.exit-path: work committed in the live cell captures out; removeCell guards (4139.115791ms)
+✔ cell-driver.restart-hydration: a fresh driver re-hydrates cells from cell.json (capture + delete work) (4423.499417ms)
+✔ cell-driver.reserved-only: a cell reserved (seed ledger) but never started removes outright; sessions delegate; typed live-runtime refusal (2660.547708ms)
+✔ cell-driver.sandboxed: per-cell override ON wraps the spawn in Seatbelt; the turn still works (darwin) (3045.829ms)
+✔ cell-driver.workstation-default: sandbox stays OFF without an override (A4) (2536.28675ms)
+✔ cell-driver.account-home: the bee resolver adds one exact sandbox grant and ignores harness env (1825.94825ms)
+✔ cell-driver.restart: a successor daemon re-adopts a live cell runtime from the ledger at full capability (2977.055959ms)
+✔ exec.cwd: relative-only and realpath containment rejects a symlink out of the space (49.729083ms)
+✔ exec.cap: incomplete tail is dropped, complete multibyte suffix is kept (9.772416ms)
+✔ exec.cap: split multibyte chunks reassemble; malformed replacement stays within 1MiB (398.962625ms)
+✔ exec.cap: stdout and stderr share one 1MiB budget (726.720667ms)
+✔ exec.spawn: an onSpawned failure terminates and reaps the process (31.233875ms)
+✔ exec.spawn: argv spawn errors reject with their cause (29.910083ms)
+✔ exec.timeout: SIGTERM-ignoring child is SIGKILL-reaped before resolve (1543.987583ms)
+✔ invalid Cell roots refuse before driver or reservation directories exist (52.545542ms)
+✔ fenced Cell owner refuses before account, bee, reservation or provisioning mutation (1155.087875ms)
+✔ fenced Cell driver refuses before resolution, worker, pool claim or host start (700.910292ms)
+✔ host Git does not fetch missing objects implicitly through local transport (2572.416708ms)
+✔ host Git pins object flags through wrappers and refuses unsupported versions (1049.034208ms)
+✔ git-image.refresh: publishes one validated pack-only generation without mutating the origin (3344.346792ms)
+✔ git-image.provision: hot Cell copies the compact image, not origin metadata (3718.278833ms)
+✔ git-image.provision: fresh config avoids config subprocesses and preserves init semantics (3863.7465ms)
+✔ git-image.provision: large template config uses Git's writer (3124.507333ms)
+✔ git-image.provision: Git fallback preserves control paths and replaces template safety keys (3612.929375ms)
+✔ git-image.provision: symlinked template config retains Git's update behavior (3049.159833ms)
+✔ git-image.materialize: template multivalue and config lock remain cache misses (4386.778291ms)
+✔ git-image.provision: preserves absent, same, and rewritten split remotes (9265.380916ms)
+✔ git-image.provision: the first Cell builds an image in its worker and uses it (2872.74075ms)
+✔ git-image.refresh: first generation CoW-seeds origin packs and packs only the loose delta (2849.577042ms)
+✔ git-image.provision: a stale image is incrementally extended before checkout (5437.946833ms)
+✔ git-image.corruption: malformed publication is rebuilt before Cell placement (4683.139417ms)
+✔ git-image.policy: an existing image is ignored when the node policy disables local images (2540.595583ms)
+✔ git-image.lock: a provisioning contender waits for publication, then extends the image (5009.708625ms)
+✔ git-image.lock: live builder is single-flight and a stale lock is recovered (5416.895708ms)
+✔ missing Git object probes stay nonthrowing and preserve conservative results (2271.722125ms)
+✔ mirror heartbeat is reaped before its spawning worker exits (11308.611084ms)
+✔ terminating a refresh worker cannot abandon an OS heartbeat child (10793.934542ms)
+✔ host git never runs a hook or fsmonitor planted in a Cell, a nested repo, or a submodule gitdir (12032.691458ms)
+✔ the exec-config probe fails closed on a listing whose scope/record parity or scope names are off (877.646292ms)
+✔ landed.cherry-pick: commits re-landed on main under new SHAs delete clean (7322.708834ms)
+✔ landed.squash: several Cell commits squashed into one main commit delete clean (5011.695ms)
+✔ landed.partial: one landed and one unlanded commit refuses and names only the unlanded one (7291.928875ms)
+✔ landed.uncommitted: landed commits plus an uncommitted change still refuse (3452.542959ms)
+✔ landed.landed-then-evolved: a cherry-picked commit main later edited still counts (patch-id) (4724.627666ms)
+✔ landed.landed-then-restored: a cherry-picked commit counts after main restores one of its files (5595.9345ms)
+✔ landed.conflict-resolved: a rebase conflict resolved to the Cell's version counts (empty replay) (3891.865166ms)
+✔ landed.combined-resolution: a conflict resolved by keeping both sides counts (zero-context patch-id) (8306.78675ms)
+✔ landed.below-merge-base: a Cell that merged main after its commit landed there with other context counts (4354.77225ms)
+✔ landed.receipt: a landing receipt whose result is on main clears the Cell head (7477.156916ms)
+✔ landed.not-landed: a conflicting change on main keeps the Cell commit unlanded (6002.394042ms)
+✔ landed.ancestor: work merged into main the ordinary way deletes clean (3036.602333ms)
+✔ landed.side-branch: an unlanded side branch is named; a landed one is not (4357.6945ms)
+✔ landed.no-writes: probing writes nothing into the Cell's object store (3478.87ms)
+✔ landed.same-edit-different-block: an edit to another block does not land Cell work (8846.019666ms)
+✔ landed.unterminated-repeat: another line's suffix does not land Cell work (9480.277042ms)
+✖ provision-worker: a fresh image hit exits after ready without maintenance Git children (3869.318709ms)
+✔ provision-worker: a replayed ledger rebuilds a missing image after maintenance starts (5127.959583ms)
+✔ provision-worker: an incomplete image operation keeps maintenance after replay resumes (5011.307083ms)
+✔ provision-worker: image failure fallback keeps the deferred retry (3636.484041ms)
+✔ provision-worker: provisioning errors stay failed and do not enter maintenance (926.555541ms)
+✔ provision.cow: CoW path places .git, records copy_mode=cow, hygiene applied (2486.143083ms)
+✔ provision.clone: fallback places a fresh .git, records copy_mode=clone, needs no hygiene (6001.920042ms)
+✔ provision.layout: wrapper/space/box shape and clean space checkout (1230.772709ms)
+✔ provision.replay: interrupted provisioning (partial space, no recorded step) replays idempotently (1129.878291ms)
+✔ provision.replay: mismatched bee/sha refuses instead of clobbering (1141.369167ms)
+✔ provision.warm: CoW copy-in of listed artifact dirs (A5) (2937.994083ms)
+✔ provision.warm: no CoW → cold, no fallback copy (the A5 ruling) (1043.664042ms)
+✔ provision.warm: nothing listed → cold(none_listed), default off (998.756458ms)
+✔ provision.reserve: reserveCell writes the seed ledger (origin/sha/warm/sandbox, no operations); provisionCell then provisions against it; the inverse (provisionRequestOf) round-trips; mismatches refuse (1083.955708ms)
+✔ detached Cell owner reconnects and re-adopts without reprovisioning or changing generation (2667.647333ms)
+✔ delete.clean: a pristine cell deletes without force (1910.616417ms)
+✔ delete.dirty-uncommitted: refuses without force; force deletes (A2) (2152.233584ms)
+✔ delete.dirty-unpushed: commits the origin never saw refuse; captured work deletes clean (6508.596833ms)
+✔ delete.origin-gone: unknown origin counts as dirty (refuse without force) (2108.14975ms)
+✔ delete.shape: refuses anything that is not a -space- shaped cell wrapper (508.367333ms)
+✔ delete.half-provisioned: a wrapper whose space has no .git deletes fine (461.429875ms)
+✔ retention.inspect: clean provisioned Cell reports HEAD, not dirty, and du-style bytes (2920.689917ms)
+✔ retention.inspect: uncommitted and unlanded work are reported distinctly (4391.232917ms)
+✔ retention.evict: a clean Cell is parked atomically under _evicting and the sweep deletes it (1828.791375ms)
+✔ retention.evict: dirty refuses without force, force parks and reports forced (2145.555875ms)
+✔ retention.evict: HEAD moved since planning refuses; shape and containment are enforced (1745.295333ms)
+✔ retention.worker: inspects a batch off-thread and reports per-wrapper errors (2623.75325ms)
+✔ retention.dirty: a stash and a branch the agent switched away from are data, not clean (8644.733584ms)
+✔ retention.env: ignored .env files are preserved (0600) on eviction and restored into a re-provisioned space (3581.043292ms)
+✔ retention refuses an unreadable Git index before parking a Cell (1296.877083ms)
+✔ retention refuses wrappers nested below the direct Cell root (1009.603542ms)
+✔ retention env restore refuses symlinked parent directories (968.082666ms)
+✔ retention env paths retain leading whitespace and repeated preservation is idempotent (1582.838042ms)
+✔ retention.classify: ignored entries split into env files, build output and kept files; installs and .DS_Store are disposable (3466.415375ms)
+✔ retention.trim: parks build output and leaves source, kept files, installs and git state untouched (1800.853916ms)
+✔ retention.trim: build output modified inside the idle window is skipped as recently modified (1563.108916ms)
+✔ retention.trim: re-classifies at apply time and skips nested repositories, symlinks and paths that are no longer ignored build output (1432.667334ms)
+✔ retention.evict: ignored files outside the trim patterns move to cell-keep and return on re-provision (2695.463125ms)
+✔ retention.evict: a failed park moves kept files back, and an unrestored keep refuses the next eviction (4314.563125ms)
+✔ retention.restoreKept: a path that already exists in the new space stays in cell-keep and in the manifest (2641.621208ms)
+✔ retention.restoreKept: a path whose parent is now unsafe becomes a conflict instead of stranding the rest (2623.849458ms)
+✔ retention.trim: refuses repositories below a build directory (1457.217209ms)
+✔ retention.classify: install directory names do not discard ignored regular files (1392.135042ms)
+✔ retention.trim: retains trees beyond the bounded repository inspection (2357.724875ms)
+✔ retention.park (trim mode): only build output goes; installs, kept files, env, source and git state stay (1901.601792ms)
+✔ retention.park (purge mode): every ignored path goes, env files are copied aside first, installs with nested repositories park shallowly (3707.746083ms)
+✔ retention.park verification: a path that left the mode's class, a symlink, a nested repository outside installs, or a recent write is skipped with its reason (1818.028542ms)
+✔ sandbox.defaults: workstation OFF, satellite ON, cloud OFF (A4) (15.475958ms)
+✔ sandbox.override: per-cell override beats the node-kind default (0.392666ms)
+✔ sandbox.profile: Seatbelt profile confines writes to cell + harness paths, allows the rest (100.340875ms)
+✔ sandbox.bwrap: argv is read-only root + rw cell/harness binds + net (pure, all platforms) (0.794333ms)
+✔ sandbox.merge: a bee grant an existing baseline path already covers is not bound again (5.669125ms)
+✔ sandbox.account-home: bwrap grants the exact bound home, never its parent or a sibling (365.989042ms)
+✔ sandbox.account-home validation rejects relative, missing, root, OS-home, and broad symlink targets (5.566666ms)
+✔ sandbox.wrap: platform dispatch (darwin sandbox-exec -f, linux bwrap, other throws) (20.047084ms)
+✔ sandbox.ssh-config: materializes symlinked client includes without changing settings or host files (7.603792ms)
+✔ sandbox.ssh-config: include view is bound read-only after writable mounts without changing the SSH command (0.718958ms)
+✔ sandbox.ssh-config: missing include targets are ignored and snapshot failures preserve the host view (4.922375ms)
+✔ sandbox.seatbelt-real: sandbox-exec confines writes to the cell (darwin) (602.261833ms)
+✔ sandbox.darwin-scratch: only the user's own temp dir of /private/var/folders is writable (2.114208ms)
+✔ sandbox.seatbelt-user-temp: mktemp works and the user cache dir is denied (darwin) (340.268ms)
+✔ sandbox.tmpfs-paths: the sampled tmpfs paths are exactly the tmpfs mounts bwrap makes (0.957375ms)
+✔ sandbox.bwrap: /tmp and /var/tmp are private tmpfs mounts, never host binds (0.482083ms)
+﹣ sandbox.bwrap-real: bwrap confines writes to the cell (linux — metal-3 gate) (0.115791ms) # SKIP
+✔ sandbox.bwrap-tmpfs: a tmpfs cap sizes /tmp and a private /dev/shm; no cap keeps the old argv (1.43425ms)
+✔ sandbox.tmpfs-cap: config, darwin and an old bwrap decide the effective cap (0.713542ms)
+✔ sandbox.tmp-full: a nearly full tmpfs yields the typed detail; space left yields nothing (0.482875ms)
+✔ sandbox.tmp-pid: the sandboxed process is the host's grandchild in another mount namespace (33.239917ms)
+﹣ sandbox.tmpfs-real: a capped bwrap /tmp and /dev/shm refuse writes past the cap, visible from the host (0.314083ms) # SKIP
+✔ sandbox.tmp-watch: tracked bees only, set once when full, re-set after a turn clear, clear with hysteresis or on exit (8.744417ms)
+✔ sandbox.tmp-watch: an exit is fenced by generation, so a respawn behind a dying runtime stays watched (0.529125ms)
+﹣ sandbox.bwrap-real: a harness launched from under /tmp still runs, read-only, while the rest of /tmp stays private (linux) (0.092542ms) # SKIP
+✖ secret runner lease kills child and grandchild on kill (detached=false, sandbox=false) (3053.02375ms)
+✖ secret runner lease kills child and grandchild on stop (detached=false, sandbox=false) (3015.806083ms)
+✖ secret runner lease kills child and grandchild on normal (detached=false, sandbox=false) (3017.6645ms)
+✖ secret runner lease kills child and grandchild on deadline (detached=false, sandbox=false) (3015.573708ms)
+✖ secret runner lease kills child and grandchild on cancel-frozen (detached=false, sandbox=false) (3026.121708ms)
+✖ secret runner lease kills child and grandchild on supervisor-kill (detached=false, sandbox=false) (3006.654167ms)
+✖ secret runner lease kills child and grandchild on supervisor-only-kill (detached=false, sandbox=false) (3008.298958ms)
+✔ secret runner lease kills child and grandchild on init-only-kill (detached=false, sandbox=false) (0.825416ms)
+✔ secret runner lease kills child and grandchild on owner-and-init-kill (detached=false, sandbox=false) (0.223292ms)
+✔ raw redaction chooses longest matches across every chunk boundary and flushes binary tails (116.759959ms)
+✔ secret env rejects empty, oversized, nul and loader or parent environment overrides (28.442458ms)
+✖ child-only injection redacts stdout, stderr, EOF, nonzero, spawn failure and truncation before capture (34.594ms)
+✖ private stdout capture releases only bounded successful bytes and suppresses both ordinary streams (51.218041ms)
+✖ supervisor preserves command exit codes and fragmented unicode configuration (3.185542ms)
+✖ unavailable containment refuses before sending configuration or executing argv (20.687875ms)
+{"threeChunkChecks":1686,"unmaskedMatchingBytes":0}
+{"referenceCases":1000,"mismatches":0}
+✔ union masking covers overlapping values across every three-chunk byte split (444.361709ms)
+✔ overlap coverage survives emitted matches while the raw tail remains held (1.315375ms)
+✖ real runner masks overlapping synthetic values in both streams (sandbox=false) (42.868167ms)
+✔ streaming union equals an independent whole-buffer interval oracle (671.185709ms)
+✖ periodic values at the material/count caps keep union scanning bounded (6430.969708ms)
+✔ darwin refuses secret execution and private capture before spawning or reading credentials (27.745875ms)
+✔ freebsd refuses secret execution and private capture before spawning or reading credentials (8.424875ms)
+✔ win32 refuses secret execution and private capture before spawning or reading credentials (0.785458ms)
+﹣ default satellite sandbox composes with containment, isolates writes, redacts and captures (8.590541ms) # SKIP
+{"normal":true,"byteBoundaryChecks":845,"leakedPrefixMatches":0}
+{"normal":false,"byteBoundaryChecks":845,"leakedPrefixMatches":0}
+✔ held secret prefixes are masked on normal EOF at every byte boundary (202.613459ms)
+✔ held secret prefixes are discarded on abnormal end at every byte boundary (164.194875ms)
+✖ real runner mid-value normal masks or drops both stream tails (sandbox=false) (23.883791ms)
+✖ real runner mid-value cancel masks or drops both stream tails (sandbox=false) (2.148667ms)
+✖ real runner mid-value timeout masks or drops both stream tails (sandbox=false) (1.455708ms)
+✖ real runner mid-value exit7 masks or drops both stream tails (sandbox=false) (1.500333ms)
+✖ real runner mid-value signal masks or drops both stream tails (sandbox=false) (1.412791ms)
+✖ real runner mid-value supervisor-kill masks or drops both stream tails (sandbox=false) (1.474417ms)
+✔ submodule.clean: a populated submodule at its recorded commit with nothing local keeps the Cell clean, and so does an unpopulated one (5338.437583ms)
+✔ submodule.dirty: edits, untracked or ignored files, a stash, unpushed commits and a moved pointer each hold the Cell (41799.490709ms)
+✔ unpark: a park whose registry write failed goes back in place with its kept paths, and its env copies are dropped (3412.837625ms)
+✔ unpark: refuses when the wrapper path is occupied again (1624.080083ms)
+✔ upstream.ancestry: work landed upstream but missing from the stale origin is landed once the mirror fetched it (9524.769625ms)
+✔ upstream.rebased: work rebased onto the upstream under new SHAs is landed by the existing content checks against the mirror (7695.765583ms)
+✔ upstream.unmerged: a pushed branch that never reached the upstream default branch stays unlanded (4996.666375ms)
+✔ upstream.fallbacks: no upstream URL is unmirrored; a failing fetch keeps the last good ref (5992.298666ms)
+✔ resolveCellBase: HEAD until a fetch moves the upstream tip ahead, then the tip (3403.268042ms)
+✔ resolveCellBase: local commits not on the upstream keep HEAD (3088.276208ms)
+✔ resolveCellBase: no upstream configured is plain HEAD (843.542125ms)
+✔ syncOriginFromMirror: an unreachable upstream leaves the origin's tracking ref alone (2300.8755ms)
+✔ syncOriginFromMirror: an origin tracking a non-default branch is not moved to the upstream default (3155.375459ms)
+✔ clone-provisioned Cell points origin at the real upstream, not the local origin path (5174.874834ms)
+✔ pool claim refreshes the Cell's origin/main to the current upstream tip (6037.6745ms)
+✔ upstream.lock: a refresh waits for a concurrent one instead of failing into backoff, and a stale lock is taken over (2885.610083ms)
+✔ syncOriginFromMirror: a busy origin (index.lock, merge in progress) is skipped with a reason and left untouched (6074.1655ms)
+✔ upstream.lock heartbeat: the holder keeps the lock's mtime fresh until it releases (2445.287166ms)
+✔ adoptOriginRemote never writes the origin checkout: clone provision and pool claim leave its origin url, pushurl and origin/* refs unchanged (7104.954334ms)
+✔ pool claim whose member lacks the origin's new upstream tip still provisions: stale origin/* refs are dropped, the tracking ref is not moved (5937.275667ms)
+✔ claim serves an exact-sha member and reaps it (2411.196334ms)
+✔ provisionCell replays (no re-clone) after a claim — idempotency survives the pool (1782.249375ms)
+✔ claim applies a checkout delta to a reachable older sha (2275.407ms)
+✔ a member behind the origin fetches the wanted commit and serves it (2502.382208ms)
+✔ a sha the origin lacks is not served, and the member is kept (1835.860208ms)
+✔ a dirty member is never handed out (1750.478291ms)
+✔ two concurrent claims cannot take the same member (1744.078583ms)
+✔ buildPoolMember honours maxSize (1482.72275ms)
+✔ reapPool drops stale-sha members and keeps current ones (2434.634209ms)
+✔ claim returns null (cold fallback) when the pool is empty (775.454583ms)
+✔ wip.0: snapshot, push, confirm, restore and drop round-trip through the origin (11116.606542ms)
+✔ wip.1: a push into something that is not a repository, or of a non-sha, is a typed refusal (1903.219ms)
+ℹ tests 207
+ℹ suites 0
+ℹ pass 183
+ℹ fail 20
+ℹ cancelled 0
+ℹ skipped 4
+ℹ todo 0
+ℹ duration_ms 730750.427416
+
+✖ failing tests:
+
+test at v2/driver-cell/tests/provision-worker.test.ts:117:1
+✖ provision-worker: a fresh image hit exits after ready without maintenance Git children (3869.318709ms)
+  AssertionError [ERR_ASSERTION]: fresh image placement must skip config and refresh children
+  
+  7 !== 6
+  
+      at TestContext.<anonymous> (file:///Users/trmd/.hive/v2/cells/hb-macos-full-gate-timeouts-b52878e01f0b/github-com-honeybeehq-honeybee-a9015b303498-space-b52878e01f0b/v2/driver-cell/tests/provision-worker.test.ts:140:12)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 7,
+    expected: 6,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at v2/driver-cell/tests/secret-lease.test.ts:40:3
+✖ secret runner lease kills child and grandchild on kill (detached=false, sandbox=false) (3053.02375ms)
+  AssertionError [ERR_ASSERTION]: bounded process cleanup
+      at until (file:///Users/trmd/.hive/v2/cells/hb-macos-full-gate-timeouts-b52878e01f0b/github-com-honeybeehq-honeybee-a9015b303498-space-b52878e01f0b/v2/driver-cell/tests/secret-lease.test.ts:13:10)
+      at async TestContext.<anonymous> (file:///Users/trmd/.hive/v2/cells/hb-macos-full-gate-timeouts-b52878e01f0b/github-com-honeybeehq-honeybee-a9015b303498-space-b52878e01f0b/v2/driver-cell/tests/secret-lease.test.ts:58:7)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at v2/driver-cell/tests/secret-lease.test.ts:40:3
+✖ secret runner lease kills child and grandchild on stop (detached=false, sandbox=false) (3015.806083ms)
+  AssertionError [ERR_ASSERTION]: bounded process cleanup
+      at until (file:///Users/trmd/.hive/v2/cells/hb-macos-full-gate-timeouts-b52878e01f0b/github-com-honeybeehq-honeybee-a9015b303498-space-b52878e01f0b/v2/driver-cell/tests/secret-lease.test.ts:13:10)
+      at async TestContext.<anonymous> (file:///Users/trmd/.hive/v2/cells/hb-macos-full-gate-timeouts-b52878e01f0b/github-com-honeybeehq-honeybee-a9015b303498-space-b52878e01f0b/v2/driver-cell/tests/secret-lease.test.ts:58:7)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at v2/driver-cell/tests/secret-lease.test.ts:40:3
+✖ secret runner lease kills child and grandchild on normal (detached=false, sandbox=false) (3017.6645ms)
+  AssertionError [ERR_ASSERTION]: bounded process cleanup
+      at until (file:///Users/trmd/.hive/v2/cells/hb-macos-full-gate-timeouts-b52878e01f0b/github-com-honeybeehq-honeybee-a9015b303498-space-b52878e01f0b/v2/driver-cell/tests/secret-lease.test.ts:13:10)
+      at async TestContext.<anonymous> (file:///Users/trmd/.hive/v2/cells/hb-macos-full-gate-timeouts-b52878e01f0b/github-com-honeybeehq-honeybee-a9015b303498-space-b52878e01f0b/v2/driver-cell/tests/secret-lease.test.ts:58:7)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at v2/driver-cell/tests/secret-lease.test.ts:40:3
+✖ secret runner lease kills child and grandchild on deadline (detached=false, sandbox=false) (3015.573708ms)
+  AssertionError [ERR_ASSERTION]: bounded process cleanup
+      at until (file:///Users/trmd/.hive/v2/cells/hb-macos-full-gate-timeouts-b52878e01f0b/github-com-honeybeehq-honeybee-a9015b303498-space-b52878e01f0b/v2/driver-cell/tests/secret-lease.test.ts:13:10)
+      at async TestContext.<anonymous> (file:///Users/trmd/.hive/v2/cells/hb-macos-full-gate-timeouts-b52878e01f0b/github-com-honeybeehq-honeybee-a9015b303498-space-b52878e01f0b/v2/driver-cell/tests/secret-lease.test.ts:58:7)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at v2/driver-cell/tests/secret-lease.test.ts:40:3
+✖ secret runner lease kills child and grandchild on cancel-frozen (detached=false, sandbox=false) (3026.121708ms)
+  AssertionError [ERR_ASSERTION]: bounded process cleanup
+      at until (file:///Users/trmd/.hive/v2/cells/hb-macos-full-gate-timeouts-b52878e01f0b/github-com-honeybeehq-honeybee-a9015b303498-space-b52878e01f0b/v2/driver-cell/tests/secret-lease.test.ts:13:10)
+      at async TestContext.<anonymous> (file:///Users/trmd/.hive/v2/cells/hb-macos-full-gate-timeouts-b52878e01f0b/github-com-honeybeehq-honeybee-a9015b303498-space-b52878e01f0b/v2/driver-cell/tests/secret-lease.test.ts:58:7)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at v2/driver-cell/tests/secret-lease.test.ts:40:3
+✖ secret runner lease kills child and grandchild on supervisor-kill (detached=false, sandbox=false) (3006.654167ms)
+  AssertionError [ERR_ASSERTION]: bounded process cleanup
+      at until (file:///Users/trmd/.hive/v2/cells/hb-macos-full-gate-timeouts-b52878e01f0b/github-com-honeybeehq-honeybee-a9015b303498-space-b52878e01f0b/v2/driver-cell/tests/secret-lease.test.ts:13:10)
+      at async TestContext.<anonymous> (file:///Users/trmd/.hive/v2/cells/hb-macos-full-gate-timeouts-b52878e01f0b/github-com-honeybeehq-honeybee-a9015b303498-space-b52878e01f0b/v2/driver-cell/tests/secret-lease.test.ts:58:7)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at v2/driver-cell/tests/secret-lease.test.ts:40:3
+✖ secret runner lease kills child and grandchild on supervisor-only-kill (detached=false, sandbox=false) (3008.298958ms)
+  AssertionError [ERR_ASSERTION]: bounded process cleanup
+      at until (file:///Users/trmd/.hive/v2/cells/hb-macos-full-gate-timeouts-b52878e01f0b/github-com-honeybeehq-honeybee-a9015b303498-space-b52878e01f0b/v2/driver-cell/tests/secret-lease.test.ts:13:10)
+      at async TestContext.<anonymous> (file:///Users/trmd/.hive/v2/cells/hb-macos-full-gate-timeouts-b52878e01f0b/github-com-honeybeehq-honeybee-a9015b303498-space-b52878e01f0b/v2/driver-cell/tests/secret-lease.test.ts:58:7)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at v2/driver-cell/tests/secret-output.test.ts:37:1
+✖ child-only injection redacts stdout, stderr, EOF, nonzero, spawn failure and truncation before capture (34.594ms)
+  Error: secret_execution_containment_unavailable
+      at runCellExec (file:///Users/trmd/.hive/v2/cells/hb-macos-full-gate-timeouts-b52878e01f0b/github-com-honeybeehq-honeybee-a9015b303498-space-b52878e01f0b/v2/driver-cell/src/exec.ts:274:11)
+      at TestContext.<anonymous> (file:///Users/trmd/.hive/v2/cells/hb-macos-full-gate-timeouts-b52878e01f0b/github-com-honeybeehq-honeybee-a9015b303498-space-b52878e01f0b/v2/driver-cell/tests/secret-output.test.ts:44:26)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:911:18)
+      at Test.postRun (node:internal/test_runner/test:1465:19)
+      at Test.run (node:internal/test_runner/test:1390:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7)
+
+test at v2/driver-cell/tests/secret-output.test.ts:75:1
+✖ private stdout capture releases only bounded successful bytes and suppresses both ordinary streams (51.218041ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /^Error: cell_execution_spawn_failed$/. Input:
+  
+  'Error: secret_execution_containment_unavailable'
+  
+      at async TestContext.<anonymous> (file:///Users/trmd/.hive/v2/cells/hb-macos-full-gate-timeouts-b52878e01f0b/github-com-honeybeehq-honeybee-a9015b303498-space-b52878e01f0b/v2/driver-cell/tests/secret-output.test.ts:81:5)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: Error: secret_execution_containment_unavailable
+        at runCellExec (file:///Users/trmd/.hive/v2/cells/hb-macos-full-gate-timeouts-b52878e01f0b/github-com-honeybeehq-honeybee-a9015b303498-space-b52878e01f0b/v2/driver-cell/src/exec.ts:274:11)
+        at TestContext.<anonymous> (file:///Users/trmd/.hive/v2/cells/hb-macos-full-gate-timeouts-b52878e01f0b/github-com-honeybeehq-honeybee-a9015b303498-space-b52878e01f0b/v2/driver-cell/tests/secret-output.test.ts:81:26)
+        at Test.runInAsyncScope (node:async_hooks:227:14)
+        at Test.run (node:internal/test_runner/test:1325:25)
+        at Test.processPendingSubtests (node:internal/test_runner/test:911:18)
+        at Test.postRun (node:internal/test_runner/test:1465:19)
+        at Test.run (node:internal/test_runner/test:1390:12)
+        at async Test.processPendingSubtests (node:internal/test_runner/test:911:7),
+    expected: /^Error: cell_execution_spawn_failed$/,
+    operator: 'rejects',
+    diff: 'simple'
+  }
+
+test at v2/driver-cell/tests/secret-output.test.ts:101:1
+✖ supervisor preserves command exit codes and fragmented unicode configuration (3.185542ms)
+  Error: secret_execution_containment_unavailable
+      at runCellExec (file:///Users/trmd/.hive/v2/cells/hb-macos-full-gate-timeouts-b52878e01f0b/github-com-honeybeehq-honeybee-a9015b303498-space-b52878e01f0b/v2/driver-cell/src/exec.ts:274:11)
+      at TestContext.<anonymous> (file:///Users/trmd/.hive/v2/cells/hb-macos-full-gate-timeouts-b52878e01f0b/github-com-honeybeehq-honeybee-a9015b303498-space-b52878e01f0b/v2/driver-cell/tests/secret-output.test.ts:107:28)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:911:18)
+      at Test.postRun (node:internal/test_runner/test:1465:19)
+      at Test.run (node:internal/test_runner/test:1390:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7)
+
+test at v2/driver-cell/tests/secret-output.test.ts:120:1
+✖ unavailable containment refuses before sending configuration or executing argv (20.687875ms)
+  Error: ENOENT: no such file or directory, open '/tmp/hbm-6wnbl17e/secret-unavailable-aDKVtg/wrap/repo-space-c1/intake'
+      at readFileSync (node:fs:441:20)
+      at TestContext.<anonymous> (file:///Users/trmd/.hive/v2/cells/hb-macos-full-gate-timeouts-b52878e01f0b/github-com-honeybeehq-honeybee-a9015b303498-space-b52878e01f0b/v2/driver-cell/tests/secret-output.test.ts:132:18)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    errno: -2,
+    code: 'ENOENT',
+    syscall: 'open',
+    path: '/tmp/hbm-6wnbl17e/secret-unavailable-aDKVtg/wrap/repo-space-c1/intake'
+  }
+
+test at v2/driver-cell/tests/secret-overlap.test.ts:52:3
+✖ real runner masks overlapping synthetic values in both streams (sandbox=false) (42.868167ms)
+  Error: secret_execution_containment_unavailable
+      at runCellExec (file:///Users/trmd/.hive/v2/cells/hb-macos-full-gate-timeouts-b52878e01f0b/github-com-honeybeehq-honeybee-a9015b303498-space-b52878e01f0b/v2/driver-cell/src/exec.ts:274:11)
+      at TestContext.<anonymous> (file:///Users/trmd/.hive/v2/cells/hb-macos-full-gate-timeouts-b52878e01f0b/github-com-honeybeehq-honeybee-a9015b303498-space-b52878e01f0b/v2/driver-cell/tests/secret-overlap.test.ts:57:28)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:911:18)
+      at Test.postRun (node:internal/test_runner/test:1465:19)
+      at Test.run (node:internal/test_runner/test:1390:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7)
+
+test at v2/driver-cell/tests/secret-overlap.test.ts:106:1
+✖ periodic values at the material/count caps keep union scanning bounded (6430.969708ms)
+  AssertionError [ERR_ASSERTION]: 1MiB periodic-value regression budget
+      at TestContext.<anonymous> (file:///Users/trmd/.hive/v2/cells/hb-macos-full-gate-timeouts-b52878e01f0b/github-com-honeybeehq-honeybee-a9015b303498-space-b52878e01f0b/v2/driver-cell/tests/secret-overlap.test.ts:122:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:911:18)
+      at Test.postRun (node:internal/test_runner/test:1465:19)
+      at Test.run (node:internal/test_runner/test:1390:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at v2/driver-cell/tests/secret-tail.test.ts:40:5
+✖ real runner mid-value normal masks or drops both stream tails (sandbox=false) (23.883791ms)
+  Error: secret_execution_containment_unavailable
+      at runCellExec (file:///Users/trmd/.hive/v2/cells/hb-macos-full-gate-timeouts-b52878e01f0b/github-com-honeybeehq-honeybee-a9015b303498-space-b52878e01f0b/v2/driver-cell/src/exec.ts:274:11)
+      at TestContext.<anonymous> (file:///Users/trmd/.hive/v2/cells/hb-macos-full-gate-timeouts-b52878e01f0b/github-com-honeybeehq-honeybee-a9015b303498-space-b52878e01f0b/v2/driver-cell/tests/secret-tail.test.ts:48:30)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:911:18)
+      at Test.postRun (node:internal/test_runner/test:1465:19)
+      at Test.run (node:internal/test_runner/test:1390:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7)
+
+test at v2/driver-cell/tests/secret-tail.test.ts:40:5
+✖ real runner mid-value cancel masks or drops both stream tails (sandbox=false) (2.148667ms)
+  Error: secret_execution_containment_unavailable
+      at runCellExec (file:///Users/trmd/.hive/v2/cells/hb-macos-full-gate-timeouts-b52878e01f0b/github-com-honeybeehq-honeybee-a9015b303498-space-b52878e01f0b/v2/driver-cell/src/exec.ts:274:11)
+      at TestContext.<anonymous> (file:///Users/trmd/.hive/v2/cells/hb-macos-full-gate-timeouts-b52878e01f0b/github-com-honeybeehq-honeybee-a9015b303498-space-b52878e01f0b/v2/driver-cell/tests/secret-tail.test.ts:48:30)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:911:18)
+      at Test.postRun (node:internal/test_runner/test:1465:19)
+      at Test.run (node:internal/test_runner/test:1390:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7)
+
+test at v2/driver-cell/tests/secret-tail.test.ts:40:5
+✖ real runner mid-value timeout masks or drops both stream tails (sandbox=false) (1.455708ms)
+  Error: secret_execution_containment_unavailable
+      at runCellExec (file:///Users/trmd/.hive/v2/cells/hb-macos-full-gate-timeouts-b52878e01f0b/github-com-honeybeehq-honeybee-a9015b303498-space-b52878e01f0b/v2/driver-cell/src/exec.ts:274:11)
+      at TestContext.<anonymous> (file:///Users/trmd/.hive/v2/cells/hb-macos-full-gate-timeouts-b52878e01f0b/github-com-honeybeehq-honeybee-a9015b303498-space-b52878e01f0b/v2/driver-cell/tests/secret-tail.test.ts:48:30)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:911:18)
+      at Test.postRun (node:internal/test_runner/test:1465:19)
+      at Test.run (node:internal/test_runner/test:1390:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7)
+
+test at v2/driver-cell/tests/secret-tail.test.ts:40:5
+✖ real runner mid-value exit7 masks or drops both stream tails (sandbox=false) (1.500333ms)
+  Error: secret_execution_containment_unavailable
+      at runCellExec (file:///Users/trmd/.hive/v2/cells/hb-macos-full-gate-timeouts-b52878e01f0b/github-com-honeybeehq-honeybee-a9015b303498-space-b52878e01f0b/v2/driver-cell/src/exec.ts:274:11)
+      at TestContext.<anonymous> (file:///Users/trmd/.hive/v2/cells/hb-macos-full-gate-timeouts-b52878e01f0b/github-com-honeybeehq-honeybee-a9015b303498-space-b52878e01f0b/v2/driver-cell/tests/secret-tail.test.ts:48:30)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:911:18)
+      at Test.postRun (node:internal/test_runner/test:1465:19)
+      at Test.run (node:internal/test_runner/test:1390:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7)
+
+test at v2/driver-cell/tests/secret-tail.test.ts:40:5
+✖ real runner mid-value signal masks or drops both stream tails (sandbox=false) (1.412791ms)
+  Error: secret_execution_containment_unavailable
+      at runCellExec (file:///Users/trmd/.hive/v2/cells/hb-macos-full-gate-timeouts-b52878e01f0b/github-com-honeybeehq-honeybee-a9015b303498-space-b52878e01f0b/v2/driver-cell/src/exec.ts:274:11)
+      at TestContext.<anonymous> (file:///Users/trmd/.hive/v2/cells/hb-macos-full-gate-timeouts-b52878e01f0b/github-com-honeybeehq-honeybee-a9015b303498-space-b52878e01f0b/v2/driver-cell/tests/secret-tail.test.ts:48:30)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:911:18)
+      at Test.postRun (node:internal/test_runner/test:1465:19)
+      at Test.run (node:internal/test_runner/test:1390:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7)
+
+test at v2/driver-cell/tests/secret-tail.test.ts:40:5
+✖ real runner mid-value supervisor-kill masks or drops both stream tails (sandbox=false) (1.474417ms)
+  Error: secret_execution_containment_unavailable
+      at runCellExec (file:///Users/trmd/.hive/v2/cells/hb-macos-full-gate-timeouts-b52878e01f0b/github-com-honeybeehq-honeybee-a9015b303498-space-b52878e01f0b/v2/driver-cell/src/exec.ts:274:11)
+      at TestContext.<anonymous> (file:///Users/trmd/.hive/v2/cells/hb-macos-full-gate-timeouts-b52878e01f0b/github-com-honeybeehq-honeybee-a9015b303498-space-b52878e01f0b/v2/driver-cell/tests/secret-tail.test.ts:48:30)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:911:18)
+      at Test.postRun (node:internal/test_runner/test:1465:19)
+      at Test.run (node:internal/test_runner/test:1390:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7)

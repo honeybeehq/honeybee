@@ -1,0 +1,28 @@
+✖ auth death isolated daemons: revoked provider access, system idle stop, newer lease revives once; restart, mail FIFO and operator stop (47436.119667ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 0
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 49788.549
+
+✖ failing tests:
+
+test at v2/daemon/tests/auth-death-rpc.test.ts:29:40
+✖ auth death isolated daemons: revoked provider access, system idle stop, newer lease revives once; restart, mail FIFO and operator stop (47436.119667ms)
+  Error: Error: waitFor timeout: fake provider runtime ready{"state":"stopped","exitCause":"stopped_by_system","session":null,"policy":["{\"ts\":1794124918286,\"op\":\"policy.idle_stop bee=7a7103c1-70de-4cdf-a11f-7f0ad7133079 gen=1 idleFor=703\"}","{\"ts\":1794124918312,\"op\":\"policy.idle_stop bee=7a7103c1-70de-4cdf-a11f-7f0ad7133079 gen=1 idleFor=730\"}"]}
+      at file:///Users/trmd/.hive/v2/cells/hb-macos-full-gate-timeouts-b52878e01f0b/github-com-honeybeehq-honeybee-a9015b303498-space-b52878e01f0b/v2/daemon/tests/auth-death-rpc.test.ts:80:257
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      ... 2 lines matching cause stack trace ...
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    [cause]: Error: waitFor timeout: fake provider runtime ready
+        at waitFor (file:///Users/trmd/.hive/v2/cells/hb-macos-full-gate-timeouts-b52878e01f0b/github-com-honeybeehq-honeybee-a9015b303498-space-b52878e01f0b/v2/daemon/tests/helpers.ts:39:38)
+        at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+        at async TestContext.<anonymous> (file:///Users/trmd/.hive/v2/cells/hb-macos-full-gate-timeouts-b52878e01f0b/github-com-honeybeehq-honeybee-a9015b303498-space-b52878e01f0b/v2/daemon/tests/auth-death-rpc.test.ts:80:20)
+        at async Test.run (node:internal/test_runner/test:1332:7)
+        at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3)
+  }
+v2 daemon/cli test files failed (1 of 1):
+  v2/daemon/tests/auth-death-rpc.test.ts (exit 1)

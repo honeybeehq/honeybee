@@ -1,0 +1,52 @@
+claude local Unix facts only: node_relay/remote hellos refuse identity/peer/key facts and parameter spoofing; explicit --replace voids unclaimed export/prepared shadow, persists restart; post-shadow/pre-pin SIGKILL retry completes; source refresh works
+claude 1/4 export fence survives A SIGKILL/restart; refresh/mint/enable/disable refused; timers skip
+claude 2/4/7 prepared B survives SIGKILL before rotation; adopt rotates exactly once; replay no-op; same leased row becomes local, bee account preserved; home access-only; old token consumed
+claude 3 confirm: authority removed, homes/vault/mirrors refresh-byte hits=0; source provider calls=0; old row accepts new authority lease in place
+claude terminal adopted peer protected: typed signed refusal preserves chain byte-for-byte; issuer cancels unapplied takeover and confirms original adoption, no provider
+claude crash after rotated authority file save before publish: SIGKILL/restart/retry publishes saved generation, total rotations=1
+claude preparation crash: durable preparing state exposes no receipt before material fsync; replay completes then one rotation
+claude 5 abort restores A; delayed prepare cannot commit; signed abort cleans B; unprepared source refuses/cancels takeover with signed abort; delayed adopt refused
+claude key rotation: unclaimed export durably aborted; old pinned key verifies abort; prepared claims refuse; peer node mismatch refused; 0700/0600; duplicate/restart replay no-op; key-replacement SIGKILL keeps exports aborted; no provider call
+claude TTL unprepared export auto-aborts, survives restart, signed abort receipt available; late preparation cannot commit; source alone judges TTL
+claude 6 invalid_grant typed; B not enabled/no authority; malformed settings untouched, B restart/RPC healthy; A committed_fenced, explicit operator takeover required
+claude failed destination operator take-over: retained leased row becomes local/native-login-required; both sides scrub, no provider
+claude pending cleanup: typed rejection survives unreadable material; restart serves RPC; affected account fenced; repair triggers background scrub
+claude known rotated chain with missing access: retained_unusable, public saved generation/eligibility; adopt replay no provider
+claude live member initial retained recovery: explicit generation in protected CLI payload rotates saved chain once, identical payload replay no provider, signed normal completion
+claude unknown response: durable uncertain destination, private material retained, source committed fence held
+claude response-before-save SIGKILL: outcome unknown, source committed, destination retained privately; retry calls provider zero times; explicit native takeover required
+claude explicit take-over CLI: confirm required, signed self/higher epoch; both sides scrubbed without provider; local login fenced until verified peer acknowledgment; restart/replay no-op; issuer same row local/auth_needed
+claude standDown running-bee fence: refusal before scrub/epoch/operation changes, no provider; explicit stop permits retry
+claude signed standDown: unauthenticated/mismatched receipt refused; scrub failure preserves phase, durable operation fences; restart/repair and post-demotion SIGKILL same-receipt retry complete without provider
+claude 8 standDown scrubs without provider call
+claude release-peer destination preparing SIGKILL: missing primary and temporary received material voided, terminal claim, zero provider
+claude release-peer destination prepared: zero provider; terminal claim survives restart and refuses late commit/prepare; holder preserved or shadow voided; epoch+1
+claude release-peer destination failed: zero provider; terminal claim survives restart and refuses late commit/prepare; holder preserved or shadow voided; epoch+1
+claude release-peer destination adopted: zero provider; terminal claim survives restart and refuses late commit/prepare; holder preserved or shadow voided; epoch+1
+claude release-peer destination uncertain: zero provider; terminal claim survives restart and refuses late commit/prepare; holder preserved or shadow voided; epoch+1
+claude source settlement refuses newer native login: native and authority byte-identical, source fence held, no provider call
+claude live-member cap: exactly three unusable rotations, no fourth; source signed settlement/restart replay, response-save SIGKILL cap kept, cleanup failure/restart/repair replay, explicit discard on same row native-login-required, epoch+1, zero extra provider
+grok release-peer explicit retained chain rotated once/published authority: one call, terminal replay no provider, epoch+1
+grok release-peer explicit retained chain invalid_grant proven dead/scrubbed: one call, terminal replay no provider, epoch+1
+grok retained_unusable: saved chain/generation returned, previous request no provider; fresh bound generation rotates once and publishes; older generation replay no provider, holder reports no scrub
+grok retained_unusable cap: three explicit bound failures -> login_required/reason; capped discard refused below limit, real CLI explicitly discards with provider-session warning, same row local/native-login-required, zero provider
+claude release-peer prepared: no commit/provider in abort, chain byte-identical until scheduled next-tick normal rotation; epoch+1; signed abort clears returning shadow and same row accepts higher lease
+claude release-peer restored: removed roster fact persisted, CLI confirmed, one rotation, ready/access-only, epoch+1, replay no provider; old destination copy rejected
+claude release-peer repeated account: current claim inferred over terminal history; resolved private marker permits only new higher-generation claim
+claude release-peer rejected: destination already rotated, source scrubbed/native-login-required, named-account warning retains removed peer login, replay no provider
+claude release-peer release-before SIGKILL: durable fact/attempt; retry outcome=uncertain, total provider calls=0, no blind repeat
+claude release-peer response SIGKILL: durable fact/attempt; retry outcome=uncertain, total provider calls=1, no blind repeat
+claude release-peer release-save SIGKILL: durable fact/attempt; retry outcome=restored, total provider calls=1, no blind repeat
+claude release-peer known 429: unconsumed proof persisted, explicit retry after SIGKILL spends original chain once; native recovery refused while retryable
+claude release-peer running bee refused without attempt/provider; explicit stop allows release
+claude release-peer audit: one secret-free outcome ledger row, authenticated roster version/author counter persisted
+claude 9 secret scan logs/SQLite/ledgers/RPC metadata=0; owned daemon PIDs 66301,63321 stopped; stub closed in cleanup
+✔ credential handoff claude: two isolated daemons, durable prepare/commit, rotation, scrub, abort, TTL, replay and failures (252473.260208ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 254262.317208

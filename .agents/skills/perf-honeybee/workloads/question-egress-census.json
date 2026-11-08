@@ -1,0 +1,130 @@
+{
+  "protocolVersion": 1,
+  "id": "question-egress-census",
+  "title": "Question egress test census",
+  "lane": "dev-loop",
+  "processes": [
+    "helper"
+  ],
+  "owners": [
+    "v2/daemon/tests/questionEgressCensus.ts@e5c1089d7a6e13071b355ec07035bcb3a0eaf870"
+  ],
+  "effect": {
+    "user": "The complete deploy test gate checks question serialization without repeating identical type-graph queries.",
+    "assertions": [
+      "Exact complete raw census parity for unchanged production source.",
+      "Every existing injected serializer/result/error defect is independently rejected.",
+      "Cyclic positive and negative types remain correctly classified."
+    ],
+    "exclusions": [
+      "Production request latency, idle-host timing baseline and process peak memory."
+    ]
+  },
+  "accounts": [
+    {
+      "inventory": "entry-points",
+      "key": "entry:v2/daemon/tests/questionEgressCensus.ts:*"
+    }
+  ],
+  "states": {
+    "idle": {
+      "matters": false,
+      "why": "Outside this source-test workload."
+    },
+    "first-use": {
+      "matters": true,
+      "why": "A fresh checker owns every baseline or patched census."
+    },
+    "repeated": {
+      "matters": true,
+      "why": "A fresh checker owns every baseline or patched census."
+    },
+    "scale": {
+      "matters": false,
+      "why": "Outside this source-test workload."
+    },
+    "background": {
+      "matters": false,
+      "why": "Outside this source-test workload."
+    },
+    "release": {
+      "matters": false,
+      "why": "Outside this source-test workload."
+    },
+    "recovery": {
+      "matters": false,
+      "why": "Outside this source-test workload."
+    }
+  },
+  "fixture": {
+    "preset": "main-077d4519-production-question-census",
+    "isolationPolicy": 1,
+    "seed": "Unchanged production TypeScript source; Node24.18.0 and pinned TypeScript6.0.3; checker identity never shared across patches."
+  },
+  "recipe": {
+    "driver": ".proof/macos-full-gate/census-capture.mjs",
+    "command": "node --import=./.proof/macos-full-gate/census-count-loader.mjs .proof/macos-full-gate/census-capture.mjs .audit/macos-gate/census-counts.json --require-reuse",
+    "readiness": "Fresh TypeScript program and checker for each invocation.",
+    "completion": "Complete raw census written after traversal and existing coverage assertions.",
+    "warmup": "None; each program is a separate cold logical checker.",
+    "teardown": "No daemon or persistent fixture; retain capture.",
+    "serial": true,
+    "requires": [
+      "Pinned repository dependencies; native Node24.18.0; own source checkout."
+    ]
+  },
+  "metrics": [
+    {
+      "id": "excessRootWalks",
+      "unit": "count",
+      "scope": "Complete top-level type-graph walks beyond distinct root Type identities in one checker.",
+      "collector": "Source-hook counters around existing top-level queries and recursive walk entry.",
+      "aggregation": "max",
+      "kind": "actual",
+      "status": "gated",
+      "states": [
+        "first-use",
+        "repeated"
+      ],
+      "betterWhen": "lower",
+      "budget": {
+        "value": 0,
+        "unit": "count",
+        "comparator": "<=",
+        "status": "advisory",
+        "source": "Predeclared work-subtraction target for this task; one complete walk per distinct immutable checker type.",
+        "condition": "Exact census parity and all negative coverage preserved."
+      },
+      "invariant": "Exact raw census parity; all independent defect and cyclic classification controls pass.",
+      "noise": "Deterministic work count; instrumented timings are not latency evidence."
+    },
+    {
+      "id": "fileCompletionMs",
+      "unit": "ms",
+      "scope": "Uninstrumented full question-dismiss-egress Node test file.",
+      "collector": "Existing daemon/CLI test runner and Node reporter.",
+      "aggregation": "max",
+      "kind": "actual",
+      "status": "recipe-only",
+      "states": [
+        "first-use"
+      ],
+      "betterWhen": "lower",
+      "budget": {
+        "value": 600000,
+        "unit": "ms",
+        "comparator": "<",
+        "status": "advisory",
+        "source": "Existing scripts/run-v2-daemon-tests.mjs default600000ms hard test-file deadline, unchanged.",
+        "condition": "Loaded shared native Mac under own CPU stress; recipe completion only."
+      },
+      "invariant": "All independent baseline, defect and cyclic controls pass.",
+      "noise": "Shared-host timing is recipe proof only, not a comparable idle-host baseline."
+    }
+  ],
+  "gaps": [
+    "No production runtime metric or idle-host latency baseline."
+  ],
+  "updatedAt": "2026-11-08",
+  "readiness": "Work-count gate enforces zero excess root walks; full raw parity and cyclic/7 independent defect controls passed. One loaded-host file pass under unchanged600s cap; no timing baseline."
+}

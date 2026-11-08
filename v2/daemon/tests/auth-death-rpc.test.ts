@@ -47,6 +47,14 @@ for (const stayAlive of [false, true]) test(`auth death isolated daemons: revoke
   const fixtureEnv = { AUTH_DEATH_PROVIDER_URL: endpoint + "/call", AUTH_DEATH_OWNER_PID: String(process.pid), AUTH_DEATH_PID_DIR: pidDir };
   const source = makeDaemonDir({ accounts: { centralRefreshAheadMs: 0 }, agents: { claude: { command: process.execPath, args: [fileURLToPath(new URL("./fixtures/auth-death-claude.mjs", import.meta.url))], adapter: "claude", env: fixtureEnv } } });
   const holder = makeDaemonDir({ idleWindowMs: stayAlive ? 700 : 0, agents: { claude: { command: process.execPath, args: [fileURLToPath(new URL("./fixtures/auth-death-claude.mjs", import.meta.url))], adapter: "claude", env: { ...fixtureEnv, AUTH_DEATH_STAY_ALIVE: stayAlive ? "1" : "0" } } } });
+  // Synthetic readyAtSpawn can precede native init by more than the idle
+  // window under CPU contention. Advance policy time only after the provider
+  // rejection is observed, so this tests auth death rather than startup speed.
+  const policyClock = join(holder.dir, "idle-policy-clock");
+  const policyStart = Date.now();
+  writeFileSync(policyClock, String(policyStart));
+  const clockPreload = join(holder.dir, "idle-policy-clock.mjs");
+  writeFileSync(clockPreload, `import { readFileSync } from "node:fs"; Date.now = () => Number(readFileSync(${JSON.stringify(policyClock)}, "utf8"));`);
   let da: DaemonHandle | null = null, db: DaemonHandle | null = null, ca: RpcClient | null = null, cb: RpcClient | null = null;
   let cleaned: Promise<void> | undefined;
   const cleanup = () => cleaned ??= (async () => {
@@ -58,7 +66,7 @@ for (const stayAlive of [false, true]) test(`auth death isolated daemons: revoke
     for (const result of stopped) if (result.status === "rejected") throw result.reason;
   })();
   t.after(cleanup); t.signal.addEventListener("abort", () => { void cleanup(); }, { once: true });
-  const env = (dir: string) => ({ HOME: join(dir, "empty-user-home"), HIVE_GATEWAYS_DISABLE: "1", HIVE_CLAUDE_OAUTH_TOKEN_URL: endpoint + "/token" });
+  const env = (dir: string) => ({ HOME: join(dir, "empty-user-home"), HIVE_GATEWAYS_DISABLE: "1", HIVE_CLAUDE_OAUTH_TOKEN_URL: endpoint + "/token", ...(stayAlive && dir === holder.dir ? { NODE_OPTIONS: `--import=${clockPreload}` } : {}) });
   const poll = <T>(fn: () => Promise<T | null | false>, name: string) => waitFor(fn, name, 30_000);
   const view = (beeId: string) => cb!.request<ViewResult>("view", { beeId });
   const rows = (beeId: string) => cb!.request<AccountInterruptionsResult>("account.interruptions", { beeId });
@@ -83,6 +91,18 @@ for (const stayAlive of [false, true]) test(`auth death isolated daemons: revoke
     const central = await ca.request<SpawnResult>("spawn", { agent: "claude", name: "central", account: id, cwd: source.dir, tags: ["autoswap=false"] });
     const centralBefore = await poll(async () => { const value = await ca!.request<ViewResult>("view", { beeId: central.beeId }); return value.bee?.providerSessionId && value.runtime?.state === "idle" ? value : null; }, "central fake provider runtime ready");
     await ca.request("account.credentials.refresh", { id, idempotencyKey: randomUUID() });
+    if (stayAlive) {
+      const rejected = await poll(async () => {
+        if (!(await rows(beeId)).interruptions.some(row => row.deathRecovery != null)) return null;
+        // Read idle AFTER the rejection: its assistant and result can arrive
+        // in separate journal reads. Advancing before result is folded would
+        // reset updatedAt to the advanced clock and never expire this window.
+        const value = await view(beeId);
+        return value.runtime?.generation === generation && value.runtime.state === "idle" ? value : null;
+      }, "provider rejection and final idle observed before idle stop");
+      assert.equal(rejected.runtime!.updatedAt, policyStart, "the idle window has not elapsed yet");
+      writeFileSync(policyClock, String(rejected.runtime!.updatedAt + 701));
+    }
     await poll(async () => { const value = await view(beeId); return value.runtime?.state === "stopped" && (await rows(beeId)).interruptions.some(row => row.deathRecovery?.deadline !== null) ? value : null; }, "auth death recorded before delivery");
     const first = await cb.request<SendRpcResult>("send", { beeId, body: "first queued message" });
     const second = await cb.request<SendRpcResult>("send", { beeId, body: "second queued message" });

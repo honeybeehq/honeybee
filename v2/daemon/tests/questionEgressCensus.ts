@@ -16,6 +16,17 @@ export function questionEgressCensus(patches: ReadonlyMap<string, (source: strin
   const types = program.getSourceFile(resolve(root, "v2/core/src/types.ts"))!;
   const questionSymbol = checker.getExportsOfModule(checker.getSymbolAtLocation(types)!).find(symbol => symbol.name === "QuestionRow")!;
   const questionType = checker.getDeclaredTypeOfSymbol(questionSymbol);
+  // A complete query starts with no ancestors. Recursive false results are
+  // contextual (a cycle can reach a target through an ancestor), so cache only
+  // completed root queries, within this immutable program/checker invocation.
+  const rootResults = new Map<ts.Type, boolean>();
+  function containsRoot(type: ts.Type): boolean {
+    const previous = rootResults.get(type);
+    if (previous !== undefined) return previous;
+    const result = contains(type);
+    rootResults.set(type, result);
+    return result;
+  }
   function contains(type: ts.Type, seen = new Set<ts.Type>()): boolean {
     if (seen.has(type)) return false;
     if ([type.aliasSymbol?.name, type.symbol?.name].some(name => name !== undefined && targets.has(name))) return true;
@@ -40,16 +51,16 @@ export function questionEgressCensus(patches: ReadonlyMap<string, (source: strin
   for (const file of program.getSourceFiles()) {
     if (!files.includes(file.fileName) || file.isDeclarationFile) continue;
     const path = relative(root, file.fileName);
+    const location = (node: ts.Node) => ({file: path, line: file.getLineAndCharacterOfPosition(node.getStart()).line + 1, scope: scope(node)});
     function visit(node: ts.Node): void {
-      const location = {file: path, line: file.getLineAndCharacterOfPosition(node.getStart()).line + 1, scope: scope(node)};
-      if (ts.isTypeReferenceNode(node) && node.typeName.getText() === "MirrorSnapshot") mirrorReferences.push(location);
+      if (ts.isTypeReferenceNode(node) && node.typeName.getText() === "MirrorSnapshot") mirrorReferences.push(location(node));
       if (ts.isCallExpression(node)) {
-        const call = node.expression.getText(), typedArguments = node.arguments.flatMap((argument, index) => contains(checker.getTypeAtLocation(argument)) ? [index] : []);
-        if (typedArguments.length) consumers.push({...location, call, typedArguments});
+        const call = node.expression.getText(), typedArguments = node.arguments.flatMap((argument, index) => containsRoot(checker.getTypeAtLocation(argument)) ? [index] : []);
+        if (typedArguments.length) consumers.push({...location(node), call, typedArguments});
         if (path === "v2/daemon/src/rpc.ts" && call === "conn.send") {
           const argument = node.arguments[0], declaration = argument && ts.isIdentifier(argument) ? checker.getSymbolAtLocation(argument)?.valueDeclaration : undefined;
           const initializer = declaration && ts.isVariableDeclaration(declaration) ? declaration.initializer?.getText() ?? null : null;
-          sends.push({...location, argument: argument?.getText() ?? "", initializer});
+          sends.push({...location(node), argument: argument?.getText() ?? "", initializer});
         }
       }
       ts.forEachChild(node, visit);

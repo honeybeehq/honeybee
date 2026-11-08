@@ -166,7 +166,10 @@ test("cell-pressure.1: below the floor, clean archived then idle Cells go oldest
     }, "floor unmet reported", 120_000);
     assert.equal(unmet.lastPass!.outcome, "floor_unmet");
     assert.equal(unmet.belowFloor, true);
-    await new Promise((r) => setTimeout(r, 2_000));
+    await waitFor(async () => {
+      const pass = (await client.request<HealthResult>("health")).cellDisk?.lastPass;
+      return pass?.outcome === "floor_unmet" && pass.endedAt > unmet.lastPass!.endedAt;
+    }, "floor-unmet pressure pass retried", 120_000, 100);
     assert.equal(await cellState(client, a3.beeId), "evicted");
     assert.equal(await cellState(client, idleBee.beeId), "evicted", "a long-idle stopped bee's clean Cell goes after the archived ones");
     for (const bee of [dirty, unlanded, live]) assert.equal(await cellState(client, bee.beeId), "active", bee.view.bee!.name);
@@ -286,19 +289,25 @@ test("cell-pressure.3: with no retention config a workstation runs no pressure p
       const spawned = await client.request<SpawnResult>("spawn", { name: `${nodeKind}-bee`, agent: "cellstub", substrate: "cell", cell: { originRepo: origin.repo } });
       await waitFor(async () => (await client.request<ViewResult>("view", { beeId: spawned.beeId })).cell != null, "cell registered", 60_000);
       await client.request<CellGcResult>("cell.gc", { measure: true }, 120_000);
-      await new Promise((r) => setTimeout(r, 1_500));
-      const disk = (await client.request<HealthResult>("health")).cellDisk!;
-      const log = readFileSync(join(dir, "hived.log"), "utf8");
-      return {
-        floorBytes: disk.floorBytes,
-        floorWarning: disk.floorWarning ?? null,
-        lastPassKind: disk.lastPass?.kind ?? null,
-        pressureLogged: /cell\.pressure\.below_floor /.test(log),
-        warnLogged: /cell\.pressure\.below_floor_warn/.test(log),
-        mirrorRoot: existsSync(join(dir, "upstream")),
-        fetchLogged: /cell\.retention\.upstream_(fetched|failed)/.test(log),
-        mirrorRootMode: existsSync(join(dir, "upstream")) ? statSync(join(dir, "upstream")).mode & 0o777 : null,
-      };
+      // Measurement is not completion of the background disk check/fetch.
+      // Wait for the receipts this test asserts, rather than CPU wall time.
+      return await waitFor(async () => {
+        const disk = (await client.request<HealthResult>("health")).cellDisk!;
+        const log = readFileSync(join(dir, "hived.log"), "utf8");
+        const observed = {
+          floorBytes: disk.floorBytes,
+          floorWarning: disk.floorWarning ?? null,
+          lastPassKind: disk.lastPass?.kind ?? null,
+          pressureLogged: /cell\.pressure\.below_floor /.test(log),
+          warnLogged: /cell\.pressure\.below_floor_warn/.test(log),
+          mirrorRoot: existsSync(join(dir, "upstream")),
+          fetchLogged: /cell\.retention\.upstream_(fetched|failed)/.test(log),
+          mirrorRootMode: existsSync(join(dir, "upstream")) ? statSync(join(dir, "upstream")).mode & 0o777 : null,
+        };
+        return nodeKind === "workstation"
+          ? observed.warnLogged ? observed : null
+          : observed.pressureLogged && observed.fetchLogged && observed.lastPassKind === "pressure" ? observed : null;
+      }, `${nodeKind} default disk policy observed`, 120_000, 100);
     } finally {
       await daemon?.stop();
       cleanup();
