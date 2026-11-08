@@ -784,6 +784,9 @@ export class RuntimeHost implements RuntimeDriver {
 
   private finishHost(p: Runtime): void {
     if (p.exited) return;
+    // Exit can beat the watcher/sweep callback under load. Preserve startup
+    // evidence from the final status before deleting the runtime record.
+    this.pumpStatus(p, true);
     this.pumpHostTail(p);
     const status = p.statusPath ? readRunnerStatus(p.statusPath) : null;
     if (p.executionStart) {
@@ -1077,7 +1080,7 @@ export class RuntimeHost implements RuntimeDriver {
     return out;
   }
 
-  private pumpStatus(p: Runtime): void {
+  private pumpStatus(p: Runtime, finishing = false): void {
     if (p.exited || p.pendingStartIdentity || !p.statusPath) return;
     const status = readRunnerStatus(p.statusPath);
     if (!status) return;
@@ -1119,7 +1122,7 @@ export class RuntimeHost implements RuntimeDriver {
         }
       }
     }
-    if (status.exited) {
+    if (status.exited && !finishing) {
       this.captureProcessIdentity(p);
       const disposition = processDisposition(p.processIdentity ?? null, inspectProcess(p.pid));
       if (disposition === "unavailable") this.cfg.runtimeIdentity?.unavailable?.(p.beeId, p.generation);
@@ -1591,6 +1594,29 @@ export class RuntimeHost implements RuntimeDriver {
     this.events = [];
     this.evidence = [];
     this.sessions = [];
+  }
+
+  /** Ephemeral shutdown must acknowledge exit, rather than just attempt a signal.
+   * Production daemon restarts use detachAll() and preserve these runtimes. */
+  async disposeAllAndWait(timeoutMs = 15_000): Promise<void> {
+    const owned = [...this.procs.values()].filter(p => p.pid > 0);
+    this.disposeAll();
+    const deadline = performance.now() + timeoutMs;
+    for (;;) {
+      const pending = owned.flatMap(p => {
+        const value = inspectProcess(p.pid);
+        if (value.kind === "gone" || value.kind === "present" && (
+          value.state === "zombie" || p.processIdentity && !sameProcess(p.processIdentity, value)
+        )) return [];
+        // Keep the original birth fence. A transient native observation or
+        // signal failure must not permanently lose disposal of an adopted host.
+        this.signalGroup(p, "SIGKILL");
+        return [{ pid: p.pid, identity: p.processIdentity ?? null, observation: value }];
+      });
+      if (pending.length === 0) return;
+      if (performance.now() >= deadline) throw new Error(`Runtime disposal timed out: ${JSON.stringify(pending)}`);
+      await new Promise<void>(resolve => setTimeout(resolve, 100));
+    }
   }
 
   private closeObservationSources(): void {

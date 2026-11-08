@@ -435,7 +435,7 @@ export async function startDaemon(dir: string, opts: { env?: Record<string, stri
             ) || !pidAlive(pid);
           }),
           `test daemon runner hosts reaped (${liveRunnerHostPids(dir).join(", ")})`,
-          4000,
+          scaledMs(4000),
         ).catch(error => {
           const remaining = liveRunnerHostPids(dir).map(pid => inspectProcess(pid));
           throw new Error(`${(error as Error).message}; remaining=${JSON.stringify(remaining)}`, { cause: error });

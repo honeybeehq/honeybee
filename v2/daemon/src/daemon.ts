@@ -1313,7 +1313,7 @@ export class HiveDaemon {
       if (options.preserveRuntimes === false) {
         // Test/ephemeral ownership only. Production never selects this path:
         // deploys must preserve runtimes for successor-daemon re-adoption.
-        try { this.cells?.dispose(); this.driver?.disposeAll(); } finally {
+        try { this.cells?.dispose(); await this.driver?.disposeAllAndWait(); } finally {
           this.store?.close();
           this.telemetry?.close();
         }

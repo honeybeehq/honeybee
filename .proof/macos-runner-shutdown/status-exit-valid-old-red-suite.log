@@ -1,0 +1,29 @@
+✖ host exit retains synthetic startup evidence before the first status drain (955.184083ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 0
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1183.751459
+
+✖ failing tests:
+
+test at v2/driver-hsr/tests/status-exit.test.ts:8:1
+✖ host exit retains synthetic startup evidence before the first status drain (955.184083ms)
+  Error: Command failed: /Users/trmd/.local/share/mise/installs/node/24.18.0/bin/node --test --test-reporter=tap --import /Users/trmd/.hive/v2/cells/hb-macos-full-gate-timeouts-b52878e01f0b/github-com-honeybeehq-honeybee-a9015b303498-space-b52878e01f0b/v2/driver-hsr/tests/fixtures/hold-status-pump.mjs --test-name-pattern=the spawn booted is SYNTHETIC /Users/trmd/.hive/v2/cells/hb-macos-full-gate-timeouts-b52878e01f0b/github-com-honeybeehq-honeybee-a9015b303498-space-b52878e01f0b/v2/driver-hsr/tests/driver.test.ts
+  
+      at genericNodeError (node:internal/errors:985:15)
+      at wrappedFn (node:internal/errors:539:14)
+      at ChildProcess.exithandler (node:child_process:417:12)
+      at ChildProcess.emit (node:events:509:28)
+      at maybeClose (node:internal/child_process:1124:16)
+      at ChildProcess._handle.onexit (node:internal/child_process:306:5) {
+    code: 1,
+    killed: false,
+    signal: null,
+    cmd: '/Users/trmd/.local/share/mise/installs/node/24.18.0/bin/node --test --test-reporter=tap --import /Users/trmd/.hive/v2/cells/hb-macos-full-gate-timeouts-b52878e01f0b/github-com-honeybeehq-honeybee-a9015b303498-space-b52878e01f0b/v2/driver-hsr/tests/fixtures/hold-status-pump.mjs --test-name-pattern=the spawn booted is SYNTHETIC /Users/trmd/.hive/v2/cells/hb-macos-full-gate-timeouts-b52878e01f0b/github-com-honeybeehq-honeybee-a9015b303498-space-b52878e01f0b/v2/driver-hsr/tests/driver.test.ts',
+    stdout: "TAP version 13\n# Subtest: readyAtSpawn v9: the spawn booted is SYNTHETIC; zero-output instant death emits no real evidence (the 2026-08-18 soak loop)\nnot ok 1 - readyAtSpawn v9: the spawn booted is SYNTHETIC; zero-output instant death emits no real evidence (the 2026-08-18 soak loop)\n  ---\n  duration_ms: 372.197625\n  type: 'test'\n  location: '/Users/trmd/.hive/v2/cells/hb-macos-full-gate-timeouts-b52878e01f0b/github-com-honeybeehq-honeybee-a9015b303498-space-b52878e01f0b/v2/driver-hsr/tests/driver.test.ts:755:1'\n  failureType: 'testCodeFailure'\n  error: |-\n    exactly the synthetic booted\n    \n    0 !== 1\n    \n  code: 'ERR_ASSERTION'\n  name: 'AssertionError'\n  expected: 1\n  actual: 0\n  operator: 'strictEqual'\n  stack: |-\n    TestContext.<anonymous> (file:///Users/trmd/.hive/v2/cells/hb-macos-full-gate-timeouts-b52878e01f0b/github-com-honeybeehq-honeybee-a9015b303498-space-b52878e01f0b/v2/driver-hsr/tests/driver.test.ts:775:12)\n    async Test.run (node:internal/test_runner/test:1332:7)\n    async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3)\n  ...\n1..1\n# tests 1\n# suites 0\n# pass 0\n# fail 1\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 797.598166\n",
+    stderr: ''
+  }

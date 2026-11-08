@@ -662,13 +662,23 @@ test("a genuinely long-running silent turn stays running across adoption", async
     persistFixtureProcess(dir, "bee-silent", 1, proc);
     await deliverUntilAccepted(first, "bee-silent", 1, 81, "@hang");
     await drainUntil(first, (events) => ofKind(events, "turn_started").length > 0);
-    await waitForJournal(
+    const marker = '"turn_started","messageId":81';
+    const journal = await waitForJournal(
       first.observationLogPath("bee-silent", 1),
-      (text) => text.includes('"turn_started","messageId":81'),
+      (text) => {
+        const at = text.indexOf(marker);
+        return at >= 0 && text.indexOf("\n", at) >= 0;
+      },
     );
-    await sleep(70);
-    first.observe();
-    const runningCursor = checkpointOf(first, "bee-silent");
+    const nativeStartEnd = Buffer.byteLength(journal.slice(0, journal.indexOf("\n", journal.indexOf(marker)) + 1));
+    let runningCursor = 0;
+    // A journal append precedes the driver's asynchronous watcher/sweep. Wait
+    // for its consumption receipt, rather than assuming 70ms was sufficient.
+    await drainUntil(first, () => {
+      const row = first.observeRecoveryCursors().find(row => row.beeId === "bee-silent");
+      if (row) runningCursor = row.cursor;
+      return runningCursor >= nativeStartEnd;
+    });
     first.detachAll();
 
     second = makeDriver(dir);

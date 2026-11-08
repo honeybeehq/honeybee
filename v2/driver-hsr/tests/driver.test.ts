@@ -19,6 +19,7 @@ import { RuntimeHost } from "../src/index.ts";
 import { agyAdapter, claudeAdapter, stubAdapter } from "../../adapters/src/index.ts";
 import type { AdapterSignal } from "../../adapters/src/types.ts";
 import type { DriverObservation } from "../../harness/src/driver.ts";
+import { scaledMs } from "../../core/tests/timeScale.ts";
 import {
   AGENT_PATH,
   drainEvidenceUntil,
@@ -769,7 +770,7 @@ test("readyAtSpawn v9: the spawn booted is SYNTHETIC; zero-output instant death 
   });
   try {
     driver.start("synth-1", 1);
-    const events = await drainUntil(driver, (e) => ofKind(e, "exited").length > 0, 3000);
+    const events = await drainUntil(driver, (e) => ofKind(e, "exited").length > 0, scaledMs(15_000));
     const booted = ofKind(events, "booted");
     assert.equal(booted.length, 1, "exactly the synthetic booted");
     assert.equal(booted[0]!.synthetic, true, "the spawn-event booted must be marked synthetic");
@@ -801,7 +802,7 @@ test("readyAtSpawn v9: the first parsed output pushes a REAL booted (boot eviden
     driver.start("synth-2", 1);
     // The stub emits its ready line spontaneously: synthetic booted first
     // (spawn event), then the REAL booted minted from the first parsed line.
-    const events = await drainUntil(driver, (e) => ofKind(e, "booted").length >= 2, 3000);
+    const events = await drainUntil(driver, (e) => ofKind(e, "booted").length >= 2, scaledMs(15_000));
     const booted = ofKind(events, "booted");
     assert.equal(booted[0]!.synthetic, true, "spawn-event booted is synthetic");
     assert.notEqual(booted[1]!.synthetic, true, "first parsed output mints the real booted");
@@ -809,7 +810,7 @@ test("readyAtSpawn v9: the first parsed output pushes a REAL booted (boot eviden
     // Delivery into the idle accept point opens the turn driver-side —
     // synthetic; the stub's turn_ended is parsed output — real.
     await deliverUntilAccepted(driver, "synth-2", 1, 7, "hi");
-    const turn = await drainUntil(driver, (e) => ofKind(e, "turn_ended").length > 0, 3000);
+    const turn = await drainUntil(driver, (e) => ofKind(e, "turn_ended").length > 0, scaledMs(15_000));
     assert.equal(ofKind(turn, "turn_started")[0]!.synthetic, true, "deliver-opened turn_started is synthetic");
     assert.notEqual(ofKind(turn, "turn_ended")[0]!.synthetic, true, "parsed turn_ended is real");
   } finally {
@@ -852,7 +853,7 @@ test("late init must not close an in-flight turn (cell smoke 2026-08-17 phantom 
     const t0 = Date.now();
     let endedAt: number | null = null;
     const seen: string[] = [];
-    while (Date.now() - t0 < 3000) {
+    while (Date.now() - t0 < scaledMs(15_000)) {
       for (const e of driver.observe()) {
         if (e.synthetic === true) continue;
         seen.push(e.kind);

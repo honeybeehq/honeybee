@@ -1,0 +1,45 @@
+✔ test shutdown retries a transient identity refusal after successor adoption (9750.727625ms)
+✔ test shutdown retries a transient signal refusal after successor adoption (11019.200584ms)
+✔ test shutdown fails when signal identity never recovers after successor adoption (24759.175583ms)
+✔ test teardown with no runner hosts does not require an RPC caller (10485.085125ms)
+✔ test teardown waits for survivor ownership before stopping recovery (25817.035208ms)
+✔ test teardown retries a torn survivor receipt before stopping recovery (25526.135833ms)
+✔ test teardown fails and reaps its survivor when ownership recovery stays unresolved (22226.5245ms)
+✔ test teardown: a daemon stand-in that keeps spawning writers into its data dir is stopped to the last process before the dir is removed (47514.915792ms)
+✔ runner cleanup excludes exited zombies while their wait parent is still alive (1210.3755ms)
+✔ runner cleanup retains a running host even after exited status, and excludes a reused PID with another birth (5.011125ms)
+ℹ tests 10
+ℹ suites 0
+ℹ pass 10
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 179412.117708
+LAB root reply + quiet sidechains: endedQuiet=false, human cursor advances
+LAB visible text + trailing token: endedQuiet=false, human cursor advances
+LAB quiet then native error: endedQuiet absent
+LAB quiet then explicit interrupt: endedQuiet absent
+LAB committed final message boundary=1711, cursor=1711
+LAB restart after committed quiet message: same PID/generation, endedQuiet=true, human cursor preserved
+✔ quiet facts through a throwaway daemon: root/child isolation, failure, interruption and mid-turn restart (21369.771708ms)
+LAB grok @success: endedQuiet=true
+LAB grok @content-quiet: endedQuiet=false
+LAB grok @error: endedQuiet=undefined
+LAB grok @cancelled: endedQuiet=undefined
+LAB grok @refusal: endedQuiet=undefined
+✔ quiet ACP facts through a throwaway grok daemon (18388.001208ms)
+LAB kimi @success: endedQuiet=true
+LAB kimi @content-quiet: endedQuiet=false
+LAB kimi @error: endedQuiet=undefined
+LAB kimi @cancelled: endedQuiet=undefined
+LAB kimi @refusal: endedQuiet=undefined
+✔ quiet ACP facts through a throwaway kimi daemon (11884.807ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 52795.9095
