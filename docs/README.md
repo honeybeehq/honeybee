@@ -1,3 +1,5 @@
+<p><img src="brand/strata-u2.iconset/icon_128x128@2x.png" alt="Honeybee icon: stacked glowing hex plates in a dark slab" width="96" height="96"></p>
+
 # honeybee
 
 `honeybee` is a small tmux-backed cockpit for interactive AI bees. Its CLI is `hive`.
