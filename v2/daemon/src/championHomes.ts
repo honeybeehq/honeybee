@@ -1,7 +1,8 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { closeSync, createReadStream, createWriteStream, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { closeSync, createReadStream, createWriteStream, existsSync, fsyncSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { rm, readdir, stat } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { basename, dirname } from "node:path";
 import { join, relative } from "node:path";
 import { pipeline } from "node:stream/promises";
@@ -161,13 +162,22 @@ export async function restoreChampionHome(home: string, root: string, ref: strin
   const object = championHomeObjectPath(root, ref);
   if (!existsSync(object)) throw new Error(`champion home object ${ref} is missing from ${root}`);
   mkdirSync(home, { recursive: true, mode: 0o700 });
-  const tar = spawn("tar", ["-xf", "-", "-C", home], { stdio: ["pipe", "ignore", "pipe"] });
-  const stderr: Buffer[] = [];
-  tar.stderr.on("data", (chunk: Buffer) => stderr.push(chunk));
-  const exit = new Promise<number | null>((resolve) => tar.once("close", (code) => resolve(code)));
-  await pipeline(createReadStream(object), zstd().decompress(), tar.stdin);
-  const code = await exit;
-  if (code !== 0) throw new Error(`tar exited ${code}: ${Buffer.concat(stderr).toString("utf8").trim()}`);
+  // Decompress fully before extracting. Piping into `tar -xf -` raced tar's
+  // exit: tar stops reading at the end-of-archive marker, so the remaining
+  // record padding could fail the pipeline ("Premature close") after a
+  // complete, successful extraction.
+  const scratch = mkdtempSync(join(tmpdir(), "hb-champion-restore-"));
+  try {
+    const archive = join(scratch, "home.tar");
+    await pipeline(createReadStream(object), zstd().decompress(), createWriteStream(archive, { mode: 0o600 }));
+    const tar = spawn("tar", ["-xf", archive, "-C", home], { stdio: ["ignore", "ignore", "pipe"] });
+    const stderr: Buffer[] = [];
+    tar.stderr.on("data", (chunk: Buffer) => stderr.push(chunk));
+    const code = await new Promise<number | null>((resolve, reject) => { tar.once("error", reject); tar.once("close", (exitCode) => resolve(exitCode)); });
+    if (code !== 0) throw new Error(`tar exited ${code}: ${Buffer.concat(stderr).toString("utf8").trim()}`);
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
+  }
 }
 
 export class ChampionHomeSync {
