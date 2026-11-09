@@ -1,0 +1,74 @@
+
+> honeybee@0.0.1 v2:daemon
+> node scripts/with-fixture-warden.mjs node scripts/run-v2-daemon-tests.mjs v2/daemon/tests/integration.test.ts v2/daemon/tests/apiary-tag-guard.test.ts v2/daemon/tests/child-health.test.ts v2/cli/tests/cli.test.ts
+
+✔ int.1: verb round-trips over the real socket — the full bee lifecycle (2871.824621ms)
+✔ int.2: typed errors — closed list only (bee_not_found, invalid_request, protocol_mismatch) (816.362908ms)
+✔ int.3: watch — snapshot + contiguous seq deltas; induced gap forces a snapshot refetch (1607.641837ms)
+✔ int.4: daemon SIGKILL mid-turn → restart → zero failed states (B7) + runtime re-adopted (2205.107415ms)
+✔ int.4b: runner-persisted completion recovers after SIGKILL and releases idle-urgency mail (4154.766468ms)
+✔ int.5: scale-to-zero with a tiny window → stopped_by_system → revive-on-message (2320.270904ms)
+✔ int.6: induced I1 breach — a boot-hanging agent leaves mail undelivered past the deadline → violation row (1730.271537ms)
+✔ int.7: immediate-exit agent → bounded revives on backoff, spawn_failed at the budget; the counter survives a daemon SIGKILL; operator revive recovers once the agent is fixed (5623.848024ms)
+✔ int.urgency.1: mid-turn `now` — the turn is interrupted, the message delivers immediately, and the bee keeps working (1477.072151ms)
+✔ int.urgency.2: mid-turn `idle` — held while the turn runs, delivered only after it ends (1716.920379ms)
+✔ int.urgency.3: an unknown urgency is a typed invalid_request, and nothing is enqueued (1564.988378ms)
+ℹ tests 11
+ℹ suites 0
+ℹ pass 11
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 26355.585329
+✔ apiary:* tags: refused from a bee caller on spawn and bee.tag, allowed from Apiary and the operator (1816.815604ms)
+✔ a fork never inherits apiary:role=*: forking a Champion makes an ordinary bee in the same workspace (1856.548028ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3892.489709
+✔ child census counts only the daemon's zombie children (1.436198ms)
+✔ child census is single-flight, warns above threshold and clears on recovery (0.658278ms)
+✔ failed census reports unavailable rather than a healthy zero (1.12017ms)
+✔ real process listing observes this test process (79.581576ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 259.770365
+✔ set-model --apply uses atomic admission and waits out an active turn (2186.247043ms)
+✔ cli.1: help prints and exits 0; unknown command exits 1 (4.970821ms)
+✔ cli.2: reads fall back to the read-only store when the daemon is down — labeled stale (91.814049ms)
+✔ cli.children: stale reads exclude external lineage that collides with a local bee id (52.868249ms)
+✔ cli.3: mutations NEVER fall back — daemon down means a loud, typed failure (62.952996ms)
+✔ cli.3b: a misspelled flag is a LOUD error (never a silent no-op), and spawn takes the agent positionally (8.599158ms)
+✔ cli.send-sender-wire: the real CLI request carries the authority-bound ambient bee id (5.759762ms)
+✔ cli.4: against a live daemon — spawn, list (not stale), send --wait blocks on the delivery mark (1698.736134ms)
+✔ cli.4n: health and daemon status report naming ok, off, or disabled with the reason (2654.374445ms)
+✔ cli.4b: --idempotency-key passes through on spawn and send — replays dedup to the original (1283.734774ms)
+✔ cli.4c: per-bee args — `spawn --arg` (repeatable), `bee set-args <bee> -- <args…>` / --clear, `bee args`, `revive --arg`, view/list carry args; stale read shows them too (2755.433482ms)
+✔ cli.4d: cells — `spawn --substrate cell --origin`, `cell capture --onto` (landed / refused as results), `cell remove` (refused-dirty exit 2, --force) (3200.549816ms)
+✔ cli.4e: v6 verbs — rename, tag, interrupt, fork, children, spawn --parent (+ ambient HIVE_BEE_ID), ask/answer/question list, seal create/list/get; stale fallbacks for the reads (3313.221862ms)
+✔ cli.daemon: usage lists restart as a stop+start alias (3.500542ms)
+✔ cli.5: daemon status when nothing runs and no service is installed (4.697754ms)
+✔ cli.6: service glue — label never the live daemon's, the unit always starts through the launcher (1101.792282ms)
+✔ cli.urgency: send --urgency passes through to the row; the mailbox read surfaces it; an unknown value is a typed error (2199.376603ms)
+✔ cli.version: --version answers (Apiary's Doctor gates local runs on it) (0.802881ms)
+✔ cli.task: add/ls/done/supply round-trip through the daemon; unknown command is gone (1176.413299ms)
+✔ cli.answer-display-label: --by stays local and question rows use plain answered wording (10.829536ms)
+ℹ tests 20
+ℹ suites 0
+ℹ pass 20
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 22274.177728
+exit=0

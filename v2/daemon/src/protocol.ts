@@ -332,6 +332,7 @@ export const DAEMON_CAPABILITIES = [
    * `runtime.activated` and `runtime.rollback`.
    */
   "runtime.update.v1",
+  "health.process_cpu.v1",
 ] as const;
 export type DaemonCapability = (typeof DAEMON_CAPABILITIES)[number];
 
@@ -2294,6 +2295,7 @@ export interface DeployInfoResult {
   /** Additive (P7): free space of the Cells volume and the last retention pass; null when unmeasurable. */
   cellDisk?: CellDiskStatus | null;
   capacity?: NodeCapacity | null;
+  processCpu?: import("./processCpu.ts").ProcessCpu | null;
 }
 
 /**
@@ -2355,6 +2357,7 @@ export interface HealthResult {
   cellDisk?: CellDiskStatus | null;
   capacity?: NodeCapacity | null;
   scheduling?: import("../../core/src/processScheduling.ts").SchedulingStatus;
+  processCpu?: import("./processCpu.ts").ProcessCpu | null;
 }
 
 export type NamingHealth = { state: "ok" | "off" } | { state: "disabled"; reason: string };

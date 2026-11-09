@@ -587,6 +587,7 @@ export function renderHealth(result: HealthResult): string[] {
       dim(`${result.bees.archived} archived`),
     ]),
     joinParts([bold("i1"), `${i1} violations`]),
+    ...(result.processCpu ? [joinParts([bold("cpu"), `${result.processCpu.percent}%`, dim(`avg over ${Math.round(result.processCpu.windowMs / 1000)}s`), dim(`${result.processCpu.cores} cores`)])] : []),
     ...(result.naming ? [namingHealthLine(result.naming)] : []),
   ];
 }

@@ -118,8 +118,13 @@ test("int.1: verb round-trips over the real socket — the full bee lifecycle", 
     const health = await client.request<HealthResult>("health");
     assert.equal(health.i1Violations, 0);
     assert.equal(health.bees.total, 1);
-    const info = await client.request<{ protocol: string }>("deployInfo");
+    assert.ok(client.capabilities.includes("health.process_cpu.v1"));
+    assert.notEqual(health.processCpu, undefined);
+    assert.ok(health.processCpu === null || (health.processCpu!.schema === 1 && health.processCpu!.percent >= 0 && health.processCpu!.windowMs > 0 && health.processCpu!.cores >= 1));
+    const info = await client.request<{ protocol: string; processCpu?: HealthResult["processCpu"] }>("deployInfo");
     assert.equal(info.protocol, "v2/2");
+    assert.equal(info.processCpu === null, health.processCpu === null);
+    if (info.processCpu) assert.equal(info.processCpu.schema, 1);
 
     // delete → everything gone; view reports unreachable non-existence
     await client.request("delete", { beeId });

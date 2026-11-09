@@ -1,4 +1,5 @@
 import { ChildHealthMonitor } from "./childHealth.ts";
+import { PROCESS_CPU_SAMPLE_MS, ProcessCpuMeter } from "./processCpu.ts";
 import type { SchedulingStatus } from "../../core/src/processScheduling.ts";
 import { assertConfinedSpawn, ConfinedAdmission, assertConfinedVerb, bwrapMode, classifyPeer, peerConfinement, peerOwner, runtimeUserNamespace, strictConfinementReasons, type PeerOwner } from "./confinedPeer.ts";
 import { admitSecretExecution } from "./secretExecution.ts";
@@ -793,6 +794,8 @@ export class HiveDaemon {
   private identityRecoveryTimer: NodeJS.Timeout | null = null;
   private readonly childHealth = new ChildHealthMonitor(line => this.log(line));
   private loopDelayTimer: NodeJS.Timeout | null = null;
+  private readonly processCpu = new ProcessCpuMeter();
+  private processCpuTimer: NodeJS.Timeout | null = null;
   private readonly startedAt = Date.now();
   readonly instanceId = randomUUID();
   private ticks = 0;
@@ -1276,6 +1279,9 @@ export class HiveDaemon {
       h.reset();
     }, 60_000);
     this.loopDelayTimer.unref();
+    this.processCpu.sample();
+    this.processCpuTimer = setInterval(() => this.processCpu.sample(), PROCESS_CPU_SAMPLE_MS);
+    this.processCpuTimer.unref();
     this.log(`daemon.started pid=${process.pid} store=${this.cfg.storePath}`);
     if (this.naming.disabledReason) this.log(`naming.disabled reason=${JSON.stringify(this.naming.disabledReason)}`);
   }
@@ -1288,6 +1294,7 @@ export class HiveDaemon {
       if (this.tickTimer) clearTimeout(this.tickTimer);
       if (this.identityRecoveryTimer) clearInterval(this.identityRecoveryTimer);
       if (this.loopDelayTimer) clearInterval(this.loopDelayTimer);
+      if (this.processCpuTimer) clearInterval(this.processCpuTimer);
       this.loopDelay?.disable();
       this.tickTimer = null;
       await this.quotaRecovery?.stop();
@@ -7036,6 +7043,7 @@ export class HiveDaemon {
       startedAt: this.startedAt,
       instanceId: this.instanceId,
       ...(this.store ? { nodeId: this.store.nodeId(), gateways: this.store.listGateways(), skills: this.store.skillTree(), store: this.store.schemaInfo() } : {}),
+      processCpu: this.processCpu.status(),
       dataDir: this.cfg.dataDir,
       socketPath: this.cfg.socketPath,
       storePath: this.cfg.storePath,
@@ -7142,6 +7150,7 @@ export class HiveDaemon {
       cellDisk: this.retention?.diskStatus() ?? null,
       capacity: this.retention?.capacity(true) ?? null,
       ...(this.scheduling ? { scheduling: this.scheduling() } : {}),
+      processCpu: this.processCpu.status(),
     };
   }
 

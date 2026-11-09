@@ -1,0 +1,12 @@
+{"at":"2026-11-09T08:36:45.596Z","step":"daemon.started","pid":4065082,"dataDir":"/tmp/hb-health-cpu-PDraRC","bootMs":1112,"capabilities":81}
+{"at":"2026-11-09T08:36:45.598Z","step":"hello.capability_tag","ok":true,"tag":"health.process_cpu.v1"}
+{"at":"2026-11-09T08:36:45.763Z","step":"health.json.before_window","ok":true,"processCpu":null,"pid":4065082}
+{"at":"2026-11-09T08:37:50.995Z","step":"idle.health_matches_proc","ok":true,"health":{"schema":1,"percent":1.5,"windowMs":65000,"sampledAt":1794213470571,"cores":48},"procStatPercent":1.4,"topPercent":1.5,"psLifetimePercent":4,"deltaPoints":0.10000000000000009}
+{"at":"2026-11-09T08:37:51.131Z","step":"health.text.cpu_line","ok":true,"line":"cpu  ·  1.5%  ·  avg over 65s  ·  48 cores"}
+{"at":"2026-11-09T08:37:51.150Z","step":"deployInfo.carries_processCpu","ok":true,"processCpu":{"schema":1,"percent":1.5,"windowMs":65000,"sampledAt":1794213470571,"cores":48}}
+{"at":"2026-11-09T08:37:52.964Z","step":"load.bees_up","bees":5,"states":["idle","idle","idle","idle","idle"]}
+{"at":"2026-11-09T08:38:58.184Z","step":"load.health_matches_proc","ok":true,"health":{"schema":1,"percent":51.2,"windowMs":60025,"sampledAt":1794213535597,"cores":48},"procStatPercent":51.5,"topPercent":51.8,"psLifetimePercent":28.3,"deltaPoints":0.29999999999999716}
+{"at":"2026-11-09T08:38:58.185Z","step":"load.sends","sends":2459,"perSecond":37.8}
+{"at":"2026-11-09T08:38:59.751Z","step":"timer.cost_under_0_1_percent","ok":true,"samples":200000,"perSampleMicros":9.2,"wallPerSampleMicros":7.83,"sampleEveryMs":5000,"timerPercentOfOneCore":0.00018}
+{"at":"2026-11-09T08:38:59.868Z","step":"daemon.stopped","pid":4065082,"stopMs":116}
+{"at":"2026-11-09T08:38:59.869Z","step":"summary","idle":{"health":1.5,"procStat":1.4,"top":1.5,"psLifetime":4},"load":{"health":51.2,"procStat":51.5,"top":51.8,"psLifetime":28.3},"timerPercentOfOneCore":0.00018,"failures":[]}

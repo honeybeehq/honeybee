@@ -1,0 +1,164 @@
+diff --git a/v2/cli/src/render.ts b/v2/cli/src/render.ts
+index 36a0a40a..584b58f9 100644
+--- a/v2/cli/src/render.ts
++++ b/v2/cli/src/render.ts
+@@ -587,6 +587,7 @@ export function renderHealth(result: HealthResult): string[] {
+       dim(`${result.bees.archived} archived`),
+     ]),
+     joinParts([bold("i1"), `${i1} violations`]),
++    ...(result.processCpu ? [joinParts([bold("cpu"), `${result.processCpu.percent}%`, dim(`avg over ${Math.round(result.processCpu.windowMs / 1000)}s`), dim(`${result.processCpu.cores} cores`)])] : []),
+     ...(result.naming ? [namingHealthLine(result.naming)] : []),
+   ];
+ }
+diff --git a/v2/daemon/src/daemon.ts b/v2/daemon/src/daemon.ts
+index 0ac2574b..b1ed7c92 100644
+--- a/v2/daemon/src/daemon.ts
++++ b/v2/daemon/src/daemon.ts
+@@ -1,4 +1,5 @@
+ import { ChildHealthMonitor } from "./childHealth.ts";
++import { PROCESS_CPU_SAMPLE_MS, ProcessCpuMeter } from "./processCpu.ts";
+ import type { SchedulingStatus } from "../../core/src/processScheduling.ts";
+ import { assertConfinedSpawn, ConfinedAdmission, assertConfinedVerb, bwrapMode, classifyPeer, peerConfinement, peerOwner, runtimeUserNamespace, strictConfinementReasons, type PeerOwner } from "./confinedPeer.ts";
+ import { admitSecretExecution } from "./secretExecution.ts";
+@@ -793,6 +794,8 @@ export class HiveDaemon {
+   private identityRecoveryTimer: NodeJS.Timeout | null = null;
+   private readonly childHealth = new ChildHealthMonitor(line => this.log(line));
+   private loopDelayTimer: NodeJS.Timeout | null = null;
++  private readonly processCpu = new ProcessCpuMeter();
++  private processCpuTimer: NodeJS.Timeout | null = null;
+   private readonly startedAt = Date.now();
+   readonly instanceId = randomUUID();
+   private ticks = 0;
+@@ -1276,6 +1279,9 @@ export class HiveDaemon {
+       h.reset();
+     }, 60_000);
+     this.loopDelayTimer.unref();
++    this.processCpu.sample();
++    this.processCpuTimer = setInterval(() => this.processCpu.sample(), PROCESS_CPU_SAMPLE_MS);
++    this.processCpuTimer.unref();
+     this.log(`daemon.started pid=${process.pid} store=${this.cfg.storePath}`);
+     if (this.naming.disabledReason) this.log(`naming.disabled reason=${JSON.stringify(this.naming.disabledReason)}`);
+   }
+@@ -1288,6 +1294,7 @@ export class HiveDaemon {
+       if (this.tickTimer) clearTimeout(this.tickTimer);
+       if (this.identityRecoveryTimer) clearInterval(this.identityRecoveryTimer);
+       if (this.loopDelayTimer) clearInterval(this.loopDelayTimer);
++      if (this.processCpuTimer) clearInterval(this.processCpuTimer);
+       this.loopDelay?.disable();
+       this.tickTimer = null;
+       await this.quotaRecovery?.stop();
+@@ -7036,6 +7043,7 @@ export class HiveDaemon {
+       startedAt: this.startedAt,
+       instanceId: this.instanceId,
+       ...(this.store ? { nodeId: this.store.nodeId(), gateways: this.store.listGateways(), skills: this.store.skillTree(), store: this.store.schemaInfo() } : {}),
++      processCpu: this.processCpu.status(),
+       dataDir: this.cfg.dataDir,
+       socketPath: this.cfg.socketPath,
+       storePath: this.cfg.storePath,
+@@ -7142,6 +7150,7 @@ export class HiveDaemon {
+       cellDisk: this.retention?.diskStatus() ?? null,
+       capacity: this.retention?.capacity(true) ?? null,
+       ...(this.scheduling ? { scheduling: this.scheduling() } : {}),
++      processCpu: this.processCpu.status(),
+     };
+   }
+ 
+diff --git a/v2/daemon/src/processCpu.ts b/v2/daemon/src/processCpu.ts
+new file mode 100644
+index 00000000..4d56385d
+--- /dev/null
++++ b/v2/daemon/src/processCpu.ts
+@@ -0,0 +1,46 @@
++import { availableParallelism } from "node:os";
++
++export const PROCESS_CPU_SAMPLE_MS = 5_000;
++export const PROCESS_CPU_WINDOW_MS = 60_000;
++
++export interface ProcessCpu {
++  schema: 1;
++  percent: number;
++  windowMs: number;
++  sampledAt: number;
++  cores: number;
++}
++
++interface Sample { at: number; wallNs: bigint; cpuMicros: number }
++
++export class ProcessCpuMeter {
++  private readonly samples: Sample[] = [];
++  private readonly windowMs: number;
++  private readonly read: () => NodeJS.CpuUsage;
++  private readonly clock: () => bigint;
++  private readonly now: () => number;
++
++  constructor(options: { windowMs?: number; read?: () => NodeJS.CpuUsage; clock?: () => bigint; now?: () => number } = {}) {
++    this.windowMs = options.windowMs ?? PROCESS_CPU_WINDOW_MS;
++    this.read = options.read ?? (() => process.cpuUsage());
++    this.clock = options.clock ?? (() => process.hrtime.bigint());
++    this.now = options.now ?? (() => Date.now());
++  }
++
++  sample(): void {
++    const usage = this.read();
++    const next: Sample = { at: this.now(), wallNs: this.clock(), cpuMicros: usage.user + usage.system };
++    this.samples.push(next);
++    while (this.samples.length > 2 && Number(next.wallNs - this.samples[1]!.wallNs) >= this.windowMs * 1e6) this.samples.shift();
++  }
++
++  status(): ProcessCpu | null {
++    if (this.samples.length < 2) return null;
++    const first = this.samples[0]!;
++    const last = this.samples[this.samples.length - 1]!;
++    const wallMicros = Number(last.wallNs - first.wallNs) / 1e3;
++    if (wallMicros <= 0) return null;
++    const percent = Math.max(0, Math.round(((last.cpuMicros - first.cpuMicros) / wallMicros) * 1000) / 10);
++    return { schema: 1, percent, windowMs: Math.round(wallMicros / 1e3), sampledAt: last.at, cores: availableParallelism() };
++  }
++}
+diff --git a/v2/daemon/src/protocol.ts b/v2/daemon/src/protocol.ts
+index 12848c3a..c88cbf98 100644
+--- a/v2/daemon/src/protocol.ts
++++ b/v2/daemon/src/protocol.ts
+@@ -332,6 +332,7 @@ export const DAEMON_CAPABILITIES = [
+    * `runtime.activated` and `runtime.rollback`.
+    */
+   "runtime.update.v1",
++  "health.process_cpu.v1",
+ ] as const;
+ export type DaemonCapability = (typeof DAEMON_CAPABILITIES)[number];
+ 
+@@ -2294,6 +2295,7 @@ export interface DeployInfoResult {
+   /** Additive (P7): free space of the Cells volume and the last retention pass; null when unmeasurable. */
+   cellDisk?: CellDiskStatus | null;
+   capacity?: NodeCapacity | null;
++  processCpu?: import("./processCpu.ts").ProcessCpu | null;
+ }
+ 
+ /**
+@@ -2355,6 +2357,7 @@ export interface HealthResult {
+   cellDisk?: CellDiskStatus | null;
+   capacity?: NodeCapacity | null;
+   scheduling?: import("../../core/src/processScheduling.ts").SchedulingStatus;
++  processCpu?: import("./processCpu.ts").ProcessCpu | null;
+ }
+ 
+ export type NamingHealth = { state: "ok" | "off" } | { state: "disabled"; reason: string };
+diff --git a/v2/daemon/tests/integration.test.ts b/v2/daemon/tests/integration.test.ts
+index e7a08188..89e6c496 100644
+--- a/v2/daemon/tests/integration.test.ts
++++ b/v2/daemon/tests/integration.test.ts
+@@ -118,8 +118,13 @@ test("int.1: verb round-trips over the real socket — the full bee lifecycle",
+     const health = await client.request<HealthResult>("health");
+     assert.equal(health.i1Violations, 0);
+     assert.equal(health.bees.total, 1);
+-    const info = await client.request<{ protocol: string }>("deployInfo");
++    assert.ok(client.capabilities.includes("health.process_cpu.v1"));
++    assert.notEqual(health.processCpu, undefined);
++    assert.ok(health.processCpu === null || (health.processCpu!.schema === 1 && health.processCpu!.percent >= 0 && health.processCpu!.windowMs > 0 && health.processCpu!.cores >= 1));
++    const info = await client.request<{ protocol: string; processCpu?: HealthResult["processCpu"] }>("deployInfo");
+     assert.equal(info.protocol, "v2/2");
++    assert.equal(info.processCpu === null, health.processCpu === null);
++    if (info.processCpu) assert.equal(info.processCpu.schema, 1);
+ 
+     // delete → everything gone; view reports unreachable non-existence
+     await client.request("delete", { beeId });
