@@ -171,7 +171,8 @@ test("answer egress projection preserves canonical objects and arbitrary outputs
     Object.freeze({ kind: "bee.reacted", payload: Object.freeze({ reaction, unansweredHumanMessage: pending }) }),
     Object.freeze({ kind: "bee.human_output_mode_changed", payload: Object.freeze({ unansweredHumanMessage: pending }) }),
   ]);
-  const result = Object.freeze({ bee, view, unansweredHumanMessage: pending, views: Object.freeze([{ bee, view }]), children: Object.freeze([{ bee, view }]), rows: events, outputs: business, tell, reaction, tells: Object.freeze([tell]), reactions: Object.freeze([reaction]) });
+  const nestedSnapshot = Object.freeze({ views: Object.freeze([{ bee, view }]), tells: Object.freeze([tell]), reactions: Object.freeze([reaction]) });
+  const result = Object.freeze({ snapshot: nestedSnapshot, events, bee, view, unansweredHumanMessage: pending, views: Object.freeze([{ bee, view }]), children: Object.freeze([{ bee, view }]), rows: events, outputs: business, tell, reaction, tells: Object.freeze([tell]), reactions: Object.freeze([reaction]) });
   const valuesAt = (value: unknown, path: string): unknown[] => path.split(".").reduce<unknown[]>((items, part) => items.flatMap(item => {
     const next = item !== null && typeof item === "object" ? (item as Record<string, unknown>)[part.replace(/\[\]$/, "")] : undefined;
     return part.endsWith("[]") ? Array.isArray(next) ? next : [] : [next];

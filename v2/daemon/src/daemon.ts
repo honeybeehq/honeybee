@@ -1,3 +1,5 @@
+import { MIRROR_CHANGES_DEFAULT_LIMIT, MIRROR_CHANGES_MAX_LIMIT } from "./protocol.ts";
+import type { MirrorCursor, MirrorSnapshotResult, MirrorWatchSinceResult, MirrorChangesResult } from "./protocol.ts";
 import { ChildHealthMonitor } from "./childHealth.ts";
 import { PROCESS_CPU_SAMPLE_MS, ProcessCpuMeter } from "./processCpu.ts";
 import type { SchedulingStatus } from "../../core/src/processScheduling.ts";
@@ -2782,6 +2784,21 @@ export class HiveDaemon {
         });
       case "packages.importLocalConfig":
         return this.withIdempotency(verb, params, () => this.rpcImportLocalConfig(params));
+      case "mirror.snapshot": {
+        const store = this.mustStore();
+        const snapshot = this.snapshot();
+        const cursor = store.mirrorCursor();
+        conn.alignWatch(cursor.seq);
+        return { snapshot: { ...snapshot, seq: cursor.seq, authInterruptions: store.listAuthInterruptions() }, cursor, coverage: { scope: "mirror.v1", fromSeq: 0, throughSeq: cursor.seq, headSeq: cursor.seq, retainedAfterSeq: store.mirrorRetentionFloor(), complete: true }, receipts: store.mirrorReceiptBaseline() } satisfies MirrorSnapshotResult;
+      }
+      case "mirror.changes":
+        return this.rpcMirrorChanges(params);
+      case "mirror.watchSince": {
+        const result = this.rpcMirrorChanges(params);
+        const subscribed = result.status === "ok" && !result.hasMore && result.cursor.seq === result.coverage.headSeq;
+        if (subscribed) conn.subscribeWatch(result.cursor.seq);
+        return { ...result, subscribed } satisfies MirrorWatchSinceResult;
+      }
       case "mirror.local.snapshot":
       case "snapshot": {
         const includeHomes = verb === "mirror.local.snapshot" && conn.operatorLocalHomes === true;
@@ -6975,6 +6992,25 @@ export class HiveDaemon {
     const deleted = store.deleteChampion(champion.id);
     this.log(`champion.delete id=${champion.id} home_kept=${champion.home}`);
     return { champion: deleted };
+  }
+
+  private rpcMirrorChanges(params: Record<string, unknown>): MirrorChangesResult {
+    const raw = params.cursor;
+    let cursor: MirrorCursor | undefined;
+    if (raw !== undefined && raw !== null) {
+      if (typeof raw !== "object" || Array.isArray(raw)) throw new RpcError("invalid_request", "mirror.changes: invalid cursor");
+      const value = raw as Record<string, unknown>;
+      if (typeof value.epoch !== "string" || !value.epoch || !Number.isSafeInteger(value.seq) || Number(value.seq) < 0) throw new RpcError("invalid_request", "mirror.changes: invalid cursor");
+      cursor = { epoch: value.epoch, seq: Number(value.seq) };
+    }
+    let limit = params.limit;
+    if (limit !== undefined && (!Number.isSafeInteger(limit) || Number(limit) < 1 || Number(limit) > MIRROR_CHANGES_MAX_LIMIT)) {
+      this.log(`config.mirror.invalid limit default=${MIRROR_CHANGES_DEFAULT_LIMIT}`);
+      limit = undefined;
+    }
+    if (params.throughSeq !== undefined && (!Number.isSafeInteger(params.throughSeq) || Number(params.throughSeq) < 0)) throw new RpcError("invalid_request", "mirror.changes: invalid throughSeq");
+    const result = this.mustStore().mirrorChanges(cursor, { ...(limit === undefined ? {} : { limit: Number(limit) }), ...(params.throughSeq === undefined ? {} : { throughSeq: Number(params.throughSeq) }) });
+    return result.status === "ok" ? { ...result, events: this.mirrorAuditRows(result.events) } : result;
   }
 
   private rpcTranscriptSegments(params: Record<string, unknown>): TranscriptSegmentsResult {

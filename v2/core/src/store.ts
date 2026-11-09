@@ -1,3 +1,5 @@
+import { MIRROR_CHANGES_DEFAULT_LIMIT } from "./mirrorChanges.ts";
+import type { MirrorCursor, MirrorChangesResult, MirrorReceiptBaseline } from "./mirrorChanges.ts";
 import { backupStore, type StoreBackupReceipt } from "./storeBackup.ts";
 import { HUMAN_OUTPUT_SQL, HumanOutputLedger, type BeeTellParams, type BeeReactParams, type HumanOutputMode, type BeeTellRow, type BeeReactionRow } from "./humanOutput.ts";
 import { readMailBatchPage, renderMailBatch } from "./mailBatch.ts";
@@ -1825,6 +1827,7 @@ export class CoreStore {
         // Version gate + explicit migrations FIRST (before any other write
         // touches possibly-old tables), atomically with the stamp.
         this.ensureSchemaVersion();
+        this.stmt("INSERT INTO meta(key,value) VALUES('mirror_epoch',?) ON CONFLICT(key) DO NOTHING").run(randomUUID());
         if (opts.buildIdentity) this.db.prepare("INSERT INTO meta(key,value) VALUES('store_build_identity',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(opts.buildIdentity);
         try { this.effectLedger.open(); this.executionLedger.open(); this.executionStarts.open(); }
         catch (error) {
@@ -3296,6 +3299,7 @@ export class CoreStore {
       // ON DELETE CASCADE removes runtimes, flags, mailbox, questions, seals,
       // tasks, and task_supply.
       this.stmt("DELETE FROM delivery_confirmation_decisions WHERE bee_id = ?").run(beeId);
+      this.stmt("DELETE FROM bee_resume_bundles WHERE bee_id = ?").run(beeId);
       this.stmt("DELETE FROM bees WHERE id = ?").run(beeId);
       this.audit(
         "bee.deleted",
@@ -9020,6 +9024,46 @@ export class CoreStore {
     return seq;
   }
 
+  mirrorCursor(): MirrorCursor {
+    const epoch = String(this.stmt("SELECT value FROM meta WHERE key = 'mirror_epoch'").get()!.value);
+    const seq = Number(this.stmt("SELECT seq FROM sqlite_sequence WHERE name = 'audit'").get()?.seq ?? 0);
+    return { epoch, seq };
+  }
+
+  mirrorRetentionFloor(): number {
+    return Number(this.stmt("SELECT MIN(seq) AS seq FROM audit").get()?.seq ?? this.mirrorCursor().seq + 1) - 1;
+  }
+
+  mirrorChanges(cursor?: MirrorCursor, opts: { throughSeq?: number; limit?: number } = {}): MirrorChangesResult {
+    const head = this.mirrorCursor();
+    const refuse = (reason: "unknown_cursor" | "epoch_changed" | "too_old" | "cursor_ahead"): MirrorChangesResult => ({ status: "resync_required", reason, cursor: head });
+    if (!cursor) return refuse("unknown_cursor");
+    if (cursor.epoch !== head.epoch) return refuse("epoch_changed");
+    if (cursor.seq > head.seq) return refuse("cursor_ahead");
+    const floor = this.mirrorRetentionFloor();
+    if (cursor.seq < floor) return refuse("too_old");
+    const through = opts.throughSeq ?? head.seq;
+    if (!Number.isSafeInteger(through) || through < cursor.seq || through > head.seq) return refuse("cursor_ahead");
+    const limit = opts.limit ?? MIRROR_CHANGES_DEFAULT_LIMIT;
+    const rows = (this.stmt("SELECT * FROM audit WHERE seq > ? AND seq <= ? ORDER BY seq LIMIT ?").all(cursor.seq, through, limit + 1) as Row[]).map(mapAudit);
+    for (let i = 0; i < rows.length; i++) if (rows[i]!.seq !== cursor.seq + i + 1) return refuse("too_old");
+    const events = rows.slice(0, limit);
+    const hasMore = rows.length > limit;
+    const seq = hasMore ? events[events.length - 1]!.seq : through;
+    if (!hasMore && seq !== cursor.seq + events.length) return refuse("too_old");
+    return { status: "ok", cursor: { epoch: head.epoch, seq }, coverage: { scope: "mirror.v1", fromSeq: cursor.seq, throughSeq: seq, headSeq: head.seq, retainedAfterSeq: floor, complete: true }, events, hasMore };
+  }
+
+  mirrorReceiptBaseline(): MirrorReceiptBaseline {
+    return {
+      resumeBundles: (this.stmt("SELECT b.* FROM bee_resume_bundles b JOIN bees ON bees.id = b.bee_id ORDER BY b.bee_id, b.id").all() as Row[]).map(mapBeeResumeBundle),
+      segmentObjects: (this.stmt("SELECT * FROM transcript_segment_objects ORDER BY bee_id, ordinal").all() as Row[]).map(mapTranscriptSegmentObject),
+      beeEpochs: (this.stmt("SELECT * FROM bee_epochs ORDER BY bee_id").all() as Row[]).map(row => ({ beeId: String(row.bee_id), epoch: Number(row.epoch), fencedAt: row.fenced_at == null ? null : Number(row.fenced_at) })),
+      complete: true,
+      truncated: false,
+    };
+  }
+
   auditRows(fromSeq = 0, limit?: number): AuditRow[] {
     // Bounded when the caller says so: the watch flush reads maxBatch+1 to
     // detect a gap WITHOUT materializing the whole backlog — the unbounded
@@ -9921,7 +9965,8 @@ export class CoreStore {
       this.stmt("INSERT INTO bee_resume_bundles(id, bee_id, generation, harness, provider_session_id, cwd, state_key, scope, ref, digest, key_id, bytes, size, files, closed_at, epoch) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
         .run(id, input.beeId, input.generation, input.harness, input.providerSessionId, input.cwd, input.stateKey, input.scope, input.ref, input.digest, input.keyId, input.bytes, input.size, input.files, input.closedAt, input.epoch);
       const keep = Math.max(1, opts.keep ?? 5);
-      this.stmt("DELETE FROM bee_resume_bundles WHERE bee_id = ? AND id NOT IN (SELECT id FROM bee_resume_bundles WHERE bee_id = ? ORDER BY closed_at DESC, id DESC LIMIT ?)").run(input.beeId, input.beeId, keep);
+      const removed = this.stmt("DELETE FROM bee_resume_bundles WHERE bee_id = ? AND id NOT IN (SELECT id FROM bee_resume_bundles WHERE bee_id = ? ORDER BY closed_at DESC, id DESC LIMIT ?) RETURNING id").all(input.beeId, input.beeId, keep) as Row[];
+      for (const row of removed) this.audit("bee_resume_bundle.removed", input.beeId, { id: String(row.id) });
       const row = mapBeeResumeBundle(this.stmt("SELECT * FROM bee_resume_bundles WHERE id = ?").get(id) as Row);
       this.audit("bee_resume_bundle.put", input.beeId, { bundle: row });
       return row;

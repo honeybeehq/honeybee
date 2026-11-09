@@ -11,6 +11,9 @@ export const QUESTION_DISMISSAL_RESULTS = {
   QuestionListResult: { verbs: ["question.list"], values: ["questions[]"], audits: [] },
   SnapshotResult: { verbs: ["snapshot", "watch"], values: ["questions[]"], audits: [] },
   AuditTailResult: { verbs: ["audit.tail"], values: [], audits: ["rows[]"] },
+  MirrorSnapshotResult: { verbs: ["mirror.snapshot"], values: ["snapshot.questions[]"], audits: [] },
+  MirrorChangesResult: { verbs: ["mirror.changes"], values: [], audits: ["events[]"] },
+  MirrorWatchSinceResult: { verbs: ["mirror.watchSince"], values: [], audits: ["events[]"] },
   WatchFrame: { verbs: [], values: [], audits: ["events[]"] },
 } as const satisfies Record<string, { verbs: readonly RpcVerb[]; values: readonly string[]; audits: readonly string[] }>;
 export const QUESTION_DISMISSAL_AUDITS: Readonly<Record<string, readonly string[]>> = {
