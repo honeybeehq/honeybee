@@ -1,3 +1,6 @@
+export { MIRROR_CHANGES_DEFAULT_LIMIT, MIRROR_CHANGES_MAX_LIMIT } from "../../core/src/mirrorChanges.ts";
+import type { MirrorCursor, MirrorCoverage, MirrorChangesResult, MirrorReceiptBaseline } from "../../core/src/mirrorChanges.ts";
+export type { MirrorCursor, MirrorCoverage, MirrorChangesResult, MirrorReceiptBaseline } from "../../core/src/mirrorChanges.ts";
 import type { PublicBeeRow } from "../../core/src/envRedaction.ts";
 export type { BeeTellParams, BeeTellResult, BeeReactParams, BeeReactResult, SetHumanOutputModeParams, SetHumanOutputModeResult } from "../../core/src/humanOutputTypes.ts";
 import { honeybeeBuildIdentity, type BuildIdentity } from "../../core/src/release/buildIdentity.ts";
@@ -99,6 +102,7 @@ export const DAEMON_VERSION = BUILD_IDENTITY.version;
  * client ignores the extra key) and `deployInfo` repeats the list.
  */
 export const DAEMON_CAPABILITIES = [
+  "mirror.changes.v1",
   "mirror.local.homes.v1",
   "cell.secret.exec.v1",
   "cell.secret.capture.v1",
@@ -558,6 +562,9 @@ export const RPC_ERROR_CODES = [
 export type RpcErrorCode = (typeof RPC_ERROR_CODES)[number];
 
 export const RPC_VERBS = [
+  "mirror.snapshot",
+  "mirror.changes",
+  "mirror.watchSince",
   "mail.humanFirst.set",
   "mail.humanFirst.get",
   "mail.batching.set",
@@ -2361,6 +2368,14 @@ export interface HealthResult {
 }
 
 export type NamingHealth = { state: "ok" | "off" } | { state: "disabled"; reason: string };
+
+export type MirrorSnapshotResult = {
+  snapshot: SnapshotResult & { authInterruptions: AuthInterruptionRow[] };
+  cursor: MirrorCursor;
+  coverage: MirrorCoverage;
+  receipts: MirrorReceiptBaseline;
+};
+export type MirrorWatchSinceResult = MirrorChangesResult & { subscribed: boolean };
 
 export interface SnapshotResult {
   tells?: import("../../core/src/humanOutputTypes.ts").BeeTellRow[];

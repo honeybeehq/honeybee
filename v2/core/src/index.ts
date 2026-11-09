@@ -92,3 +92,6 @@ export { publicDeliveryConfirmation, readDeliveryConfirmations, DELIVERY_CONFIRM
 
 export * from "./humanOutput.ts";
 export { ChampionNotFoundError, championSlug, type PutChampionInput } from "./store.ts";
+
+export type { MirrorCursor, MirrorCoverage, MirrorChangesResult, MirrorReceiptBaseline } from "./mirrorChanges.ts";
+export { MIRROR_CHANGES_DEFAULT_LIMIT, MIRROR_CHANGES_MAX_LIMIT } from "./mirrorChanges.ts";
