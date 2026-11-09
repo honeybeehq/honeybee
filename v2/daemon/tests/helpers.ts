@@ -438,7 +438,8 @@ export async function startDaemon(dir: string, opts: { env?: Record<string, stri
           scaledMs(4000),
         ).catch(error => {
           const remaining = liveRunnerHostPids(dir).map(pid => inspectProcess(pid));
-          throw new Error(`${(error as Error).message}; remaining=${JSON.stringify(remaining)}`, { cause: error });
+          // A daemon that died mid-shutdown never disposed its hosts; say so.
+          throw new Error(`${(error as Error).message}; remaining=${JSON.stringify(remaining)}; daemon exit=${proc.exitCode ?? proc.signalCode}; output tail=${JSON.stringify(out.slice(-1500))}`, { cause: error });
         });
       } catch (error) {
         // A failed postcondition must still fail, but must not pin the test

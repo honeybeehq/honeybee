@@ -1963,6 +1963,11 @@ export class HiveDaemon {
   }
 
   private retainProcessIdentity(beeId: string, generation: number): void {
+    // Driver observers (host socket close, status pumps) keep firing while
+    // shutdown awaits. Retention is live-daemon recovery state and retries are
+    // frozen once stopping; mustStore() would throw an uncaught node_stopped
+    // from that callback and kill the daemon before or during runtime disposal.
+    if (this.stopping) return;
     if (!this.identityRecovery.has(beeId, generation)) this.identityRecovery.retain({beeId, generation, since: this.mustStore().runtimeIdentityUnresolvedSince(beeId, generation)});
     this.core?.retainProcessIdentity(beeId, generation);
   }
