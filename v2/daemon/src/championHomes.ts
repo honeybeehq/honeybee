@@ -203,15 +203,24 @@ export class ChampionHomeSync {
     const interval = this.deps.minIntervalMs ?? DEFAULT_MIN_INTERVAL_MS;
     const since = this.deps.now() - (this.lastAt.get(championId) ?? Number.NEGATIVE_INFINITY);
     if (since >= interval) {
-      void this.sync(championId);
+      this.syncInBackground(championId);
       return;
     }
     const timer = setTimeout(() => {
       this.timers.delete(championId);
-      if (!this.stopping) void this.sync(championId);
+      if (!this.stopping) this.syncInBackground(championId);
     }, interval - since);
     timer.unref();
     this.timers.set(championId, timer);
+  }
+
+  /** Fire-and-forget sync: a rejection (e.g. node_stopped while hived shuts
+   * down, or a store already closed) is logged, never an unhandled rejection
+   * that kills the daemon before it disposes or detaches its runtimes. */
+  private syncInBackground(championId: string): void {
+    this.sync(championId).catch((error: unknown) => {
+      try { this.deps.log(`champion.home.sync_failed id=${championId} err=${JSON.stringify(error instanceof Error ? error.message : String(error))}`); } catch {}
+    });
   }
 
   sync(championId: string): Promise<ChampionHomeObjectRow | null> {

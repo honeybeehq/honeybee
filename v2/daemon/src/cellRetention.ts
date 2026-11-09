@@ -1253,15 +1253,23 @@ export class CellRetentionService {
     const interval = this.deps.policy.wipMinIntervalMs;
     const since = this.deps.now() - (this.wipLastPushAt.get(cellId) ?? Number.NEGATIVE_INFINITY);
     if (since >= interval) {
-      void this.pushWip(cellId, trigger);
+      this.pushWipInBackground(cellId, trigger);
       return;
     }
     const timer = setTimeout(() => {
       this.wipTimers.delete(cellId);
-      if (!this.stopping) void this.pushWip(cellId, trigger);
+      if (!this.stopping) this.pushWipInBackground(cellId, trigger);
     }, interval - since);
     timer.unref();
     this.wipTimers.set(cellId, timer);
+  }
+
+  /** Fire-and-forget push: a rejection (e.g. node_stopped during shutdown) is
+   * logged, never an unhandled rejection that kills the daemon. */
+  private pushWipInBackground(cellId: string, trigger: WipPushTrigger): void {
+    this.pushWip(cellId, trigger).catch((error: unknown) => {
+      try { this.deps.log(`cell.wip.push_failed cell=${cellId} err=${JSON.stringify(error instanceof Error ? error.message : String(error))}`); } catch {}
+    });
   }
 
   pushWip(cellId: string, trigger: WipPushTrigger): Promise<WipPushWorkerResult> {

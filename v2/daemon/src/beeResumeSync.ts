@@ -74,22 +74,31 @@ export class BeeResumeSync {
         clearTimeout(pending);
         this.timers.delete(beeId);
       }
-      void this.sync(beeId);
+      this.syncInBackground(beeId);
       return;
     }
     if (this.timers.has(beeId)) return;
     const interval = this.deps.minIntervalMs ?? DEFAULT_MIN_INTERVAL_MS;
     const since = this.deps.now() - (this.lastAt.get(beeId) ?? Number.NEGATIVE_INFINITY);
     if (since >= interval) {
-      void this.sync(beeId);
+      this.syncInBackground(beeId);
       return;
     }
     const timer = setTimeout(() => {
       this.timers.delete(beeId);
-      if (!this.stopping) void this.sync(beeId);
+      if (!this.stopping) this.syncInBackground(beeId);
     }, interval - since);
     timer.unref();
     this.timers.set(beeId, timer);
+  }
+
+  /** Fire-and-forget sync: a rejection (e.g. node_stopped while hived shuts
+   * down, or a store already closed) is logged, never an unhandled rejection
+   * that kills the daemon before it disposes or detaches its runtimes. */
+  private syncInBackground(beeId: string): void {
+    this.sync(beeId).catch((error: unknown) => {
+      try { this.deps.log(`resume_bundle.sync_failed bee=${beeId} err=${JSON.stringify(error instanceof Error ? error.message : String(error))}`); } catch {}
+    });
   }
 
   sync(beeId: string): Promise<BeeResumeBundleRow | null> {
