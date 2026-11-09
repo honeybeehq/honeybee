@@ -186,7 +186,7 @@ for (const preserve of [true, false]) test(`shutdown preserves default ordering 
     const owner = daemon as unknown as {store: unknown; telemetry: unknown; driver: unknown};
     owner.store = {close: () => calls.push("store-close")};
     owner.telemetry = {close: () => calls.push("telemetry-close")};
-    owner.driver = {disposeAll: () => calls.push("dispose"), detachAll: () => calls.push("detach")};
+    owner.driver = {disposeAllAndWait: async () => {calls.push("dispose");}, detachAll: () => calls.push("detach")};
     await daemon.shutdown({preserveRuntimes: preserve});
     assert.deepEqual(calls, preserve ? ["store-close", "telemetry-close", "detach"] : ["dispose", "store-close", "telemetry-close"]);
   } finally {rig.cleanup();}
