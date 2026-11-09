@@ -1,0 +1,25 @@
+[Unit]
+Description=Honeybee v2 hive daemon (hb.d5.test)
+
+[Service]
+Type=simple
+ExecStart="/var/tmp/hb-D5-6J50Kk/runtime/launch" "/opt/node-v24.18.0-linux-x64/bin/node" "v2" "daemon" "run" "--data-dir" "/var/tmp/hb-D5-6J50Kk/v2"
+Environment="HIVE_V2_DATA_DIR=/var/tmp/hb-D5-6J50Kk/v2"
+Environment="HOME=/home/trmd"
+Environment="PATH=/var/tmp/hb-D5-6J50Kk/bin:/opt/node-v24.18.0-linux-x64/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="HIVE_NODE_PATH=/opt/node-v24.18.0-linux-x64/bin/node"
+Environment="HIVE_NODE_VERSION=24.18.0"
+Environment="HIVE_NODE_SHA256=41a74efb34cbde5c7632cdac0cf8bd1a14d0b8d73dc1e82755014d9a9ce70f5c"
+# Honeybee owns detached runner process groups; daemon stop/restart preserves them for re-adoption.
+# Ephemeral workers are stopped during clean daemon shutdown, and explicit bee stop/delete reaps its runner group.
+KillMode=process
+UnsetEnvironment=ELECTRON_RUN_AS_NODE NODE_OPTIONS
+Nice=0
+IOSchedulingClass=best-effort
+Restart=on-failure
+RestartSec=2
+StandardOutput=append:/var/tmp/hb-D5-6J50Kk/v2/hived.log
+StandardError=append:/var/tmp/hb-D5-6J50Kk/v2/hived.log
+
+[Install]
+WantedBy=default.target

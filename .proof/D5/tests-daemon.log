@@ -1,0 +1,166 @@
+✔ service.1: launchd plist snapshot (1.092928ms)
+✔ service.2: systemd owns only the daemon process so detached bee runtimes survive restart (0.293708ms)
+✔ service.3: launchd manager — install writes the plist; start/stop/status drive launchctl (1.360626ms)
+✔ service.4: launchd start falls back to kickstart when already bootstrapped (0.321723ms)
+✔ service.4b: launchd stop waits through the asynchronous bootout window (0.308111ms)
+✔ service.4c: launchd stop accepts an already-stopped service and confirms absence (0.275371ms)
+✔ service.4d: an already-stopped response still waits until launchd confirms absence (0.160652ms)
+✔ service.4e: launchd stop preserves other bootout failures (0.492761ms)
+✔ service.5: systemd manager — install writes unit + daemon-reload; start/stop/status; uninstall removes (0.768471ms)
+✔ service.6: one factory per platform; anything else refuses (0.295593ms)
+✔ service.7: a failing systemctl surfaces as a typed ServiceError, never silence (0.316354ms)
+✔ service renderers exclude Electron and Node option environment injection (0.265195ms)
+ℹ tests 12
+ℹ suites 0
+ℹ pass 12
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 23.795917
+✔ daemon shutdown natural: exits promptly and preserves detached bees (4437.816539ms)
+✔ daemon shutdown retention: exits promptly and preserves detached bees (4240.394728ms)
+✔ daemon shutdown backstop: exits promptly and preserves detached bees (5298.17979ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 14083.071448
+✔ tick scheduling always leaves a completion-relative poll window (0.579926ms)
+✔ test daemon graceful shutdown reaps its detached runner-host group (728.731153ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 905.797363
+✔ real unshare peer is refused by a disposable daemon while host CLI still spawns (1448.454767ms)
+✔ sandbox-off host keeps unregistered host callers unconfined and still confines child-userns peers (1788.141606ms)
+✔ an explicitly unsandboxed Cell does not put a sandboxed satellite into strict host refusal (891.576005ms)
+✔ strict host with trust disabled cannot treat an unattributed host peer as registered (514.612576ms)
+✔ missing Linux peer credentials fail closed with a diagnostic error: degraded (194.033438ms)
+✔ missing Linux peer credentials fail closed with a diagnostic error: lookup_failed (154.037609ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 5083.885175
+✔ a live registered service cannot be silently replaced; a stopped service can restart (12.198008ms)
+✔ trust off never creates a key and access classification covers every verb (1.112066ms)
+✔ birth-bound registration consumes its challenge, replaces another PID, and expires (4.740717ms)
+✔ a corrupt key is never regenerated and unavailable credentials fail phase two (0.571964ms)
+✔ refusal audits have at most 128 keys and one overflow per window (1.611889ms)
+✔ reload invalidates registration, closes the owned key buffer, and keeps the stored key (2.158023ms)
+✔ registration refuses a symlink or permissive parent without replacing the key (0.695115ms)
+✔ other connections cannot exhaust challenge capacity before a fresh registration (56.947372ms)
+✔ global eviction chooses a busy process before a lone legitimate challenge (4.123573ms)
+✔ a symlinked dataDir accepts canonical and configured key paths without relaxing private symlink checks (2.298251ms)
+✔ a symlinked ancestor of the dataDir preserves the private-chain boundary (3.485526ms)
+✔ replacing a registration treats an other-user pid as reused but keeps refusing an unobservable owner (3.360951ms)
+ℹ tests 12
+ℹ suites 0
+ℹ pass 12
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 186.416168
+✔ answer trigger negotiation: simultaneous legacy and capable sockets get independent formats (75.539249ms)
+✔ answer wire replay is legacy-compatible while durable audit replay stays canonical (65.421821ms)
+✔ answer egress projection preserves canonical objects and arbitrary outputs at every covered path (1.391294ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 281.678811
+✔ execution capability is phase-scoped, disabled without trust, and rejects spawn without fallback (80.907476ms)
+✔ dark wire refuses every execution verb regardless of local trust configuration or relay (41.518887ms)
+✔ dormant internal owner: execution send is mailbox admission only; exact replay observes and changed args conflict (37.27741ms)
+✔ dormant internal owner: execution archive revocation gives typed stale receipt without lifecycle mutation (34.85201ms)
+✔ dormant internal owner: execution resolve is read-only; only explicit effect.resolve fences a never-seen key (37.483462ms)
+✔ dormant spawn owner gates account and bee preparation, and exact retry only observes admission (36.672545ms)
+✔ dormant stale spawn refuses before the account selector or createBee (32.398037ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 469.957659
+✔ apiary:* tags: refused from a bee caller on spawn and bee.tag, allowed from Apiary and the operator (1124.533577ms)
+✔ a fork never inherits apiary:role=*: forking a Champion makes an ordinary bee in the same workspace (890.368981ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2105.216047
+✔ dark fenced-spawn production writer satisfies the shared effect-result contract (49.318583ms)
+✔ effect RPC commits spawn/send/archive once and resolves despite cache pruning and reopen (44.780011ms)
+✔ effect RPC fences late spawn send archive before effects and holds retired negatives (38.78769ms)
+✔ legacy effect RPC rejects changed in-flight args but replays changed args after commit and reopen (35.129074ms)
+✔ effect RPC missing capability fails locally without sending a resolver frame (28.960957ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 5
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 369.037667
+✔ set-model --apply uses atomic admission and waits out an active turn (1070.247151ms)
+✔ cli.1: help prints and exits 0; unknown command exits 1 (2.673877ms)
+✔ cli.2: reads fall back to the read-only store when the daemon is down — labeled stale (52.780542ms)
+✔ cli.children: stale reads exclude external lineage that collides with a local bee id (27.296506ms)
+✔ cli.3: mutations NEVER fall back — daemon down means a loud, typed failure (25.990146ms)
+✔ cli.3b: a misspelled flag is a LOUD error (never a silent no-op), and spawn takes the agent positionally (4.528155ms)
+✔ cli.send-sender-wire: the real CLI request carries the authority-bound ambient bee id (3.75082ms)
+✔ cli.4: against a live daemon — spawn, list (not stale), send --wait blocks on the delivery mark (753.053674ms)
+✔ cli.4n: health and daemon status report naming ok, off, or disabled with the reason (1241.901967ms)
+✔ cli.4b: --idempotency-key passes through on spawn and send — replays dedup to the original (659.012779ms)
+✔ cli.4c: per-bee args — `spawn --arg` (repeatable), `bee set-args <bee> -- <args…>` / --clear, `bee args`, `revive --arg`, view/list carry args; stale read shows them too (1300.451973ms)
+✔ cli.4d: cells — `spawn --substrate cell --origin`, `cell capture --onto` (landed / refused as results), `cell remove` (refused-dirty exit 2, --force) (1353.051421ms)
+✔ cli.4e: v6 verbs — rename, tag, interrupt, fork, children, spawn --parent (+ ambient HIVE_BEE_ID), ask/answer/question list, seal create/list/get; stale fallbacks for the reads (1602.166217ms)
+✔ cli.daemon: usage lists restart as a stop+start alias (1.350781ms)
+✔ cli.5: daemon status when nothing runs and no service is installed (1.944319ms)
+✔ cli.6: service glue — label never the live daemon's, the unit always starts through the launcher (655.813751ms)
+✔ cli.urgency: send --urgency passes through to the row; the mailbox read surfaces it; an unknown value is a typed error (990.518497ms)
+✔ cli.version: --version answers (Apiary's Doctor gates local runs on it) (0.549618ms)
+✔ cli.task: add/ls/done/supply round-trip through the daemon; unknown command is gone (630.926979ms)
+✔ cli.answer-display-label: --by stays local and question rows use plain answered wording (4.474963ms)
+ℹ tests 20
+ℹ suites 0
+ℹ pass 20
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 10525.332857
+✔ service environment records native pin and drops Electron mode (334.941928ms)
+✔ service entry follows selected node current, independent of ambient home (176.469638ms)
+✔ daemon start, restart and status expose a held pin without opening the store (545.371312ms)
+✔ daemon service verbs reach the service manager only for the unit's own data dir under the account home (1096.020088ms)
+✔ hive daemon stop on a scratch data dir signals only that daemon, by its own pid (470.441073ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 5
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2728.644892
+exit 0

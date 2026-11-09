@@ -1,0 +1,147 @@
+{"ts":1794205065192,"op":"tmp.policy beeTmpRoot=/var/tmp/hb-D5-6J50Kk/v2/tmp source=data_dir_default daemonTmp=/var/tmp/hb-D5-6J50Kk/v2/tmp/daemon nodeCompileCache=/var/tmp/hb-D5-6J50Kk/v2/node-compile-cache"}
+{"ts":1794205065208,"op":"store.migration.rpc_idempotency_env seen=0 redacted=0 skipped_unparseable=0 skipped_unrecognised=0 complete=true ms=0"}
+{"ts":1794205065211,"op":"security.confinement strict=false bwrap={\"path\":\"/usr/bin/bwrap\",\"setuid\":false}"}
+{"ts":1794205065212,"op":"champions homes=/var/tmp/hb-D5-6J50Kk/v2/champions store=/var/tmp/hb-D5-6J50Kk/v2/transcript-objects"}
+{"ts":1794205065212,"op":"transcripts.segments store=/var/tmp/hb-D5-6J50Kk/v2/transcript-objects max_lines=1024 max_raw_bytes=1048576 projection=8"}
+{"ts":1794205065213,"op":"boot adopted=0 stopped=0 requeued=0 reaped=0 wakes=0"}
+{"ts":1794205065227,"op":"rpc.listen socket=/var/tmp/hb-D5-6J50Kk/v2/hived.sock"}
+{"ts":1794205065227,"op":"transcripts.segment.catch_up scheduled=0"}
+{"ts":1794205065232,"op":"daemon.started pid=976797 store=/var/tmp/hb-D5-6J50Kk/v2/core.sqlite3"}
+{"ts":1794205065436,"op":"config.retention.invalid cells.retention.minFreeBytes 21474836480 is not below the Cells volume size 1073741824; ignored"}
+{"ts":1794205065597,"op":"cmd.spawn id=1 bee=0fcffcc0-3c25-4895-8871-6383a5d1514d start gen=1"}
+{"ts":1794205065651,"op":"spawn.evidence bee=0fcffcc0-3c25-4895-8871-6383a5d1514d gen=1 kind=booted"}
+{"ts":1794205065652,"op":"obs.booted bee=0fcffcc0-3c25-4895-8871-6383a5d1514d gen=1 pid=976834"}
+{"ts":1794205065652,"op":"obs.turn_ended bee=0fcffcc0-3c25-4895-8871-6383a5d1514d gen=1"}
+{"ts":1794205065655,"op":"session.recorded bee=0fcffcc0-3c25-4895-8871-6383a5d1514d gen=1 id=stub-976841"}
+{"ts":1794205065656,"op":"obs.checkpoint bee=0fcffcc0-3c25-4895-8871-6383a5d1514d gen=1 cursor=44"}
+{"ts":1794205065694,"op":"transcripts.segment.cut bee=0fcffcc0-3c25-4895-8871-6383a5d1514d reason=turn_ended segments=1 lines=1 through=1"}
+{"ts":1794205065780,"op":"deliver bee=0fcffcc0-3c25-4895-8871-6383a5d1514d msg=1 gen=1 urgency=next"}
+{"ts":1794205065782,"op":"obs.turn_started bee=0fcffcc0-3c25-4895-8871-6383a5d1514d gen=1 synthetic"}
+{"ts":1794205065782,"op":"obs.checkpoint bee=0fcffcc0-3c25-4895-8871-6383a5d1514d gen=1 cursor=83"}
+{"ts":1794205065788,"op":"obs.turn_ended bee=0fcffcc0-3c25-4895-8871-6383a5d1514d gen=1"}
+{"ts":1794205065788,"op":"obs.checkpoint bee=0fcffcc0-3c25-4895-8871-6383a5d1514d gen=1 cursor=169"}
+{"ts":1794205065791,"op":"transcripts.segment.cut bee=0fcffcc0-3c25-4895-8871-6383a5d1514d reason=turn_ended segments=1 lines=4 through=5"}
+{"ts":1794205065849,"op":"deliver bee=0fcffcc0-3c25-4895-8871-6383a5d1514d msg=2 gen=1 urgency=next"}
+{"ts":1794205065851,"op":"obs.turn_started bee=0fcffcc0-3c25-4895-8871-6383a5d1514d gen=1 synthetic"}
+{"ts":1794205065851,"op":"obs.checkpoint bee=0fcffcc0-3c25-4895-8871-6383a5d1514d gen=1 cursor=208"}
+{"ts":1794205065857,"op":"obs.turn_ended bee=0fcffcc0-3c25-4895-8871-6383a5d1514d gen=1"}
+{"ts":1794205065857,"op":"obs.checkpoint bee=0fcffcc0-3c25-4895-8871-6383a5d1514d gen=1 cursor=296"}
+{"ts":1794205065859,"op":"transcripts.segment.cut bee=0fcffcc0-3c25-4895-8871-6383a5d1514d reason=turn_ended segments=1 lines=4 through=9"}
+{"ts":1794205065952,"op":"deliver bee=0fcffcc0-3c25-4895-8871-6383a5d1514d msg=3 gen=1 urgency=next"}
+{"ts":1794205065954,"op":"obs.turn_started bee=0fcffcc0-3c25-4895-8871-6383a5d1514d gen=1 synthetic"}
+{"ts":1794205065955,"op":"obs.checkpoint bee=0fcffcc0-3c25-4895-8871-6383a5d1514d gen=1 cursor=335"}
+{"ts":1794205065960,"op":"obs.turn_ended bee=0fcffcc0-3c25-4895-8871-6383a5d1514d gen=1"}
+{"ts":1794205065960,"op":"obs.checkpoint bee=0fcffcc0-3c25-4895-8871-6383a5d1514d gen=1 cursor=423"}
+{"ts":1794205065963,"op":"transcripts.segment.cut bee=0fcffcc0-3c25-4895-8871-6383a5d1514d reason=turn_ended segments=1 lines=4 through=13"}
+{"ts":1794205066058,"op":"deliver bee=0fcffcc0-3c25-4895-8871-6383a5d1514d msg=4 gen=1 urgency=next"}
+{"ts":1794205066060,"op":"obs.turn_started bee=0fcffcc0-3c25-4895-8871-6383a5d1514d gen=1 synthetic"}
+{"ts":1794205066060,"op":"obs.checkpoint bee=0fcffcc0-3c25-4895-8871-6383a5d1514d gen=1 cursor=462"}
+{"ts":1794205066065,"op":"obs.turn_ended bee=0fcffcc0-3c25-4895-8871-6383a5d1514d gen=1"}
+{"ts":1794205066066,"op":"obs.checkpoint bee=0fcffcc0-3c25-4895-8871-6383a5d1514d gen=1 cursor=550"}
+{"ts":1794205066069,"op":"transcripts.segment.cut bee=0fcffcc0-3c25-4895-8871-6383a5d1514d reason=turn_ended segments=1 lines=4 through=17"}
+{"ts":1794205066133,"op":"runtime.activate from=5555555555555555555555555555555555555555 to=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa runtimes=1 degraded=0 unit=hb.d5.test"}
+{"ts":1794205066157,"op":"deliver bee=0fcffcc0-3c25-4895-8871-6383a5d1514d msg=5 gen=1 urgency=next"}
+{"ts":1794205066159,"op":"obs.turn_started bee=0fcffcc0-3c25-4895-8871-6383a5d1514d gen=1 synthetic"}
+{"ts":1794205066159,"op":"obs.checkpoint bee=0fcffcc0-3c25-4895-8871-6383a5d1514d gen=1 cursor=589"}
+{"ts":1794205066165,"op":"obs.turn_ended bee=0fcffcc0-3c25-4895-8871-6383a5d1514d gen=1"}
+{"ts":1794205066165,"op":"obs.checkpoint bee=0fcffcc0-3c25-4895-8871-6383a5d1514d gen=1 cursor=677"}
+{"ts":1794205066167,"op":"transcripts.segment.cut bee=0fcffcc0-3c25-4895-8871-6383a5d1514d reason=turn_ended segments=1 lines=4 through=21"}
+{"ts":1794205066265,"op":"deliver bee=0fcffcc0-3c25-4895-8871-6383a5d1514d msg=6 gen=1 urgency=next"}
+{"ts":1794205066267,"op":"obs.turn_started bee=0fcffcc0-3c25-4895-8871-6383a5d1514d gen=1 synthetic"}
+{"ts":1794205066267,"op":"obs.checkpoint bee=0fcffcc0-3c25-4895-8871-6383a5d1514d gen=1 cursor=716"}
+{"ts":1794205066272,"op":"obs.turn_ended bee=0fcffcc0-3c25-4895-8871-6383a5d1514d gen=1"}
+{"ts":1794205066272,"op":"obs.checkpoint bee=0fcffcc0-3c25-4895-8871-6383a5d1514d gen=1 cursor=804"}
+{"ts":1794205066275,"op":"transcripts.segment.cut bee=0fcffcc0-3c25-4895-8871-6383a5d1514d reason=turn_ended segments=1 lines=4 through=25"}
+{"ts":1794205066364,"op":"deliver bee=0fcffcc0-3c25-4895-8871-6383a5d1514d msg=7 gen=1 urgency=next"}
+{"ts":1794205066366,"op":"obs.turn_started bee=0fcffcc0-3c25-4895-8871-6383a5d1514d gen=1 synthetic"}
+{"ts":1794205066366,"op":"obs.checkpoint bee=0fcffcc0-3c25-4895-8871-6383a5d1514d gen=1 cursor=843"}
+{"ts":1794205066372,"op":"obs.turn_ended bee=0fcffcc0-3c25-4895-8871-6383a5d1514d gen=1"}
+{"ts":1794205066372,"op":"obs.checkpoint bee=0fcffcc0-3c25-4895-8871-6383a5d1514d gen=1 cursor=931"}
+{"ts":1794205066374,"op":"transcripts.segment.cut bee=0fcffcc0-3c25-4895-8871-6383a5d1514d reason=turn_ended segments=1 lines=4 through=29"}
+{"ts":1794205066387,"op":"runtime.activate.restart_issued unit=hb.d5.test platform=systemd"}
+{"ts":1794205066409,"op":"daemon.stopping pid=976797"}
+{"ts":1794205066412,"op":"rpc.close conns=0 drained=true"}
+{"ts":1794205066416,"op":"daemon.stopped"}
+{"ts":1794205066416,"op":"daemon.stop_complete pid=976797"}
+{"ts":1794205068226,"op":"tmp.policy beeTmpRoot=/var/tmp/hb-D5-6J50Kk/v2/tmp source=data_dir_default daemonTmp=/var/tmp/hb-D5-6J50Kk/v2/tmp/daemon nodeCompileCache=/var/tmp/hb-D5-6J50Kk/v2/node-compile-cache"}
+{"ts":1794205068233,"op":"security.confinement strict=false bwrap={\"path\":\"/usr/bin/bwrap\",\"setuid\":false}"}
+{"ts":1794205068234,"op":"champions homes=/var/tmp/hb-D5-6J50Kk/v2/champions store=/var/tmp/hb-D5-6J50Kk/v2/transcript-objects"}
+{"ts":1794205068234,"op":"transcripts.segments store=/var/tmp/hb-D5-6J50Kk/v2/transcript-objects max_lines=1024 max_raw_bytes=1048576 projection=8"}
+{"ts":1794205068239,"op":"boot.adopt bee=0fcffcc0-3c25-4895-8871-6383a5d1514d gen=1 pid=976834 ok=true identityReason=resolved"}
+{"ts":1794205068240,"op":"boot adopted=1 stopped=0 requeued=0 reaped=0 wakes=0"}
+{"ts":1794205068241,"op":"boot.handover adopted=1 expected=1 degraded=0 missing=0 from=5555555555555555555555555555555555555555 to=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa running=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa reverted=false"}
+{"ts":1794205068253,"op":"rpc.listen socket=/var/tmp/hb-D5-6J50Kk/v2/hived.sock"}
+{"ts":1794205068254,"op":"transcripts.segment.catch_up scheduled=0"}
+{"ts":1794205068255,"op":"boot.handover_marker_removed root=/var/tmp/hb-D5-6J50Kk/runtime"}
+{"ts":1794205068260,"op":"daemon.started pid=977090 store=/var/tmp/hb-D5-6J50Kk/v2/core.sqlite3"}
+{"ts":1794205068282,"op":"deliver.refused bee=0fcffcc0-3c25-4895-8871-6383a5d1514d msg=8 reason=not_ready"}
+{"ts":1794205068284,"op":"config.retention.invalid cells.retention.minFreeBytes 21474836480 is not below the Cells volume size 1073741824; ignored"}
+{"ts":1794205068640,"op":"deliver.refused bee=0fcffcc0-3c25-4895-8871-6383a5d1514d msg=8 reason=not_ready"}
+{"ts":1794205069217,"op":"runtime.activate from=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa to=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb runtimes=1 degraded=0 unit=hb.d5.test"}
+{"ts":1794205069345,"op":"deliver.refused bee=0fcffcc0-3c25-4895-8871-6383a5d1514d msg=8 reason=not_ready"}
+{"ts":1794205069472,"op":"runtime.activate.restart_issued unit=hb.d5.test platform=systemd"}
+{"ts":1794205069495,"op":"daemon.stopping pid=977090"}
+{"ts":1794205069496,"op":"rpc.close conns=0 drained=true"}
+{"ts":1794205069498,"op":"daemon.stopped"}
+{"ts":1794205069498,"op":"daemon.stop_complete pid=977090"}
+{"ts":1794205130778,"op":"tmp.policy beeTmpRoot=/var/tmp/hb-D5-6J50Kk/v2/tmp source=data_dir_default daemonTmp=/var/tmp/hb-D5-6J50Kk/v2/tmp/daemon nodeCompileCache=/var/tmp/hb-D5-6J50Kk/v2/node-compile-cache"}
+{"ts":1794205130785,"op":"security.confinement strict=false bwrap={\"path\":\"/usr/bin/bwrap\",\"setuid\":false}"}
+{"ts":1794205130786,"op":"champions homes=/var/tmp/hb-D5-6J50Kk/v2/champions store=/var/tmp/hb-D5-6J50Kk/v2/transcript-objects"}
+{"ts":1794205130786,"op":"transcripts.segments store=/var/tmp/hb-D5-6J50Kk/v2/transcript-objects max_lines=1024 max_raw_bytes=1048576 projection=8"}
+{"ts":1794205130792,"op":"boot.adopt bee=0fcffcc0-3c25-4895-8871-6383a5d1514d gen=1 pid=976834 ok=true identityReason=resolved"}
+{"ts":1794205130793,"op":"boot adopted=1 stopped=0 requeued=0 reaped=0 wakes=0"}
+{"ts":1794205130794,"op":"boot.handover adopted=1 expected=1 degraded=0 missing=0 from=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa to=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb running=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb reverted=false"}
+{"ts":1794205130806,"op":"rpc.listen socket=/var/tmp/hb-D5-6J50Kk/v2/hived.sock"}
+{"ts":1794205130808,"op":"transcripts.segment.catch_up scheduled=0"}
+{"ts":1794205130809,"op":"boot.handover_marker_removed root=/var/tmp/hb-D5-6J50Kk/runtime"}
+{"ts":1794205130818,"op":"daemon.started pid=977537 store=/var/tmp/hb-D5-6J50Kk/v2/core.sqlite3"}
+{"ts":1794205131019,"op":"deliver bee=0fcffcc0-3c25-4895-8871-6383a5d1514d msg=8 gen=1 urgency=next"}
+{"ts":1794205131020,"op":"config.retention.invalid cells.retention.minFreeBytes 21474836480 is not below the Cells volume size 1073741824; ignored"}
+{"ts":1794205131024,"op":"obs.turn_started bee=0fcffcc0-3c25-4895-8871-6383a5d1514d gen=1 synthetic"}
+{"ts":1794205131024,"op":"obs.skip bee=0fcffcc0-3c25-4895-8871-6383a5d1514d gen=1 kind=booted reason=already_running"}
+{"ts":1794205131025,"op":"obs.checkpoint bee=0fcffcc0-3c25-4895-8871-6383a5d1514d gen=1 cursor=970"}
+{"ts":1794205131026,"op":"deliver bee=0fcffcc0-3c25-4895-8871-6383a5d1514d msg=9 gen=1 urgency=next"}
+{"ts":1794205131028,"op":"obs.turn_ended bee=0fcffcc0-3c25-4895-8871-6383a5d1514d gen=1"}
+{"ts":1794205131031,"op":"obs.turn_started bee=0fcffcc0-3c25-4895-8871-6383a5d1514d gen=1"}
+{"ts":1794205131031,"op":"obs.checkpoint bee=0fcffcc0-3c25-4895-8871-6383a5d1514d gen=1 cursor=1102"}
+{"ts":1794205131032,"op":"deliver bee=0fcffcc0-3c25-4895-8871-6383a5d1514d msg=10 gen=1 urgency=next"}
+{"ts":1794205131035,"op":"obs.turn_ended bee=0fcffcc0-3c25-4895-8871-6383a5d1514d gen=1"}
+{"ts":1794205131035,"op":"obs.turn_started bee=0fcffcc0-3c25-4895-8871-6383a5d1514d gen=1"}
+{"ts":1794205131035,"op":"obs.checkpoint bee=0fcffcc0-3c25-4895-8871-6383a5d1514d gen=1 cursor=1230"}
+{"ts":1794205131036,"op":"deliver bee=0fcffcc0-3c25-4895-8871-6383a5d1514d msg=11 gen=1 urgency=next"}
+{"ts":1794205131040,"op":"obs.turn_ended bee=0fcffcc0-3c25-4895-8871-6383a5d1514d gen=1"}
+{"ts":1794205131040,"op":"obs.turn_started bee=0fcffcc0-3c25-4895-8871-6383a5d1514d gen=1"}
+{"ts":1794205131040,"op":"obs.checkpoint bee=0fcffcc0-3c25-4895-8871-6383a5d1514d gen=1 cursor=1360"}
+{"ts":1794205131041,"op":"deliver bee=0fcffcc0-3c25-4895-8871-6383a5d1514d msg=12 gen=1 urgency=next"}
+{"ts":1794205131045,"op":"obs.turn_ended bee=0fcffcc0-3c25-4895-8871-6383a5d1514d gen=1"}
+{"ts":1794205131045,"op":"obs.turn_started bee=0fcffcc0-3c25-4895-8871-6383a5d1514d gen=1"}
+{"ts":1794205131046,"op":"obs.checkpoint bee=0fcffcc0-3c25-4895-8871-6383a5d1514d gen=1 cursor=1490"}
+{"ts":1794205131047,"op":"deliver bee=0fcffcc0-3c25-4895-8871-6383a5d1514d msg=13 gen=1 urgency=next"}
+{"ts":1794205131050,"op":"obs.turn_ended bee=0fcffcc0-3c25-4895-8871-6383a5d1514d gen=1"}
+{"ts":1794205131050,"op":"obs.turn_started bee=0fcffcc0-3c25-4895-8871-6383a5d1514d gen=1"}
+{"ts":1794205131050,"op":"obs.checkpoint bee=0fcffcc0-3c25-4895-8871-6383a5d1514d gen=1 cursor=1619"}
+{"ts":1794205131051,"op":"deliver bee=0fcffcc0-3c25-4895-8871-6383a5d1514d msg=14 gen=1 urgency=next"}
+{"ts":1794205131055,"op":"obs.turn_ended bee=0fcffcc0-3c25-4895-8871-6383a5d1514d gen=1"}
+{"ts":1794205131055,"op":"obs.turn_started bee=0fcffcc0-3c25-4895-8871-6383a5d1514d gen=1"}
+{"ts":1794205131055,"op":"obs.checkpoint bee=0fcffcc0-3c25-4895-8871-6383a5d1514d gen=1 cursor=1748"}
+{"ts":1794205131056,"op":"deliver bee=0fcffcc0-3c25-4895-8871-6383a5d1514d msg=15 gen=1 urgency=next"}
+{"ts":1794205131060,"op":"obs.turn_ended bee=0fcffcc0-3c25-4895-8871-6383a5d1514d gen=1"}
+{"ts":1794205131060,"op":"obs.turn_started bee=0fcffcc0-3c25-4895-8871-6383a5d1514d gen=1"}
+{"ts":1794205131060,"op":"obs.checkpoint bee=0fcffcc0-3c25-4895-8871-6383a5d1514d gen=1 cursor=1878"}
+{"ts":1794205131061,"op":"deliver bee=0fcffcc0-3c25-4895-8871-6383a5d1514d msg=16 gen=1 urgency=next"}
+{"ts":1794205131066,"op":"obs.turn_ended bee=0fcffcc0-3c25-4895-8871-6383a5d1514d gen=1"}
+{"ts":1794205131066,"op":"obs.turn_started bee=0fcffcc0-3c25-4895-8871-6383a5d1514d gen=1"}
+{"ts":1794205131066,"op":"obs.checkpoint bee=0fcffcc0-3c25-4895-8871-6383a5d1514d gen=1 cursor=2008"}
+{"ts":1794205131067,"op":"deliver bee=0fcffcc0-3c25-4895-8871-6383a5d1514d msg=17 gen=1 urgency=next"}
+{"ts":1794205131069,"op":"obs.turn_ended bee=0fcffcc0-3c25-4895-8871-6383a5d1514d gen=1"}
+{"ts":1794205131070,"op":"obs.turn_started bee=0fcffcc0-3c25-4895-8871-6383a5d1514d gen=1"}
+{"ts":1794205131070,"op":"obs.checkpoint bee=0fcffcc0-3c25-4895-8871-6383a5d1514d gen=1 cursor=2137"}
+{"ts":1794205131071,"op":"deliver bee=0fcffcc0-3c25-4895-8871-6383a5d1514d msg=18 gen=1 urgency=next"}
+{"ts":1794205131074,"op":"obs.turn_ended bee=0fcffcc0-3c25-4895-8871-6383a5d1514d gen=1"}
+{"ts":1794205131074,"op":"obs.turn_started bee=0fcffcc0-3c25-4895-8871-6383a5d1514d gen=1"}
+{"ts":1794205131074,"op":"obs.checkpoint bee=0fcffcc0-3c25-4895-8871-6383a5d1514d gen=1 cursor=2267"}
+{"ts":1794205131075,"op":"deliver bee=0fcffcc0-3c25-4895-8871-6383a5d1514d msg=19 gen=1 urgency=next"}
+{"ts":1794205131077,"op":"daemon.stopping pid=977537"}
+{"ts":1794205131080,"op":"rpc.close conns=0 drained=true"}
+{"ts":1794205131082,"op":"daemon.stopped"}
+{"ts":1794205131082,"op":"daemon.stop_complete pid=977537"}

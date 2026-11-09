@@ -1,0 +1,145 @@
+✔ service.1: launchd plist snapshot (0.963365ms)
+✔ service.2: systemd owns only the daemon process so detached bee runtimes survive restart (0.39636ms)
+✔ service.3: launchd manager — install writes the plist; start/stop/status drive launchctl (2.522912ms)
+✔ service.4: launchd start falls back to kickstart when already bootstrapped (0.692673ms)
+✔ service.4b: launchd stop waits through the asynchronous bootout window (0.493882ms)
+✔ service.4c: launchd stop accepts an already-stopped service and confirms absence (0.555809ms)
+✔ service.4d: an already-stopped response still waits until launchd confirms absence (0.208135ms)
+✔ service.4e: launchd stop preserves other bootout failures (0.734297ms)
+✔ service.5: systemd manager — install writes unit + daemon-reload; start/stop/status; uninstall removes (0.945116ms)
+✔ service.6: one factory per platform; anything else refuses (0.409639ms)
+✔ service.7: a failing systemctl surfaces as a typed ServiceError, never silence (0.339971ms)
+✔ service renderers exclude Electron and Node option environment injection (0.270022ms)
+ℹ tests 12
+ℹ suites 0
+ℹ pass 12
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 67.29527
+✔ set-model --apply uses atomic admission and waits out an active turn (1553.493817ms)
+✔ cli.1: help prints and exits 0; unknown command exits 1 (3.090417ms)
+✔ cli.2: reads fall back to the read-only store when the daemon is down — labeled stale (67.667112ms)
+✔ cli.children: stale reads exclude external lineage that collides with a local bee id (37.935379ms)
+✔ cli.3: mutations NEVER fall back — daemon down means a loud, typed failure (27.573169ms)
+✔ cli.3b: a misspelled flag is a LOUD error (never a silent no-op), and spawn takes the agent positionally (4.868236ms)
+✔ cli.send-sender-wire: the real CLI request carries the authority-bound ambient bee id (3.779476ms)
+✔ cli.4: against a live daemon — spawn, list (not stale), send --wait blocks on the delivery mark (925.419104ms)
+✔ cli.4n: health and daemon status report naming ok, off, or disabled with the reason (1298.898667ms)
+✔ cli.4b: --idempotency-key passes through on spawn and send — replays dedup to the original (658.465565ms)
+✔ cli.4c: per-bee args — `spawn --arg` (repeatable), `bee set-args <bee> -- <args…>` / --clear, `bee args`, `revive --arg`, view/list carry args; stale read shows them too (1342.476361ms)
+✔ cli.4d: cells — `spawn --substrate cell --origin`, `cell capture --onto` (landed / refused as results), `cell remove` (refused-dirty exit 2, --force) (1485.444899ms)
+✔ cli.4e: v6 verbs — rename, tag, interrupt, fork, children, spawn --parent (+ ambient HIVE_BEE_ID), ask/answer/question list, seal create/list/get; stale fallbacks for the reads (1749.050278ms)
+✔ cli.daemon: usage lists restart as a stop+start alias (1.064682ms)
+✔ cli.5: daemon status when nothing runs and no service is installed (3.439754ms)
+✔ cli.6: service glue — label never the live daemon's, the unit always starts through the launcher (712.897498ms)
+✔ cli.urgency: send --urgency passes through to the row; the mailbox read surfaces it; an unknown value is a typed error (1017.484945ms)
+✔ cli.version: --version answers (Apiary's Doctor gates local runs on it) (0.601119ms)
+✔ cli.task: add/ls/done/supply round-trip through the daemon; unknown command is gone (613.997208ms)
+✔ cli.answer-display-label: --by stays local and question rows use plain answered wording (3.106874ms)
+ℹ tests 20
+ℹ suites 0
+ℹ pass 20
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 11899.493333
+✔ service environment records native pin and drops Electron mode (339.722783ms)
+✔ service entry follows selected node current, independent of ambient home (175.467285ms)
+✔ daemon start, restart and status expose a held pin without opening the store (542.998503ms)
+✔ daemon service verbs reach the service manager only for the unit's own data dir under the account home (1104.670881ms)
+✔ hive daemon stop on a scratch data dir signals only that daemon, by its own pid (576.096283ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 5
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2877.264191
+✔ status listing prepares a bounded set of plans across different bee ids (41.933776ms)
+✔ prepared status reads stay fresh, detached and generation ordered across writes and rollback (46.964406ms)
+✔ optional tables remain lazy and a later schema migration is visible on the same reader (59.803394ms)
+✔ read-only isolation and close semantics survive statement reuse (45.130189ms)
+✔ stale explicit-mode status reads the owner acknowledgement facts (27.283677ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 5
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 345.094524
+✔ target resolution: flag > env > live record > config, empty env is unset, dead-pid record is absent (32.687811ms)
+✔ socket_in_use probe is a bare connect: no bytes reach the listener (58.396706ms)
+✔ the endpoint record is written after the socket_in_use probe and before the socket accepts (7.416938ms)
+✔ a daemon that cannot write its endpoint record fails before it listens (366.752843ms)
+▶ socket isolation against throwaway daemons
+  ✔ the endpoint record carries the instance, the socket and the daemon pid (0.50568ms)
+  ✔ HIVE_V2_SOCKET_PATH is honoured and --json names the daemon it reached (5.183188ms)
+  ✔ --socket overrides HIVE_V2_SOCKET_PATH (3.028011ms)
+  ✔ --data-dir alone follows the live endpoint record to a --socket daemon (2.562564ms)
+  ✔ socket_mismatch before connecting: a configured socket that is not the data dir's (1.589885ms)
+  ✔ an explicit --data-dir outranks an inherited env socket: a harness inside a bee reaches its throwaway daemon (10.416905ms)
+  ✔ a harness passing nothing reaches its own bee's daemon through the env socket (203.904033ms)
+  ✔ socket_mismatch after hello: the daemon behind the socket serves another data dir (1.618869ms)
+  ✔ an unreachable configured socket fails loud and never falls back to the default socket or a stale store (4.247135ms)
+  ✔ every --json error is one JSON line on stdout (4.364728ms)
+  ✔ an honest harness that resolved the throwaway data dir is never foreign, with or without HIVE_V2_DATA_DIR and through a symlinked spelling (447.630643ms)
+  ✔ reaching a daemon that is not the one recorded for the resolved data dir is foreign (213.863033ms)
+  ✔ a deleted endpoint record turns every provider spawn on the live daemon into foreign_daemon_spawn (212.919619ms)
+  ✔ a bee spawning a provider harness into an explicit throwaway dir needs no flag (624.175561ms)
+  ✔ a caller whose env names one dir and whose hello names another is refused by the daemon (data_dir_mismatch) (4.476305ms)
+  ✔ every daemon exports the socket it listens on to its bees, never an inherited one (419.585265ms)
+  ✔ a second daemon refuses a live socket with socket_in_use and the first stays reachable (471.078938ms)
+  ✔ hive daemon run ignores an inherited HIVE_V2_SOCKET_PATH and listens on its data dir's socket (415.448474ms)
+  ✔ an explicit target that is the live daemon is refused from a caller whose env names another dir, unless --allow-foreign-daemon (1568.282972ms)
+  ✔ a clean shutdown removes the record; a restart mints a new instance id and rewrites it (444.126088ms)
+✔ socket isolation against throwaway daemons (5940.404648ms)
+ℹ tests 25
+ℹ suites 0
+ℹ pass 25
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 6593.586317
+✔ verbs.agent-account-selector: auto/rr suffixes collapse without hijacking ordinary hyphenated agents (1.398785ms)
+✔ verbs.login-flow: interactive logins are driven from the terminal; json/no-wait just start; the rendered flow carries no secret and no attach target (0.636094ms)
+✔ verbs.x: spawn + first send in one shot (fire-and-forget); prompt lands in the mailbox; usage error without a prompt (1021.173146ms)
+✔ verbs.run: spawn + send + wait + print the reply + archive; --keep leaves the bee (1722.272992ms)
+✔ verbs.wait: blocks until idle with no queued mail; a hung turn times out with exit 1 (2695.487218ms)
+✔ verbs.here: the HIVE_BEE_ID stamp — full line, --json, and the loud unset error (624.445973ms)
+✔ verbs.transcript+last: stub session log rendered as turns; --raw verbatim; --tail bounds; last = newest assistant text (1405.214579ms)
+✔ verbs.transcript: claude-format fixture — text turns kept, tool traffic one-lined, thinking/result elided; stale offline read (65.768855ms)
+✔ verbs.tail: rendered backlog with -n (--raw for verbatim); -f/--follow streams appends until SIGINT (308.584401ms)
+✔ verbs.transcript: -f/--follow streams appended lines until SIGINT (552.850575ms)
+✔ verbs.transcript: agy follow keeps projector state across appended lines (296.21829ms)
+✔ verbs.transcript: follow completes a torn agy record with one projector (289.988277ms)
+✔ verbs.transcript: follow flushes one live agy fragment once on SIGINT (48.758049ms)
+✔ verbs.transcript: follow starts at the backlog snapshot boundary (289.197592ms)
+✔ verbs.last: falls back to the latest seal when the log has no assistant text; --seal skips straight there (52.899929ms)
+✔ verbs.events: audit-row tail with --kind glob and --bee filters; stale fallback when the daemon is down (829.742292ms)
+▶ verbs.set-model: arg surgery — grammar-aware for claude/codex, conservative in-place for unknown harnesses; CLI applies via bee.setArgs
+  ✔ withModelArg unit surface (0.959659ms)
+✔ verbs.set-model: arg surgery — grammar-aware for claude/codex, conservative in-place for unknown harnesses; CLI applies via bee.setArgs (616.944174ms)
+✔ verbs.aliases: ls and ps are list; usage is limits-shaped over account_limits; login/swap-account top-level route through (625.275139ms)
+✔ verbs.account-capture: an already-authenticated home is validated, backed up, and marked logged in (408.663272ms)
+✔ verbs.usage: renders the cached account_limits rows (stale, read-only) with pct + resets, v1-usage style (34.111806ms)
+✔ verbs.help: the grouped v1-style overview lists the new verbs under their sections (0.941872ms)
+✔ handles.ladder: exact id → exact handle (case-insensitive) → exact name → unique prefix; ambiguity lists candidates (0.6594ms)
+✔ handles.live: spawn returns the minted handle; ls leads with it and keeps id= tail; every verb takes the handle (586.920695ms)
+✔ verbs.send-sender: hive send binds the ambient bee identity; unclaimed and operator sends are delivered as automation (1035.031158ms)
+✔ verbs.buz: v1 compat — buz send maps tiers onto urgency + sender; buz inbox = mailbox; retired subs guide loudly (1017.016061ms)
+✔ verbs.tag: a bee cannot write apiary:* tags; the operator can (668.647171ms)
+ℹ tests 27
+ℹ suites 0
+ℹ pass 27
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 15373.038821
+exit 0

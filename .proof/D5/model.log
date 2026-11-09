@@ -1,0 +1,52 @@
+handover model: 2876 reachable states, 2 hosts, 3 attempts
+all properties hold: ProbeSound, ProbeSettles, ProbeReportsRevert, CrashLoopEndsOnPrevious, MarkerBoundsHandover, RevertIsClean, SendNeverDuplicated, SendOutcomeIsTrue, SendOutcomeIsKnown, HeldWhileMarkerFresh, HoldOnlyOnFreshMarker, StallIsTyped
+== --break probe-ignores-census
+handover model: 489 reachable states, 2 hosts, 3 attempts, break=probe-ignores-census
+
+ProbeSound FAILS after 7 steps:
+  1. activate: census to meta.handover
+== --break probe-ignores-reverted
+handover model: 2070 reachable states, 2 hosts, 3 attempts, break=probe-ignores-reverted
+
+ProbeReportsRevert FAILS after 12 steps:
+  1. activate: census to meta.handover
+== --break launcher-never-reverts
+handover model: 1753 reachable states, 2 hosts, 3 attempts, break=launcher-never-reverts
+
+CrashLoopEndsOnPrevious FAILS after 11 steps:
+  1. activate: census to meta.handover
+== --break launcher-keeps-marker
+handover model: 1429 reachable states, 2 hosts, 3 attempts, break=launcher-keeps-marker
+
+MarkerBoundsHandover FAILS after 10 steps:
+  1. activate: census to meta.handover
+== --break marker-removed-before-listen
+handover model: 2725 reachable states, 2 hosts, 3 attempts, break=marker-removed-before-listen
+
+CrashLoopEndsOnPrevious FAILS after 11 steps:
+  1. activate: census to meta.handover
+== --break boot-skips-comparison
+handover model: 323 reachable states, 2 hosts, 3 attempts, break=boot-skips-comparison
+
+ProbeSettles FAILS after 6 steps:
+  1. activate: census to meta.handover
+== --break client-fails-fast
+handover model: 35 reachable states, 2 hosts, 3 attempts, break=client-fails-fast
+
+HeldWhileMarkerFresh FAILS after 3 steps:
+  1. activate: census to meta.handover
+== --break client-holds-forever
+handover model: 82 reachable states, 2 hosts, 3 attempts, break=client-holds-forever
+
+HoldOnlyOnFreshMarker FAILS after 4 steps:
+  1. activate: census to meta.handover
+== --break client-retries-after-ack
+handover model: 17 reachable states, 2 hosts, 3 attempts, break=client-retries-after-ack
+
+SendNeverDuplicated FAILS after 3 steps:
+  1. client: send accepted by A and acknowledged
+== --break close-cuts-in-flight
+handover model: 35 reachable states, 2 hosts, 3 attempts, break=close-cuts-in-flight
+
+SendOutcomeIsKnown FAILS after 3 steps:
+  1. activate: census to meta.handover
