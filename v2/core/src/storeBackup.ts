@@ -160,6 +160,11 @@ function restoreStore(storePath: string, receiptPath: string): { preservedPath: 
     replacement.exec("PRAGMA locking_mode=EXCLUSIVE; BEGIN EXCLUSIVE; COMMIT");
     const copied = facts(replacement);
     if (copied.schemaVersion !== receipt.schemaVersion || copied.ddlDigest !== receipt.ddlDigest) throw new StoreBackupError("Copied backup differs from receipt");
+    if (replacement.prepare("SELECT 1 FROM sqlite_master WHERE name='meta' AND type='table'").get()) {
+      replacement.exec("PRAGMA synchronous=FULL; BEGIN EXCLUSIVE");
+      replacement.prepare("INSERT INTO meta(key,value) VALUES('mirror_epoch',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(randomUUID());
+      replacement.exec("COMMIT");
+    }
     linkSync(storePath, preservedPath);
     sync(dirname(resolve(storePath)));
     for (const suffix of ["-wal", "-shm"]) if (existsSync(`${storePath}${suffix}`)) renameSync(`${storePath}${suffix}`, `${preservedPath}${suffix}`);
