@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import { fork } from "node:child_process";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 import { once } from "node:events";
+import { createHmac } from "node:crypto";
+import { localTrustMessage } from "../../v2/daemon/src/localRpcTrust.ts";
 import { openCoreStore } from "../../v2/core/src/index.ts";
 import { RpcClient } from "../../v2/cli/src/client.ts";
 import { startDaemon, waitFor, AGENT_PATH } from "../../v2/daemon/tests/helpers.ts";
@@ -86,7 +88,7 @@ if (process.argv[2] === "--consumer") {
     const store = openCoreStore(join(node.dir, "core.sqlite3"), { now: () => Date.now() + node.skew });
     try {
       const beeId = `b-${round}`;
-      store.createBee({ id: beeId, name: beeId, handle: `CS.${round}`, agent: "stub", substrate: "hsr", cwd: node.dir });
+      store.createBee({ id: beeId, name: beeId, handle: `CS.${round}`, agent: "stub", substrate: "hsr", cwd: node.dir, env: { CODEX_HOME: join(node.dir, "fixture-private-codex") } });
       store.updateRuntimeState(beeId, 1, "stopped", { exitCause: "clean" });
       for (let j = 0; j < 4; j++) store.putBeeResumeBundle({ beeId, generation: 1, harness: "stub", providerSessionId: "generated", cwd: node.dir, stateKey: null, scope: null, ref: `ref-${round}-${j}`, digest: "generated", keyId: "fixture", bytes: 10, size: 10, files: 1, closedAt: round * 10 + j, epoch: 0 }, { keep: 2 });
       store.fenceBee(beeId, round + 1);
@@ -181,10 +183,11 @@ if (process.argv[2] === "--consumer") {
     for (let i = 0; i < 3; i++) {
       const dir = join(root, `n${i}`);
       mkdirSync(dir, { recursive: true });
-      const node = { id: `node-${i}`, dir, socket: `/tmp/hb-cs-${process.pid}-${i}.sock`, skew: (i - 1) * 4 * 3600_000, clock: join(dir, "clock.mjs"), latest: "b-0" };
+      const node = { id: `node-${i}`, dir, socket: `/tmp/hb-cs-${process.pid}-${i}.sock`, skew: (i - 1) * 4 * 3600_000, clock: join(dir, "clock.mjs"), clockOffset: join(dir, "clock-offset"), latest: "b-0" };
       assert.ok(Buffer.byteLength(node.socket) < 100, "Use a shorter --root for Unix socket paths");
-      writeFileSync(node.clock, `const real = Date.now; Date.now = () => real() + ${node.skew};`);
-      writeFileSync(join(dir, "config.json"), JSON.stringify({ tickMs: 50, naming: { auto: false }, idleWindowMs: 0, agents: { stub: { command: process.execPath, args: [AGENT_PATH], adapter: "stub", env: { STUB_TURN_MS: "10" } } }, accounts: { vaultDir: join(dir, "vault"), homesDir: join(dir, "homes"), limitsRefreshMs: 0 } }));
+      writeFileSync(node.clockOffset, String(node.skew));
+      writeFileSync(node.clock, `import { readFileSync } from "node:fs"; const real = Date.now; Date.now = () => real() + Number(readFileSync(${JSON.stringify(node.clockOffset)}, "utf8"));`);
+      writeFileSync(join(dir, "config.json"), JSON.stringify({ rpcLocalTrust: { requireObservationCaller: true }, tickMs: 50, naming: { auto: false }, idleWindowMs: 0, agents: { stub: { command: process.execPath, args: [AGENT_PATH], adapter: "stub", env: { STUB_TURN_MS: "10" } } }, accounts: { vaultDir: join(dir, "vault"), homesDir: join(dir, "homes"), limitsRefreshMs: 0 } }));
       nodes.push(node);
       if (i === 0) {
         const emptyStore = openCoreStore(join(dir, "core.sqlite3"));
@@ -223,6 +226,47 @@ if (process.argv[2] === "--consumer") {
       baseline(db, node.id, initial);
       await drain(node);
     }
+    const privateReader = await RpcClient.connect(nodes[0].socket, 3000, undefined, { capabilities: ["mirror.changes.v1"] });
+    const otherReader = await RpcClient.connect(nodes[0].socket, 3000, "remote", { capabilities: ["mirror.changes.v1"] });
+    const register = async client => {
+      const challenge = await client.request("rpc.localTrust.challenge");
+      const key = readFileSync(join(nodes[0].dir, "rpc-private", "registration.key"));
+      const token = createHmac("sha256", key).update(localTrustMessage(challenge)).digest("hex");
+      key.fill(0);
+      await client.request("rpc.localTrust.register", { pid: challenge.pid, challengeId: challenge.challengeId, token });
+    };
+    try {
+      const publicSnapshot = await otherReader.request("mirror.snapshot");
+      assert.equal(publicSnapshot.coverage.scope, "mirror.v1");
+      assert.equal(publicSnapshot.snapshot.views[0].bee.operatorLocalHomes, undefined);
+      await register(privateReader);
+      const privateSnapshot = await privateReader.request("mirror.snapshot");
+      assert.equal(privateSnapshot.coverage.scope, "mirror.local.homes.v1");
+      const expectedHome = join(nodes[0].dir, "fixture-private-codex");
+      assert.equal(privateSnapshot.snapshot.views[0].bee.operatorLocalHomes.codexHome, expectedHome);
+      const publicMismatch = await privateReader.request("mirror.changes", { cursor: publicSnapshot.cursor });
+      assert.equal(publicMismatch.reason, "epoch_changed");
+      const privateMismatch = await otherReader.request("mirror.changes", { cursor: privateSnapshot.cursor });
+      assert.equal(privateMismatch.reason, "epoch_changed");
+      const contextMismatch = await privateReader.request("mirror.changes", { cursor: privateSnapshot.cursor }, 3000, {});
+      assert.equal(contextMismatch.reason, "epoch_changed");
+      const replay = await privateReader.request("mirror.changes", { cursor: { ...privateSnapshot.cursor, seq: 0 } });
+      assert.equal(replay.coverage.scope, "mirror.local.homes.v1");
+      assert.ok(replay.events.some(row => row.kind === "bee.created" && row.payload.bee.operatorLocalHomes?.codexHome === expectedHome));
+      const privateFrames = [];
+      let revoked = false;
+      privateReader.onEvent = frame => privateFrames.push(frame);
+      privateReader.onClose = () => { revoked = true; };
+      const attached = await privateReader.request("mirror.watchSince", { cursor: privateSnapshot.cursor });
+      assert.equal(attached.subscribed, true);
+      nodes[0].skew += 300_001;
+      writeFileSync(nodes[0].clockOffset, String(nodes[0].skew));
+      await otherReader.request("bee.rename", { beeId: nodes[0].latest, name: "after-private-revocation" });
+      await waitFor(() => revoked, "private mirror permission expired", 10000);
+      assert.deepEqual(privateFrames, []);
+      report.projections = { public: true, registeredHomes: true, replayHomes: true, crossProjectionRefused: true, contextDowngradeRefused: true, expiredWatchClosed: true };
+    } finally { privateReader.close(); otherReader.close(); }
+    await drain(nodes[0]);
     const watcher = await RpcClient.connect(nodes[0].socket, 3000, undefined, { capabilities: ["mirror.changes.v1"] });
     try {
       const cursor = (await call(nodes[0], "mirror.snapshot")).cursor;
@@ -278,7 +322,7 @@ if (process.argv[2] === "--consumer") {
       }
       await start(node);
       const observedEpoch = (await call(node, "mirror.changes")).cursor.epoch;
-      assert.equal(observedEpoch, fault === 1 ? `fixture-epoch-${round}` : node.epoch);
+      assert.equal(observedEpoch, fault === 1 ? `fixture-epoch-${round}/mirror.v1` : node.epoch);
       node.epoch = observedEpoch;
       await crashStep(node, stages[(round - 1) % stages.length]);
       await drain(node);
