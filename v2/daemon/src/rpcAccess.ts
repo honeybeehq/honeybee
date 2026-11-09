@@ -1,6 +1,9 @@
 import type { RpcVerb } from "./protocol.ts";
 
 export const RPC_ACCESS = {
+  "mirror.snapshot": "read",
+  "mirror.changes": "read",
+  "mirror.watchSince": "read",
   "mail.batching.set": "mutate",
   "mail.batching.get": "read",
   "mail.batch.read": "read",

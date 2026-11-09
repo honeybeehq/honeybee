@@ -216,7 +216,7 @@ interface Connection extends RpcConn {
 const RPC_VERB_SET = new Set<string>(RPC_VERBS);
 const RPC_CLOSE_QUIET_MS = 150;
 const RPC_CLOSE_DRAIN_MAX_MS = 1000;
-const SNAPSHOT_VERBS = new Set<RpcVerb>(["snapshot", "watch", "mirror.local.snapshot", "mirror.local.watch"]);
+const SNAPSHOT_VERBS = new Set<RpcVerb>(["snapshot", "watch", "mirror.local.snapshot", "mirror.local.watch", "mirror.snapshot"]);
 const LEGACY_CAPABILITIES: readonly string[] = [MAIL_DELIVERY_CONFIRMATION_CAPABILITY, ANSWER_TRIGGER_CAPABILITY, QUESTION_DISMISSED_CAPABILITY];
 
 function isRpcVerb(value: unknown): value is RpcVerb {
@@ -370,8 +370,7 @@ export class RpcServer {
         events = eventsSince(conn.watchCursor, includeHomes);
         byCursor.set(batchKey, events);
       }
-      if (events.length === 0) continue;
-      if (events.length > maxBatch) {
+      if (events.length === 0 || events.length > maxBatch || events[events.length - 1]?.seq !== conn.watchCursor + events.length) {
         const frame: WatchFrame = { type: "gap", seq: latestSeq };
         conn.send(frame);
         conn.watchCursor = latestSeq;
@@ -509,7 +508,7 @@ export class RpcServer {
       const offered = frame.capabilities;
       const capabilities = Array.isArray(offered) && offered.length <= 64 && offered.every((tag): tag is string => typeof tag === "string" && tag.length > 0 && tag.length <= 128) ? offered : [];
       if (offered !== undefined && capabilities !== offered) this.opts.log("rpc.hello.capabilities.invalid legacy_format");
-      conn.clientCapabilities = Object.freeze([...new Set(capabilities)]);
+      conn.clientCapabilities = Object.freeze([...new Set(capabilities.includes("mirror.changes.v1") ? [...capabilities, ...LEGACY_CAPABILITIES] : capabilities)]);
       const caller = helloCaller(frame.caller);
       if (caller === "invalid") {
         conn.send({ id: -1, ok: false, error: { code: "invalid_request", message: "caller must be {dataDir?: string, liveTarget?: boolean, expectedInstanceId?: string | null, allowForeignDaemon?: boolean}." } });
@@ -572,6 +571,7 @@ export class RpcServer {
       if ((verb === "runtime.install" || verb === "runtime.prune" || verb === "runtime.activate" || verb === "runtime.probe") && (peer?.state !== "verified" || conn.ingress !== "local_unix" || conn.relayLane !== null)) {
         throw new RpcError("caller_not_trusted", `${verb} requires a verified direct local administrator connection.`);
       }
+      if ((verb === "mirror.snapshot" || verb === "mirror.changes" || verb === "mirror.watchSince") && !conn.clientCapabilities.includes("mirror.changes.v1")) throw new RpcError("capability_missing", "Mirror change coverage requires mirror.changes.v1 client capability");
       const caller = peer?.state === "verified" ? {transport: "local_unix" as const, ingress: conn.ingress ?? "remote", uid: peer.peer.uid, pid: peer.peer.pid, verb} : null;
       let secretCapture: { leaseId: string; bytesBase64: string } | undefined;
       let captureExpiresAt = 0;
@@ -826,6 +826,9 @@ export const ENV_TRANSFER_VERBS: ReadonlySet<RpcVerb> = new Set([
 
 export function publicBeeResponse(verb: RpcVerb, result: unknown, includeOperatorLocalHomes = false): unknown {
   if (ENV_TRANSFER_VERBS.has(verb)) return result;
+  if (verb === "mirror.snapshot" && result && typeof result === "object" && "snapshot" in result) {
+    return { ...publicEnvRecords(result, includeOperatorLocalHomes) as object, snapshot: publicBeeResponse("snapshot", result.snapshot, includeOperatorLocalHomes) };
+  }
   if (SNAPSHOT_VERBS.has(verb) && result && typeof result === "object" && "templates" in result) {
     const { templates, ...observation } = result;
     return { ...publicEnvRecords(observation, includeOperatorLocalHomes) as object, templates };

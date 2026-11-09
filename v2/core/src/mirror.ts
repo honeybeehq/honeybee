@@ -234,6 +234,7 @@ export type MirrorDelta = AuditRow;
 export const MIRROR_TEMPLATE_AUDIT_KINDS = ["template.put", "template.deleted"] as const;
 export const MIRROR_CHAMPION_AUDIT_KINDS = ["champion.put", "champion.deleted"] as const;
 export const CHAMPION_HOME_OBJECT_AUDIT_KIND = "champion_home_object.put" as const;
+export const BEE_RESUME_BUNDLE_REMOVED_AUDIT_KIND = "bee_resume_bundle.removed" as const;
 export const BEE_RESUME_BUNDLE_AUDIT_KIND = "bee_resume_bundle.put" as const;
 export const BEE_EPOCH_AUDIT_KIND = "bee.epoch" as const;
 export const MIRROR_CHAMPION_KEYS = ["id", "name", "agent", "home", "templateId", "model", "effort", "currentBeeId", "createdAt", "updatedAt", "archivedAt", "epoch", "fencedAt"] as const;

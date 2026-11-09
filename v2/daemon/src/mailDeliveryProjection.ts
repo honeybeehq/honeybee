@@ -11,6 +11,9 @@ export const MAIL_DELIVERY_RESULTS = {
   MailHistoryResult: { verbs: ["mail.history"], views: [], messages: ["messages[]"], audits: [] },
   MailPendingResult: { verbs: ["mail.pending"], views: [], messages: ["messages[]"], audits: [] },
   AuditTailResult: { verbs: ["audit.tail"], views: [], messages: [], audits: ["rows"] },
+  MirrorSnapshotResult: { verbs: ["mirror.snapshot"], views: ["snapshot.views[].view"], messages: [], audits: [] },
+  MirrorChangesResult: { verbs: ["mirror.changes"], views: [], messages: [], audits: ["events"] },
+  MirrorWatchSinceResult: { verbs: ["mirror.watchSince"], views: [], messages: [], audits: ["events"] },
   WatchFrame: { verbs: [], views: [], messages: [], audits: ["events"] },
 } as const satisfies Record<string, { verbs: readonly RpcVerb[]; views: readonly string[]; messages: readonly string[]; audits: readonly string[] }>;
 export const MAIL_DELIVERY_AUDITS = {

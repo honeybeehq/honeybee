@@ -16,6 +16,9 @@ export const ANSWER_TRIGGER_RESULTS = {
   ListResult: { verbs: ["list"], triggers: ["views[].bee.lastTurnTrigger", "views[].bee.unansweredHumanMessage", "views[].view.unansweredHumanMessage"], audits: [] },
   SnapshotResult: { verbs: ["snapshot", "watch"], triggers: ["views[].bee.lastTurnTrigger", "views[].bee.unansweredHumanMessage", "views[].view.unansweredHumanMessage", "tells[].turnTrigger", "reactions[].turnTrigger"], audits: [] },
   AuditTailResult: { verbs: ["audit.tail"], triggers: [], audits: ["rows[]"] },
+  MirrorSnapshotResult: { verbs: ["mirror.snapshot"], triggers: ["snapshot.views[].bee.lastTurnTrigger", "snapshot.views[].bee.unansweredHumanMessage", "snapshot.views[].view.unansweredHumanMessage", "snapshot.tells[].turnTrigger", "snapshot.reactions[].turnTrigger"], audits: [] },
+  MirrorChangesResult: { verbs: ["mirror.changes"], triggers: [], audits: ["events[]"] },
+  MirrorWatchSinceResult: { verbs: ["mirror.watchSince"], triggers: [], audits: ["events[]"] },
   WatchFrame: { verbs: [], triggers: [], audits: ["events[]"] },
 } as const satisfies Record<string, { verbs: readonly RpcVerb[]; triggers: readonly string[]; audits: readonly string[] }>;
 export const ANSWER_TRIGGER_AUDITS: Readonly<Record<string, readonly string[]>> = {
