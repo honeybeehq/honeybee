@@ -80,7 +80,7 @@ test("claude launch: env and model per policy; per-bee env wins", () => {
       env: { CLAUDE_CODE_AUTO_COMPACT_WINDOW: "300000", CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: "70" },
       unset: ["CLAUDE_CODE_DISABLE_1M_CONTEXT"],
     });
-    assert.deepEqual(claudeContextLaunch({ window: "1m", autoCompactPercent: 70 }, [], {}, { CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: "5", CLAUDE_CODE_DISABLE_1M_CONTEXT: "1" }), {
+    assert.deepEqual(claudeContextLaunch({ window: "1m", autoCompactPercent: 70 }, [], { CLAUDE_CONFIG_DIR: "/nonexistent-hb-ctx" }, { CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: "5", CLAUDE_CODE_DISABLE_1M_CONTEXT: "1" }), {
       modelArgs: ["--model", "opus[1m]"],
       env: {},
       unset: [],
@@ -236,12 +236,12 @@ test("champion role: built-in default compacts at 650k on a 1M window; workspace
   assert.deepEqual(effectiveContextPolicy(none, null, "champion", { homeAutoCompactWindow: 900_000, envAutoCompactWindow: null, maxOutputTokens: null }), { autoCompactWindow: 683_000 });
   assert.deepEqual(effectiveContextPolicy(contextPolicyConfigOf({ contextPolicy: { roles: { champion: { autoCompactWindow: 800_000 } } } }), null, "champion", { homeAutoCompactWindow: 300_000, envAutoCompactWindow: null, maxOutputTokens: null }), { autoCompactWindow: 800_000 }, "an explicit Champion policy is taken as given");
   assert.throws(() => contextPolicyConfigOf({ contextPolicy: { roles: { chief: {} } } }), ContextPolicyError);
-  assert.deepEqual(claudeContextLaunch(effectiveContextPolicy(none, null, "champion"), ["--model", "opus[1m]"], {}, null), {
+  assert.deepEqual(claudeContextLaunch(effectiveContextPolicy(none, null, "champion"), ["--model", "opus[1m]"], { CLAUDE_CONFIG_DIR: "/nonexistent-hb-ctx" }, null), {
     modelArgs: [],
     env: { CLAUDE_CODE_AUTO_COMPACT_WINDOW: "683000" },
     unset: [],
   });
-  assert.deepEqual(claudeContextLaunch(effectiveContextPolicy(none, null, "champion"), [], {}, { CLAUDE_CODE_AUTO_COMPACT_WINDOW: "1000000" }).env, {}, "per-bee env still wins");
+  assert.deepEqual(claudeContextLaunch(effectiveContextPolicy(none, null, "champion"), [], { CLAUDE_CONFIG_DIR: "/nonexistent-hb-ctx" }, { CLAUDE_CODE_AUTO_COMPACT_WINDOW: "1000000" }).env, {}, "per-bee env still wins");
 });
 
 test("contextPolicy over RPC: a champion-tagged claude bee gets the 650k default, others do not, overrides win", { timeout: 120_000 }, async () => {
@@ -351,7 +351,7 @@ test("an inherited CLAUDE_CODE_AUTO_COMPACT_WINDOW is parsed like Claude does an
   const none = contextPolicyConfigOf({});
   const launch = { homeAutoCompactWindow: null, envAutoCompactWindow: 300_000, maxOutputTokens: null };
   assert.deepEqual(effectiveContextPolicy(none, null, "champion", launch), { autoCompactWindow: 300_000 });
-  assert.deepEqual(claudeContextLaunch(effectiveContextPolicy(none, null, "champion", launch), [], { CLAUDE_CODE_AUTO_COMPACT_WINDOW: "300000" }, null).env, { CLAUDE_CODE_AUTO_COMPACT_WINDOW: "300000" });
+  assert.deepEqual(claudeContextLaunch(effectiveContextPolicy(none, null, "champion", launch), [], { CLAUDE_CONFIG_DIR: "/nonexistent-hb-ctx", CLAUDE_CODE_AUTO_COMPACT_WINDOW: "300000" }, null).env, { CLAUDE_CODE_AUTO_COMPACT_WINDOW: "300000" });
   assert.deepEqual(effectiveContextPolicy(none, null, "champion", { ...launch, envAutoCompactWindow: 900_000 }), { autoCompactWindow: 683_000 });
 });
 
