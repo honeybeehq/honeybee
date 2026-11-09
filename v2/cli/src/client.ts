@@ -5,12 +5,15 @@ import type { EffectCoverage, EffectResolution, EffectVerb } from "../../core/sr
  * read-only store (readonly.ts) only when the daemon is down.
  */
 import { createConnection, type Socket } from "node:net";
+import { dirname } from "node:path";
+import { HANDOVER_HOLD_MS, readHandoverMarker, runtimeRootOf } from "../../daemon/src/handoverMarker.ts";
 import { JsonLineBuffer } from "../../daemon/src/jsonl.ts";
 import {
   PROTOCOL,
   RpcError,
   type RpcVerb,
   type RpcRequestContext,
+  type RuntimeHandoverMarker,
   type WatchFrame,
 } from "../../daemon/src/protocol.ts";
 
@@ -26,6 +29,24 @@ export class DaemonDownError extends Error {
     this.reason = reason;
   }
 }
+
+export class HandoverStalledError extends Error {
+  readonly code = "hived_handover_stalled";
+  readonly socketPath: string;
+  readonly marker: RuntimeHandoverMarker;
+  readonly ageMs: number;
+  constructor(socketPath: string, marker: RuntimeHandoverMarker, ageMs: number) {
+    super(`hived handover to ${marker.toSha} stalled: runtime/handover.json written by pid ${marker.fromPid} is ${Math.round(ageMs / 1000)} s old and nothing listens at ${socketPath}`);
+    this.name = "HandoverStalledError";
+    this.socketPath = socketPath;
+    this.marker = marker;
+    this.ageMs = ageMs;
+  }
+}
+
+const HANDOVER_RETRY_MS = 100;
+const REFUSED_CODES = new Set(["ECONNREFUSED", "ENOENT"]);
+const sleep = (ms: number): Promise<void> => new Promise((resolveSleep) => setTimeout(resolveSleep, ms));
 
 /** The protocol the previously deployed daemon speaks; see legacyProtocolVerbs. */
 export const LEGACY_PROTOCOL = "v2/1";
@@ -46,6 +67,7 @@ export interface ConnectOptions {
   capabilities?: readonly string[];
   caller?: { dataDir?: string; liveTarget?: boolean; expectedInstanceId: string | null; allowForeignDaemon?: boolean };
   verifyInstance?: (instance: DaemonInstance | null) => void;
+  dataDir?: string;
 }
 
 interface Pending {
@@ -70,7 +92,29 @@ export class RpcClient {
     this.socket = socket;
   }
 
-  static connect(socketPath: string, timeoutMs = 3000, clientLane?: "node_relay" | "remote", options: ConnectOptions = {}): Promise<RpcClient> {
+  static async connect(socketPath: string, timeoutMs = 3000, clientLane?: "node_relay" | "remote", options: ConnectOptions = {}): Promise<RpcClient> {
+    const root = runtimeRootOf(options.dataDir ?? dirname(socketPath));
+    let bareRetry = true;
+    for (;;) {
+      try {
+        return await RpcClient.connectOnce(socketPath, timeoutMs, clientLane, options);
+      } catch (err) {
+        if (!(err instanceof DaemonDownError)) throw err;
+        const marker = await readHandoverMarker(root);
+        if (marker === null) {
+          if (!bareRetry || !REFUSED_CODES.has(err.reason)) throw err;
+          bareRetry = false;
+          continue;
+        }
+        const ageMs = Date.now() - marker.at;
+        if (ageMs >= HANDOVER_HOLD_MS) throw new HandoverStalledError(socketPath, marker, ageMs);
+        bareRetry = true;
+        await sleep(HANDOVER_RETRY_MS);
+      }
+    }
+  }
+
+  private static connectOnce(socketPath: string, timeoutMs: number, clientLane: "node_relay" | "remote" | undefined, options: ConnectOptions): Promise<RpcClient> {
     return new Promise((resolve, reject) => {
       const socket = createConnection(socketPath);
       const timer = setTimeout(() => {
@@ -82,15 +126,21 @@ export class RpcClient {
         clearTimeout(timer);
         reject(new DaemonDownError(socketPath, err.code ?? err.message));
       });
+      const closedBeforeHello = (): void => {
+        clearTimeout(timer);
+        reject(new DaemonDownError(socketPath, "closed before hello"));
+      };
       socket.once("connect", () => {
         const client = new RpcClient(socket);
         socket.setEncoding("utf8");
+        socket.once("close", closedBeforeHello);
         // Wait for the server hello, then answer with ours (negotiated once).
         const onHello = (chunk: string): void => {
           const lines = client.frames.push(chunk);
           const line = lines.shift();
           if (line === undefined) return;
           socket.off("data", onHello);
+          socket.off("close", closedBeforeHello);
           clearTimeout(timer);
           let hello: Record<string, unknown>;
           try {

@@ -176,6 +176,47 @@ export function serviceFileDataDir(contents: string): string | null {
   return null;
 }
 
+function unitExecTokens(line: string): string[] {
+  const tokens: string[] = [];
+  let i = 0;
+  while (i < line.length) {
+    while (i < line.length && /\s/.test(line[i]!)) i += 1;
+    if (i >= line.length) break;
+    let token = "";
+    const quote = line[i] === '"' || line[i] === "'" ? line[i] : null;
+    if (quote) {
+      i += 1;
+      while (i < line.length && line[i] !== quote) {
+        if (line[i] === "\\" && i + 1 < line.length) { token += line[i + 1]; i += 2; continue; }
+        token += line[i]; i += 1;
+      }
+      i += 1;
+    } else {
+      while (i < line.length && !/\s/.test(line[i]!)) { token += line[i]; i += 1; }
+    }
+    tokens.push(token);
+  }
+  return tokens;
+}
+
+export function serviceFileExecArgs(contents: string): string[] | null {
+  const exec = /^ExecStart=[-@+!:]*(.*)$/m.exec(contents);
+  if (exec) return unitExecTokens(exec[1] ?? "");
+  const plist = /<key>ProgramArguments<\/key>\s*<array>([\s\S]*?)<\/array>/.exec(contents);
+  if (plist) return [...(plist[1] ?? "").matchAll(/<string>([^<]*)<\/string>/g)].map((match) => xmlUnescape(match[1] ?? ""));
+  return null;
+}
+
+export function explicitServiceEntry(contents: string, launcherName: string): { interpreter: string; entry: string; runtimeDir: string } | null {
+  const args = serviceFileExecArgs(contents);
+  if (!args || args.length < 2) return null;
+  const [interpreter, entry] = args as [string, string];
+  if (interpreter.split(/[\\/]/).at(-1) === launcherName) return null;
+  const match = /^(.*)[\\/]dist[\\/]cli\.js$/.exec(entry);
+  if (!match || !match[1]) return null;
+  return { interpreter, entry, runtimeDir: match[1] };
+}
+
 async function must(run: ExecRunner, cmd: string, args: string[]): Promise<ExecResult> {
   const res = await run(cmd, args);
   if (res.code !== 0) {

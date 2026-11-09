@@ -5,7 +5,7 @@ import { samePath } from "../../daemon/src/endpointRecord.ts";
 import { serviceFileDataDir } from "../../daemon/src/service.ts";
 import { socketConfigured, type ResolvedDaemonTarget } from "./target.ts";
 
-export type ServiceScopeCode = "service_refused_in_cell" | "service_home_redirected" | "service_label_unpaired" | "service_data_dir_mismatch" | "service_socket_mismatch" | "service_not_installed" | "daemon_identity_mismatch" | "daemon_stop_timeout";
+export type ServiceScopeCode = "service_refused_in_cell" | "service_home_redirected" | "service_label_unpaired" | "service_data_dir_mismatch" | "service_socket_mismatch" | "service_not_installed" | "service_runtime_missing" | "daemon_identity_mismatch" | "daemon_stop_timeout";
 
 export class ServiceScopeError extends Error {
   readonly code: ServiceScopeCode;

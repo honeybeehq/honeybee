@@ -1,8 +1,9 @@
 #!/usr/bin/env node
-// Explicit-state model of runtime.activate / the launcher / boot.handover / runtime.probe.
-// Every interleaving of: the old daemon's census and retarget, runner hosts dying at any point,
-// the service manager restarting the unit, a candidate crashing or listening at each attempt,
-// the launcher's crash-loop revert, the successor's boot comparison and the probe's answer.
+// Explicit-state model of runtime.activate / the launcher / boot.handover / runtime.probe and the
+// W3 client hold. Every interleaving of: the old daemon's census and retarget, runner hosts dying at
+// any point, the service manager restarting the unit (or stalling), a candidate crashing or listening
+// at each attempt, the launcher's crash-loop revert, the successor's boot comparison, the probe's
+// answer, the handover marker ageing past the hold, and one client issuing one `send` at any moment.
 // Run: node .agents/skills/verify-runtime-handover/handover-model.mjs [--break <name>] [--hosts N] [--trace]
 import { parseArgs } from "node:util";
 
@@ -19,6 +20,10 @@ const rules = {
   launcherClearsMarker: BREAK !== "launcher-keeps-marker", // launcher.ts: rm handover.json handover.attempts after the revert
   markerRemovedAfterListen: BREAK !== "marker-removed-before-listen", // daemon.ts start(): removeHandoverMarker after rpc.listen
   bootCompares: BREAK !== "boot-skips-comparison",         // daemon.ts recordHandoverAtBoot
+  clientHolds: BREAK !== "client-fails-fast",              // client.ts connect: a refused socket with a fresh marker is a wait, not DaemonDownError
+  clientStalls: BREAK !== "client-holds-forever",          // client.ts connect: a marker older than HANDOVER_HOLD_MS fails typed hived_handover_stalled
+  clientNoRetryAfterAck: BREAK !== "client-retries-after-ack", // client.ts request: a send is never reissued once the daemon answered it
+  closeDrains: BREAK !== "close-cuts-in-flight",           // rpc.ts close: stop accepting, finish in-flight requests, then destroy connections
 };
 
 // State. Versions are "A" (running, previous after the swap) and "B" (the candidate).
@@ -35,6 +40,8 @@ const initial = () => ({
   crashes: 0,             // candidate boots that died before listening
   probe: null,            // null | "ok" | "handover_incomplete" | "activation_reverted" | "handover_pending"
   running: "A",           // the build whose daemon process exists, or null while the unit is down
+  stale: false,           // the marker is older than HANDOVER_HOLD_MS (time passed with nobody listening)
+  client: { phase: "idle", outcome: null, lands: 0, failedWithMarker: null, heldFresh: null }, // one `hive send`: idle | holding | done; outcome ok | down | stalled | unknown
 });
 const key = (s) => JSON.stringify(s);
 const clone = (s) => JSON.parse(JSON.stringify(s));
@@ -47,7 +54,7 @@ function launch(s) {
     if (rules.launcherCounts && n > ATTEMPTS && s.previous !== null) {
       s.current = s.previous;
       s.rollback = { candidate: s.marker, attempts: n - 1 };
-      if (rules.launcherClearsMarker) { s.marker = null; s.attempts = 0; } else { s.attempts = n; }
+      if (rules.launcherClearsMarker) { s.marker = null; s.stale = false; s.attempts = 0; } else { s.attempts = n; }
     } else {
       s.attempts = n;
     }
@@ -65,9 +72,47 @@ function bootCompare(s) {
   }
 }
 
+// Where a connect lands: the old daemon until it exits, the successor once it listens, nothing in between.
+const listening = (s) => s.running !== null && ["old_running", "old_censused", "old_stopping", "cand_listening", "prev_listening", "probed"].includes(s.phase);
+
+// One client attempt (a fresh connect, or a retry while holding). Mirrors RpcClient.connect + request.
+function clientAttempts(s) {
+  const out = [];
+  const c = s.client;
+  if (c.phase === "done") return out;
+  if (listening(s)) {
+    const t = clone(s); t.client = { ...c, phase: "done", outcome: "ok", lands: c.lands + 1 }; out.push([`client: send accepted by ${s.running} and acknowledged`, t]);
+    if (s.phase === "old_stopping") {
+      // The old daemon is closing. With the drain it still answers; without it the connection is cut mid-request.
+      if (!rules.closeDrains) {
+        const u = clone(s); u.client = { ...c, phase: "done", outcome: "unknown", lands: c.lands + 1 }; out.push(["client: send committed by the old daemon, connection destroyed before the answer", u]);
+        const v = clone(s); v.client = { ...c, phase: "done", outcome: "unknown" }; out.push(["client: send frame unread when the old daemon destroyed the connection", v]);
+      }
+      const r = clone(s); out.push([`client: connect refused (old daemon closed its socket)`, refused(r)]);
+    }
+    return out;
+  }
+  const t = clone(s); out.push([`client: connect refused (nothing listens)`, refused(t)]);
+  return out;
+}
+
+function refused(t) {
+  const c = t.client;
+  if (t.marker !== null && rules.clientHolds) {
+    if (t.stale && rules.clientStalls) t.client = { ...c, phase: "done", outcome: "stalled", failedWithMarker: true };
+    else t.client = { ...c, phase: "holding", heldFresh: !t.stale };
+  } else {
+    t.client = { ...c, phase: "done", outcome: "down", failedWithMarker: t.marker !== null };
+  }
+  return t;
+}
+
 function successors(s) {
   const out = [];
   const push = (label, t) => out.push([label, t]);
+  for (const step of clientAttempts(s)) push(...step);
+  if (s.marker !== null && !s.stale) { const t = clone(s); t.stale = true; push("time: handover.json turns 60 s old", t); }
+  if (rules.clientNoRetryAfterAck === false && s.client.outcome === "ok" && s.client.lands === 1) { const t = clone(s); t.client = { ...s.client, phase: "idle", outcome: null }; push("client: reissues the acknowledged send", t); }
   // Hosts may die at any moment, in any phase (a bee crashes, an operator kills it).
   for (const h of liveHosts(s)) { const t = clone(s); t.hosts[h] = "dead"; push(`host ${h} dies`, t); }
   switch (s.phase) {
@@ -77,7 +122,7 @@ function successors(s) {
     }
     case "old_censused": {
       const t = clone(s);
-      t.previous = t.current; t.current = "B"; t.marker = "B";
+      t.previous = t.current; t.current = "B"; t.marker = "B"; t.stale = false;
       t.attempts = 0;
       t.result = null; t.phase = "old_stopping";
       push("activate: previous<-current, current<-B, handover.json, restart --no-block", t);
@@ -97,16 +142,16 @@ function successors(s) {
     case "cand_booting": {
       if (s.crashes < ATTEMPTS + 1) { const t = clone(s); t.crashes += 1; t.running = null; t.phase = "unit_down"; push("candidate dies before listening", t); }
       const t = clone(s); bootCompare(t);
-      if (rules.markerRemovedAfterListen) { t.phase = "cand_listening"; t.marker = null; t.attempts = 0; push("candidate adopts survivors, compares with census, listens, removes handover.json", t); }
-      else { t.marker = null; t.attempts = 0; t.phase = "cand_listening"; push("candidate removes handover.json then listens", t); }
+      if (rules.markerRemovedAfterListen) { t.phase = "cand_listening"; t.marker = null; t.stale = false; t.attempts = 0; push("candidate adopts survivors, compares with census, listens, removes handover.json", t); }
+      else { t.marker = null; t.stale = false; t.attempts = 0; t.phase = "cand_listening"; push("candidate removes handover.json then listens", t); }
       if (!rules.markerRemovedAfterListen && s.crashes < ATTEMPTS + 1) {
         // The broken ordering: the marker is gone before listen, and listen itself can still fail.
-        const u = clone(s); bootCompare(u); u.marker = null; u.attempts = 0; u.crashes += 1; u.running = null; u.phase = "unit_down"; push("candidate removes handover.json, then dies at listen", u);
+        const u = clone(s); bootCompare(u); u.marker = null; u.stale = false; u.attempts = 0; u.crashes += 1; u.running = null; u.phase = "unit_down"; push("candidate removes handover.json, then dies at listen", u);
       }
       break;
     }
     case "prev_booting": {
-      const t = clone(s); bootCompare(t); t.phase = "prev_listening"; t.marker = null; t.attempts = 0; push("previous adopts survivors, journals the rollback, listens", t);
+      const t = clone(s); bootCompare(t); t.phase = "prev_listening"; t.marker = null; t.stale = false; t.attempts = 0; push("previous adopts survivors, journals the rollback, listens", t);
       break;
     }
     case "cand_listening":
@@ -157,6 +202,34 @@ const properties = {
     if (s.phase !== "prev_listening" && s.phase !== "probed") return true;
     if (s.running !== s.previous || s.running === "B") return true;
     return s.marker === null && s.attempts === 0;
+  },
+  // A send is never in the mailbox twice.
+  SendNeverDuplicated(s) {
+    return s.client.lands <= 1;
+  },
+  // A send the client reports as sent is in the mailbox exactly once; one it reports failed is not there at all.
+  SendOutcomeIsTrue(s) {
+    const c = s.client;
+    if (c.outcome === "ok") return c.lands === 1;
+    if (c.outcome === "down" || c.outcome === "stalled") return c.lands === 0;
+    return true;
+  },
+  // During a handover the client never gets an unknown outcome: the old daemon answers what it accepted before closing.
+  SendOutcomeIsKnown(s) {
+    return s.client.outcome !== "unknown";
+  },
+  // A refusal while handover.json is fresh is a wait, never a failure (DaemonDownError only without a marker).
+  HeldWhileMarkerFresh(s) {
+    return !(s.client.outcome === "down" && s.client.failedWithMarker === true);
+  },
+  // The client only ever decides to wait on a marker that is present and fresh; a stale one is a typed failure, not a wait.
+  HoldOnlyOnFreshMarker(s) {
+    if (s.client.phase !== "holding") return true;
+    return s.client.heldFresh === true;
+  },
+  // The stall failure is typed and only ever follows a marker that really is stale.
+  StallIsTyped(s) {
+    return !(s.client.outcome === "stalled" && s.client.failedWithMarker !== true);
   },
 };
 

@@ -1,24 +1,25 @@
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
-import { cp, lstat, mkdir, open, readFile, readdir, readlink, rename, rm, symlink, writeFile } from "node:fs/promises";
-import { dirname, isAbsolute, join, resolve } from "node:path";
+import { cp, lstat, mkdir, open, readFile, readdir, readlink, realpath, rename, rm, symlink, writeFile } from "node:fs/promises";
+import { isAbsolute, join, resolve } from "node:path";
 import type { CoreStore } from "../../core/src/index.ts";
 import type { RuntimeHandoverRuntime, RuntimeJournalEntry } from "../../core/src/types.ts";
 import { HANDOVER_ATTEMPTS_FILE_NAME, ROLLBACK_FILE_NAME } from "./launcher.ts";
+import { HANDOVER_FILE_NAME, readHandoverMarker, runtimeRootOf } from "./handoverMarker.ts";
 import { withFileLock } from "../../core/src/lock.ts";
 import { resolveNodePin } from "../../core/src/nodeRuntime.ts";
 import { readBuildIdentity } from "../../core/src/release/buildIdentity.ts";
 import { ReleaseVerifyError, releaseKeyId, verifyReleaseDescriptor, type ReleaseDescriptor } from "../../core/src/release/descriptor.ts";
 import { satisfiesNodeRange } from "../../core/src/release/nodeRange.ts";
 import { sha256File } from "../../core/src/release/runtimeArtifact.ts";
-import { UnsafeArchiveError, artifactTreeDigest, unpackRuntimeArchive } from "../../core/src/release/strictUnpack.ts";
+import { UnsafeArchiveError, artifactTreeDigest, assertArtifactLinksContained, unpackRuntimeArchive } from "../../core/src/release/strictUnpack.ts";
 import { RELEASE_PUBLIC_KEYS } from "../../core/src/release/trustedKeys.ts";
 import { BUILD_IDENTITY, RpcError, type RuntimeActivateResult, type RuntimeHandoverMarker, type RuntimeInstallResult, type RuntimePruneResult, type RuntimeStatusResult, type RuntimeVersion } from "./protocol.ts";
 
 export const RUNTIME_LOCK_NAME = ".deploy.lock";
 export const CURRENT_LINK_NAME = "current";
 export const PREVIOUS_LINK_NAME = "previous";
-export const HANDOVER_FILE_NAME = "handover.json";
+export { HANDOVER_FILE_NAME, readHandoverMarker, runtimeRootOf };
 export const DEFAULT_KEEP_VERSIONS = 5;
 const SHA_PATTERN = /^[0-9a-f]{40}$/;
 const RESTART_AFTER_ANSWER_MS = 250;
@@ -47,13 +48,6 @@ export async function bundleSchemaVersion(installedDir: string): Promise<number 
   return versions.length === 1 && Number.isSafeInteger(versions[0]) ? versions[0]! : null;
 }
 
-export async function readHandoverMarker(root: string): Promise<RuntimeHandoverMarker | null> {
-  let parsed: Partial<RuntimeHandoverMarker> | null;
-  try { parsed = JSON.parse(await readFile(join(root, HANDOVER_FILE_NAME), "utf8")); } catch { return null; }
-  if (!parsed || typeof parsed !== "object" || typeof parsed.toSha !== "string" || !Number.isSafeInteger(parsed.fromPid) || !Number.isSafeInteger(parsed.at)) return null;
-  return { fromPid: parsed.fromPid!, fromSha: typeof parsed.fromSha === "string" ? parsed.fromSha : null, toSha: parsed.toSha, at: parsed.at! };
-}
-
 export async function removeHandoverMarker(root: string): Promise<boolean> {
   let removed = false;
   for (const name of [HANDOVER_FILE_NAME, HANDOVER_ATTEMPTS_FILE_NAME]) {
@@ -79,7 +73,7 @@ export async function takeRollbackRecord(root: string): Promise<{ reason: string
   };
 }
 
-async function retargetLink(root: string, name: string, sha: string): Promise<void> {
+export async function retargetLink(root: string, name: string, sha: string): Promise<void> {
   const temp = join(root, `.${name}.${process.pid}.${randomUUID()}`);
   await rm(temp, { force: true });
   await symlink(sha, temp);
@@ -99,10 +93,6 @@ async function writeMarker(root: string, marker: RuntimeHandoverMarker): Promise
 
 export function runtimeRefused(reason: RuntimeRefusal, message: string, details: Record<string, unknown> = {}): RpcError {
   return new RpcError("runtime_refused", `runtime: ${message}`, { reason, ...details });
-}
-
-export function runtimeRootOf(dataDir: string): string {
-  return join(dirname(resolve(dataDir)), "runtime");
 }
 
 export function hostTarget(): string {
@@ -146,6 +136,51 @@ function installedIdentity(root: string, sha: string): { ok: true } | { ok: fals
     if (identity.target !== hostTarget()) return { ok: false, detail: `runtime/${sha} targets ${identity.target}; this node is ${hostTarget()}` };
   } catch (error) { return { ok: false, detail: `runtime/${sha} build identity unreadable: ${error instanceof Error ? error.message : String(error)}` }; }
   return { ok: true };
+}
+
+export interface AdoptedRuntime { sha: string; source: string; installedDir: string; copied: boolean; retargeted: boolean }
+
+export async function retainExternalCurrent(root: string, externalDir: string): Promise<{ sha: string; installedDir: string; copied: boolean }> {
+  let source: string;
+  try { source = await realpath(externalDir); }
+  catch { throw runtimeRefused("not_installed", `${externalDir} does not exist`, { source: externalDir }); }
+  let identity;
+  try { identity = readBuildIdentity(join(source, "dist", "build-identity.json")); }
+  catch (error) { throw runtimeRefused("not_installed", `${source} has no readable build identity: ${error instanceof Error ? error.message : String(error)}`, { source }); }
+  const sha = identity.sourceRevision;
+  if (identity.component !== "honeybee" || typeof sha !== "string" || !SHA_PATTERN.test(sha) || identity.dirty !== false) throw runtimeRefused("not_installed", `${source} is not a clean honeybee build (${identity.component} ${sha ?? "unknown"}${identity.dirty === false ? "" : " dirty"})`, { source, component: identity.component, sourceRevision: sha ?? null, dirty: identity.dirty });
+  if (identity.target !== hostTarget()) throw runtimeRefused("target_mismatch", `${source} targets ${identity.target}; this node is ${hostTarget()}`, { source, target: identity.target, host: hostTarget() });
+  if (!existsSync(join(source, "dist", "cli.js"))) throw runtimeRefused("not_installed", `${source} has no dist/cli.js`, { source });
+  const installedDir = join(root, sha);
+  if (existsSync(installedDir) && await realpath(installedDir) === source) return { sha, installedDir, copied: false };
+  try { await assertArtifactLinksContained(source); }
+  catch (error) { throw runtimeRefused("archive_unsafe", `${source}: ${error instanceof Error ? error.message : String(error)}`, { source }); }
+  const digest = await artifactTreeDigest(source);
+  await mkdir(root, { recursive: true });
+  return withFileLock(join(root, RUNTIME_LOCK_NAME), async () => {
+    if (existsSync(installedDir)) {
+      if (await artifactTreeDigest(installedDir) !== digest) throw runtimeRefused("install_conflict", `runtime/${sha} is already installed with bytes that differ from ${source}`, { source, installedDir });
+      return { sha, installedDir, copied: false };
+    }
+    const temporary = join(root, `.adopt.${sha}.${process.pid}.${randomUUID()}`);
+    try {
+      await cp(source, temporary, { recursive: true, verbatimSymlinks: true });
+      await assertArtifactLinksContained(temporary);
+      if (await artifactTreeDigest(temporary) !== digest || await artifactTreeDigest(source) !== digest) throw runtimeRefused("install_conflict", `${source} changed while its bytes were being retained`, { source });
+      await syncTree(temporary);
+      await rename(temporary, installedDir);
+      await syncPath(root);
+    } finally { await rm(temporary, { recursive: true, force: true }).catch(() => undefined); }
+    return { sha, installedDir, copied: true };
+  });
+}
+
+export async function adoptExternalCurrent(root: string, source: string): Promise<AdoptedRuntime> {
+  const retained = await retainExternalCurrent(root, source);
+  const link = await readLinkOrNull(join(root, CURRENT_LINK_NAME));
+  const retargeted = link !== retained.sha;
+  if (retargeted) await retargetLink(root, CURRENT_LINK_NAME, retained.sha);
+  return { ...retained, source, retargeted };
 }
 
 export class RuntimeUpdateService {

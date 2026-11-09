@@ -4,5 +4,5 @@
  * (the old CLI routes `hive v2 …` here; never the other way).
  */
 export { runV2Cli, serviceExecArgs, serviceLabel, type CliIo } from "./main.ts";
-export { DaemonDownError, RpcClient } from "./client.ts";
+export { DaemonDownError, HandoverStalledError, RpcClient } from "./client.ts";
 export { ReadOnlyStore, type StaleViewResult } from "./readonly.ts";

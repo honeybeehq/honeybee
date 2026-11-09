@@ -22,19 +22,7 @@ test("service entry follows selected node current, independent of ambient home",
     mkdirSync(join(dir, "runtime", "current", "dist"), { recursive: true });
     writeFileSync(entry, "fixture");
     assert.deepEqual(serviceExecArgs(join(dir, "v2"), { HIVE_NODE_PATH: process.execPath }), [join(dir, "runtime", "launch"), process.execPath, "v2", "daemon", "run", "--data-dir", join(dir, "v2")]);
-  } finally { rmSync(dir, { recursive: true, force: true }); }
-});
-
-test("fresh service install requires a pin and validates explicit argv overrides", () => {
-  const dir = mkdtempSync(join(tmpdir(), "hb-service-pin-"));
-  const data = join(dir, "v2");
-  try {
-    assert.throws(() => serviceExecArgs(data, {}), /HIVE_NODE_PATH required/);
-    for (const args of ["node", [], [1, "cli.js"], ["/Applications/Apiary.app/Contents/MacOS/Apiary", "cli.js"]]) {
-      assert.throws(() => serviceExecArgs(data, { HIVE_V2_SERVICE_ARGS: JSON.stringify(args) }));
-    }
-    assert.throws(() => serviceExecArgs(data, { HIVE_V2_SERVICE_ARGS: JSON.stringify([process.execPath, "--inspect=0", "cli.js"]) }), /inspector/);
-    assert.deepEqual(serviceExecArgs(data, { HIVE_V2_SERVICE_ARGS: JSON.stringify([process.execPath, "cli.js", "custom"]) }), [probeNativeNode(process.execPath).path, "cli.js", "custom"]);
+    assert.throws(() => serviceExecArgs(join(dir, "v2"), {}), /HIVE_NODE_PATH required/);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 

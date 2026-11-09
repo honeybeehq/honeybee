@@ -817,17 +817,11 @@ test("cli.5: daemon status when nothing runs and no service is installed", async
   }
 });
 
-test("cli.6: service glue — label never the live daemon's, exec args env override wins", () => {
+test("cli.6: service glue — label never the live daemon's, the unit always starts through the launcher", () => {
   assert.equal(serviceLabel({}), "dev.honeybee.hive.v2");
   assert.notEqual(serviceLabel({}), "dev.honeybee.hive");
   assert.equal(serviceLabel({ HIVE_V2_SERVICE_LABEL: "x.test" }), "x.test");
-  assert.deepEqual(
-    serviceExecArgs("/data", { HIVE_V2_SERVICE_ARGS: JSON.stringify([process.execPath, "/x.js", "daemon", "run"]) }),
-    [process.execPath, "/x.js", "daemon", "run"],
-  );
-  const computed = serviceExecArgs("/data", { HIVE_NODE_PATH: process.execPath });
-  assert.equal(computed[0], process.execPath);
-  assert.deepEqual(computed.slice(-3), ["run", "--data-dir", "/data"]);
+  assert.throws(() => serviceExecArgs("/data", { HIVE_NODE_PATH: process.execPath }), { code: "service_runtime_missing" });
   // Service env bakes the installing shell's PATH (launchd/systemd give the
   // daemon a bare PATH that cannot resolve claude/codex — 2026-08-19 soak).
   assert.deepEqual(serviceEnv("/data", { PATH: "/a:/b", HIVE_NODE_PATH: process.execPath }), { HIVE_V2_DATA_DIR: "/data", PATH: "/a:/b", ...nodePinEnv(probeNativeNode(process.execPath)) });

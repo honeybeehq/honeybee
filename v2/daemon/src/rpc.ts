@@ -209,9 +209,13 @@ interface Connection extends RpcConn {
   caller?: HelloCaller;
   watchCursor: number | null;
   operatorLocalWatch: boolean;
+  inFlight: number;
+  lastFrameAt: number;
 }
 
 const RPC_VERB_SET = new Set<string>(RPC_VERBS);
+const RPC_CLOSE_QUIET_MS = 150;
+const RPC_CLOSE_DRAIN_MAX_MS = 1000;
 const SNAPSHOT_VERBS = new Set<RpcVerb>(["snapshot", "watch", "mirror.local.snapshot", "mirror.local.watch"]);
 const LEGACY_CAPABILITIES: readonly string[] = [MAIL_DELIVERY_CONFIRMATION_CAPABILITY, ANSWER_TRIGGER_CAPABILITY, QUESTION_DISMISSED_CAPABILITY];
 
@@ -312,20 +316,31 @@ export class RpcServer {
     });
   }
 
-  close(): Promise<void> {
+  async close(): Promise<void> {
+    let closed: Promise<void> = Promise.resolve();
+    if (this.listening) {
+      closed = new Promise((resolve) => this.server.close(() => resolve()));
+      this.listening = false;
+      const drained = await this.drainConnections();
+      this.opts.log(`rpc.close conns=${this.conns.size} drained=${drained}`);
+    }
     for (const conn of this.conns) conn.socket.destroy();
     this.conns.clear();
     this.credentials.close();
     this.trust.close();
     this.refusals.close();
-    return new Promise((resolve) => {
-      if (!this.listening) {
-        resolve();
-        return;
-      }
-      this.server.close(() => resolve());
-      this.listening = false;
-    });
+    await closed;
+  }
+
+  private async drainConnections(): Promise<boolean> {
+    const deadline = Date.now() + RPC_CLOSE_DRAIN_MAX_MS;
+    for (;;) {
+      const now = Date.now();
+      const busy = [...this.conns].some((conn) => !conn.socket.destroyed && (conn.inFlight > 0 || now - conn.lastFrameAt < RPC_CLOSE_QUIET_MS));
+      if (!busy) return true;
+      if (now >= deadline) return false;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
   }
 
   /**
@@ -428,6 +443,8 @@ export class RpcServer {
       get ingress() { return localUnix ? conn.relayLane ?? "local_unix" : "remote"; },
       watchCursor: null,
       operatorLocalWatch: false,
+      inFlight: 0,
+      lastFrameAt: Date.now(),
       send: (obj: unknown) => {
         if (socket.destroyed) return;
         this.performance.measureSync("rpc.serialize", () => {
@@ -461,6 +478,7 @@ export class RpcServer {
   }
 
   private onFrame(conn: Connection, line: string): void {
+    conn.lastFrameAt = Date.now();
     let frame: Record<string, unknown>;
     try {
       const parsed: unknown = JSON.parse(line);
@@ -731,16 +749,19 @@ export class RpcServer {
       // the login seat's keychain baseline) return a promise; sync verbs are
       // answered on the spot exactly as before.
       if (result instanceof Promise) {
+        conn.inFlight += 1;
         result.then(
           (value) => {
             span.end();
             conn.send({ id, ok: true, result: publicBeeResponse(verb, projectQuestionDismissalResult(verb, projectAnswerTriggerResult(verb, projectMailDeliveryResult(verb, value, conn.clientCapabilities), conn.clientCapabilities), conn.clientCapabilities), includeOperatorLocalHomes), ...(secretCapture && captureExpiresAt > Date.now() ? { secretCapture } : {}) });
             secretCapture = undefined;
+            conn.inFlight -= 1;
           },
           (err) => {
             secretCapture = undefined;
             span.end("error");
             conn.send({ id, ok: false, error: publicEnvRecords(projectQuestionDismissalError(toRpcError(err), conn.clientCapabilities)) });
+            conn.inFlight -= 1;
           },
         );
         return;

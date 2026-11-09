@@ -24,10 +24,12 @@ import { basename, join, resolve } from "node:path";
 import { type ResolvedNodeConfig } from "../../daemon/src/config.ts";
 import {
   createServiceManager,
+  explicitServiceEntry,
   type ExecRunner,
   type ServiceManager,
 } from "../../daemon/src/service.ts";
-import { readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { adoptExternalCurrent, runtimeRootOf, type AdoptedRuntime } from "../../daemon/src/runtimeUpdate.ts";
+import { readFileSync, readlinkSync, realpathSync, writeFileSync } from "node:fs";
 import {
   RpcError,
   LEASE_FENCE_FIELDS,
@@ -130,7 +132,7 @@ import {
   type ViewResult,
   type WatchFrame,
 } from "../../daemon/src/protocol.ts";
-import { DaemonDownError, RpcClient, type ConnectOptions, type DaemonInstance } from "./client.ts";
+import { DaemonDownError, HandoverStalledError, RpcClient, type ConnectOptions, type DaemonInstance } from "./client.ts";
 import { assertInstanceMatchesDataDir, assertSameInstance, assertSocketMatchesDataDir, callerHelloFor, daemonTargetJson, resolveDaemonTarget, socketConfigured, type ResolvedDaemonTarget } from "./target.ts";
 import type { ReadOnlyStore } from "./readonly.ts";
 import { beeTaskList, isTaskStatus, isTaskTransitionAction, parseTaskListRef } from "../../core/src/tasks.ts";
@@ -552,6 +554,7 @@ async function connectDaemon(ctx: CliContext, options: Pick<ConnectOptions, "leg
   assertSocketMatchesDataDir(ctx.target);
   const client = await RpcClient.connect(ctx.cfg.socketPath, 3000, undefined, {
     ...options,
+    dataDir: ctx.cfg.dataDir,
     capabilities: ["question.dismissed.v1", "mail.delivery.confirmation.v1"],
     caller: callerHelloFor(ctx.target, ctx.allowForeignDaemon),
     verifyInstance: (instance) => {
@@ -4759,30 +4762,11 @@ export function serviceEnv(
     ...nodePinEnv(resolveNodePin(dataDir, env, interpreter, true)) };
 }
 
-export function serviceExecArgs(dataDir: string, env: Record<string, string | undefined> = process.env): string[] {
-  if (env.HIVE_V2_SERVICE_ARGS) {
-    const args: unknown = JSON.parse(env.HIVE_V2_SERVICE_ARGS);
-    if (!Array.isArray(args) || args.length < 2 || !args.every((arg): arg is string => typeof arg === "string")) throw new Error("HIVE_V2_SERVICE_ARGS must be an argv array");
-    const pin = resolveNodePin(dataDir, env, args[0], true);
-    if (args.slice(1).some(arg => /^--(?:inspect|debug)/.test(arg))) throw new Error("service interpreter inspector arguments are forbidden");
-    return [pin.path, ...args.slice(1)];
-  }
-  // Prefer the versioned-runtime entry over argv[1]: the PATH `hive` shim can
-  // drift (2026-08-19: it pointed at a working checkout), and the `current`
-  // symlink is the deploy contract — a service pinned to it follows every
-  // deploy across restarts.
-  const runtimeRoot = resolve(dataDir, "..", "runtime");
-  const runtimeEntry = join(runtimeRoot, "current", "dist", "cli.js");
-  const pin = resolveNodePin(dataDir, env, undefined, true).path;
-  // The versioned runtime starts through the launcher beside `current`: it
-  // counts a candidate's failed boots and reverts `current` to `previous`.
-  if (existsSync(runtimeEntry)) return [launcherPath(runtimeRoot), pin, "v2", "daemon", "run", "--data-dir", dataDir];
-  const entry = resolve(process.argv[1] ?? "");
-  // Invoked through the hive binary → keep the `v2` argv prefix so a service
-  // unit installed before freeze still hits this stack (`hive v2 daemon run`).
-  // The standalone v2 bin already is this CLI, so no prefix.
-  const viaHive = /[/\\]dist[/\\]cli\.js$/.test(entry);
-  return [pin, entry, ...(viaHive ? ["v2"] : []), "daemon", "run", "--data-dir", dataDir];
+export function serviceExecArgs(dataDir: string, env: Record<string, string | undefined> = process.env, interpreter?: string): string[] {
+  const runtimeRoot = runtimeRootOf(dataDir);
+  if (!existsSync(join(runtimeRoot, "current", "dist", "cli.js"))) throw new ServiceScopeError("service_runtime_missing", `hive daemon install: ${join(runtimeRoot, "current")} names no installed runtime; install a release with hive runtime install, or run daemon install from the installed build that should become current`, { dataDir, runtimeRoot });
+  const pin = resolveNodePin(dataDir, env, interpreter, true).path;
+  return [launcherPath(runtimeRoot), pin, "v2", "daemon", "run", "--data-dir", dataDir];
 }
 
 /** The Node interpreter a service argv runs: argv[0], or argv[1] behind the launcher. */
@@ -4790,9 +4774,8 @@ export function serviceInterpreter(args: string[]): string {
   return basename(args[0] ?? "") === LAUNCHER_FILE_NAME && args.length > 1 ? args[1]! : args[0]!;
 }
 
-function buildServiceManager(ctx: CliContext, installing = false): ServiceManager {
-  const args = installing ? serviceExecArgs(ctx.cfg.dataDir) : [];
-  const pin = installing ? resolveNodePin(ctx.cfg.dataDir, process.env, serviceInterpreter(args), true) : undefined;
+function buildServiceManager(ctx: CliContext, args: string[] = []): ServiceManager {
+  const pin = args.length > 0 ? resolveNodePin(ctx.cfg.dataDir, process.env, serviceInterpreter(args), true) : undefined;
   const platform = process.platform;
   const dir = serviceDirectory(platform);
   return createServiceManager(
@@ -4822,7 +4805,27 @@ function serviceOwned(scope: ServiceScope): boolean {
 
 function ownedServiceManager(ctx: CliContext, verb: string): ServiceManager {
   assertServiceOwned(serviceScopeOf(ctx), ctx.target, verb);
-  return buildServiceManager(ctx, verb === "install");
+  return buildServiceManager(ctx);
+}
+
+const SHA_LINK = /^[0-9a-f]{40}$/;
+
+async function adoptServiceRuntime(ctx: CliContext): Promise<{ adopted: AdoptedRuntime | null; interpreter: string | undefined }> {
+  const root = runtimeRootOf(ctx.cfg.dataDir);
+  let unit: string | null = null;
+  try { unit = readFileSync(serviceFilePath(), "utf8"); } catch { unit = null; }
+  const explicit = unit === null ? null : explicitServiceEntry(unit, LAUNCHER_FILE_NAME);
+  let link: string | null = null;
+  try { link = readlinkSync(join(root, "current")); } catch { link = null; }
+  let source: string | null = null;
+  if (explicit) source = explicit.runtimeDir;
+  else if (link !== null && !SHA_LINK.test(link)) source = resolve(root, link);
+  else if (link === null) {
+    const own = /^(.*)[/\\]dist[/\\]cli\.js$/.exec(resolve(process.argv[1] ?? ""));
+    if (own?.[1]) source = own[1];
+  }
+  if (source === null) return { adopted: null, interpreter: undefined };
+  return { adopted: await adoptExternalCurrent(root, source), interpreter: explicit?.interpreter };
 }
 
 const SCRATCH_STOP_TIMEOUT_MS = 15_000;
@@ -4866,12 +4869,17 @@ async function cmdDaemon(ctx: CliContext, parsed: Parsed): Promise<number> {
       // Foreground daemon — what the service files execute.
       return (await import("../../daemon/src/main.ts")).runDaemon(["--data-dir", ctx.cfg.dataDir, ...(ctx.target.socketSource === "flag" ? ["--socket", ctx.cfg.socketPath] : [])]);
     case "install": {
-      const mgr = ownedServiceManager(ctx, "install");
-      const args = serviceExecArgs(ctx.cfg.dataDir);
-      const launcher = basename(args[0] ?? "") === LAUNCHER_FILE_NAME ? await installLauncher(resolve(ctx.cfg.dataDir, "..", "runtime")) : null;
+      assertServiceOwned(serviceScopeOf(ctx), ctx.target, "install");
+      const { adopted, interpreter } = await adoptServiceRuntime(ctx);
+      const args = serviceExecArgs(ctx.cfg.dataDir, process.env, interpreter);
+      const launcher = await installLauncher(runtimeRootOf(ctx.cfg.dataDir));
+      const mgr = buildServiceManager(ctx, args);
       await mgr.install();
       persistNodePin(ctx.cfg.dataDir, resolveNodePin(ctx.cfg.dataDir, process.env, serviceInterpreter(args), true));
-      emit(ctx, [confirm("ok", "installed", `${mgr.platform} service at ${mgr.servicePath}${launcher ? `, launcher ${launcher}` : ""}`)], { servicePath: mgr.servicePath, launcher }, false);
+      emit(ctx, [
+        ...(adopted ? [confirm("ok", adopted.copied ? "adopted" : "retained", `runtime ${adopted.sha} from ${adopted.source}${adopted.retargeted ? "; current now points at it" : ""}`)] : []),
+        confirm("ok", "installed", `${mgr.platform} service at ${mgr.servicePath}, launcher ${launcher}`),
+      ], { servicePath: mgr.servicePath, launcher, adopted }, false);
       return 0;
     }
     case "uninstall": {
@@ -4972,6 +4980,8 @@ function versionDaemonTarget(): unknown {
 function jsonErrorLine(err: unknown, ctx: CliContext | undefined): Record<string, unknown> {
   const error = err instanceof DaemonDownError
     ? { code: err.code, message: err.message, details: { socketPath: err.socketPath, socketSource: ctx?.target.socketSource ?? null, cause: err.reason } }
+    : err instanceof HandoverStalledError
+      ? { code: err.code, message: err.message, details: { socketPath: err.socketPath, marker: err.marker, ageMs: err.ageMs } }
     : err instanceof RpcError || err instanceof ServiceScopeError
       ? { code: err.code, message: err.message, ...(err.details ? { details: err.details } : {}) }
       : err instanceof Error && (err.name === "StoreRestoreError" || err.name === "StoreBackupError")
@@ -5206,7 +5216,7 @@ export async function runV2Cli(argv: string[], io: CliIo = defaultIo): Promise<n
       io.err(errorLine(`${err.message} — start it with: hive daemon run (or daemon start)`));
       return 1;
     }
-    if (err instanceof RpcError || err instanceof ServiceScopeError) {
+    if (err instanceof RpcError || err instanceof ServiceScopeError || err instanceof HandoverStalledError) {
       io.err(errorLine(`error (${err.code}): ${err.message}`));
       return 1;
     }
