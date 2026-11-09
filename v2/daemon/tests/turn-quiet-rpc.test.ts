@@ -62,12 +62,18 @@ test("quiet facts through a throwaway daemon: root/child isolation, failure, int
       messageEnd = Buffer.byteLength(journal.slice(0, journal.indexOf("\n", messageAt) + 1));
       return value;
     }, "quiet final native message before restart", 10_000);
+    // The live daemon holds its store with locking_mode=EXCLUSIVE, so no
+    // second connection can read it before the kill. The observation fold
+    // logs obs.checkpoint inside the same synchronous transaction that
+    // advances the cursor; a view() answered after we read the line proves
+    // that transaction committed.
+    const checkpoint = new RegExp(`"op":"obs\\.checkpoint bee=${beeId} gen=1 cursor=(\\d+)"`, "g");
     const committedCursor = () => {
-      const database = new DatabaseSync(daemon.storePath, { readOnly: true });
-      try {
-        const row = database.prepare("SELECT cursor FROM runtime_observation_cursors WHERE bee_id = ? AND generation = 1").get(beeId);
-        return row ? Number(row.cursor) : null;
-      } finally { database.close(); }
+      let log: string;
+      try { log = readFileSync(join(rig.dir, "hived.log"), "utf8"); } catch { return null; }
+      let cursor: number | null = null;
+      for (const match of log.matchAll(checkpoint)) cursor = Math.max(cursor ?? 0, Number(match[1]));
+      return cursor;
     };
     await waitFor(async () => {
       const cursor = committedCursor();
