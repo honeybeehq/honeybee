@@ -373,6 +373,7 @@ export async function startDaemon(dir: string, opts: { env?: Record<string, stri
   proc.stderr?.setEncoding("utf8");
   proc.stdout?.on("data", (c: string) => (out += c));
   proc.stderr?.on("data", (c: string) => (out += c));
+  let killedByTest = false;
   const handle: DaemonHandle = {
     dir,
     socketPath,
@@ -381,10 +382,15 @@ export async function startDaemon(dir: string, opts: { env?: Record<string, stri
     output: () => out,
     client: () => RpcClient.connect(handle.socketPath),
     kill: async () => {
+      killedByTest = true;
       proc.kill("SIGKILL");
       await waitFor(() => proc.exitCode != null || proc.signalCode != null, "daemon killed", 4000);
     },
     stop: async () => {
+      if (killedByTest) {
+        await forceStopTestDaemon(handle);
+        return;
+      }
       const knownHosts = new Map<number, string | null>();
       try {
         // Persisted idle does not prove survivor adoption. Shutdown freezes

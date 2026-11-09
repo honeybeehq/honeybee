@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { DatabaseSync } from "node:sqlite";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { sleep, startDaemon, waitFor } from "./helpers.ts";
+import { startDaemon, waitFor } from "./helpers.ts";
 import { makeRegisteredServiceDir, registerService, sendHumanChat } from "./registered-service-fixture.ts";
 import type { SpawnResult, ViewResult } from "../src/protocol.ts";
 
@@ -62,7 +62,19 @@ test("quiet facts through a throwaway daemon: root/child isolation, failure, int
       messageEnd = Buffer.byteLength(journal.slice(0, journal.indexOf("\n", messageAt) + 1));
       return value;
     }, "quiet final native message before restart", 10_000);
-    await sleep(100);
+    const committedCursor = () => {
+      const database = new DatabaseSync(daemon.storePath, { readOnly: true });
+      try {
+        const row = database.prepare("SELECT cursor FROM runtime_observation_cursors WHERE bee_id = ? AND generation = 1").get(beeId);
+        return row ? Number(row.cursor) : null;
+      } finally { database.close(); }
+    };
+    await waitFor(async () => {
+      const cursor = committedCursor();
+      const value = await view();
+      if (value.bee?.lastTurnTrigger?.messageId !== restart.messageId || value.bee.lastTurnTrigger.endedAt !== null) throw new Error(`restart turn ended before its quiet message was committed: trigger=${JSON.stringify(value.bee?.lastTurnTrigger)} cursor=${String(cursor)}`);
+      return (cursor ?? 0) >= messageEnd;
+    }, "quiet final native message committed mid-turn before restart", 10_000);
     await daemon.kill();
     client.close();
     const database = new DatabaseSync(daemon.storePath, { readOnly: true });
