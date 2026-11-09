@@ -5,8 +5,9 @@ import { resolve, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 import { once } from "node:events";
-import { createHmac } from "node:crypto";
+import { createHmac, createHash } from "node:crypto";
 import { localTrustMessage } from "../../v2/daemon/src/localRpcTrust.ts";
+import { restoreStoreOffline } from "../../v2/core/src/storeBackup.ts";
 import { openCoreStore } from "../../v2/core/src/index.ts";
 import { RpcClient } from "../../v2/cli/src/client.ts";
 import { startDaemon, waitFor, AGENT_PATH } from "../../v2/daemon/tests/helpers.ts";
@@ -226,6 +227,46 @@ if (process.argv[2] === "--consumer") {
       baseline(db, node.id, initial);
       await drain(node);
     }
+    const restoredNode = nodes[0];
+    await restoredNode.daemon.stop();
+    restoredNode.daemon = null;
+    const restorePath = join(restoredNode.dir, "core.sqlite3");
+    const beforeRestore = openCoreStore(restorePath);
+    const backup = beforeRestore.backup("changed-since-owned-lab");
+    beforeRestore.renameBee(restoredNode.latest, "abandoned-history-1");
+    beforeRestore.renameBee(restoredNode.latest, "abandoned-history-2");
+    beforeRestore.close();
+    await start(restoredNode);
+    const abandoned = await call(restoredNode, "mirror.snapshot");
+    baseline(db, restoredNode.id, abandoned);
+    await restoredNode.daemon.stop();
+    restoredNode.daemon = null;
+    const restored = restoreStoreOffline(restorePath, backup.receiptPath);
+    const replacement = openCoreStore(restorePath);
+    assert.notEqual(`${replacement.mirrorCursor().epoch}/mirror.v1`, abandoned.cursor.epoch);
+    let restoredWrites = 0;
+    while (replacement.mirrorCursor().seq <= abandoned.cursor.seq) {
+      assert.ok(++restoredWrites < 1000);
+      replacement.renameBee(restoredNode.latest, `restored-history-${restoredWrites}`);
+    }
+    replacement.close();
+    const preserved = new DatabaseSync(restored.preservedPath, { readOnly: true });
+    assert.equal(`${preserved.prepare("SELECT value FROM meta WHERE key='mirror_epoch'").get().value}/mirror.v1`, abandoned.cursor.epoch);
+    preserved.close();
+    assert.equal(createHash("sha256").update(readFileSync(backup.backupPath)).digest("hex"), backup.sha256);
+    await start(restoredNode);
+    const restoredReply = await call(restoredNode, "mirror.changes", { cursor: abandoned.cursor });
+    assert.equal(restoredReply.reason, "epoch_changed");
+    assert.ok(restoredReply.cursor.seq >= abandoned.cursor.seq);
+    restoredNode.epoch = restoredReply.cursor.epoch;
+    await drain(restoredNode);
+    const restartPosition = (await call(restoredNode, "mirror.snapshot")).cursor;
+    await restoredNode.daemon.stop();
+    restoredNode.daemon = null;
+    await start(restoredNode);
+    assert.equal((await call(restoredNode, "mirror.changes", { cursor: restartPosition })).cursor.epoch, restartPosition.epoch);
+    await drain(restoredNode);
+    report.restore = { owner: "restoreStoreOffline", automaticEpochRotation: true, divergentHeadAtOrPastOldCursor: true, oldCursorRefused: true, ordinaryRestartStable: true, backupUnchanged: true, preservedAuthorityUnchanged: true };
     const privateReader = await RpcClient.connect(nodes[0].socket, 3000, undefined, { capabilities: ["mirror.changes.v1"] });
     const otherReader = await RpcClient.connect(nodes[0].socket, 3000, "remote", { capabilities: ["mirror.changes.v1"] });
     const register = async client => {
