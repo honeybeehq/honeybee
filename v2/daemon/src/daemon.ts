@@ -2786,17 +2786,20 @@ export class HiveDaemon {
         return this.withIdempotency(verb, params, () => this.rpcImportLocalConfig(params));
       case "mirror.snapshot": {
         const store = this.mustStore();
-        const snapshot = this.snapshot();
-        const cursor = store.mirrorCursor();
-        conn.alignWatch(cursor.seq);
-        return { snapshot: { ...snapshot, seq: cursor.seq, authInterruptions: store.listAuthInterruptions() }, cursor, coverage: { scope: "mirror.v1", fromSeq: 0, throughSeq: cursor.seq, headSeq: cursor.seq, retainedAfterSeq: store.mirrorRetentionFloor(), complete: true }, receipts: store.mirrorReceiptBaseline() } satisfies MirrorSnapshotResult;
+        const includeHomes = conn.operatorLocalHomes === true;
+        const snapshot = this.snapshot(includeHomes);
+        const scope = includeHomes ? "mirror.local.homes.v1" : "mirror.v1";
+        const sourceCursor = store.mirrorCursor();
+        const cursor = { ...sourceCursor, epoch: `${sourceCursor.epoch}/${scope}` };
+        conn.alignWatch(cursor.seq, includeHomes);
+        return { snapshot: { ...snapshot, seq: cursor.seq, authInterruptions: store.listAuthInterruptions() }, cursor, coverage: { scope, fromSeq: 0, throughSeq: cursor.seq, headSeq: cursor.seq, retainedAfterSeq: store.mirrorRetentionFloor(), complete: true }, receipts: store.mirrorReceiptBaseline() } satisfies MirrorSnapshotResult;
       }
       case "mirror.changes":
-        return this.rpcMirrorChanges(params);
+        return this.rpcMirrorChanges(params, conn.operatorLocalHomes === true);
       case "mirror.watchSince": {
-        const result = this.rpcMirrorChanges(params);
+        const result = this.rpcMirrorChanges(params, conn.operatorLocalHomes === true);
         const subscribed = result.status === "ok" && !result.hasMore && result.cursor.seq === result.coverage.headSeq;
-        if (subscribed) conn.subscribeWatch(result.cursor.seq);
+        if (subscribed) conn.subscribeWatch(result.cursor.seq, conn.operatorLocalHomes === true);
         return { ...result, subscribed } satisfies MirrorWatchSinceResult;
       }
       case "mirror.local.snapshot":
@@ -6994,14 +6997,20 @@ export class HiveDaemon {
     return { champion: deleted };
   }
 
-  private rpcMirrorChanges(params: Record<string, unknown>): MirrorChangesResult {
+  private rpcMirrorChanges(params: Record<string, unknown>, includeHomes = false): MirrorChangesResult {
+    const scope = includeHomes ? "mirror.local.homes.v1" : "mirror.v1";
+    const suffix = `/${scope}`;
     const raw = params.cursor;
     let cursor: MirrorCursor | undefined;
     if (raw !== undefined && raw !== null) {
       if (typeof raw !== "object" || Array.isArray(raw)) throw new RpcError("invalid_request", "mirror.changes: invalid cursor");
       const value = raw as Record<string, unknown>;
       if (typeof value.epoch !== "string" || !value.epoch || !Number.isSafeInteger(value.seq) || Number(value.seq) < 0) throw new RpcError("invalid_request", "mirror.changes: invalid cursor");
-      cursor = { epoch: value.epoch, seq: Number(value.seq) };
+      if (!value.epoch.endsWith(suffix)) {
+        const head = this.mustStore().mirrorCursor();
+        return { status: "resync_required", reason: "epoch_changed", cursor: { ...head, epoch: `${head.epoch}${suffix}` } };
+      }
+      cursor = { epoch: value.epoch.slice(0, -suffix.length), seq: Number(value.seq) };
     }
     let limit = params.limit;
     if (limit !== undefined && (!Number.isSafeInteger(limit) || Number(limit) < 1 || Number(limit) > MIRROR_CHANGES_MAX_LIMIT)) {
@@ -7010,7 +7019,8 @@ export class HiveDaemon {
     }
     if (params.throughSeq !== undefined && (!Number.isSafeInteger(params.throughSeq) || Number(params.throughSeq) < 0)) throw new RpcError("invalid_request", "mirror.changes: invalid throughSeq");
     const result = this.mustStore().mirrorChanges(cursor, { ...(limit === undefined ? {} : { limit: Number(limit) }), ...(params.throughSeq === undefined ? {} : { throughSeq: Number(params.throughSeq) }) });
-    return result.status === "ok" ? { ...result, events: this.mirrorAuditRows(result.events) } : result;
+    const nextCursor = { ...result.cursor, epoch: `${result.cursor.epoch}${suffix}` };
+    return result.status === "ok" ? { ...result, cursor: nextCursor, coverage: { ...result.coverage, scope }, events: this.mirrorAuditRows(result.events, includeHomes) } : { ...result, cursor: nextCursor };
   }
 
   private rpcTranscriptSegments(params: Record<string, unknown>): TranscriptSegmentsResult {

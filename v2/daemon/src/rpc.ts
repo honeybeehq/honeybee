@@ -576,8 +576,8 @@ export class RpcServer {
       let secretCapture: { leaseId: string; bytesBase64: string } | undefined;
       let captureExpiresAt = 0;
       const result = withRpcCaller(caller, () => {
-        if (verb === "mirror.local.snapshot" || verb === "mirror.local.watch") {
-          includeOperatorLocalHomes = frame.context === undefined && Object.keys(params).length === 0 && this.operatorLocalAllowed(conn);
+        if (verb === "mirror.local.snapshot" || verb === "mirror.local.watch" || verb === "mirror.snapshot" || verb === "mirror.changes" || verb === "mirror.watchSince") {
+          includeOperatorLocalHomes = frame.context === undefined && ((verb !== "mirror.local.snapshot" && verb !== "mirror.local.watch") || Object.keys(params).length === 0) && this.operatorLocalAllowed(conn);
           return this.opts.dispatch(verb, params, { ...conn, operatorLocalHomes: includeOperatorLocalHomes });
         }
         const automationContext = frame.context as Record<string, unknown> | undefined;
