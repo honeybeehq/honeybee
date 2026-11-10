@@ -2190,6 +2190,11 @@ export class DaemonCore {
           backOff();
           this.log(`deliver.refused bee=${rt.beeId} msg=${msg.id} reason=not_ready detail=confirmation_plan_not_ready`);
         };
+        const deferRefused = (): void => {
+          if (this.store.inTransaction) return;
+          const attempts = retry?.key === retryKey ? retry.attempts + 1 : 1;
+          this.deliveryRetries.set(rt.beeId, { key: retryKey, attempts, nextAt: this.now() + Math.min(30_000, 200 * 2 ** Math.min(attempts, 8)) * (0.75 + this.random() * 0.25) });
+        };
         const fallbackHold = this.store.multilineDelivery(msg.id);
         const holdIssue = (issue: "host_auth_failed" | "message_too_large"): void => {
           const prior = this.store.getDeliveryConfirmationIntent(msg.id);
@@ -2226,7 +2231,7 @@ export class DaemonCore {
             const refused = refusedHold(existing);
             if (existing.generation !== rt.generation || existing.wireLine === null || !refused && (existing.state !== "awaiting_confirmation" || !this.confirmationReady.has(msg.id))) continue;
             const plan = this.driver.planDeliveryConfirmation?.(rt.beeId, rt.generation, msg.id, body, { freshTurn });
-            if (refused && (!plan || plan === "not_ready" || plan.digest === existing.digest)) { if (!this.store.inTransaction) backOff(); continue; }
+            if (refused && (!plan || plan === "not_ready" || plan.digest === existing.digest)) { deferRefused(); continue; }
             if (!plan || plan === "not_ready") { refusePlan(); continue; }
             if (this.store.inTransaction) continue;
             const input = { beeId: rt.beeId, messageId: msg.id, generation: rt.generation, wireLine: plan.wireLine, digest: plan.digest, host: plan.host, settlement };
@@ -2342,6 +2347,15 @@ export class DaemonCore {
     return this.store.mailBatchReleaseReason(beeId) !== null && (batch ? batch.memberIds[0] === messageId : this.store.mailBatchCandidate(messageId));
   }
 
+  private recoverOverdue(beeId: string): void {
+    this.deliveryRetries.delete(beeId);
+    for (const intent of this.store.listDeliveryConfirmationIntents(beeId)) this.confirmationPolls.delete(intent.messageId);
+    this.hot.add(beeId);
+    const runtime = this.store.currentRuntime(beeId);
+    const wake = !runtime || runtime.state === "stopped" ? this.store.enqueueWake(beeId) : null;
+    this.log(`i1.recover bee=${beeId} runtime=${runtime?.state ?? "none"}` + (wake ? ` wake=${wake.outcome}` : ""));
+  }
+
   private i1Telemetry(rows: readonly I1PendingBee[], scope: ReadonlySet<string> | null): void {
     const bound = this.policy.i1DeadlineSteps as number;
     const record = this.onI1Violation as (violation: I1ViolationEvent) => void;
@@ -2420,6 +2434,7 @@ export class DaemonCore {
         const detail = `message ${m.id} undelivered past deadline (enqueued=${m.enqueuedAt} urgency=${m.urgency} pos=${pos} deadline=${deadline} now=${now})`;
         record({ detectedAt: now, beeId, messageId: m.id, enqueuedAt: m.enqueuedAt, deadline, detail });
         this.log(`i1.violation bee=${beeId} msg=${m.id} deadline=${deadline}`);
+        this.recoverOverdue(beeId);
       });
       if (nextAt !== null) this.scheduleBee(beeId, nextAt);
     }

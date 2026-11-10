@@ -927,7 +927,7 @@ export class RuntimeHost implements RuntimeDriver {
         this.consumed.set(messageId, generation);
         return { accepted: true };
       }
-      if (p.pendingDeliveries.has(messageId) && !options?.confirmation) return { accepted: false, reason: "not_ready", ...(options?.singleAttempt ? {pendingConfirmation: true} : {}) };
+      if (p.pendingDeliveries.has(messageId) && !options?.confirmation) return { accepted: false, reason: "not_ready", pendingConfirmation: true };
     }
     if (p.socketBroken || !p.socket || p.socket.destroyed || !p.socket.writable) {
       return refused("not_ready");
