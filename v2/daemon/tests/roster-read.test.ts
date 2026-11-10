@@ -98,7 +98,15 @@ test("roster reads over RPC: lifecycle scope, archived pages, scoped snapshot an
     assert.deepEqual(await client.request<ListResult>("list", { refs: ["worker-5", "bee-0", "nobody", "bee-0"] }), { views: [byId.get("bee-0"), byId.get("bee-5")] });
     assert.deepEqual(await client.request<ListResult>("list", { refs: ["bee"] }), all);
     assert.deepEqual(await client.request<ListResult>("list", { refs: ["nobody"] }), { views: [] });
-    for (const params of [{ refs: [] }, { refs: "bee-3" }, { refs: [""] }, { refs: [7] }, { refs: ["x".repeat(600)] }, { refs: Array.from({ length: 17 }, () => "bee-3") }, { refs: ["bee-3"], lifecycle: "active" }, { refs: ["bee-3"], limit: 2 }, { refs: ["bee-3"], after: one.next }]) {
+    assert.ok(client.capabilities.includes("roster.read.refs_limit.v1"));
+    const boundedPrefix = await client.request<ListResult>("list", { refs: ["bee"], limit: 3 });
+    assert.deepEqual(boundedPrefix, { views: ["bee-0", "bee-1", "bee-2"].map(id => ({ ...byId.get(id)!, refMatch: "prefix" })), matched: 7, truncated: true });
+    const exactFirst = await client.request<ListResult>("list", { refs: ["bee", "worker-5"], limit: 2 });
+    assert.deepEqual(exactFirst, { views: [{ ...byId.get("bee-5")!, refMatch: "exact" }, { ...byId.get("bee-0")!, refMatch: "prefix" }], matched: 7, truncated: true });
+    assert.deepEqual(await client.request<ListResult>("list", { refs: ["worker-5"], limit: 5 }), { views: [{ ...byId.get("bee-5")!, refMatch: "exact" }], matched: 1, truncated: false });
+    assert.deepEqual(await client.request<ListResult>("list", { refs: ["nobody"], limit: 5 }), { views: [], matched: 0, truncated: false });
+    assert.deepEqual(new ConfinedAdmission().admit("list", { refs: ["bee"], limit: 2 }, { beeId: "bee-0", generation: 1, parentId: null, canSend: () => false }), { refs: ["bee"], limit: 2 });
+    for (const params of [{ refs: [] }, { refs: "bee-3" }, { refs: [""] }, { refs: [7] }, { refs: ["x".repeat(600)] }, { refs: Array.from({ length: 17 }, () => "bee-3") }, { refs: ["bee-3"], lifecycle: "active" }, { refs: ["bee-3"], limit: 0 }, { refs: ["bee-3"], limit: 1001 }, { refs: ["bee-3"], limit: 1.5 }, { refs: ["bee-3"], limit: "2" }, { refs: ["bee-3"], after: one.next }]) {
       await assert.rejects(client.request("list", params), invalid, JSON.stringify(params).slice(0, 80));
     }
     const confined = new ConfinedAdmission();

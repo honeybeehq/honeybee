@@ -1,6 +1,6 @@
 import { serviceDirectory } from "../../core/src/servicePaths.ts";
 import { resolveNodePin, persistNodePin, nodePinEnv, validateDaemonNode, readNodeRepair } from "../../core/src/nodeRuntime.ts";
-import { BUILD_IDENTITY, ROSTER_READ_CAPABILITY, TRANSCRIPT_SEGMENTS_MAX_ROWS } from "../../daemon/src/protocol.ts";
+import { BUILD_IDENTITY, ROSTER_READ_CAPABILITY, ROSTER_REFS_LIMIT_CAPABILITY, TRANSCRIPT_SEGMENTS_MAX_ROWS } from "../../daemon/src/protocol.ts";
 import { pidAlive, readLiveEndpointRecord, samePath } from "../../daemon/src/endpointRecord.ts";
 import { assertServiceOwned, isNodeDataDir, refuseNodeDaemon, resolveServiceScope, ServiceScopeError, type ServiceScope } from "./serviceScope.ts";
 /**
@@ -578,15 +578,21 @@ function beeLabel(b: { id: string; handle: string | null; human_ref?: string | n
   return `${b.human_ref ?? b.handle ?? b.id} (${b.name}; ${b.id})`;
 }
 
-async function viewsMatching(c: RpcClient, ...refs: string[]): Promise<ViewResult[]> {
-  return (await c.request<ListResult>("list", c.capabilities.includes(ROSTER_READ_CAPABILITY) ? { refs } : {})).views;
+const RESOLVE_REFS_LIMIT = 64;
+
+async function viewsMatching(c: RpcClient, ...refs: string[]): Promise<{ views: ViewResult[]; matched: number }> {
+  const bounded = refs.length === 1 && c.capabilities.includes(ROSTER_REFS_LIMIT_CAPABILITY);
+  const params = !c.capabilities.includes(ROSTER_READ_CAPABILITY) ? {} : bounded ? { refs, limit: RESOLVE_REFS_LIMIT } : { refs };
+  const { views, matched } = await c.request<ListResult>("list", params);
+  return { views, matched: matched ?? views.length };
 }
 
 async function resolveBee(c: RpcClient, ref: string): Promise<string> {
-  return resolveBeeIn(await viewsMatching(c, ref), ref);
+  const { views, matched } = await viewsMatching(c, ref);
+  return resolveBeeIn(views, ref, matched);
 }
 
-export function resolveBeeIn(views: ViewResult[], needle: string): string {
+export function resolveBeeIn(views: ViewResult[], needle: string, matched = views.length): string {
   const byId = views.find((v) => v.bee?.id === needle);
   // Old imports sometimes used their pretty handle as the canonical id.
   // Such a spelling remains an alias and cannot outrank a collision.
@@ -612,12 +618,13 @@ export function resolveBeeIn(views: ViewResult[], needle: string): string {
     });
     if (prefixed.length === 1 && prefixed[0]?.bee) return prefixed[0].bee.id;
     if (prefixed.length > 1) {
+      const total = prefixed.length + Math.max(0, matched - views.length);
       const listed = prefixed
         .slice(0, 6)
         .map((v) => (v.bee ? beeLabel(v.bee) : "?"))
         .join(", ");
       throw new Error(
-        `'${needle}' is ambiguous (${prefixed.length} matches: ${listed}${prefixed.length > 6 ? ", …" : ""}) — add characters or use the handle/id`,
+        `'${needle}' is ambiguous (${total} matches: ${listed}${total > 6 ? ", …" : ""}) — add characters or use the handle/id`,
       );
     }
   }
@@ -799,7 +806,7 @@ async function spawnBee(
     } else if (parsed.flags.get("--no-parent") !== true) {
       const self = selfBeeId();
       if (self) {
-        if ((await viewsMatching(c, self)).some((v) => v.bee?.id === self)) parentId = self;
+        if ((await viewsMatching(c, self)).views.some((v) => v.bee?.id === self)) parentId = self;
       }
     }
     // Explicit --account wins over an embedded <agent>-auto/-rr selector,
@@ -2020,8 +2027,8 @@ async function cmdHandoff(ctx: CliContext, parsed: Parsed): Promise<number> {
   const wait = parsed.flags.get("--wait") === true;
   const timeoutMs = numFlag(parsed, "--timeout", 600_000);
   return withClient(ctx, async (c) => {
-    const views = await viewsMatching(c, needle);
-    const beeId = resolveBeeIn(views, needle);
+    const { views, matched } = await viewsMatching(c, needle);
+    const beeId = resolveBeeIn(views, needle, matched);
     const current = views.find((v) => v.bee?.id === beeId);
     if (!current?.bee) throw new Error(`handoff: bee ${beeId} not found`);
     const generation = current.runtime?.generation ?? 0;
@@ -2577,7 +2584,7 @@ async function cmdSend(ctx: CliContext, parsed: Parsed, options: { humanSender?:
       ? await c.request<ViewResult>("view", { beeId: needle })
       : null;
     const explicitSender = parsed.flags.get("--sender") as string | undefined;
-    const views = exact?.bee?.id === needle ? [exact] : await viewsMatching(c, needle, ...(explicitSender === undefined ? [] : [explicitSender]));
+    const views = exact?.bee?.id === needle ? [exact] : (await viewsMatching(c, needle, ...(explicitSender === undefined ? [] : [explicitSender]))).views;
     const beeId = resolveBeeIn(views, needle);
     const humanSender = options.humanSender?.trim();
     if (options.humanSender !== undefined && !humanSender) {
@@ -4698,8 +4705,8 @@ async function cmdSetModel(ctx: CliContext, parsed: Parsed): Promise<number> {
   if (!needle || (!model && !clear)) throw new Error(usage);
   if (model && clear) throw new Error(`set-model: pass either <model> or --clear, not both\n${usage}`);
   return withClient(ctx, async (c) => {
-    const views = await viewsMatching(c, needle);
-    const beeId = resolveBeeIn(views, needle);
+    const { views, matched } = await viewsMatching(c, needle);
+    const beeId = resolveBeeIn(views, needle, matched);
     const bee = views.find((v) => v.bee?.id === beeId)?.bee;
     const args = withModelArg(bee?.agent ?? "", bee?.args ?? null, clear ? null : (model as string));
     if (parsed.flags.get("--apply") === true) {

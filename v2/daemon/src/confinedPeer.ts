@@ -116,7 +116,7 @@ export function assertConfinedSpawn(params: Record<string, unknown>, conn: Pick<
 
 
 const CONFINED_FIELDS: Record<string, readonly string[]> = {
-  view: ["beeId"], list: ["refs"],
+  view: ["beeId"], list: ["refs", "limit"],
   "question.ask": ["beeId", "text", "options", "id", "idempotencyKey"],
   "seal.create": ["beeId", "title", "body", "refs", "idempotencyKey"],
   send: ["beeId", "body", "sender", "urgency", "idempotencyKey"],

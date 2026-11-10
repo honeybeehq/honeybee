@@ -726,12 +726,18 @@ export function handlePrefix(agent: string): string {
   return letters.length === 2 ? letters : (letters + "XX").slice(0, 2);
 }
 
-export function beeRefCandidate(bee: Pick<BeeRow, "id" | "name" | "handle" | "human_ref">, ref: string): boolean {
+export type BeeRefMatch = "exact" | "prefix";
+
+export function beeRefMatch(bee: Pick<BeeRow, "id" | "name" | "handle" | "human_ref">, ref: string): BeeRefMatch | null {
   const lower = ref.toLowerCase();
   const handle = bee.handle?.toLowerCase() ?? null;
   const humanRef = bee.human_ref?.toLowerCase() ?? null;
-  if (bee.id === ref || bee.name === ref || bee.id.toLowerCase() === lower || handle === lower || humanRef === lower) return true;
-  return ref.length >= 3 && (bee.id.startsWith(ref) || bee.name.startsWith(ref) || (handle?.startsWith(lower) ?? false) || (humanRef?.startsWith(lower) ?? false));
+  if (bee.id === ref || bee.name === ref || bee.id.toLowerCase() === lower || handle === lower || humanRef === lower) return "exact";
+  return ref.length >= 3 && (bee.id.startsWith(ref) || bee.name.startsWith(ref) || (handle?.startsWith(lower) ?? false) || (humanRef?.startsWith(lower) ?? false)) ? "prefix" : null;
+}
+
+export function beeRefCandidate(bee: Pick<BeeRow, "id" | "name" | "handle" | "human_ref">, ref: string): boolean {
+  return beeRefMatch(bee, ref) !== null;
 }
 
 export const STORE_PAGE_CACHE_KIB = 32 * 1024;
@@ -6994,12 +7000,27 @@ export class CoreStore {
   }
 
   listBeeViewRowsForRefs(refs: readonly string[]): BeeViewRow[] {
-    const ids = (this.stmt("SELECT id, name, handle, human_ref FROM bees").all() as Row[])
-      .filter(row => {
-        const names = { id: String(row.id), name: String(row.name), handle: (row.handle as string | null) ?? null, human_ref: (row.human_ref as string | null) ?? null };
-        return refs.some(ref => beeRefCandidate(names, ref));
-      })
-      .map(row => String(row.id));
+    return this.beeViewRowsOfIds(this.beeRefMatches(refs).map(match => match.id));
+  }
+
+  listBoundedBeeViewRowsForRefs(refs: readonly string[], limit: number): { rows: Array<BeeViewRow & { refMatch: BeeRefMatch }>; matched: number } {
+    const matches = this.beeRefMatches(refs);
+    const rank = (match: BeeRefMatch): number => match === "exact" ? 0 : 1;
+    const kept = matches.sort((a, b) => rank(a.match) - rank(b.match) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)).slice(0, limit);
+    const rowsById = new Map(this.beeViewRowsOfIds(kept.map(match => match.id)).map(row => [row.bee.id, row] as const));
+    return { rows: kept.flatMap(({ id, match }) => { const row = rowsById.get(id); return row ? [{ ...row, refMatch: match }] : []; }), matched: matches.length };
+  }
+
+  private beeRefMatches(refs: readonly string[]): Array<{ id: string; match: BeeRefMatch }> {
+    return (this.stmt("SELECT id, name, handle, human_ref FROM bees").all() as Row[]).flatMap(row => {
+      const names = { id: String(row.id), name: String(row.name), handle: (row.handle as string | null) ?? null, human_ref: (row.human_ref as string | null) ?? null };
+      const found = refs.map(ref => beeRefMatch(names, ref));
+      const match = found.includes("exact") ? "exact" : found.includes("prefix") ? "prefix" : null;
+      return match ? [{ id: names.id, match }] : [];
+    });
+  }
+
+  private beeViewRowsOfIds(ids: readonly string[]): BeeViewRow[] {
     if (ids.length === 0) return [];
     const bees = (this.stmt(`${BEE_ROW_SELECT} WHERE bees.id IN (SELECT value FROM json_each(?)) ORDER BY bees.id`).all(JSON.stringify(ids)) as Row[]).map(row => this.mapPhoneBee(row));
     return this.beeViewRowsOf(bees, false);

@@ -336,6 +336,7 @@ export const DAEMON_CAPABILITIES = [
   "roster.read.v1",
   "health.delivery_held.v1",
   "transcript.segments.v3",
+  "roster.read.refs_limit.v1",
 ] as const;
 export type DaemonCapability = (typeof DAEMON_CAPABILITIES)[number];
 
@@ -2060,6 +2061,7 @@ export interface ViewResult {
 }
 
 export const ROSTER_READ_CAPABILITY = "roster.read.v1" satisfies DaemonCapability;
+export const ROSTER_REFS_LIMIT_CAPABILITY = "roster.read.refs_limit.v1" satisfies DaemonCapability;
 export const LIST_PAGE_MAX_LIMIT = 1000;
 export const LIST_REF_MAX_BYTES = 512;
 export const LIST_REFS_MAX = 16;
@@ -2072,8 +2074,10 @@ export interface ListParams {
 }
 
 export interface ListResult {
-  views: ViewResult[];
+  views: Array<ViewResult & { refMatch?: "exact" | "prefix" }>;
   next?: string | null;
+  matched?: number;
+  truncated?: boolean;
 }
 
 export interface SnapshotParams {

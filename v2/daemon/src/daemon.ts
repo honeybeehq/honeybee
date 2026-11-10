@@ -6380,8 +6380,12 @@ export class HiveDaemon {
       if (!Array.isArray(refs) || refs.length === 0 || refs.length > LIST_REFS_MAX || !refs.every((ref): ref is string => typeof ref === "string" && ref.length > 0 && Buffer.byteLength(ref) <= LIST_REF_MAX_BYTES)) {
         throw new RpcError("invalid_request", `list: refs must be 1 to ${LIST_REFS_MAX} non-empty strings of at most ${LIST_REF_MAX_BYTES} bytes`);
       }
-      if (lifecycle !== null || limit !== undefined || after !== undefined) throw new RpcError("invalid_request", "list: refs cannot be combined with lifecycle, limit or after");
-      return {views: shape(store.listBeeViewRowsForRefs(refs))};
+      if (lifecycle !== null || after !== undefined) throw new RpcError("invalid_request", "list: refs cannot be combined with lifecycle or after");
+      if (limit === undefined) return {views: shape(store.listBeeViewRowsForRefs(refs))};
+      if (typeof limit !== "number" || !Number.isSafeInteger(limit) || limit < 1 || limit > LIST_PAGE_MAX_LIMIT) throw new RpcError("invalid_request", `list: limit must be an integer from 1 to ${LIST_PAGE_MAX_LIMIT}`);
+      const bounded = store.listBoundedBeeViewRowsForRefs(refs, limit);
+      const views = shape(bounded.rows).map((view, index) => ({ ...view, refMatch: bounded.rows[index]!.refMatch }));
+      return {views, matched: bounded.matched, truncated: bounded.matched > views.length};
     }
     if (limit === undefined) {
       if (after !== undefined) throw new RpcError("invalid_request", "list: after requires limit");
