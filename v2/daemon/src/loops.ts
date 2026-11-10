@@ -70,6 +70,7 @@ import {
   type DaemonStepInputs,
   type DaemonWorkRow,
   type DeliveryConfirmationIntent,
+  type DeliveryConfirmationReason,
   type HandoffContext,
   type HandoffContextTurn,
   type I1PendingBee,
@@ -320,6 +321,21 @@ const HOST_AUTH_RECHECK_MS = 1_000;
 function neverWrittenAuthHold(intent: DeliveryConfirmationIntent | null, generation: number): boolean {
   return intent !== null && intent.wireLine === null && intent.state === "held" && intent.reason === "host_auth_failed" && intent.generation === generation;
 }
+
+function refusedHold(intent: DeliveryConfirmationIntent | null): boolean {
+  return intent !== null && intent.wireLine !== null && intent.state === "held" && intent.reason === "refused";
+}
+
+function refusedPlainWrite(intent: DeliveryConfirmationIntent): boolean {
+  return refusedHold(intent) && intent.wireLine !== null && !intent.settlement?.mailBatchId && !intent.settlement?.multilineFallbackId;
+}
+
+type AcceptPoint = "open" | "interrupting";
+type AcceptPointEvent = "interrupt_accepted" | "turn_ended" | "exited";
+const ACCEPT_POINT_TRANSITIONS: Readonly<Record<AcceptPoint, Partial<Record<AcceptPointEvent, AcceptPoint>>>> = {
+  open: { interrupt_accepted: "interrupting" },
+  interrupting: { turn_ended: "open", exited: "open" },
+};
 const QUIET_GLOBAL_CHANGE_PREFIXES = ["account", "rpc.", "cell.retention.", "cell.pressure.", "cell.parked", "cell_op.", "node.capacity", "login_flow.", "template.", "selection_cursor.", "legacy_birth_bound", "auth_interruption.pruned", "champion"];
 
 type StepSnapshot =
@@ -714,6 +730,7 @@ export class DaemonCore {
   // -------------------------------------------------------------------------
 
   private applyObservation(obs: DriverObservation): void {
+    if (obs.kind === "turn_ended" || obs.kind === "exited") this.moveAcceptPoint(obs.beeId, obs.generation, obs.kind);
     if (!this.store.getBee(obs.beeId)) {
       this.log(`obs.skip bee=${obs.beeId} gen=${obs.generation} kind=${obs.kind} reason=no_bee`);
       return;
@@ -1816,9 +1833,35 @@ export class DaemonCore {
   }
 
   private readonly interruptRequested = new Set<number>();
+  private readonly interruptingGeneration = new Map<string, number>();
   private readonly deliveryRetries = new Map<string, { key: string; attempts: number; nextAt: number }>();
   private readonly confirmationReady = new Map<number, string>();
   private readonly confirmationPolls = new Map<number, { beeId: string; key: string; attempts: number; nextAt: number }>();
+
+  private acceptPoint(beeId: string, generation: number): AcceptPoint {
+    return this.interruptingGeneration.get(beeId) === generation ? "interrupting" : "open";
+  }
+
+  private moveAcceptPoint(beeId: string, generation: number, event: AcceptPointEvent): void {
+    const next = ACCEPT_POINT_TRANSITIONS[this.acceptPoint(beeId, generation)][event];
+    if (next === "interrupting") this.interruptingGeneration.set(beeId, generation);
+    else if (next === "open") this.interruptingGeneration.delete(beeId);
+  }
+
+  interruptAccepted(beeId: string, generation: number): void {
+    this.moveAcceptPoint(beeId, generation, "interrupt_accepted");
+  }
+
+  private holdConfirmation(intent: DeliveryConfirmationIntent, reason: DeliveryConfirmationReason): void {
+    const held = this.store.holdDeliveryConfirmation(intent.messageId, reason);
+    if (held && (intent.state !== "held" || intent.reason !== reason)) this.log(`deliver.held bee=${intent.beeId} msg=${intent.messageId} gen=${intent.generation} reason=${reason}`);
+  }
+
+  private releaseRefusedPlainWrite(intent: DeliveryConfirmationIntent): boolean {
+    if (intent.digest === null || !refusedPlainWrite(intent) || !this.store.releaseRefusedDeliveryConfirmation(intent.messageId, intent.digest)) return false;
+    this.log(`deliver.released bee=${intent.beeId} msg=${intent.messageId} gen=${intent.generation} reason=refused`);
+    return true;
+  }
 
   private reconcileDeliveryConfirmations(scope: ReadonlySet<string> | null): void {
     if (this.store.inTransaction) return;
@@ -1843,7 +1886,7 @@ export class DaemonCore {
     for (const intent of intents) {
       const runtime = this.store.currentRuntime(intent.beeId);
       if (!runtime || runtime.generation !== intent.generation || runtime.state === "stopped") {
-        this.store.holdDeliveryConfirmation(intent.messageId, "generation_changed");
+        if (!this.releaseRefusedPlainWrite(intent)) this.holdConfirmation(intent, "generation_changed");
         this.confirmationReady.delete(intent.messageId);
         continue;
       }
@@ -1858,9 +1901,10 @@ export class DaemonCore {
       // lane, which no store change announces. Re-check it on a cadence.
       if (neverWrittenAuthHold(intent, runtime.generation)) this.scheduleBee(intent.beeId, this.now() + HOST_AUTH_RECHECK_MS);
       else this.hot.add(intent.beeId);
+      if (refusedHold(intent)) continue;
       if (this.confirmationReady.has(intent.messageId)) {
         if (this.now() - intent.since >= 30_000) {
-          this.store.holdDeliveryConfirmation(intent.messageId, "lane_unavailable");
+          this.holdConfirmation(intent, "lane_unavailable");
           this.confirmationReady.delete(intent.messageId);
           this.confirmationPolls.delete(intent.messageId);
         }
@@ -1920,12 +1964,15 @@ export class DaemonCore {
       } else if (result === "refused") {
         if (intent.wireLine === null) continue;
         if (this.store.retryRefusedDeliveryConfirmation(intent.messageId, intent.generation, intent.digest)) this.confirmationReady.set(intent.messageId, intent.beeId);
-        else this.confirmationReady.delete(intent.messageId);
+        else {
+          this.confirmationReady.delete(intent.messageId);
+          if (refusedHold(this.store.getDeliveryConfirmationIntent(intent.messageId))) this.log(`deliver.held bee=${intent.beeId} msg=${intent.messageId} gen=${intent.generation} reason=refused`);
+        }
       } else if (result !== "pending_ack") {
         this.confirmationReady.delete(intent.messageId);
-        this.store.holdDeliveryConfirmation(intent.messageId, result);
+        this.holdConfirmation(intent, result);
       } else if (intent.state === "awaiting_confirmation" && this.now() - intent.since >= 30_000) {
-        this.store.holdDeliveryConfirmation(intent.messageId, "unknown");
+        this.holdConfirmation(intent, "unknown");
       }
     }
   }
@@ -2002,6 +2049,7 @@ export class DaemonCore {
           }
         }
         if (rt.state === "booting") continue;
+        if (this.acceptPoint(rt.beeId, rt.generation) === "interrupting") continue;
         if (rt.state === "idle" && this.store.hasPendingReconnect(rt.beeId, rt.generation)) continue;
         const threadOperation = this.store.threadOperationForSuccessor(rt.beeId);
         if (threadOperation && threadOperation.phase !== "ready") continue;
@@ -2064,6 +2112,7 @@ export class DaemonCore {
             // reject turn/steer after turn/interrupt; tmux could type before
             // the TUI settles). The observed turn_ended opens the next point.
             if (res.interrupted) {
+              if (res.closesAcceptPoint) this.interruptAccepted(rt.beeId, rt.generation);
               this.store.recordDeliveryInterrupt(rt.beeId, urgent.id, rt.generation);
               continue;
             }
@@ -2131,11 +2180,14 @@ export class DaemonCore {
         const retryKey = JSON.stringify([msg.id, msg.urgency, rt.generation, rt.state, rt.updatedAt, readiness, msg.deliveryHold?.stage, this.store.inTransaction]);
         const retry = this.deliveryRetries.get(rt.beeId);
         if (retry && retry.key === retryKey && this.now() < retry.nextAt) continue;
-        const refusePlan = (): void => {
-          if (this.store.inTransaction) return;
+        const backOff = (): void => {
           const attempts = retry?.key === retryKey ? retry.attempts + 1 : 1;
           const delay = Math.min(30_000, 200 * 2 ** Math.min(attempts, 8)) * (0.75 + this.random() * 0.25);
           this.deliveryRetries.set(rt.beeId, { key: retryKey, attempts, nextAt: this.now() + delay });
+        };
+        const refusePlan = (): void => {
+          if (this.store.inTransaction) return;
+          backOff();
           this.log(`deliver.refused bee=${rt.beeId} msg=${msg.id} reason=not_ready detail=confirmation_plan_not_ready`);
         };
         const fallbackHold = this.store.multilineDelivery(msg.id);
@@ -2171,14 +2223,17 @@ export class DaemonCore {
         if (!fallback?.handled) {
           const existing = this.store.getDeliveryConfirmationIntent(msg.id);
           if (existing) {
-            if (existing.generation !== rt.generation || existing.wireLine === null || existing.state !== "awaiting_confirmation" || !this.confirmationReady.has(msg.id)) continue;
+            const refused = refusedHold(existing);
+            if (existing.generation !== rt.generation || existing.wireLine === null || !refused && (existing.state !== "awaiting_confirmation" || !this.confirmationReady.has(msg.id))) continue;
             const plan = this.driver.planDeliveryConfirmation?.(rt.beeId, rt.generation, msg.id, body, { freshTurn });
+            if (refused && (!plan || plan === "not_ready" || plan.digest === existing.digest)) { if (!this.store.inTransaction) backOff(); continue; }
             if (!plan || plan === "not_ready") { refusePlan(); continue; }
             if (this.store.inTransaction) continue;
             const input = { beeId: rt.beeId, messageId: msg.id, generation: rt.generation, wireLine: plan.wireLine, digest: plan.digest, host: plan.host, settlement };
             if (!deliveryConfirmationIntentFits(input)) { holdIssue("message_too_large"); continue; }
             confirmation = this.store.transact(() => { const row = this.store.replanDeliveryConfirmationIntent(input, existing.digest); recordPointerAttempt(); return row; });
             this.confirmationReady.delete(msg.id);
+            if (refused) this.log(`deliver.replanned bee=${rt.beeId} msg=${msg.id} gen=${rt.generation} after=refused`);
           } else {
             const plan = this.driver.planDeliveryConfirmation?.(rt.beeId, rt.generation, msg.id, body, { freshTurn });
             if (plan === "not_ready") { refusePlan(); continue; }
@@ -2230,12 +2285,11 @@ export class DaemonCore {
             }
             else this.store.pauseMultilineDeliveryWait(msg.id);
           }
-          if (outcome.reason === "not_ready" && !unsupportedAttempts.has(msg.id) && !this.store.inTransaction) {
-            const attempts = retry?.key === retryKey ? retry.attempts + 1 : 1;
-            const delay = Math.min(30_000, 200 * 2 ** Math.min(attempts, 8)) * (0.75 + this.random() * 0.25);
-            this.deliveryRetries.set(rt.beeId, { key: retryKey, attempts, nextAt: this.now() + delay });
-          } else this.deliveryRetries.delete(rt.beeId);
-          this.log(`deliver.refused bee=${rt.beeId} msg=${msg.id} reason=${outcome.reason}` + (outcome.detail ? ` detail=${outcome.detail}` : ""));
+          if (outcome.reason === "not_ready" && !unsupportedAttempts.has(msg.id) && !this.store.inTransaction) backOff();
+          else this.deliveryRetries.delete(rt.beeId);
+          this.log(outcome.pendingConfirmation
+            ? `deliver.pending bee=${rt.beeId} msg=${msg.id} gen=${rt.generation} urgency=${msg.urgency}`
+            : `deliver.refused bee=${rt.beeId} msg=${msg.id} reason=${outcome.reason}` + (outcome.detail ? ` detail=${outcome.detail}` : ""));
         }
       }
     } finally { this.store.retainMultilineDeliveryWaits(unsupportedAttempts); }

@@ -959,7 +959,7 @@ export class RuntimeHost implements RuntimeDriver {
       this.events.push({ beeId, generation, kind: "turn_started", synthetic: true, messageId });
     }
     return p.adapter.confirmsDelivery
-      ? { accepted: false, reason: "not_ready", ...(options?.singleAttempt ? {pendingConfirmation: true} : {}) }
+      ? { accepted: false, reason: "not_ready", pendingConfirmation: true }
       : { accepted: true };
   }
 
@@ -1070,7 +1070,7 @@ export class RuntimeHost implements RuntimeDriver {
     if (encoded == null) return { interrupted: false, reason: "not_ready" };
     this.writeLine(p, encoded);
     p.quiet?.invalidate();
-    return { interrupted: true };
+    return { interrupted: true, ...(p.adapter.confirmsDelivery ? { closesAcceptPoint: true } : {}) };
   }
 
   observe(): DriverObservation[] {

@@ -6,7 +6,7 @@ import type { HumanChatAdmission, HumanChatProvenance, HumanChatReceipt, HumanFi
 import { HUMAN_FIRST_SQL, MAIL_BATCHING_SQL } from "./schema.ts";
 import { createHash } from "node:crypto";
 import { DELIVERY_CONFIRMATION_SQL, publicDeliveryConfirmation, readDeliveryConfirmations } from "./deliveryConfirmation.ts";
-import { DELIVERY_CONFIRMATION_MAX_WIRE_BYTES, DELIVERY_CONFIRMATION_AUDIT_RESERVE_BYTES, deliveryConfirmationIntentFits, MAX_DELIVERY_CONFIRMATION_BYTES, type NeverWrittenDeliveryHoldReason, DELIVERY_CONFIRMATION_REASONS, type DeliveryConfirmation, type DeliveryConfirmationIntent, type KnownDeliveryConfirmationIntent, type PrepareDeliveryConfirmationIntent, type PrepareUnknownDeliveryConfirmationIntent, type DeliveryConfirmationReason, type ResolveDeliveryConfirmation, type DeliveryConfirmationResolution, type DeliveryConfirmationDecision } from "./deliveryConfirmationTypes.ts";
+import { DELIVERY_CONFIRMATION_MAX_WIRE_BYTES, DELIVERY_CONFIRMATION_AUDIT_RESERVE_BYTES, deliveryConfirmationIntentFits, MAX_DELIVERY_CONFIRMATION_BYTES, type NeverWrittenDeliveryHoldReason, DELIVERY_CONFIRMATION_REASONS, type DeliveryConfirmation, type DeliveryHoldCounts, type DeliveryConfirmationIntent, type KnownDeliveryConfirmationIntent, type PrepareDeliveryConfirmationIntent, type PrepareUnknownDeliveryConfirmationIntent, type DeliveryConfirmationReason, type ResolveDeliveryConfirmation, type DeliveryConfirmationResolution, type DeliveryConfirmationDecision } from "./deliveryConfirmationTypes.ts";
 import { DeliveryNotHeldError } from "./types.ts";
 import type { TranscriptSegmentReadyReason } from "./types.ts";
 import type { Lifecycle, QuotaRecoveryRow, QuotaRecoveryReasonDetail } from "./types.ts";
@@ -4458,6 +4458,32 @@ export class CoreStore {
       this.audit("mail.confirmation_released", row.beeId, { messageId, generation, digest });
       return true;
     });
+  }
+
+  releaseRefusedDeliveryConfirmation(messageId: number, digest: string): boolean {
+    return this.tx(() => {
+      const row = this.getDeliveryConfirmationIntent(messageId);
+      if (!row || row.wireLine === null || row.digest !== digest || row.state !== "held" || row.reason !== "refused") return false;
+      this.stmt("DELETE FROM delivery_confirmation_intents WHERE message_id = ?").run(messageId);
+      this.audit("mail.confirmation_released", row.beeId, { messageId, generation: row.generation, digest, reason: "refused" });
+      return true;
+    });
+  }
+
+  deliveryHoldCounts(): DeliveryHoldCounts {
+    const counts: DeliveryHoldCounts = { total: 0, unknownOutcome: 0, byReason: {}, oldestSince: null };
+    const generations = new Map<string, number | null>();
+    for (const row of this.listDeliveryConfirmationIntents()) {
+      if (!generations.has(row.beeId)) generations.set(row.beeId, this.currentRuntime(row.beeId)?.generation ?? null);
+      const current = generations.get(row.beeId) ?? null;
+      const hold = publicDeliveryConfirmation(current !== null && current !== row.generation ? { ...row, state: "held", reason: "generation_changed" } : row);
+      if (hold.state !== "held") continue;
+      counts.total += 1;
+      counts.byReason[hold.reason] = (counts.byReason[hold.reason] ?? 0) + 1;
+      if (hold.reason === "unknown" || hold.reason === "generation_changed") counts.unknownOutcome += 1;
+      if (counts.oldestSince === null || hold.since < counts.oldestSince) counts.oldestSince = hold.since;
+    }
+    return counts;
   }
 
   retryRefusedDeliveryConfirmation(messageId: number, generation: number, expectedDigest: string): KnownDeliveryConfirmationIntent | null {

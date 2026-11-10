@@ -52,7 +52,7 @@ test("codex: fresh start refusal remains unconsumed and a stale steer plan canno
   const staleWire = adapter.encodeMessage("fresh", { sessionId: "thread", messageId: 32, turnActive: true, turnId: "old" })!;
   assert.deepEqual(driver.deliver("bee", 1, 32, "fresh", { freshTurn: true, confirmation: { wireLine: staleWire, digest: createHash("sha256").update(staleWire).digest("hex"), host: proc.processIdentity } }), { accepted: false, reason: "not_ready" });
   assert.deepEqual(frames, []);
-  assert.deepEqual(driver.deliver("bee", 1, 32, "fresh", { freshTurn: true, confirmation: plan }), { accepted: false, reason: "not_ready" });
+  assert.deepEqual(driver.deliver("bee", 1, 32, "fresh", { freshTurn: true, confirmation: plan }), { accepted: false, reason: "not_ready", pendingConfirmation: true });
   assert.equal(proc.pendingDeliveries.has(32), true);
   const frame = JSON.parse(frames[0]!);
   assert.deepEqual(frame.delivery, { id: 32, digest: plan.digest, beeId: "bee", generation: 1 });

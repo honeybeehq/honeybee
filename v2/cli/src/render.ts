@@ -587,9 +587,21 @@ export function renderHealth(result: HealthResult): string[] {
       dim(`${result.bees.archived} archived`),
     ]),
     joinParts([bold("i1"), `${i1} violations`]),
+    ...(result.deliveryHeld ? [deliveryHeldLine(result.deliveryHeld)] : []),
     ...(result.processCpu ? [joinParts([bold("cpu"), `${result.processCpu.percent}%`, dim(`avg over ${Math.round(result.processCpu.windowMs / 1000)}s`), dim(`${result.processCpu.cores} cores`)])] : []),
     ...(result.naming ? [namingHealthLine(result.naming)] : []),
   ];
+}
+
+function deliveryHeldLine(held: NonNullable<HealthResult["deliveryHeld"]>): string {
+  if (held.total === 0) return joinParts([bold("delivery"), `${green("0")} held`]);
+  const reasons = Object.entries(held.byReason).map(([reason, count]) => `${reason} ${count}`).join(", ");
+  return joinParts([
+    bold("delivery"),
+    `${red(String(held.total))} held`,
+    reasons,
+    ...(held.oldestSince === null ? [] : [dim(`oldest ${formatRelativeTime(held.oldestSince)} ago`)]),
+  ]);
 }
 
 export function namingHealthText(naming: NamingHealth): string {

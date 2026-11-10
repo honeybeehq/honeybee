@@ -5730,6 +5730,7 @@ export class HiveDaemon {
     else if (rt.state === "idle") outcome = { interrupted: false, reason: "idle" };
     else if (rt.state === "booting") outcome = { interrupted: false, reason: "not_ready" };
     else outcome = driver.interrupt(beeId, rt.generation);
+    if (outcome.closesAcceptPoint && rt) this.core?.interruptAccepted(beeId, rt.generation);
     store.recordInterrupt(beeId, rt?.generation ?? null, outcome);
     this.log(`bee.interrupt bee=${beeId} gen=${rt?.generation ?? "-"} interrupted=${outcome.interrupted}${outcome.reason ? ` reason=${outcome.reason}` : ""}`);
     return {
@@ -7151,6 +7152,7 @@ export class HiveDaemon {
 
   private rpcHealth(params: Record<string, unknown> = {}): HealthResult {
     const store = this.mustStore();
+    const deliveryHeld = store.deliveryHoldCounts();
     return {
       ...(this.identityRecovery.counts(Date.now()).overdue ? {identityDiagnostic: {warning: "process_identity_unresolved" as const, count: this.identityRecovery.counts(Date.now()).overdue}} : {}),
       childHealth: this.childHealth.status,
@@ -7166,7 +7168,8 @@ export class HiveDaemon {
       confinement: {strict: this.confinementReasons.size > 0, reasons: [...this.confinementReasons], bwrap: this.confinementBwrap},
       lastBoot: this.lastBoot,
       i1Violations: this.telemetry?.i1Count() ?? 0,
-      deliveryHoldUnknown: store.countUnknownMultilineHolds(),
+      deliveryHoldUnknown: store.countUnknownMultilineHolds() + deliveryHeld.unknownOutcome,
+      deliveryHeld,
       ...(params.includeDeliveryPrepareAuditUnknown === true ? {deliveryFileHelper: this.deliveryFiles.status()} : {}),
       ...(params.includeDeliveryPrepareAuditUnknown === true ? {deliveryPrepareAuditUnknown: store.countUnknownMultilinePrepareAudits()} : {}),
       paneInputUnknown: store.multilinePaneQuarantines().length,

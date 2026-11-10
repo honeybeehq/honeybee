@@ -119,6 +119,8 @@ test("int.1: verb round-trips over the real socket — the full bee lifecycle", 
     assert.equal(health.i1Violations, 0);
     assert.equal(health.bees.total, 1);
     assert.ok(client.capabilities.includes("health.process_cpu.v1"));
+    assert.ok(client.capabilities.includes("health.delivery_held.v1"));
+    assert.deepEqual(health.deliveryHeld, { total: 0, unknownOutcome: 0, byReason: {}, oldestSince: null });
     assert.notEqual(health.processCpu, undefined);
     assert.ok(health.processCpu === null || (health.processCpu!.schema === 1 && health.processCpu!.percent >= 0 && health.processCpu!.windowMs > 0 && health.processCpu!.cores >= 1));
     const info = await client.request<{ protocol: string; processCpu?: HealthResult["processCpu"] }>("deployInfo");

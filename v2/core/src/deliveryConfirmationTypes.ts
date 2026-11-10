@@ -9,6 +9,12 @@ export interface DeliveryConfirmation {
   reason: DeliveryConfirmationReason;
   delivered: false;
 }
+export interface DeliveryHoldCounts {
+  total: number;
+  unknownOutcome: number;
+  byReason: Partial<Record<DeliveryConfirmationReason, number>>;
+  oldestSince: number | null;
+}
 export const DELIVERY_CONFIRMATION_MAX_AUDIT_BYTES = 16 * 1024 * 1024;
 export const DELIVERY_CONFIRMATION_AUDIT_RESERVE_BYTES = 32 * 1024;
 export const DELIVERY_CONFIRMATION_MAX_WIRE_BYTES = DELIVERY_CONFIRMATION_MAX_AUDIT_BYTES - DELIVERY_CONFIRMATION_AUDIT_RESERVE_BYTES;

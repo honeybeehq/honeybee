@@ -334,6 +334,7 @@ export const DAEMON_CAPABILITIES = [
   "runtime.update.v1",
   "health.process_cpu.v1",
   "roster.read.v1",
+  "health.delivery_held.v1",
 ] as const;
 export type DaemonCapability = (typeof DAEMON_CAPABILITIES)[number];
 
@@ -2355,6 +2356,7 @@ export interface HealthResult {
   confinement?: {strict: boolean; reasons: string[]; bwrap: {path: string | null; setuid: boolean}};
   paneInputUnknown?: number;
   deliveryHoldUnknown?: number;
+  deliveryHeld?: import("../../core/src/deliveryConfirmationTypes.ts").DeliveryHoldCounts;
   deliveryPrepareAuditUnknown?: number;
   deliveryFileHelper?: {state: "ready" | "delivery_file_helper_unavailable"; target: string; artifactPath: string};
   identityDiagnostic?: {warning: "process_identity_unresolved" | null; count: number};

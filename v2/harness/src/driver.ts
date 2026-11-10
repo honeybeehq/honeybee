@@ -105,6 +105,7 @@ export interface DeliverOutcome {
 export interface InterruptOutcome {
   interrupted: boolean;
   reason?: "idle" | "no_process" | "not_ready" | "unsupported";
+  closesAcceptPoint?: boolean;
 }
 
 /** A live runtime process, identified for boot re-adoption by pid + start time. */

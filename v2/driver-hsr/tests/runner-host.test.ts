@@ -766,7 +766,7 @@ test("Codex adoption restores the durable thread and active turn, then confirms 
       logPath,
       (text) => text.includes('"method":"turn/steer"') && text.includes("steered after daemon restart"),
     );
-    assert.deepEqual(second.interrupt("bee-codex-adopt", 1), { interrupted: true });
+    assert.deepEqual(second.interrupt("bee-codex-adopt", 1), { interrupted: true, closesAcceptPoint: true });
     await drainUntil(second, (events) => ofKind(events, "turn_ended").length > 0);
 
     const idleCursor = checkpointOf(second, "bee-codex-adopt");
