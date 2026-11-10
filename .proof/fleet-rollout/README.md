@@ -49,3 +49,7 @@ The full gate (`node scripts/build-runtime-artifact.mjs b3c17a40… --out …`) 
 ## CI on main
 
 fc5dd157 widened `account.lease.install` labels to `isAccountLabel` but left `accounts-rpc.test.ts` expecting `invalid_request` for labels with a slash, a backslash or a space; runs 42822057752 and 42828633533 failed on that test deterministically (`account_lease_conflict` instead). cd9b8faa updates the test to the new rule (blank, control-character and overlong labels refused; a human label renews).
+
+## After the real metal-1 run
+
+The coordinator's metal-1 hop (956ef2e2, store 51, 617 MB) showed two tool defects, both fixed: the successor wait took a `deploy-info` answer without a build identity (the daemon was still migrating the store) as a revert; it now treats "answers without a sha while `current` still points at the target and no `rollback.json` exists" as booting and keeps waiting, bounded by 180 s plus 120 s per GB of store (cap 30 min), and decides only on a reported sha. And a `hive runtime probe` refusal (metal-1: `resource_blocked`, the disk floor) is now a finding of its own (`findings` in `--json`, a `FINDING:` step line) on a rollout that is otherwise verified, not a failed rollout. Both labs rerun green on the patched script (`hop-9d95df22.jsonl` with the cd9b8faa artifact, `mac-hop.jsonl`).

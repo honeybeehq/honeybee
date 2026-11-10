@@ -3,10 +3,10 @@ Description=Honeybee v2 hive daemon (hb.fleet.lab)
 
 [Service]
 Type=simple
-ExecStart="/var/tmp/hb-fleet-lab-hop-9d95df22-mwamp270/runtime/launch" "/opt/node-v24.18.0-linux-x64/bin/node" "v2" "daemon" "run" "--data-dir" "/var/tmp/hb-fleet-lab-hop-9d95df22-mwamp270/v2"
-Environment="HIVE_V2_DATA_DIR=/var/tmp/hb-fleet-lab-hop-9d95df22-mwamp270/v2"
+ExecStart="/var/tmp/hb-fleet-lab-hop-9d95df22-mwayvcln/runtime/launch" "/opt/node-v24.18.0-linux-x64/bin/node" "v2" "daemon" "run" "--data-dir" "/var/tmp/hb-fleet-lab-hop-9d95df22-mwayvcln/v2"
+Environment="HIVE_V2_DATA_DIR=/var/tmp/hb-fleet-lab-hop-9d95df22-mwayvcln/v2"
 Environment="HOME=/home/trmd"
-Environment="PATH=/var/tmp/hb-fleet-lab-hop-9d95df22-mwamp270/bin:/opt/node-v24.18.0-linux-x64/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="PATH=/var/tmp/hb-fleet-lab-hop-9d95df22-mwayvcln/bin:/opt/node-v24.18.0-linux-x64/bin:/usr/local/bin:/usr/bin:/bin"
 Environment="HIVE_NODE_PATH=/opt/node-v24.18.0-linux-x64/bin/node"
 Environment="HIVE_NODE_VERSION=24.18.0"
 Environment="HIVE_NODE_SHA256=41a74efb34cbde5c7632cdac0cf8bd1a14d0b8d73dc1e82755014d9a9ce70f5c"
@@ -18,8 +18,8 @@ Nice=0
 IOSchedulingClass=best-effort
 Restart=on-failure
 RestartSec=2
-StandardOutput=append:/var/tmp/hb-fleet-lab-hop-9d95df22-mwamp270/v2/hived.log
-StandardError=append:/var/tmp/hb-fleet-lab-hop-9d95df22-mwamp270/v2/hived.log
+StandardOutput=append:/var/tmp/hb-fleet-lab-hop-9d95df22-mwayvcln/v2/hived.log
+StandardError=append:/var/tmp/hb-fleet-lab-hop-9d95df22-mwayvcln/v2/hived.log
 
 [Install]
 WantedBy=default.target

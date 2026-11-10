@@ -50,6 +50,7 @@ function parseArgs(argv) {
 
 const options = parseArgs(process.argv.slice(2));
 const steps = [];
+const findings = [];
 const say = (line) => { if (!options.json) console.log(line); };
 const step = (name, detail) => { steps.push({ at: new Date().toISOString(), step: name, ...(typeof detail === "string" ? { message: detail } : detail) }); say(`[${name}] ${typeof detail === "string" ? detail : detail?.message ?? JSON.stringify(detail)}`); };
 const fail = (code, message, detail = {}) => { const error = new Error(message); error.code = code; error.detail = detail; throw error; };
@@ -411,33 +412,45 @@ async function adoptUnit(f, sha) {
   return { adopted: out.adopted, facts: after };
 }
 
+function successorWaitSeconds(f) {
+  const perGb = 120;
+  return Math.min(1800, SUCCESSOR_WAIT_S + Math.ceil((f.storeBytes ?? 0) / 1e9) * perGb);
+}
+
 async function waitForSuccessor(f, oldPid, sha) {
   const entry = join(f.runtimeRoot, "current", "dist", "cli.js");
+  const waitS = successorWaitSeconds(f);
   const r = await remote(`
-NODE=${q(f.interpreter)}; DATA=${q(f.dataDir)}; ENTRY=${q(entry)}; OLD=${q(String(oldPid))}
-i=0
-while [ $i -lt ${SUCCESSOR_WAIT_S} ]; do
-  PID=$(sed -n 's/.*"pid":\\([0-9]*\\).*/\\1/p' "$DATA/hived.endpoint.json" 2>/dev/null)
-  if [ -n "$PID" ] && [ "$PID" != "$OLD" ] && kill -0 "$PID" 2>/dev/null; then
+NODE=${q(f.interpreter)}; DATA=${q(f.dataDir)}; ENTRY=${q(entry)}; OLD=${q(String(oldPid))}; R=${q(f.runtimeRoot)}; TARGET=${q(sha)}
+i=0; PID=-; RUNNING=-; BOOTING=0
+while [ $i -lt ${waitS} ]; do
+  P=$(sed -n 's/.*"pid":\\([0-9]*\\).*/\\1/p' "$DATA/hived.endpoint.json" 2>/dev/null)
+  if [ -n "$P" ] && [ "$P" != "$OLD" ] && kill -0 "$P" 2>/dev/null; then
+    PID=$P
     INFO=$("$NODE" "$ENTRY" deploy-info --json --data-dir "$DATA" 2>/dev/null | tail -1)
-    if [ -n "$INFO" ]; then echo WAITED=$i; echo NEW_PID=$PID; echo DEPLOY_INFO=$INFO; exit 0; fi
+    if [ -n "$INFO" ]; then
+      RUNNING=$(printf '%s' "$INFO" | "$NODE" -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{try{const s=JSON.parse(d);console.log((s.identity&&s.identity.sourceRevision)||"-")}catch{console.log("-")}})')
+      if [ "$RUNNING" != "-" ]; then echo WAITED=$i; echo NEW_PID=$PID; echo RUNNING=$RUNNING; echo BOOTING=$BOOTING; exit 0; fi
+      BOOTING=$((BOOTING+1))
+      CUR=$(readlink "$R/current" 2>/dev/null || echo -)
+      if [ "$CUR" != "$TARGET" ] || [ -f "$R/rollback.json" ]; then echo WAITED=$i; echo NEW_PID=$PID; echo RUNNING=-; echo BOOTING=$BOOTING; echo REVERTED=yes; exit 0; fi
+    fi
   fi
   i=$((i+1)); sleep 1
 done
-echo WAITED=$i; echo NEW_PID=-; echo DEPLOY_INFO=-
-echo MARKER=$(cat ${q(join(f.runtimeRoot, "handover.json"))} 2>/dev/null | tr -d '\\n' || echo -)
-echo ROLLBACK=$(cat ${q(join(f.runtimeRoot, "rollback.json"))} 2>/dev/null | tr -d '\\n' || echo -)
-echo CURRENT=$(readlink ${q(join(f.runtimeRoot, "current"))} 2>/dev/null || echo -)
+echo WAITED=$i; echo NEW_PID=$PID; echo RUNNING=$RUNNING; echo BOOTING=$BOOTING
+echo MARKER=$(cat "$R/handover.json" 2>/dev/null | tr -d '\\n' || echo -)
+echo ROLLBACK=$(cat "$R/rollback.json" 2>/dev/null | tr -d '\\n' || echo -)
+echo CURRENT=$(readlink "$R/current" 2>/dev/null || echo -)
 tail -c 4000 "$DATA/hived.log" 2>/dev/null | tail -n 12
 exit 7
-`, { timeoutMs: (SUCCESSOR_WAIT_S + 60) * 1000, allowFailure: true });
+`, { timeoutMs: (waitS + 60) * 1000, allowFailure: true });
   const w = kv(r.stdout);
-  if (r.code !== 0) fail("successor_missing", `no successor daemon answered within ${SUCCESSOR_WAIT_S} s on ${options.host} (current -> ${w.CURRENT ?? "?"}, marker ${w.MARKER ?? "-"}, rollback ${w.ROLLBACK ?? "-"}); log tail:\n${r.stdout.split("\n").slice(-12).join("\n")}`);
-  const info = json(w.DEPLOY_INFO);
-  const running = info?.identity?.sourceRevision ?? null;
-  step("successor", `pid ${w.NEW_PID} answered after ${w.WAITED} s running ${running ?? "unknown"}`);
-  if (running !== sha) fail("activation_reverted", `the successor runs ${running ?? "unknown"}, not ${sha}; the launcher or the daemon reverted the activation`, { running });
-  return { pid: Number(w.NEW_PID), waitedS: Number(w.WAITED) };
+  if (r.code !== 0) fail("successor_missing", `no successor daemon reported its build within ${waitS} s on ${options.host} (pid ${w.NEW_PID ?? "-"}, ${w.BOOTING ?? 0} answers while still booting, current -> ${w.CURRENT ?? "?"}, marker ${w.MARKER ?? "-"}, rollback ${w.ROLLBACK ?? "-"}); log tail:\n${r.stdout.split("\n").slice(-12).join("\n")}`);
+  const running = w.RUNNING && w.RUNNING !== "-" ? w.RUNNING : null;
+  step("successor", `pid ${w.NEW_PID} reports ${running ?? "no build"} after ${w.WAITED} s${Number(w.BOOTING) > 0 ? ` (${w.BOOTING} answers while still booting, store ${fmtBytes(f.storeBytes)})` : ""}`);
+  if (w.REVERTED === "yes" || running !== sha) fail("activation_reverted", `the successor runs ${running ?? "unknown"}, not ${sha}; current or rollback.json shows the launcher or the daemon reverted the activation`, { running });
+  return { pid: Number(w.NEW_PID), waitedS: Number(w.WAITED), bootingAnswers: Number(w.BOOTING ?? 0) };
 }
 
 async function verifyAfter(f, sha, before, newPid) {
@@ -464,7 +477,13 @@ async function probe(f) {
   if (!options.probe) { step("probe", "skipped (--no-probe)"); return null; }
   const r = await remote(`${q(f.interpreter)} ${q(join(f.runtimeRoot, "current", "dist", "cli.js"))} runtime probe --json --data-dir ${q(f.dataDir)}`, { timeoutMs: 240_000, allowFailure: true });
   const out = json(r.stdout);
-  if (r.code !== 0 || !out) fail("probe_failed", `hive runtime probe failed on ${options.host}: ${(r.stdout + r.stderr).trim().slice(-600)}`);
+  if (r.code !== 0 || !out || out.error) {
+    const error = out?.error ?? null;
+    const finding = { ok: false, code: error?.code ?? "probe_failed", reason: error?.details?.reason ?? null, message: error?.message ?? (r.stdout + r.stderr).trim().slice(-600) };
+    findings.push({ kind: "probe", ...finding });
+    step("probe", `FINDING: the swap is verified but hive runtime probe failed on ${options.host}: ${finding.code}${finding.reason ? ` (${finding.reason})` : ""}: ${finding.message}`);
+    return finding;
+  }
   step("probe", `canary ${out.canary?.beeId ?? "?"} idle after ${out.canary?.idleAfterMs ?? "?"} ms, deleted after ${out.canary?.deletedAfterMs ?? "?"} ms; ${out.degraded ?? "?"} degraded; handover ${out.handover ? `${out.handover.adopted}/${out.handover.expected}` : "none recorded"}`);
   return out;
 }
@@ -535,7 +554,7 @@ async function apply() {
     const result = useActivate ? await switchByActivate(current, sha) : await switchByRestart(current, sha);
     if (options.dryRun) { step("done", "DRY RUN: nothing was changed"); return { host: options.host, sha, dryRun: true, route, inventory: inventoryRow(f) }; }
     const final = await readFacts();
-    step("done", `${options.host} runs ${final.running?.sourceRevision} pid ${final.endpoint?.pid}; current -> ${final.currentLink}, previous -> ${final.previousLink}; ${final.liveRuntimes.length} live runtimes; store ${final.store?.schemaVersion}/${final.store?.minReaderSchema}`);
+    step("done", `${options.host} runs ${final.running?.sourceRevision} pid ${final.endpoint?.pid}; current -> ${final.currentLink}, previous -> ${final.previousLink}; ${final.liveRuntimes.length} live runtimes; store ${final.store?.schemaVersion}/${final.store?.minReaderSchema}${findings.length ? `; ${findings.length} finding(s) to read above` : ""}`);
     return { host: options.host, sha, changed: true, route, result, inventory: inventoryRow(final) };
   } finally { rmSync(scratch, { recursive: true, force: true }); }
 }
@@ -599,7 +618,8 @@ try {
   if (options.inventory) { const f = await readFacts(); printInventory(f); result = null; }
   else if (options.rollback) result = await rollback();
   else result = await apply();
-  if (options.json && result) console.log(JSON.stringify({ ok: true, ...result, steps }));
+  if (options.json && result) console.log(JSON.stringify({ ok: true, ...result, findings, steps }));
+  else if (findings.length) say(`findings: ${findings.map((f) => `${f.kind} ${f.code}${f.reason ? ` (${f.reason})` : ""}`).join("; ")}`);
 } catch (error) {
   const code = error.code ?? "error";
   if (options.json) console.log(JSON.stringify({ ok: false, code, message: error.message, detail: error.detail ?? null, steps }));

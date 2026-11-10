@@ -1,135 +1,134 @@
 hived scheduling: foreground (pri 31, nice 0)
-{"ts":1794320308082,"op":"tmp.policy beeTmpRoot=/var/tmp/hb-mac-lab-mwarzdoc/v2/tmp source=data_dir_default daemonTmp=/var/tmp/hb-mac-lab-mwarzdoc/v2/tmp/daemon nodeCompileCache=/var/tmp/hb-mac-lab-mwarzdoc/v2/node-compile-cache"}
-{"ts":1794320308086,"op":"sandbox.scratch darwinUserTemp=/private/var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T"}
-{"ts":1794320308102,"op":"store.migration.rpc_idempotency_env seen=0 redacted=0 skipped_unparseable=0 skipped_unrecognised=0 complete=true ms=0"}
-{"ts":1794320308104,"op":"security.confinement strict=false bwrap={\"path\":null,\"setuid\":false}"}
-{"ts":1794320308105,"op":"champions homes=/var/tmp/hb-mac-lab-mwarzdoc/v2/champions store=/var/tmp/hb-mac-lab-mwarzdoc/v2/transcript-objects"}
-{"ts":1794320308105,"op":"transcripts.segments store=/var/tmp/hb-mac-lab-mwarzdoc/v2/transcript-objects max_lines=1024 max_raw_bytes=1048576 projection=8"}
-{"ts":1794320308106,"op":"boot adopted=0 stopped=0 requeued=0 reaped=0 wakes=0"}
-{"ts":1794320308280,"op":"rpc.listen socket=/var/tmp/hb-mac-lab-mwarzdoc/v2/hived.sock"}
-{"ts":1794320308289,"op":"daemon.started pid=16251 store=/var/tmp/hb-mac-lab-mwarzdoc/v2/core.sqlite3"}
-hived v2 listening on /var/tmp/hb-mac-lab-mwarzdoc/v2/hived.sock (store /var/tmp/hb-mac-lab-mwarzdoc/v2/core.sqlite3)
-{"ts":1794320308292,"op":"transcripts.segment.catch_up scheduled=0"}
-{"ts":1794320308653,"op":"cmd.spawn id=1 bee=448e0d54-1a03-45ac-8243-3e33c4c25dbc start gen=1"}
-{"ts":1794320308708,"op":"cmd.spawn id=2 bee=766088b0-e9c0-458f-8317-6b64947dcdce start gen=1"}
-{"ts":1794320308777,"op":"cmd.spawn id=3 bee=7f9bf82c-5eff-4a87-b740-30105b841589 start gen=1"}
-{"ts":1794320308821,"op":"spawn.evidence bee=448e0d54-1a03-45ac-8243-3e33c4c25dbc gen=1 kind=booted"}
-{"ts":1794320308821,"op":"obs.booted bee=448e0d54-1a03-45ac-8243-3e33c4c25dbc gen=1 pid=16290"}
-{"ts":1794320308821,"op":"obs.turn_ended bee=448e0d54-1a03-45ac-8243-3e33c4c25dbc gen=1"}
-{"ts":1794320308823,"op":"spawn.evidence bee=766088b0-e9c0-458f-8317-6b64947dcdce gen=1 kind=booted"}
-{"ts":1794320308823,"op":"obs.booted bee=766088b0-e9c0-458f-8317-6b64947dcdce gen=1 pid=16300"}
-{"ts":1794320308823,"op":"obs.turn_ended bee=766088b0-e9c0-458f-8317-6b64947dcdce gen=1"}
-{"ts":1794320308824,"op":"session.recorded bee=448e0d54-1a03-45ac-8243-3e33c4c25dbc gen=1 id=stub-16301"}
-{"ts":1794320308824,"op":"session.recorded bee=766088b0-e9c0-458f-8317-6b64947dcdce gen=1 id=stub-16306"}
-{"ts":1794320308824,"op":"obs.checkpoint bee=448e0d54-1a03-45ac-8243-3e33c4c25dbc gen=1 cursor=43"}
-{"ts":1794320308824,"op":"obs.checkpoint bee=766088b0-e9c0-458f-8317-6b64947dcdce gen=1 cursor=43"}
-{"ts":1794320308865,"op":"transcripts.segment.cut bee=448e0d54-1a03-45ac-8243-3e33c4c25dbc reason=turn_ended segments=1 lines=1 through=1"}
-{"ts":1794320308901,"op":"transcripts.segment.cut bee=766088b0-e9c0-458f-8317-6b64947dcdce reason=turn_ended segments=1 lines=1 through=1"}
-{"ts":1794320308923,"op":"spawn.evidence bee=7f9bf82c-5eff-4a87-b740-30105b841589 gen=1 kind=booted"}
-{"ts":1794320308923,"op":"obs.booted bee=7f9bf82c-5eff-4a87-b740-30105b841589 gen=1 pid=16307"}
-{"ts":1794320308923,"op":"obs.turn_ended bee=7f9bf82c-5eff-4a87-b740-30105b841589 gen=1"}
-{"ts":1794320308923,"op":"session.recorded bee=7f9bf82c-5eff-4a87-b740-30105b841589 gen=1 id=stub-16314"}
-{"ts":1794320308924,"op":"obs.checkpoint bee=7f9bf82c-5eff-4a87-b740-30105b841589 gen=1 cursor=43"}
-{"ts":1794320308934,"op":"transcripts.segment.cut bee=7f9bf82c-5eff-4a87-b740-30105b841589 reason=turn_ended segments=1 lines=1 through=1"}
-{"ts":1794320328749,"op":"daemon.stopping pid=16251"}
-{"ts":1794320328759,"op":"daemon.stopped"}
-{"ts":1794320328760,"op":"daemon.stop_complete pid=16251"}
+{"ts":1794331860481,"op":"tmp.policy beeTmpRoot=/var/tmp/hb-mac-lab-mwayuzjx/v2/tmp source=data_dir_default daemonTmp=/var/tmp/hb-mac-lab-mwayuzjx/v2/tmp/daemon nodeCompileCache=/var/tmp/hb-mac-lab-mwayuzjx/v2/node-compile-cache"}
+{"ts":1794331860486,"op":"sandbox.scratch darwinUserTemp=/private/var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T"}
+{"ts":1794331860500,"op":"store.migration.rpc_idempotency_env seen=0 redacted=0 skipped_unparseable=0 skipped_unrecognised=0 complete=true ms=0"}
+{"ts":1794331860501,"op":"security.confinement strict=false bwrap={\"path\":null,\"setuid\":false}"}
+{"ts":1794331860502,"op":"champions homes=/var/tmp/hb-mac-lab-mwayuzjx/v2/champions store=/var/tmp/hb-mac-lab-mwayuzjx/v2/transcript-objects"}
+{"ts":1794331860503,"op":"transcripts.segments store=/var/tmp/hb-mac-lab-mwayuzjx/v2/transcript-objects max_lines=1024 max_raw_bytes=1048576 projection=8"}
+{"ts":1794331860503,"op":"boot adopted=0 stopped=0 requeued=0 reaped=0 wakes=0"}
+{"ts":1794331861040,"op":"rpc.listen socket=/var/tmp/hb-mac-lab-mwayuzjx/v2/hived.sock"}
+{"ts":1794331861050,"op":"daemon.started pid=82872 store=/var/tmp/hb-mac-lab-mwayuzjx/v2/core.sqlite3"}
+hived v2 listening on /var/tmp/hb-mac-lab-mwayuzjx/v2/hived.sock (store /var/tmp/hb-mac-lab-mwayuzjx/v2/core.sqlite3)
+{"ts":1794331861054,"op":"transcripts.segment.catch_up scheduled=0"}
+{"ts":1794331861557,"op":"cmd.spawn id=1 bee=4c972c71-4612-4f89-adf4-e70e30c33a63 start gen=1"}
+{"ts":1794331861615,"op":"cmd.spawn id=2 bee=3b69588e-8273-4c5a-8a0e-9a73596be8e7 start gen=1"}
+{"ts":1794331861684,"op":"cmd.spawn id=3 bee=f91c33ee-f619-42c0-a804-3b96cb4176e2 start gen=1"}
+{"ts":1794331861728,"op":"spawn.evidence bee=4c972c71-4612-4f89-adf4-e70e30c33a63 gen=1 kind=booted"}
+{"ts":1794331861728,"op":"obs.booted bee=4c972c71-4612-4f89-adf4-e70e30c33a63 gen=1 pid=82932"}
+{"ts":1794331861729,"op":"obs.turn_ended bee=4c972c71-4612-4f89-adf4-e70e30c33a63 gen=1"}
+{"ts":1794331861730,"op":"session.recorded bee=4c972c71-4612-4f89-adf4-e70e30c33a63 gen=1 id=stub-82939"}
+{"ts":1794331861730,"op":"obs.checkpoint bee=4c972c71-4612-4f89-adf4-e70e30c33a63 gen=1 cursor=43"}
+{"ts":1794331861768,"op":"transcripts.segment.cut bee=4c972c71-4612-4f89-adf4-e70e30c33a63 reason=turn_ended segments=1 lines=1 through=1"}
+{"ts":1794331861777,"op":"spawn.evidence bee=3b69588e-8273-4c5a-8a0e-9a73596be8e7 gen=1 kind=booted"}
+{"ts":1794331861778,"op":"obs.booted bee=3b69588e-8273-4c5a-8a0e-9a73596be8e7 gen=1 pid=82938"}
+{"ts":1794331861778,"op":"obs.turn_ended bee=3b69588e-8273-4c5a-8a0e-9a73596be8e7 gen=1"}
+{"ts":1794331861778,"op":"session.recorded bee=3b69588e-8273-4c5a-8a0e-9a73596be8e7 gen=1 id=stub-82945"}
+{"ts":1794331861778,"op":"obs.checkpoint bee=3b69588e-8273-4c5a-8a0e-9a73596be8e7 gen=1 cursor=43"}
+{"ts":1794331861794,"op":"transcripts.segment.cut bee=3b69588e-8273-4c5a-8a0e-9a73596be8e7 reason=turn_ended segments=1 lines=1 through=1"}
+{"ts":1794331861828,"op":"spawn.evidence bee=f91c33ee-f619-42c0-a804-3b96cb4176e2 gen=1 kind=booted"}
+{"ts":1794331861829,"op":"obs.booted bee=f91c33ee-f619-42c0-a804-3b96cb4176e2 gen=1 pid=82946"}
+{"ts":1794331861829,"op":"obs.turn_ended bee=f91c33ee-f619-42c0-a804-3b96cb4176e2 gen=1"}
+{"ts":1794331861829,"op":"session.recorded bee=f91c33ee-f619-42c0-a804-3b96cb4176e2 gen=1 id=stub-82948"}
+{"ts":1794331861829,"op":"obs.checkpoint bee=f91c33ee-f619-42c0-a804-3b96cb4176e2 gen=1 cursor=43"}
+{"ts":1794331861841,"op":"transcripts.segment.cut bee=f91c33ee-f619-42c0-a804-3b96cb4176e2 reason=turn_ended segments=1 lines=1 through=1"}
+{"ts":1794331882208,"op":"daemon.stopping pid=82872"}
+{"ts":1794331882223,"op":"daemon.stopped"}
+{"ts":1794331882223,"op":"daemon.stop_complete pid=82872"}
 hived scheduling: foreground (pri 31, nice 0)
-{"ts":1794320329403,"op":"tmp.policy beeTmpRoot=/var/tmp/hb-mac-lab-mwarzdoc/v2/tmp source=data_dir_default daemonTmp=/var/tmp/hb-mac-lab-mwarzdoc/v2/tmp/daemon nodeCompileCache=/var/tmp/hb-mac-lab-mwarzdoc/v2/node-compile-cache"}
-{"ts":1794320329406,"op":"sandbox.scratch darwinUserTemp=/private/var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T"}
-{"ts":1794320329411,"op":"security.confinement strict=false bwrap={\"path\":null,\"setuid\":false}"}
-{"ts":1794320329412,"op":"champions homes=/var/tmp/hb-mac-lab-mwarzdoc/v2/champions store=/var/tmp/hb-mac-lab-mwarzdoc/v2/transcript-objects"}
-{"ts":1794320329412,"op":"transcripts.segments store=/var/tmp/hb-mac-lab-mwarzdoc/v2/transcript-objects max_lines=1024 max_raw_bytes=1048576 projection=8"}
-{"ts":1794320329637,"op":"boot.adopt bee=448e0d54-1a03-45ac-8243-3e33c4c25dbc gen=1 pid=16290 ok=true identityReason=resolved"}
-{"ts":1794320329639,"op":"boot.adopt bee=766088b0-e9c0-458f-8317-6b64947dcdce gen=1 pid=16300 ok=true identityReason=resolved"}
-{"ts":1794320329642,"op":"boot.adopt bee=7f9bf82c-5eff-4a87-b740-30105b841589 gen=1 pid=16307 ok=true identityReason=resolved"}
-{"ts":1794320329644,"op":"boot adopted=3 stopped=0 requeued=0 reaped=0 wakes=0"}
-{"ts":1794320329655,"op":"rpc.listen socket=/var/tmp/hb-mac-lab-mwarzdoc/v2/hived.sock"}
-{"ts":1794320329657,"op":"transcripts.segment.catch_up scheduled=0"}
-{"ts":1794320329681,"op":"boot.handover_marker_removed root=/var/tmp/hb-mac-lab-mwarzdoc/runtime"}
-{"ts":1794320329686,"op":"daemon.started pid=18451 store=/var/tmp/hb-mac-lab-mwarzdoc/v2/core.sqlite3"}
-hived v2 listening on /var/tmp/hb-mac-lab-mwarzdoc/v2/hived.sock (store /var/tmp/hb-mac-lab-mwarzdoc/v2/core.sqlite3)
-{"ts":1794320330581,"op":"cell.reserve bee=fa456c0b-e5fb-423b-85ed-9e18a1866447 origin=/var/tmp/hb-mac-lab-mwarzdoc/v2/probe/origin sha=f97d75d0ca456e8531e7738a951531f987f452b8 base=head space=/var/tmp/hb-mac-lab-mwarzdoc/cells/probe-mwarzvtj-ae7b08321b50/origin-space-ae7b08321b50"}
-{"ts":1794320330585,"op":"cmd.spawn id=4 bee=fa456c0b-e5fb-423b-85ed-9e18a1866447 start gen=1"}
-{"ts":1794320331011,"op":"spawn.evidence bee=fa456c0b-e5fb-423b-85ed-9e18a1866447 gen=1 kind=booted"}
-{"ts":1794320331011,"op":"obs.booted bee=fa456c0b-e5fb-423b-85ed-9e18a1866447 gen=1 pid=18759"}
-{"ts":1794320331012,"op":"obs.turn_ended bee=fa456c0b-e5fb-423b-85ed-9e18a1866447 gen=1"}
-{"ts":1794320331012,"op":"session.recorded bee=fa456c0b-e5fb-423b-85ed-9e18a1866447 gen=1 id=probe-18761"}
-{"ts":1794320331013,"op":"obs.checkpoint bee=fa456c0b-e5fb-423b-85ed-9e18a1866447 gen=1 cursor=44"}
-{"ts":1794320331060,"op":"transcripts.segment.cut bee=fa456c0b-e5fb-423b-85ed-9e18a1866447 reason=turn_ended segments=1 lines=1 through=1"}
-{"ts":1794320331063,"op":"tmp.bee_removed bee=fa456c0b-e5fb-423b-85ed-9e18a1866447 ok=true"}
-{"ts":1794320331063,"op":"cmd.delete id=5 bee=fa456c0b-e5fb-423b-85ed-9e18a1866447"}
-{"ts":1794320331068,"op":"obs.skip bee=fa456c0b-e5fb-423b-85ed-9e18a1866447 gen=1 kind=exited reason=no_bee"}
-{"ts":1794320331111,"op":"runtime.probe handover=none canary=fa456c0b-e5fb-423b-85ed-9e18a1866447 idle_ms=601 deleted_ms=54 degraded=0"}
-{"ts":1794320331551,"op":"deliver bee=448e0d54-1a03-45ac-8243-3e33c4c25dbc msg=1 gen=1 urgency=next"}
-{"ts":1794320331554,"op":"obs.turn_started bee=448e0d54-1a03-45ac-8243-3e33c4c25dbc gen=1 synthetic"}
-{"ts":1794320331555,"op":"obs.skip bee=448e0d54-1a03-45ac-8243-3e33c4c25dbc gen=1 kind=booted reason=already_running"}
-{"ts":1794320331555,"op":"obs.checkpoint bee=448e0d54-1a03-45ac-8243-3e33c4c25dbc gen=1 cursor=82"}
-{"ts":1794320331605,"op":"obs.turn_ended bee=448e0d54-1a03-45ac-8243-3e33c4c25dbc gen=1"}
-{"ts":1794320331605,"op":"obs.checkpoint bee=448e0d54-1a03-45ac-8243-3e33c4c25dbc gen=1 cursor=189"}
-{"ts":1794320331625,"op":"transcripts.segment.cut bee=448e0d54-1a03-45ac-8243-3e33c4c25dbc reason=turn_ended segments=1 lines=4 through=5"}
-{"ts":1794320332534,"op":"daemon.stopping pid=18451"}
-{"ts":1794320332537,"op":"rpc.close conns=0 drained=true"}
-{"ts":1794320332542,"op":"daemon.stopped"}
-{"ts":1794320332542,"op":"daemon.stop_complete pid=18451"}
+{"ts":1794331882698,"op":"tmp.policy beeTmpRoot=/var/tmp/hb-mac-lab-mwayuzjx/v2/tmp source=data_dir_default daemonTmp=/var/tmp/hb-mac-lab-mwayuzjx/v2/tmp/daemon nodeCompileCache=/var/tmp/hb-mac-lab-mwayuzjx/v2/node-compile-cache"}
+{"ts":1794331882701,"op":"sandbox.scratch darwinUserTemp=/private/var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T"}
+{"ts":1794331882707,"op":"security.confinement strict=false bwrap={\"path\":null,\"setuid\":false}"}
+{"ts":1794331882708,"op":"champions homes=/var/tmp/hb-mac-lab-mwayuzjx/v2/champions store=/var/tmp/hb-mac-lab-mwayuzjx/v2/transcript-objects"}
+{"ts":1794331882708,"op":"transcripts.segments store=/var/tmp/hb-mac-lab-mwayuzjx/v2/transcript-objects max_lines=1024 max_raw_bytes=1048576 projection=8"}
+{"ts":1794331882948,"op":"boot.adopt bee=3b69588e-8273-4c5a-8a0e-9a73596be8e7 gen=1 pid=82938 ok=true identityReason=resolved"}
+{"ts":1794331882953,"op":"boot.adopt bee=4c972c71-4612-4f89-adf4-e70e30c33a63 gen=1 pid=82932 ok=true identityReason=resolved"}
+{"ts":1794331882956,"op":"boot.adopt bee=f91c33ee-f619-42c0-a804-3b96cb4176e2 gen=1 pid=82946 ok=true identityReason=resolved"}
+{"ts":1794331882965,"op":"boot adopted=3 stopped=0 requeued=0 reaped=0 wakes=0"}
+{"ts":1794331882970,"op":"rpc.listen socket=/var/tmp/hb-mac-lab-mwayuzjx/v2/hived.sock"}
+{"ts":1794331882972,"op":"transcripts.segment.catch_up scheduled=0"}
+{"ts":1794331882986,"op":"boot.handover_marker_removed root=/var/tmp/hb-mac-lab-mwayuzjx/runtime"}
+{"ts":1794331882987,"op":"daemon.started pid=84239 store=/var/tmp/hb-mac-lab-mwayuzjx/v2/core.sqlite3"}
+hived v2 listening on /var/tmp/hb-mac-lab-mwayuzjx/v2/hived.sock (store /var/tmp/hb-mac-lab-mwayuzjx/v2/core.sqlite3)
+{"ts":1794331884203,"op":"cell.reserve bee=944ac57c-c785-4a2a-9885-15a7ee4bb2ca origin=/var/tmp/hb-mac-lab-mwayuzjx/v2/probe/origin sha=87b7bb40a1a6bc6ad10c8577d24ac63dcb4cd268 base=head space=/var/tmp/hb-mac-lab-mwayuzjx/cells/probe-mwayvimw-f3cc4d573d89/origin-space-f3cc4d573d89"}
+{"ts":1794331884211,"op":"cmd.spawn id=4 bee=944ac57c-c785-4a2a-9885-15a7ee4bb2ca start gen=1"}
+{"ts":1794331884717,"op":"spawn.evidence bee=944ac57c-c785-4a2a-9885-15a7ee4bb2ca gen=1 kind=booted"}
+{"ts":1794331884718,"op":"obs.booted bee=944ac57c-c785-4a2a-9885-15a7ee4bb2ca gen=1 pid=84557"}
+{"ts":1794331884718,"op":"obs.turn_ended bee=944ac57c-c785-4a2a-9885-15a7ee4bb2ca gen=1"}
+{"ts":1794331884719,"op":"session.recorded bee=944ac57c-c785-4a2a-9885-15a7ee4bb2ca gen=1 id=probe-84568"}
+{"ts":1794331884719,"op":"obs.checkpoint bee=944ac57c-c785-4a2a-9885-15a7ee4bb2ca gen=1 cursor=44"}
+{"ts":1794331884769,"op":"tmp.bee_removed bee=944ac57c-c785-4a2a-9885-15a7ee4bb2ca ok=true"}
+{"ts":1794331884769,"op":"cmd.delete id=5 bee=944ac57c-c785-4a2a-9885-15a7ee4bb2ca"}
+{"ts":1794331884770,"op":"transcripts.segment.cut_failed bee=944ac57c-c785-4a2a-9885-15a7ee4bb2ca reason=turn_ended err=\"FOREIGN KEY constraint failed\""}
+{"ts":1794331884774,"op":"obs.skip bee=944ac57c-c785-4a2a-9885-15a7ee4bb2ca gen=1 kind=exited reason=no_bee"}
+{"ts":1794331884813,"op":"runtime.probe handover=none canary=944ac57c-c785-4a2a-9885-15a7ee4bb2ca idle_ms=701 deleted_ms=56 degraded=0"}
+{"ts":1794331885347,"op":"deliver bee=3b69588e-8273-4c5a-8a0e-9a73596be8e7 msg=1 gen=1 urgency=next"}
+{"ts":1794331885361,"op":"obs.turn_started bee=3b69588e-8273-4c5a-8a0e-9a73596be8e7 gen=1 synthetic"}
+{"ts":1794331885361,"op":"obs.skip bee=3b69588e-8273-4c5a-8a0e-9a73596be8e7 gen=1 kind=booted reason=already_running"}
+{"ts":1794331885362,"op":"obs.turn_ended bee=3b69588e-8273-4c5a-8a0e-9a73596be8e7 gen=1"}
+{"ts":1794331885364,"op":"obs.checkpoint bee=3b69588e-8273-4c5a-8a0e-9a73596be8e7 gen=1 cursor=189"}
+{"ts":1794331885383,"op":"transcripts.segment.cut bee=3b69588e-8273-4c5a-8a0e-9a73596be8e7 reason=turn_ended segments=1 lines=4 through=5"}
+{"ts":1794331886486,"op":"daemon.stopping pid=84239"}
+{"ts":1794331886490,"op":"rpc.close conns=0 drained=true"}
+{"ts":1794331886497,"op":"daemon.stopped"}
+{"ts":1794331886497,"op":"daemon.stop_complete pid=84239"}
 hived scheduling: foreground (pri 31, nice 0)
-{"ts":1794320332822,"op":"tmp.policy beeTmpRoot=/var/tmp/hb-mac-lab-mwarzdoc/v2/tmp source=data_dir_default daemonTmp=/var/tmp/hb-mac-lab-mwarzdoc/v2/tmp/daemon nodeCompileCache=/var/tmp/hb-mac-lab-mwarzdoc/v2/node-compile-cache"}
-{"ts":1794320332824,"op":"sandbox.scratch darwinUserTemp=/private/var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T"}
-{"ts":1794320332830,"op":"security.confinement strict=false bwrap={\"path\":null,\"setuid\":false}"}
-{"ts":1794320332831,"op":"champions homes=/var/tmp/hb-mac-lab-mwarzdoc/v2/champions store=/var/tmp/hb-mac-lab-mwarzdoc/v2/transcript-objects"}
-{"ts":1794320332831,"op":"transcripts.segments store=/var/tmp/hb-mac-lab-mwarzdoc/v2/transcript-objects max_lines=1024 max_raw_bytes=1048576 projection=8"}
-{"ts":1794320332835,"op":"boot.adopt bee=448e0d54-1a03-45ac-8243-3e33c4c25dbc gen=1 pid=16290 ok=true"}
-{"ts":1794320332836,"op":"boot.adopt bee=766088b0-e9c0-458f-8317-6b64947dcdce gen=1 pid=16300 ok=true"}
-{"ts":1794320332836,"op":"boot.adopt bee=7f9bf82c-5eff-4a87-b740-30105b841589 gen=1 pid=16307 ok=true"}
-{"ts":1794320332837,"op":"boot adopted=3 stopped=0 requeued=0 reaped=0 wakes=0"}
-{"ts":1794320332840,"op":"rpc.listen socket=/var/tmp/hb-mac-lab-mwarzdoc/v2/hived.sock"}
-{"ts":1794320332842,"op":"daemon.started pid=19097 store=/var/tmp/hb-mac-lab-mwarzdoc/v2/core.sqlite3"}
-hived v2 listening on /var/tmp/hb-mac-lab-mwarzdoc/v2/hived.sock (store /var/tmp/hb-mac-lab-mwarzdoc/v2/core.sqlite3)
-{"ts":1794320332844,"op":"transcripts.segment.catch_up scheduled=0"}
-{"ts":1794320334242,"op":"deliver bee=766088b0-e9c0-458f-8317-6b64947dcdce msg=2 gen=1 urgency=next"}
-{"ts":1794320334252,"op":"obs.turn_started bee=766088b0-e9c0-458f-8317-6b64947dcdce gen=1 synthetic"}
-{"ts":1794320334252,"op":"obs.skip bee=766088b0-e9c0-458f-8317-6b64947dcdce gen=1 kind=booted reason=already_running"}
-{"ts":1794320334253,"op":"obs.checkpoint bee=766088b0-e9c0-458f-8317-6b64947dcdce gen=1 cursor=82"}
-{"ts":1794320334301,"op":"obs.turn_ended bee=766088b0-e9c0-458f-8317-6b64947dcdce gen=1"}
-{"ts":1794320334306,"op":"obs.checkpoint bee=766088b0-e9c0-458f-8317-6b64947dcdce gen=1 cursor=193"}
-{"ts":1794320334361,"op":"transcripts.segment.cut bee=766088b0-e9c0-458f-8317-6b64947dcdce reason=turn_ended segments=1 lines=4 through=5"}
-{"ts":1794320337985,"op":"daemon.stopping pid=19097"}
-{"ts":1794320337993,"op":"daemon.stopped"}
-{"ts":1794320337993,"op":"daemon.stop_complete pid=19097"}
+{"ts":1794331886818,"op":"tmp.policy beeTmpRoot=/var/tmp/hb-mac-lab-mwayuzjx/v2/tmp source=data_dir_default daemonTmp=/var/tmp/hb-mac-lab-mwayuzjx/v2/tmp/daemon nodeCompileCache=/var/tmp/hb-mac-lab-mwayuzjx/v2/node-compile-cache"}
+{"ts":1794331886822,"op":"sandbox.scratch darwinUserTemp=/private/var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T"}
+{"ts":1794331886828,"op":"security.confinement strict=false bwrap={\"path\":null,\"setuid\":false}"}
+{"ts":1794331886830,"op":"champions homes=/var/tmp/hb-mac-lab-mwayuzjx/v2/champions store=/var/tmp/hb-mac-lab-mwayuzjx/v2/transcript-objects"}
+{"ts":1794331886830,"op":"transcripts.segments store=/var/tmp/hb-mac-lab-mwayuzjx/v2/transcript-objects max_lines=1024 max_raw_bytes=1048576 projection=8"}
+{"ts":1794331886835,"op":"boot.adopt bee=3b69588e-8273-4c5a-8a0e-9a73596be8e7 gen=1 pid=82938 ok=true"}
+{"ts":1794331886835,"op":"boot.adopt bee=4c972c71-4612-4f89-adf4-e70e30c33a63 gen=1 pid=82932 ok=true"}
+{"ts":1794331886836,"op":"boot.adopt bee=f91c33ee-f619-42c0-a804-3b96cb4176e2 gen=1 pid=82946 ok=true"}
+{"ts":1794331886837,"op":"boot adopted=3 stopped=0 requeued=0 reaped=0 wakes=0"}
+{"ts":1794331886841,"op":"rpc.listen socket=/var/tmp/hb-mac-lab-mwayuzjx/v2/hived.sock"}
+{"ts":1794331886843,"op":"daemon.started pid=84928 store=/var/tmp/hb-mac-lab-mwayuzjx/v2/core.sqlite3"}
+hived v2 listening on /var/tmp/hb-mac-lab-mwayuzjx/v2/hived.sock (store /var/tmp/hb-mac-lab-mwayuzjx/v2/core.sqlite3)
+{"ts":1794331886846,"op":"transcripts.segment.catch_up scheduled=0"}
+{"ts":1794331888376,"op":"deliver bee=4c972c71-4612-4f89-adf4-e70e30c33a63 msg=2 gen=1 urgency=next"}
+{"ts":1794331888391,"op":"obs.turn_started bee=4c972c71-4612-4f89-adf4-e70e30c33a63 gen=1 synthetic"}
+{"ts":1794331888392,"op":"obs.skip bee=4c972c71-4612-4f89-adf4-e70e30c33a63 gen=1 kind=booted reason=already_running"}
+{"ts":1794331888393,"op":"obs.turn_ended bee=4c972c71-4612-4f89-adf4-e70e30c33a63 gen=1"}
+{"ts":1794331888399,"op":"obs.checkpoint bee=4c972c71-4612-4f89-adf4-e70e30c33a63 gen=1 cursor=193"}
+{"ts":1794331888437,"op":"transcripts.segment.cut bee=4c972c71-4612-4f89-adf4-e70e30c33a63 reason=turn_ended segments=1 lines=4 through=5"}
+{"ts":1794331892462,"op":"daemon.stopping pid=84928"}
+{"ts":1794331892471,"op":"daemon.stopped"}
+{"ts":1794331892472,"op":"daemon.stop_complete pid=84928"}
 hived scheduling: foreground (pri 31, nice 0)
-{"ts":1794320338483,"op":"tmp.policy beeTmpRoot=/var/tmp/hb-mac-lab-mwarzdoc/v2/tmp source=data_dir_default daemonTmp=/var/tmp/hb-mac-lab-mwarzdoc/v2/tmp/daemon nodeCompileCache=/var/tmp/hb-mac-lab-mwarzdoc/v2/node-compile-cache"}
-{"ts":1794320338486,"op":"sandbox.scratch darwinUserTemp=/private/var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T"}
-{"ts":1794320338491,"op":"security.confinement strict=false bwrap={\"path\":null,\"setuid\":false}"}
-{"ts":1794320338492,"op":"champions homes=/var/tmp/hb-mac-lab-mwarzdoc/v2/champions store=/var/tmp/hb-mac-lab-mwarzdoc/v2/transcript-objects"}
-{"ts":1794320338492,"op":"transcripts.segments store=/var/tmp/hb-mac-lab-mwarzdoc/v2/transcript-objects max_lines=1024 max_raw_bytes=1048576 projection=8"}
-{"ts":1794320338496,"op":"boot.adopt bee=448e0d54-1a03-45ac-8243-3e33c4c25dbc gen=1 pid=16290 ok=true identityReason=resolved"}
-{"ts":1794320338496,"op":"boot.adopt bee=766088b0-e9c0-458f-8317-6b64947dcdce gen=1 pid=16300 ok=true identityReason=resolved"}
-{"ts":1794320338496,"op":"boot.adopt bee=7f9bf82c-5eff-4a87-b740-30105b841589 gen=1 pid=16307 ok=true identityReason=resolved"}
-{"ts":1794320338497,"op":"boot adopted=3 stopped=0 requeued=0 reaped=0 wakes=0"}
-{"ts":1794320338500,"op":"rpc.listen socket=/var/tmp/hb-mac-lab-mwarzdoc/v2/hived.sock"}
-{"ts":1794320338504,"op":"transcripts.segment.catch_up scheduled=0"}
-{"ts":1794320338511,"op":"boot.handover_marker_removed root=/var/tmp/hb-mac-lab-mwarzdoc/runtime"}
-{"ts":1794320338512,"op":"daemon.started pid=19814 store=/var/tmp/hb-mac-lab-mwarzdoc/v2/core.sqlite3"}
-hived v2 listening on /var/tmp/hb-mac-lab-mwarzdoc/v2/hived.sock (store /var/tmp/hb-mac-lab-mwarzdoc/v2/core.sqlite3)
-{"ts":1794320339769,"op":"cell.reserve bee=65a64f77-c96a-437e-8022-2c2b58c43d95 origin=/var/tmp/hb-mac-lab-mwarzdoc/v2/probe/origin sha=f97d75d0ca456e8531e7738a951531f987f452b8 base=head space=/var/tmp/hb-mac-lab-mwarzdoc/cells/probe-mwas02y8-575c7f7762e7/origin-space-575c7f7762e7"}
-{"ts":1794320339774,"op":"cmd.spawn id=6 bee=65a64f77-c96a-437e-8022-2c2b58c43d95 start gen=1"}
-{"ts":1794320340052,"op":"spawn.evidence bee=65a64f77-c96a-437e-8022-2c2b58c43d95 gen=1 kind=booted"}
-{"ts":1794320340052,"op":"obs.booted bee=65a64f77-c96a-437e-8022-2c2b58c43d95 gen=1 pid=20116"}
-{"ts":1794320340053,"op":"obs.turn_ended bee=65a64f77-c96a-437e-8022-2c2b58c43d95 gen=1"}
-{"ts":1794320340053,"op":"session.recorded bee=65a64f77-c96a-437e-8022-2c2b58c43d95 gen=1 id=probe-20132"}
-{"ts":1794320340054,"op":"obs.checkpoint bee=65a64f77-c96a-437e-8022-2c2b58c43d95 gen=1 cursor=44"}
-{"ts":1794320340107,"op":"tmp.bee_removed bee=65a64f77-c96a-437e-8022-2c2b58c43d95 ok=true"}
-{"ts":1794320340107,"op":"cmd.delete id=7 bee=65a64f77-c96a-437e-8022-2c2b58c43d95"}
-{"ts":1794320340107,"op":"transcripts.segment.cut_failed bee=65a64f77-c96a-437e-8022-2c2b58c43d95 reason=turn_ended err=\"FOREIGN KEY constraint failed\""}
-{"ts":1794320340114,"op":"obs.skip bee=65a64f77-c96a-437e-8022-2c2b58c43d95 gen=1 kind=exited reason=no_bee"}
-{"ts":1794320340152,"op":"runtime.probe handover=none canary=65a64f77-c96a-437e-8022-2c2b58c43d95 idle_ms=402 deleted_ms=53 degraded=0"}
-{"ts":1794320340604,"op":"deliver bee=7f9bf82c-5eff-4a87-b740-30105b841589 msg=3 gen=1 urgency=next"}
-{"ts":1794320340614,"op":"obs.turn_started bee=7f9bf82c-5eff-4a87-b740-30105b841589 gen=1 synthetic"}
-{"ts":1794320340614,"op":"obs.skip bee=7f9bf82c-5eff-4a87-b740-30105b841589 gen=1 kind=booted reason=already_running"}
-{"ts":1794320340615,"op":"obs.turn_ended bee=7f9bf82c-5eff-4a87-b740-30105b841589 gen=1"}
-{"ts":1794320340616,"op":"obs.checkpoint bee=7f9bf82c-5eff-4a87-b740-30105b841589 gen=1 cursor=190"}
-{"ts":1794320340665,"op":"transcripts.segment.cut bee=7f9bf82c-5eff-4a87-b740-30105b841589 reason=turn_ended segments=1 lines=4 through=5"}
-{"ts":1794320340673,"op":"daemon.stopping pid=19814"}
-{"ts":1794320340676,"op":"rpc.close conns=0 drained=true"}
-{"ts":1794320340680,"op":"daemon.stopped"}
-{"ts":1794320340680,"op":"daemon.stop_complete pid=19814"}
+{"ts":1794331893007,"op":"tmp.policy beeTmpRoot=/var/tmp/hb-mac-lab-mwayuzjx/v2/tmp source=data_dir_default daemonTmp=/var/tmp/hb-mac-lab-mwayuzjx/v2/tmp/daemon nodeCompileCache=/var/tmp/hb-mac-lab-mwayuzjx/v2/node-compile-cache"}
+{"ts":1794331893010,"op":"sandbox.scratch darwinUserTemp=/private/var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T"}
+{"ts":1794331893016,"op":"security.confinement strict=false bwrap={\"path\":null,\"setuid\":false}"}
+{"ts":1794331893017,"op":"champions homes=/var/tmp/hb-mac-lab-mwayuzjx/v2/champions store=/var/tmp/hb-mac-lab-mwayuzjx/v2/transcript-objects"}
+{"ts":1794331893017,"op":"transcripts.segments store=/var/tmp/hb-mac-lab-mwayuzjx/v2/transcript-objects max_lines=1024 max_raw_bytes=1048576 projection=8"}
+{"ts":1794331893022,"op":"boot.adopt bee=3b69588e-8273-4c5a-8a0e-9a73596be8e7 gen=1 pid=82938 ok=true identityReason=resolved"}
+{"ts":1794331893023,"op":"boot.adopt bee=4c972c71-4612-4f89-adf4-e70e30c33a63 gen=1 pid=82932 ok=true identityReason=resolved"}
+{"ts":1794331893023,"op":"boot.adopt bee=f91c33ee-f619-42c0-a804-3b96cb4176e2 gen=1 pid=82946 ok=true identityReason=resolved"}
+{"ts":1794331893024,"op":"boot adopted=3 stopped=0 requeued=0 reaped=0 wakes=0"}
+{"ts":1794331893028,"op":"rpc.listen socket=/var/tmp/hb-mac-lab-mwayuzjx/v2/hived.sock"}
+{"ts":1794331893030,"op":"transcripts.segment.catch_up scheduled=0"}
+{"ts":1794331893039,"op":"boot.handover_marker_removed root=/var/tmp/hb-mac-lab-mwayuzjx/runtime"}
+{"ts":1794331893042,"op":"daemon.started pid=85357 store=/var/tmp/hb-mac-lab-mwayuzjx/v2/core.sqlite3"}
+hived v2 listening on /var/tmp/hb-mac-lab-mwayuzjx/v2/hived.sock (store /var/tmp/hb-mac-lab-mwayuzjx/v2/core.sqlite3)
+{"ts":1794331894369,"op":"cell.reserve bee=7515371c-6996-4764-bc9b-8218b9cad3fb origin=/var/tmp/hb-mac-lab-mwayuzjx/v2/probe/origin sha=87b7bb40a1a6bc6ad10c8577d24ac63dcb4cd268 base=head space=/var/tmp/hb-mac-lab-mwayuzjx/cells/probe-mwayvqj6-ea56222920b5/origin-space-ea56222920b5"}
+{"ts":1794331894374,"op":"cmd.spawn id=6 bee=7515371c-6996-4764-bc9b-8218b9cad3fb start gen=1"}
+{"ts":1794331894684,"op":"spawn.evidence bee=7515371c-6996-4764-bc9b-8218b9cad3fb gen=1 kind=booted"}
+{"ts":1794331894684,"op":"obs.booted bee=7515371c-6996-4764-bc9b-8218b9cad3fb gen=1 pid=85536"}
+{"ts":1794331894684,"op":"obs.turn_ended bee=7515371c-6996-4764-bc9b-8218b9cad3fb gen=1"}
+{"ts":1794331894685,"op":"session.recorded bee=7515371c-6996-4764-bc9b-8218b9cad3fb gen=1 id=probe-85542"}
+{"ts":1794331894686,"op":"obs.checkpoint bee=7515371c-6996-4764-bc9b-8218b9cad3fb gen=1 cursor=44"}
+{"ts":1794331894718,"op":"transcripts.segment.cut bee=7515371c-6996-4764-bc9b-8218b9cad3fb reason=turn_ended segments=1 lines=1 through=1"}
+{"ts":1794331894719,"op":"tmp.bee_removed bee=7515371c-6996-4764-bc9b-8218b9cad3fb ok=true"}
+{"ts":1794331894719,"op":"cmd.delete id=7 bee=7515371c-6996-4764-bc9b-8218b9cad3fb"}
+{"ts":1794331894725,"op":"obs.skip bee=7515371c-6996-4764-bc9b-8218b9cad3fb gen=1 kind=exited reason=no_bee"}
+{"ts":1794331894769,"op":"runtime.probe handover=none canary=7515371c-6996-4764-bc9b-8218b9cad3fb idle_ms=426 deleted_ms=52 degraded=0"}
+{"ts":1794331895276,"op":"deliver bee=f91c33ee-f619-42c0-a804-3b96cb4176e2 msg=3 gen=1 urgency=next"}
+{"ts":1794331895282,"op":"obs.turn_started bee=f91c33ee-f619-42c0-a804-3b96cb4176e2 gen=1 synthetic"}
+{"ts":1794331895282,"op":"obs.skip bee=f91c33ee-f619-42c0-a804-3b96cb4176e2 gen=1 kind=booted reason=already_running"}
+{"ts":1794331895282,"op":"obs.checkpoint bee=f91c33ee-f619-42c0-a804-3b96cb4176e2 gen=1 cursor=82"}
+{"ts":1794331895336,"op":"obs.turn_ended bee=f91c33ee-f619-42c0-a804-3b96cb4176e2 gen=1"}
+{"ts":1794331895338,"op":"obs.checkpoint bee=f91c33ee-f619-42c0-a804-3b96cb4176e2 gen=1 cursor=190"}
+{"ts":1794331895358,"op":"transcripts.segment.cut bee=f91c33ee-f619-42c0-a804-3b96cb4176e2 reason=turn_ended segments=1 lines=4 through=5"}
+{"ts":1794331895361,"op":"daemon.stopping pid=85357"}
+{"ts":1794331895364,"op":"rpc.close conns=0 drained=true"}
+{"ts":1794331895369,"op":"daemon.stopped"}
+{"ts":1794331895369,"op":"daemon.stop_complete pid=85357"}
