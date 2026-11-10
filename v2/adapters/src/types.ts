@@ -190,6 +190,7 @@ export interface HarnessAdapter {
    * child outright, so it is never used as a fallback).
    */
   encodeInterrupt?(ctx: InterruptContext): string | null;
+  deliveryResponseMarker?(messageId: number): string;
   /** Fixed MCP control request, never arbitrary RPC forwarding. */
   encodeReconnectTools?(commandId: number): string;
   encodeReconnectToolsNonce?(commandId: number, gateway: string, nonce: string): string;

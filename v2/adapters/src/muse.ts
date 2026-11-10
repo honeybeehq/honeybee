@@ -227,6 +227,9 @@ export function museAdapter(opts: MuseAdapterOptions): HarnessAdapter {
         ...(opts.effort ? { reasoningEffort: opts.effort } : {}),
       } });
     },
+    deliveryResponseMarker(messageId: number): string {
+      return String(TURN_REQUEST_ID_BASE + messageId);
+    },
     encodeInterrupt(ctx: InterruptContext): string | null {
       if (!ctx.sessionId) return null;
       return line({ id: INTERRUPT_ID, method: "turn/interrupt", params: {

@@ -368,6 +368,9 @@ export function codexAdapter(opts: CodexAdapterOptions): HarnessAdapter {
     // v6 interrupt: `turn/interrupt {threadId, turnId}` (the OLD adapter's
     // verified call, src/hsr/adapters/codex.ts). Needs the turn id from
     // turn/started; before that there is nothing to interrupt yet.
+    deliveryResponseMarker(messageId: number): string {
+      return String(TURN_REQUEST_ID_BASE + messageId);
+    },
     encodeInterrupt(ctx: InterruptContext): string | null {
       if (!ctx.sessionId || !ctx.turnId) return null;
       return JSON.stringify({

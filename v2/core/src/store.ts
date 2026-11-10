@@ -3966,7 +3966,7 @@ export class CoreStore {
    * turn_ended that follows a successful interrupt is observed like any
    * other. Replay: no-op.
    */
-  recordInterrupt(beeId: string, generation: number | null, outcome: { interrupted: boolean; reason?: string }): void {
+  recordInterrupt(beeId: string, generation: number | null, outcome: { interrupted: boolean; reason?: string; closesAcceptPoint?: boolean }): void {
     this.tx(() => {
       this.mustGetBee(beeId);
       this.audit("bee.interrupted", beeId, {
@@ -3974,14 +3974,15 @@ export class CoreStore {
         generation,
         interrupted: outcome.interrupted,
         reason: outcome.reason ?? null,
+        ...(outcome.closesAcceptPoint ? { closesAcceptPoint: true } : {}),
       });
     });
   }
 
-  recordDeliveryInterrupt(beeId: string, messageId: number, generation: number): void {
+  recordDeliveryInterrupt(beeId: string, messageId: number, generation: number, closesAcceptPoint = false): void {
     this.tx(() => {
       this.mustGetBee(beeId);
-      this.audit("mail.interrupt_requested", beeId, { messageId, generation });
+      this.audit("mail.interrupt_requested", beeId, { messageId, generation, ...(closesAcceptPoint ? { closesAcceptPoint: true } : {}) });
     });
   }
 
@@ -4460,14 +4461,40 @@ export class CoreStore {
     });
   }
 
-  releaseRefusedDeliveryConfirmation(messageId: number, digest: string): boolean {
+  releaseRefusedDeliveryConfirmation(messageId: number, digest: string, proof: "receipt" | "journal" = "receipt"): boolean {
     return this.tx(() => {
       const row = this.getDeliveryConfirmationIntent(messageId);
-      if (!row || row.wireLine === null || row.digest !== digest || row.state !== "held" || row.reason !== "refused") return false;
+      if (!row || row.wireLine === null || row.digest !== digest) return false;
+      if (proof === "receipt" && (row.state !== "held" || row.reason !== "refused")) return false;
       this.stmt("DELETE FROM delivery_confirmation_intents WHERE message_id = ?").run(messageId);
-      this.audit("mail.confirmation_released", row.beeId, { messageId, generation: row.generation, digest, reason: "refused" });
+      this.audit("mail.confirmation_released", row.beeId, { messageId, generation: row.generation, digest, reason: "refused", ...(proof === "journal" ? { proof } : {}) });
       return true;
     });
+  }
+
+  deliveryWritesAuthorized(beeId: string, messageId: number, generation: number): number {
+    return Number((this.stmt(`SELECT COALESCE(SUM(CASE WHEN kind = 'mail.confirmation_prepared'
+        THEN CAST(json_extract(payload, '$.row.messageId') AS INTEGER) = ?
+          AND CAST(json_extract(payload, '$.row.generation') AS INTEGER) = ?
+          AND json_type(payload, '$.row.wireLine') = 'text'
+        ELSE 0 END), 0) AS count FROM audit WHERE bee_id = ?`).get(messageId, generation, beeId) as Row).count);
+  }
+
+  markDeliveredByJournal(messageId: number, generation: number, source?: TurnTriggerSource, reorderMessageIds?: number[]): { applied: boolean } {
+    return this.commitMessageDelivery(messageId, generation, source, true, reorderMessageIds);
+  }
+
+  interruptAwaitsTurnEnd(beeId: string, generation: number, runningSince: number): boolean {
+    const row = this.stmt(
+      `SELECT ts, payload FROM audit
+       WHERE bee_id = ?
+         AND (kind = 'mail.interrupt_requested'
+              OR (kind = 'bee.interrupted' AND json_extract(payload, '$.interrupted') = 1))
+       ORDER BY seq DESC LIMIT 1`,
+    ).get(beeId) as Row | undefined;
+    if (!row || Number(row.ts) < runningSince) return false;
+    const payload = JSON.parse(String(row.payload)) as { generation?: unknown; closesAcceptPoint?: unknown };
+    return payload.generation === generation && payload.closesAcceptPoint === true;
   }
 
   deliveryHoldCounts(): DeliveryHoldCounts {

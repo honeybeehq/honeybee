@@ -4,6 +4,7 @@ import type {RuntimeIdentityHooks} from "../../core/src/runtimeProcessIdentity.t
 import { DELIVERY_CONFIRMATION_MAX_WIRE_BYTES } from "../../core/src/deliveryConfirmationTypes.ts";
 import {authenticatedProcessPeer} from "../../harness/src/processIdentity.ts";
 import { DELIVERY_FRAME_MAX_BYTES, DELIVERY_STATUS_CAPABILITY, type DeliveryStatus, type TaggedDelivery } from "./delivery-receipts.ts";
+import { journalDeliveryEvidence, type DeliveryEvidence } from "./delivery-evidence.ts";
 import { ExecutionFenceError } from "../../core/src/executionFence.ts";
 import type { ExecutionStart, ExecutionRuntimeHooks, ExecutionProcess } from "../../core/src/executionStart.ts";
 import { exactProcessBirth } from "../../harness/src/processIdentity.ts";
@@ -808,6 +809,19 @@ export class RuntimeHost implements RuntimeDriver {
     const matching = attempt?.beeId === beeId && attempt.generation === generation && attempt.digest === createHash("sha256").update(body).digest("hex");
     if (matching && attempt.refused) return "not_attempted";
     return matching && (this.consumed.get(messageId) === generation || p?.generation === generation && p.confirmedDeliveries.has(messageId)) ? "accepted" : "unknown";
+  }
+
+  deliveryEvidence(beeId: string, generation: number, messageId: number): DeliveryEvidence | null {
+    const live = this.procs.get(beeId);
+    let adapter: HarnessAdapter | null = live?.generation === generation ? live.adapter : null;
+    if (!adapter) {
+      try { adapter = this.cfg.resolveExecutionAdapter?.(beeId) ?? this.cfg.resolve(beeId, generation).adapter; }
+      catch { return null; }
+    }
+    const marker = adapter?.confirmsDelivery ? adapter.deliveryResponseMarker?.(messageId) : undefined;
+    if (!adapter || marker === undefined) return null;
+    const parser = adapter;
+    return journalDeliveryEvidence(this.runnerPaths(beeId, generation).observations, marker, messageId, line => parser.parseLine(line));
   }
 
   deliveryReadiness(beeId: string, generation: number, messageId: number, includeStatusReply = true): string {

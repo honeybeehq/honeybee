@@ -327,9 +327,22 @@ function refusedHold(intent: DeliveryConfirmationIntent | null): boolean {
   return intent !== null && intent.wireLine !== null && intent.state === "held" && intent.reason === "refused";
 }
 
-function refusedPlainWrite(intent: DeliveryConfirmationIntent): boolean {
-  return refusedHold(intent) && intent.wireLine !== null && !intent.settlement?.mailBatchId && !intent.settlement?.multilineFallbackId;
+function plainWrite(intent: DeliveryConfirmationIntent): boolean {
+  return intent.wireLine !== null && !intent.settlement?.mailBatchId && !intent.settlement?.multilineFallbackId;
 }
+
+function refusedPlainWrite(intent: DeliveryConfirmationIntent): boolean {
+  return refusedHold(intent) && plainWrite(intent);
+}
+
+type HoldProof = "accepted" | "refused" | "none";
+type HoldLane = "live" | "ended";
+type HoldSettlement = "deliver" | "release" | "recycle" | "keep";
+const HOLD_SETTLEMENTS: Readonly<Record<HoldProof, Record<HoldLane, HoldSettlement>>> = {
+  accepted: { live: "deliver", ended: "deliver" },
+  refused: { live: "recycle", ended: "release" },
+  none: { live: "keep", ended: "keep" },
+};
 
 type AcceptPoint = "open" | "interrupting";
 type AcceptPointEvent = "interrupt_accepted" | "turn_ended" | "exited";
@@ -505,6 +518,10 @@ export class DaemonCore {
       for (const messageId of this.store.legacyUnconfirmedMessageIds(proc.beeId, proc.generation)) {
         this.store.prepareUnknownDeliveryConfirmationIntent({ beeId: proc.beeId, generation: proc.generation, messageId });
       }
+    }
+    for (const proc of live) {
+      const runtime = this.store.currentRuntime(proc.beeId);
+      if (runtime?.generation === proc.generation && runtime.state === "running" && this.store.interruptAwaitsTurnEnd(proc.beeId, proc.generation, runtime.updatedAt)) this.interruptAccepted(proc.beeId, proc.generation);
     }
     let orphansReaped = 0;
     for (const p of live) {
@@ -1831,6 +1848,8 @@ export class DaemonCore {
 
   private readonly interruptRequested = new Set<number>();
   private readonly interruptingGeneration = new Map<string, number>();
+  private readonly journalExamined = new Map<number, { beeId: string; key: string }>();
+  private readonly refusedHeadRecycles = new Map<number, { beeId: string; generation: number }>();
   private readonly deliveryRetries = new Map<string, { key: string; attempts: number; nextAt: number }>();
   private readonly confirmationReady = new Map<number, string>();
   private readonly confirmationPolls = new Map<number, { beeId: string; key: string; attempts: number; nextAt: number; answerConsumed: boolean }>();
@@ -1860,6 +1879,68 @@ export class DaemonCore {
     return true;
   }
 
+  private holdProof(intent: DeliveryConfirmationIntent): HoldProof {
+    const evidence = this.driver.deliveryEvidence?.(intent.beeId, intent.generation, intent.messageId) ?? null;
+    if (evidence === null) return "none";
+    if (evidence.accepted > 0) return "accepted";
+    if (!plainWrite(intent)) return "none";
+    const writes = this.store.deliveryWritesAuthorized(intent.beeId, intent.messageId, intent.generation);
+    return writes > 0 && evidence.refused >= writes ? "refused" : "none";
+  }
+
+  private settleByJournal(intent: DeliveryConfirmationIntent, lane: HoldLane): boolean {
+    const key = `${lane}:${intent.generation}:${intent.digest ?? ""}`;
+    if (this.journalExamined.get(intent.messageId)?.key === key) return false;
+    this.journalExamined.set(intent.messageId, { beeId: intent.beeId, key });
+    const proof = this.holdProof(intent);
+    const settlement = HOLD_SETTLEMENTS[proof][lane];
+    if (settlement === "deliver") return this.settleAccepted(intent, true);
+    if (settlement === "release") {
+      if (intent.digest === null || !this.store.releaseRefusedDeliveryConfirmation(intent.messageId, intent.digest, "journal")) return false;
+      this.log(`deliver.released bee=${intent.beeId} msg=${intent.messageId} gen=${intent.generation} reason=refused proof=journal`);
+      return true;
+    }
+    if (settlement === "recycle") this.refusedHeadRecycles.set(intent.messageId, { beeId: intent.beeId, generation: intent.generation });
+    return false;
+  }
+
+  private recycleForRefusedHead(intent: DeliveryConfirmationIntent, runtime: { state: RuntimeState; generation: number }): void {
+    if (this.refusedHeadRecycles.get(intent.messageId)?.generation !== runtime.generation || runtime.state !== "idle") return;
+    if (this.store.getBee(intent.beeId)?.lifecycle !== "active") return;
+    if (this.store.hasPendingReconnect(intent.beeId, runtime.generation) || this.store.activeMoveOf(intent.beeId) || this.store.activeHandoffOf(intent.beeId) || this.store.hasPendingStopCommand(intent.beeId, runtime.generation)) return;
+    this.store.enqueueCommand("stop", intent.beeId, { cause: "stopped_by_system", reason: "refused_head" });
+    this.log(`policy.refused_head_stop bee=${intent.beeId} gen=${runtime.generation} msg=${intent.messageId}`);
+  }
+
+  private settleAccepted(intent: DeliveryConfirmationIntent, journalProof: boolean): boolean {
+    const message = this.store.getMessage(intent.messageId);
+    if (!message) return false;
+    const source = this.turnTriggerSourceOf(message, isPeerSender(message.sender, id => this.store.getBee(id) != null));
+    const settlement = intent.wireLine === null ? undefined : intent.settlement;
+    const fallback = this.store.multilineDelivery(intent.messageId)?.fallback;
+    const pointer = settlement?.multilineFallbackId
+      ? fallback?.id === settlement.multilineFallbackId
+      : journalProof && intent.wireLine === null && fallback != null && (fallback.state === "in_flight" || fallback.state === "unknown") && fallback.generation === intent.generation;
+    const applied = settlement?.mailBatchId
+      ? this.store.markMailBatchDelivered(settlement.mailBatchId, intent.generation, settlement.reorderMessageIds).applied
+      : pointer
+      ? this.store.completeMultilineFallback(intent.messageId, intent.generation, source, true).applied
+      : journalProof
+      ? this.store.markDeliveredByJournal(intent.messageId, intent.generation, source, settlement?.reorderMessageIds ?? []).applied
+      : this.store.markDelivered(intent.messageId, intent.generation, source, settlement?.reorderMessageIds ?? []).applied;
+    if (!applied) return false;
+    this.interruptRequested.delete(intent.messageId);
+    const instruction = settlement?.placementMoveId ? this.store.getBeeMove(settlement.placementMoveId) : null;
+    if (instruction && intent.generation !== instruction.sourceGeneration) {
+      this.store.markMoveInstructionsApplied(instruction.id);
+      if (this.store.activeMoveOf(intent.beeId)?.phase === "starting") this.store.completeBeeMove(instruction.id);
+    }
+    const handoff = settlement?.handoffId ? this.store.getBeeHandoff(settlement.handoffId) : null;
+    if (handoff?.phase === "starting" && handoff.seedMessageId === intent.messageId) this.store.completeBeeHandoff(handoff.id);
+    this.log(`deliver.confirmed bee=${intent.beeId} msg=${intent.messageId} gen=${intent.generation}${journalProof ? " proof=journal" : ""}`);
+    return true;
+  }
+
   private reconcileDeliveryConfirmations(scope: ReadonlySet<string> | null): void {
     if (this.store.inTransaction) return;
     let intents: DeliveryConfirmationIntent[];
@@ -1880,10 +1961,12 @@ export class DaemonCore {
     const evaluated = (beeId: string): boolean => scope === null || scope.has(beeId);
     for (const [id, poll] of this.confirmationPolls) if (evaluated(poll.beeId) && !ids.has(id)) this.confirmationPolls.delete(id);
     for (const [id, beeId] of this.confirmationReady) if (evaluated(beeId) && !ids.has(id)) this.confirmationReady.delete(id);
+    for (const [id, examined] of this.journalExamined) if (evaluated(examined.beeId) && !ids.has(id)) this.journalExamined.delete(id);
+    for (const [id, recycle] of this.refusedHeadRecycles) if (evaluated(recycle.beeId) && !ids.has(id)) this.refusedHeadRecycles.delete(id);
     for (const intent of intents) {
       const runtime = this.store.currentRuntime(intent.beeId);
       if (!runtime || runtime.generation !== intent.generation || runtime.state === "stopped") {
-        if (!this.releaseRefusedPlainWrite(intent)) this.holdConfirmation(intent, "generation_changed");
+        if (!this.releaseRefusedPlainWrite(intent) && !this.settleByJournal(intent, "ended")) this.holdConfirmation(intent, "generation_changed");
         this.confirmationReady.delete(intent.messageId);
         continue;
       }
@@ -1899,6 +1982,14 @@ export class DaemonCore {
       if (neverWrittenAuthHold(intent, runtime.generation)) this.scheduleBee(intent.beeId, this.now() + HOST_AUTH_RECHECK_MS);
       else this.hot.add(intent.beeId);
       if (refusedHold(intent)) continue;
+      if (intent.state === "held" && intent.reason === "unknown") {
+        if (this.settleByJournal(intent, "live")) {
+          this.confirmationPolls.delete(intent.messageId);
+          this.deliveryRetries.delete(intent.beeId);
+          continue;
+        }
+        this.recycleForRefusedHead(intent, runtime);
+      }
       if (this.confirmationReady.has(intent.messageId)) {
         if (this.now() - intent.since >= 30_000) {
           this.holdConfirmation(intent, "lane_unavailable");
@@ -1926,27 +2017,8 @@ export class DaemonCore {
         ? this.driver.consumeDeliveryConfirmation?.(intent.beeId, intent.generation, intent.messageId) ? "accepted" : "pending_ack"
         : this.driver.reconcileDeliveryConfirmation?.(intent.beeId, intent.generation, intent.messageId, intent) ?? "unknown";
       if (result === "accepted") {
-        const message = this.store.getMessage(intent.messageId);
-        if (!message) continue;
-        const peer = isPeerSender(message.sender, id => this.store.getBee(id) != null);
-        const settlement = intent.wireLine === null ? undefined : intent.settlement;
-        const fallback = this.store.multilineDelivery(intent.messageId)?.fallback;
-        const applied = settlement?.mailBatchId
-          ? this.store.markMailBatchDelivered(settlement.mailBatchId,intent.generation,settlement.reorderMessageIds).applied
-          : settlement?.multilineFallbackId && fallback?.id === settlement.multilineFallbackId
-          ? this.store.completeMultilineFallback(intent.messageId, intent.generation, this.turnTriggerSourceOf(message, peer), true).applied
-          : this.store.markDelivered(intent.messageId, intent.generation, this.turnTriggerSourceOf(message, peer), settlement?.reorderMessageIds ?? []).applied;
-        if (applied) {
-          this.interruptRequested.delete(intent.messageId);
-          const instruction = settlement?.placementMoveId ? this.store.getBeeMove(settlement.placementMoveId) : null;
-          if (instruction && runtime.generation !== instruction.sourceGeneration) {
-            this.store.markMoveInstructionsApplied(instruction.id);
-            if (this.store.activeMoveOf(intent.beeId)?.phase === "starting") this.store.completeBeeMove(instruction.id);
-          }
-          const handoff = settlement?.handoffId ? this.store.getBeeHandoff(settlement.handoffId) : null;
-          if (handoff?.phase === "starting" && handoff.seedMessageId === intent.messageId) this.store.completeBeeHandoff(handoff.id);
-          this.log(`deliver.confirmed bee=${intent.beeId} msg=${intent.messageId} gen=${intent.generation}`);
-        }
+        if (!this.store.getMessage(intent.messageId)) continue;
+        this.settleAccepted(intent, false);
         this.confirmationReady.delete(intent.messageId);
         this.confirmationPolls.delete(intent.messageId);
         this.deliveryRetries.delete(intent.beeId);
@@ -2117,7 +2189,7 @@ export class DaemonCore {
             // the TUI settles). The observed turn_ended opens the next point.
             if (res.interrupted) {
               if (res.closesAcceptPoint) this.interruptAccepted(rt.beeId, rt.generation);
-              this.store.recordDeliveryInterrupt(rt.beeId, urgent.id, rt.generation);
+              this.store.recordDeliveryInterrupt(rt.beeId, urgent.id, rt.generation, res.closesAcceptPoint === true);
               continue;
             }
           }

@@ -140,6 +140,7 @@ export interface RuntimeDriver {
   reconcileDeliveryConfirmation?(beeId: string, generation: number, messageId: number, plan: DeliveryConfirmationPlan): DeliveryConfirmationResult;
   deliver(beeId: string, generation: number, messageId: number, body: string, options?: { freshTurn?: boolean; confirmation?: DeliveryConfirmationPlan; multilineWaitExpired?: boolean; singleAttempt?: boolean }): DeliverOutcome;
   deliveryReceipt?(beeId: string, generation: number, messageId: number, body: string): "accepted" | "unknown" | "not_attempted";
+  deliveryEvidence?(beeId: string, generation: number, messageId: number): { accepted: number; refused: number } | null;
 
   /**
    * Stop the runtime process. Parenthood makes this certain: if a process
