@@ -1091,6 +1091,8 @@ export class HiveDaemon {
       wipNode: () => this.wipNode(),
       wipNodeScopes: () => this.mustStore().wipNodeScopes(this.wipNode()),
       lastRecordedPass: (kind) => this.mustStore().latestCellRetentionPass(kind ?? null),
+      loadJudgments: () => this.mustStore().cellRetentionJudgments(),
+      saveJudgments: (encoded) => this.mustStore().putCellRetentionJudgments(encoded),
       recentEvictionTimes: (sinceTs) => this.mustStore().cellRetentionEvictionTimes(sinceTs),
       lastDailyCapAt: () => this.mustStore().lastCellRetentionDailyCapAt(),
     });

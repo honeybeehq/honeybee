@@ -50,17 +50,39 @@ function rig(policy: Partial<ResolvedCellRetention> = {}, volume: { totalBytes: 
     cells.set(shape, { beeId: bee.id, cellId: cell.id, spaceDir: paths.spaceDir });
   }
   now = base;
-  const service = new CellRetentionService({
-    cellsRoot,
-    policy: { ...defaultCellRetention("workstation"), ...policy },
-    store: () => store,
-    now: () => now,
-    log: (op) => logs.push(op),
-    cellInUse: (_beeId, runtime) => runtime != null && runtime.state !== "stopped",
-    opInFlight: () => false,
-    forgetCell: () => undefined,
-    statfs: () => ({ ...volume }),
-  });
+  const services: CellRetentionService[] = [];
+  const boot = (override: Partial<ResolvedCellRetention> = {}) => {
+    const service = new CellRetentionService({
+      cellsRoot,
+      policy: { ...defaultCellRetention("workstation"), ...policy, ...override },
+      store: () => store,
+      now: () => now,
+      log: (op) => logs.push(op),
+      cellInUse: (_beeId, runtime) => runtime != null && runtime.state !== "stopped",
+      opInFlight: () => false,
+      forgetCell: () => undefined,
+      statfs: () => ({ ...volume }),
+      audit: (kind, payload) => store.recordCellRetentionEvent(kind, payload),
+      lastRecordedPass: (kind) => store.latestCellRetentionPass(kind ?? null),
+      loadJudgments: () => store.cellRetentionJudgments(),
+      saveJudgments: (encoded) => store.putCellRetentionJudgments(encoded),
+    });
+    services.push(service);
+    return service;
+  };
+  const service = boot();
+  const plans = () => logs.filter((l) => l.startsWith("cell.retention.plan"));
+  const tickOf = async (ticked: CellRetentionService): Promise<number | null> => {
+    const before = logs.filter((l) => l.startsWith("cell.retention.pass")).length;
+    const planned = plans().length;
+    ticked.tick();
+    for (let waited = 0; waited < 3_000; waited += 20) {
+      await new Promise((done) => setTimeout(done, 20));
+      if (logs.filter((l) => l.startsWith("cell.retention.pass")).length > before) return Number(/inspected=(\d+)/.exec(plans().at(-1)!)![1]);
+      if (waited >= 400 && plans().length === planned) return null;
+    }
+    throw new Error("the ticked pass did not finish");
+  };
   const pass = async (opts: { measure?: boolean } = {}): Promise<{ result: CellGcResult; inspected: number; census: boolean }> => {
     const from = logs.length;
     const result = await service.run({ dryRun: true, kind: "scheduled", ...opts });
@@ -70,9 +92,9 @@ function rig(policy: Partial<ResolvedCellRetention> = {}, volume: { totalBytes: 
   };
   const item = (result: CellGcResult, shape: Shape) => result.items.find((i) => i.beeId === cells.get(shape)!.beeId)!;
   return {
-    service, store, cells, volume, pass, item,
+    service, store, cells, volume, pass, item, boot, tickOf, logs,
     advance: (ms: number) => { now += ms; },
-    cleanup: async () => { await service.stop(); store.close(); rmSync(root, { recursive: true, force: true }); },
+    cleanup: async () => { for (const each of services) await each.stop(); store.close(); rmSync(root, { recursive: true, force: true }); },
   };
 }
 
@@ -151,6 +173,59 @@ test("settle: a Cell remembered as too young is judged again once it is old enou
     assert.equal(aged.inspected, 2, "past the stopped age the remembered judgment no longer stands");
     assert.equal(r.item(aged.result, "young").reason, "stopped_age");
     assert.equal(r.item(aged.result, "young").verdict, "evict");
+  } finally {
+    await r.cleanup();
+  }
+});
+
+test("settle: a restart inside the interval buys no pass, and the next pass still knows the holds", { timeout: 120_000 }, async () => {
+  const r = rig({ trimAfterMs: null });
+  try {
+    r.advance(5 * 60_000);
+    assert.equal(await r.tickOf(r.service), 2, "the first pass after a first boot inspects the two archived-old Cells");
+    assert.equal(r.store.getCell(r.cells.get("archived_clean")!.cellId)!.state, "evicted");
+
+    r.advance(HOUR);
+    const restarted = r.boot();
+    assert.match(r.logs.at(-1)!, /^cell\.retention\.resumed last_pass=\S+ next_pass=\S+ judgments=1$/);
+    r.advance(5 * 60_000);
+    assert.equal(await r.tickOf(restarted), null, "five minutes after the restart no pass runs");
+    r.advance(DAY - HOUR - 5 * 60_000 - 1);
+    assert.equal(await r.tickOf(restarted), null, "nor at any time before the last pass is a day old");
+    r.advance(1);
+    assert.equal(await r.tickOf(restarted), 0, "the daily pass runs on the old cadence and inspects nothing: the dirty hold is remembered");
+
+    r.advance(HOUR);
+    r.boot().noteCellTouched(r.cells.get("archived_dirty")!.cellId);
+    const afterTouch = r.boot();
+    r.advance(DAY);
+    assert.equal(await r.tickOf(afterTouch), 1, "a touch is not forgotten by the restart after it");
+
+    r.advance(HOUR);
+    const stricter = r.boot({ archivedAfterMs: 8 * DAY });
+    r.advance(DAY);
+    assert.equal(await r.tickOf(stricter), 1, "judgments made under another policy are not kept");
+  } finally {
+    await r.cleanup();
+  }
+});
+
+test("settle: a restart after a missed or failed pass runs one once the boot delay is over", { timeout: 120_000 }, async () => {
+  const r = rig({ trimAfterMs: null });
+  try {
+    r.advance(5 * 60_000);
+    assert.equal(await r.tickOf(r.service), 2);
+    r.advance(2 * DAY);
+    const late = r.boot();
+    assert.equal(await r.tickOf(late), null, "not at boot");
+    r.advance(5 * 60_000);
+    assert.equal(await r.tickOf(late), 0, "the missed pass runs after the boot delay");
+
+    r.store.recordCellRetentionEvent("cell.retention.pass", { kind: "scheduled", startedAt: 1_800_000_000_000 + 2 * DAY + HOUR, endedAt: 1_800_000_000_000 + 2 * DAY + HOUR, outcome: "failed", evicted: 0, error: "boom" });
+    r.advance(2 * HOUR);
+    const afterFailure = r.boot();
+    r.advance(5 * 60_000);
+    assert.equal(await r.tickOf(afterFailure), 0, "a failed pass does not count as the day's pass");
   } finally {
     await r.cleanup();
   }

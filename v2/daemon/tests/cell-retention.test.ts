@@ -405,3 +405,30 @@ test("cell-retention.6: idle Cells lose build output and keep everything else; e
     rig.cleanup();
   }
 });
+
+test("cell-retention.7: a restart inside the interval runs no boot pass and still knows the last pass's holds", { timeout: 180_000 }, async () => {
+  const rig = makeRig({ enabled: true, stoppedAfterDays: 0, archivedAfterDays: 0, intervalHours: 1 });
+  const env = { HIVE_TEST_RETENTION_INITIAL_DELAY_MS: "1500" };
+  const logged = (needle: string) => readFileSync(join(rig.dir, "hived.log"), "utf8").split("\n").filter((line) => line.includes(needle));
+  let daemon: DaemonHandle | null = null;
+  try {
+    daemon = await startDaemon(rig.dir, { env });
+    const client = await daemon.client();
+    const bee = await spawnIdle(client, "held", rig.origin.repo);
+    writeFileSync(join(bee.view.bee!.cwd, "wip.txt"), "uncommitted\n");
+    await stopped(client, bee.beeId);
+    await waitFor(() => logged("cell.retention.pass kind=scheduled").length === 1, "the first boot's pass", 60_000);
+    assert.equal(itemFor(await gc(client, { dryRun: true }), bee.beeId).reason, "dirty_uncommitted");
+    await daemon.stop();
+
+    daemon = await startDaemon(rig.dir, { env });
+    const resumed = await waitFor(() => logged("cell.retention.resumed")[0] ?? null, "the restarted daemon resumes the cadence", 30_000);
+    assert.match(resumed, /judgments=1/, "the dirty hold was saved by the pass and read back at boot");
+    await new Promise((done) => setTimeout(done, 6_000));
+    assert.equal(logged("cell.retention.pass kind=scheduled").length, 1, "the restart bought no pass");
+    assert.equal(logged("cell.retention.plan").filter((line) => line.includes("kind=scheduled")).length, 1);
+  } finally {
+    await daemon?.stop();
+    rig.cleanup();
+  }
+});

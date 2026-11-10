@@ -2754,6 +2754,15 @@ export class CoreStore {
   }
 
   /** The newest `cell.retention.pass` payload (of `passKind`, when given) within the last `scanRows` audit rows (a bounded backward scan). */
+  cellRetentionJudgments(): string | null {
+    const row = this.stmt("SELECT value FROM meta WHERE key = 'cell_retention_judgments'").get() as Row | undefined;
+    return row == null ? null : String(row.value);
+  }
+
+  putCellRetentionJudgments(encoded: string): void {
+    this.stmt("INSERT INTO meta(key, value) VALUES('cell_retention_judgments', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(encoded);
+  }
+
   latestCellRetentionPass(passKind: string | null = null, scanRows = 500_000): Record<string, unknown> | null {
     const row = this.stmt(
       "SELECT payload FROM audit WHERE kind = 'cell.retention.pass' AND seq > (SELECT COALESCE(MAX(seq), 0) FROM audit) - ? AND (? IS NULL OR json_extract(payload, '$.kind') = ?) ORDER BY seq DESC LIMIT 1",

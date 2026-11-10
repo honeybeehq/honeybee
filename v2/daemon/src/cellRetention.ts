@@ -130,8 +130,11 @@ export interface CellRetentionDeps {
   recentEvictionTimes?: (sinceTs: number) => number[];
   /** When the daily cap was last audited, so a restart does not audit it twice in one window. */
   lastDailyCapAt?: () => number | null;
-  /** The newest recorded pass (optionally of one kind), to restore `lastPass` and the floor-unmet episode after a restart. */
+  /** The newest recorded pass (optionally of one kind), to restore `lastPass`, the floor-unmet episode and the daily cadence after a restart. */
   lastRecordedPass?: (kind?: CellGcPassKind) => Record<string, unknown> | null;
+  /** The settled judgments as last saved, so the first pass after a restart inspects no more than the pass before it. */
+  loadJudgments?: () => string | null;
+  saveJudgments?: (encoded: string) => void;
   /** Free-space check cadence (default 60 s). */
   diskCheckMs?: number;
   /** After a pass ends floor_unmet, wait this long before the next pressure pass (default 30 min). */
@@ -300,6 +303,7 @@ export class CellRetentionService {
   private warnedBelowFloorAt: number | null = null;
   private lastPresentBytes: number | null = null;
   private readonly judged = new Map<string, Judgment>();
+  private savedJudgments: string | null = null;
   private cellCounts: { cellCount: number; liveCells: number; at: number } | null = null;
   private readonly wipInFlight = new Map<string, Promise<WipPushWorkerResult>>();
   private readonly wipBlocked = new Map<string, number>();
@@ -328,9 +332,11 @@ export class CellRetentionService {
     this.bootedAt = deps.now();
     let recorded: Record<string, unknown> | null = null;
     let pressure: Record<string, unknown> | null = null;
+    let scheduled: Record<string, unknown> | null = null;
     try {
       recorded = deps.lastRecordedPass?.() ?? null;
       pressure = deps.lastRecordedPass?.("pressure") ?? null;
+      scheduled = deps.lastRecordedPass?.("scheduled") ?? null;
     } catch (err) {
       deps.log(`cell.retention.last_pass_unreadable ${err instanceof Error ? err.message : String(err)}`);
     }
@@ -342,6 +348,16 @@ export class CellRetentionService {
       deps.log(`cell.retention.eviction_history_unreadable ${err instanceof Error ? err.message : String(err)}`);
     }
     this.floorUnmet = summaryFrom(pressure)?.outcome === "floor_unmet";
+    const lastScheduled = summaryFrom(scheduled);
+    if (lastScheduled != null && lastScheduled.outcome !== "failed" && lastScheduled.startedAt > 0 && lastScheduled.startedAt <= this.bootedAt) {
+      this.lastPassAt = lastScheduled.startedAt;
+    }
+    this.restoreJudgments();
+    if (this.lastPassAt != null) {
+      deps.log(
+        `cell.retention.resumed last_pass=${new Date(this.lastPassAt).toISOString()} next_pass=${new Date(this.lastPassAt + deps.policy.intervalMs).toISOString()} judgments=${this.judged.size}`,
+      );
+    }
   }
 
   get policy(): ResolvedCellRetention {
@@ -356,10 +372,8 @@ export class CellRetentionService {
     this.sweepWipRefsIfDue(now);
     const policy = this.deps.policy;
     if (!policy.enabled || this.passInFlight) return;
-    const due = this.lastPassAt == null
-      ? now - this.bootedAt >= (this.deps.initialDelayMs ?? DEFAULT_INITIAL_DELAY_MS)
-      : now - this.lastPassAt >= policy.intervalMs;
-    if (!due) return;
+    if (now - this.bootedAt < (this.deps.initialDelayMs ?? DEFAULT_INITIAL_DELAY_MS)) return;
+    if (this.lastPassAt != null && now - this.lastPassAt < policy.intervalMs) return;
     this.lastPassAt = now;
     void withoutRpcCaller(() => this.run({ dryRun: false, kind: "scheduled" })).catch((err) => {
       if (!this.stopping) this.deps.log(`cell.retention.error ${err instanceof Error ? err.stack ?? err.message : String(err)}`);
@@ -730,6 +744,7 @@ export class CellRetentionService {
     this.cappedInPlan = false;
     const items = this.decide(candidates, inspections, plannedAt, this.effectiveMaxBytes(disk));
     this.judge(candidates, items);
+    this.saveJudgments();
     if (this.cappedInPlan && !opts.dryRun) this.auditDailyCap(plannedAt);
     const result: CellGcResult = {
       dryRun: opts.dryRun,
@@ -1194,7 +1209,42 @@ export class CellRetentionService {
   }
 
   noteCellTouched(cellId: string): void {
-    this.judged.delete(cellId);
+    if (this.judged.delete(cellId)) this.saveJudgments();
+  }
+
+  private judgmentPolicy(): string {
+    return JSON.stringify({ ...this.deps.policy, warnings: [] });
+  }
+
+  private restoreJudgments(): void {
+    try {
+      const encoded = this.deps.loadJudgments?.() ?? null;
+      if (encoded == null) return;
+      const saved = JSON.parse(encoded) as { policy?: unknown; cells?: unknown };
+      if (saved.policy !== this.judgmentPolicy() || !Array.isArray(saved.cells)) return;
+      for (const row of saved.cells) {
+        if (!Array.isArray(row)) continue;
+        const [key, reason, facts] = row as unknown[];
+        if (typeof key === "string" && typeof facts === "string" && SETTLED_REASONS.has(reason as CellGcReason)) this.judged.set(key, { reason: reason as CellGcReason, facts });
+      }
+      this.savedJudgments = encoded;
+    } catch (err) {
+      this.judged.clear();
+      this.deps.log(`cell.retention.judgments_unreadable ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  private saveJudgments(): void {
+    if (this.deps.saveJudgments == null) return;
+    const cells = [...this.judged].map(([key, judgment]) => [key, judgment.reason, judgment.facts]).sort((a, b) => (a[0]! < b[0]! ? -1 : 1));
+    const encoded = JSON.stringify({ policy: this.judgmentPolicy(), cells });
+    if (encoded === this.savedJudgments) return;
+    try {
+      this.deps.saveJudgments(encoded);
+      this.savedJudgments = encoded;
+    } catch (err) {
+      this.deps.log(`cell.retention.judgments_unsaved ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 
   /** Over budget: promote clean-but-young Cells, archived before stopped, oldest idle first. */
