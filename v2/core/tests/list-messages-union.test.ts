@@ -42,13 +42,13 @@ const MATRIX: Array<{ name: string; sql: string; pin: RegExp }> = [
   },
   {
     name: "pendingMail join",
-    sql: `SELECT h.*, m.queue_order, m.replaces_message_id
+    sql: `SELECT h.*, m.queue_order, m.replaces_message_id, m.urgency AS current_urgency, substr(m.sender, 1, 1024) AS live_sender, length(m.sender) AS live_sender_chars, substr(m.body, 1, 16384) AS live_body, length(m.body) AS live_body_chars
        FROM mailbox m
        JOIN mail_history_enqueues h ON h.message_id = m.id
        WHERE m.bee_id = ? AND m.delivered_at IS NULL
        ORDER BY COALESCE(m.queue_order,m.id), m.id
        LIMIT ?`,
-    pin: /SEARCH m USING COVERING INDEX mailbox_fifo_pending \(bee_id=\?\)/,
+    pin: /SEARCH m USING INDEX mailbox_fifo_pending \(bee_id=\?\)/,
   },
   {
     name: "getMessage",

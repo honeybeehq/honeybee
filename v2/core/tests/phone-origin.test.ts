@@ -139,7 +139,7 @@ test("durable effect fingerprint survives RPC cache pruning and missing binding 
   } finally { store.close(); h.cleanup(); }
 });
 
-test("cancel, expedite, deletion and reopen preserve origin with retained mail history", () => {
+test("cancel and expedite preserve origin in mail history; deletion removes it", () => {
   const h = harness(); let store = h.open();
   try {
     const { bee } = makeBee(store);
@@ -151,7 +151,7 @@ test("cancel, expedite, deletion and reopen preserve origin with retained mail h
     assert.deepEqual(store.mailHistory().messages[0]!.phoneOrigin, message.phoneInput!.envelope);
     store.deleteBee(bee.id);
     store.close(); store = h.open();
-    assert.deepEqual(store.mailHistory().messages[0]!.phoneOrigin, message.phoneInput!.envelope);
+    assert.deepEqual(store.mailHistory().messages, []);
     assert.deepEqual(replayAudit(store.auditRows()), store.dumpState());
   } finally { store.close(); h.cleanup(); }
 });

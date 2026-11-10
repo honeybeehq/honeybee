@@ -1731,7 +1731,7 @@ export class HiveDaemon {
     }
   }
 
-  private storeRetentionPass = { auditRows: 0, commands: 0, slices: 0, slowestMs: 0 };
+  private storeRetentionPass = { auditRows: 0, commands: 0, mailHistoryCopiesCleared: 0, mailHistoryOrphansRemoved: 0, slices: 0, slowestMs: 0 };
 
   private storeRetentionTick(core: DaemonCore, store: CoreStore, first: boolean): void {
     if (first) {
@@ -1744,14 +1744,16 @@ export class HiveDaemon {
     const pass = this.storeRetentionPass;
     pass.auditRows += slice.auditRows;
     pass.commands += slice.commands;
+    pass.mailHistoryCopiesCleared += slice.mailHistoryCopiesCleared;
+    pass.mailHistoryOrphansRemoved += slice.mailHistoryOrphansRemoved;
     pass.slices += 1;
     pass.slowestMs = Math.max(pass.slowestMs, performance.now() - started);
     if (!slice.done) {
       core.schedule(STORE_RETENTION_KEY, Date.now() + STORE_RETENTION_SLICE_GAP_MS);
       return;
     }
-    this.log(`store.retention.pass audit=${pass.auditRows} commands=${pass.commands} floor=${slice.floorSeq} slices=${pass.slices} slowest_ms=${pass.slowestMs.toFixed(1)}`);
-    this.storeRetentionPass = { auditRows: 0, commands: 0, slices: 0, slowestMs: 0 };
+    this.log(`store.retention.pass audit=${pass.auditRows} commands=${pass.commands} mail_history_copies_cleared=${pass.mailHistoryCopiesCleared} mail_history_orphans_removed=${pass.mailHistoryOrphansRemoved} floor=${slice.floorSeq} slices=${pass.slices} slowest_ms=${pass.slowestMs.toFixed(1)}`);
+    this.storeRetentionPass = { auditRows: 0, commands: 0, mailHistoryCopiesCleared: 0, mailHistoryOrphansRemoved: 0, slices: 0, slowestMs: 0 };
     core.schedule(STORE_RETENTION_KEY, Date.now() + STORE_RETENTION.passEveryMs);
   }
 

@@ -5,6 +5,13 @@ export const STORE_RETENTION = {
   passEveryMs: DAY_MS,
   sliceAuditRows: 250,
   sliceCommandRows: 100,
+  sliceMailHistoryRows: 250,
+  mail: {
+    undelivered: "kept: the queue",
+    deliveredOrCancelled: "kept while the bee exists",
+    beeDeleted: "mailbox and mail history removed with the bee",
+    byAge: false,
+  },
   audit: {
     keptKinds: [
       "bee.created",
@@ -38,6 +45,8 @@ export const STORE_RETENTION = {
 export interface StoreRetentionSlice {
   auditRows: number;
   commands: number;
+  mailHistoryCopiesCleared: number;
+  mailHistoryOrphansRemoved: number;
   floorSeq: number;
   done: boolean;
 }

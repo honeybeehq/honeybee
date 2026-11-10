@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { DatabaseSync } from "node:sqlite";
 import { INBOX_AGENT, STORE_RETENTION, auditRetention, openCoreStore, type CoreStore } from "../src/index.ts";
 import { harness } from "./helpers.ts";
 
@@ -104,9 +105,9 @@ test("a retention pass deletes audit rows and settled commands older than the wi
   assert.equal(store.mailHistory().messages.length, 1);
   assert.equal(store.auditTail(0, 5, null).at(-1)!.seq, store.lastAuditSeq());
 
-  assert.deepEqual(store.pruneRetained(now), { auditRows: 0, commands: 0, floorSeq: oldSeq, done: true });
+  assert.deepEqual(store.pruneRetained(now), { auditRows: 0, commands: 0, mailHistoryCopiesCleared: 0, mailHistoryOrphansRemoved: 0, floorSeq: oldSeq, done: true });
   clock.now += DAY;
-  assert.deepEqual(store.pruneRetained(clock.now), { auditRows: 0, commands: 0, floorSeq: oldSeq, done: true }, "the next day's pass costs one empty slice when nothing aged out");
+  assert.deepEqual(store.pruneRetained(clock.now), { auditRows: 0, commands: 0, mailHistoryCopiesCleared: 0, mailHistoryOrphansRemoved: 0, floorSeq: oldSeq, done: true }, "the next day's pass costs one empty slice when nothing aged out");
 });
 
 test("a retention pass stops at the window and steps over rows dated in the future", (t) => {
@@ -128,4 +129,42 @@ test("a retention pass stops at the window and steps over rows dated in the futu
   assert.equal(slice.floorSeq, alsoOld);
   const seqs = new Set(store.auditRows().map((row) => row.seq));
   assert.deepEqual([seqs.has(old), seqs.has(future), seqs.has(alsoOld), seqs.has(young)], [false, true, false, true]);
+});
+
+test("a retention pass drops history copies the mailbox still holds and history of bees deleted before the rule, in bounded slices", (t) => {
+  const h = harness();
+  t.after(() => h.cleanup());
+  let { store, clock } = clockedStore(h.path);
+  const live = store.createBee({ id: "live", name: "live", agent: INBOX_AGENT, substrate: "hsr", cwd: "" }).bee;
+  const gone = store.createBee({ id: "gone", name: "gone", agent: INBOX_AGENT, substrate: "hsr", cwd: "" }).bee;
+  const messages = Array.from({ length: STORE_RETENTION.sliceMailHistoryRows + 10 }, (_, index) => store.send(live.id, `body ${index}`, { sender: "op" }).message);
+  const canceled = store.send(live.id, "canceled body", { sender: "op" }).message;
+  assert.equal(store.cancelMessage(live.id, canceled.id).canceled, true);
+  const orphan = store.send(gone.id, "orphan body", { sender: "op" }).message;
+  store.close();
+  const legacy = new DatabaseSync(h.path);
+  legacy.exec("PRAGMA foreign_keys = ON");
+  legacy.prepare("UPDATE mail_history_enqueues SET sender = CAST(? AS BLOB), body = CAST(? AS BLOB) WHERE bee_id = ? AND message_id <> ?").run("op", "legacy copy", live.id, canceled.id);
+  legacy.prepare("DELETE FROM bees WHERE id = ?").run(gone.id);
+  legacy.close();
+  ({ store, clock } = clockedStore(h.path));
+  let cleared = 0, removed = 0, slices = 0;
+  for (let done = false; !done; slices += 1) {
+    const slice = store.pruneRetained(clock.now);
+    assert.ok(slice.mailHistoryCopiesCleared + slice.mailHistoryOrphansRemoved <= STORE_RETENTION.sliceMailHistoryRows);
+    cleared += slice.mailHistoryCopiesCleared;
+    removed += slice.mailHistoryOrphansRemoved;
+    done = slice.done;
+  }
+  assert.deepEqual({ cleared, removed, slices }, { cleared: messages.length, removed: 1, slices: 2 });
+  const byId = new Map(store.mailHistory({ limit: 20 }).messages.map((message) => [message.messageId, message]));
+  assert.equal(byId.get(messages.at(-1)!.id)?.body, `body ${messages.length - 1}`);
+  assert.equal(byId.get(canceled.id)?.body, "canceled body");
+  assert.equal(byId.has(orphan.id), false);
+  assert.equal(store.pruneRetained(clock.now + DAY).mailHistoryCopiesCleared, 0);
+  store.close();
+  const db = new DatabaseSync(h.path, { readOnly: true });
+  try {
+    assert.equal((db.prepare("SELECT COUNT(*) AS n FROM mail_history_enqueues WHERE length(body) > 0").get() as { n: number }).n, 1);
+  } finally { db.close(); }
 });

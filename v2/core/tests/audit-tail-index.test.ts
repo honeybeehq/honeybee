@@ -280,16 +280,22 @@ test("audit_by_bee installs on populated reopen and naturally serves only the fi
   assert.deepEqual(store.auditRows(), auditBefore, "idempotent second installation remains silent");
 });
 
-test("deleted-bee history uses the specialized deletion index and preserves snapshot semantics", (t) => {
+test("history left by a pre-rule bee deletion uses the specialized deletion index and preserves snapshot semantics", (t) => {
   const h = harness();
   t.after(() => h.cleanup());
+  const initial = h.open();
+  const bee = makeBee(initial, "deleted-history").bee;
+  const sent = initial.send(bee.id, "queued before deletion").message;
+  for (let index = 0; index < 30; index += 1) initial.renameBee(bee.id, `deleted-history-${index}`);
+  const beforeDeletionSeq = initial.lastAuditSeq();
+  initial.close();
+  const legacy = new DatabaseSync(h.path);
+  legacy.exec("PRAGMA foreign_keys = ON");
+  legacy.prepare("DELETE FROM bees WHERE id = ?").run(bee.id);
+  legacy.prepare("INSERT INTO audit(ts, kind, bee_id, payload) VALUES (?, 'bee.deleted', ?, ?)").run(h.now(), bee.id, JSON.stringify({ beeId: bee.id }));
+  legacy.close();
   const store = h.open();
   t.after(() => store.close());
-  const bee = makeBee(store, "deleted-history").bee;
-  const sent = store.send(bee.id, "queued before deletion").message;
-  for (let index = 0; index < 30; index += 1) store.renameBee(bee.id, `deleted-history-${index}`);
-  const beforeDeletionSeq = store.lastAuditSeq();
-  store.deleteBee(bee.id);
   const deletion = store.auditTail(0, 1_000, bee.id).find((row) => row.kind === "bee.deleted");
   assert.ok(deletion);
 

@@ -1371,8 +1371,11 @@ CREATE INDEX IF NOT EXISTS audit_bee_deleted_bee_seq
 `;
 
 /**
- * Bounded send-time projection for history pages. It deliberately has no bee
- * foreign key: deletion removes the live mailbox but not accepted-send history.
+ * Send-time history: ids and metadata. Sender and body are read from the
+ * mailbox row; the bounded copy here is filled only when that row is removed
+ * (cancelled or replaced). Undelivered mail is the queue and is never pruned;
+ * delivered and cancelled mail lives as long as its bee; deleting a bee
+ * removes its mailbox rows and these rows in the same transaction.
  */
 export const MAIL_HISTORY_PROJECTION_SQL = `
 CREATE TABLE IF NOT EXISTS mail_history_enqueues (
@@ -1389,6 +1392,8 @@ CREATE TABLE IF NOT EXISTS mail_history_enqueues (
   enqueued_at       INTEGER NOT NULL
 ) STRICT;
 `;
+
+export const MAIL_HISTORY_BEE_INDEX_SQL = "CREATE INDEX IF NOT EXISTS mail_history_enqueues_by_bee ON mail_history_enqueues(bee_id)";
 
 export const RUNTIMES_ADDITIVE_COLUMNS: ReadonlyArray<readonly [name: string, ddl: string]> = [
   ["credential_stamp", "credential_stamp TEXT"],

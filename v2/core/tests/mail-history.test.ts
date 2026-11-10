@@ -121,36 +121,60 @@ test("mail history audit indexes are installed on disk", () => {
   }
 });
 
-test("deleting a bee closes all queued history with one bounded bee terminal event", () => {
+test("deleting a bee removes its mailbox and mail history and leaves other bees' mail", () => {
   const store = openCoreStore(":memory:", { ephemeral: true });
   try {
     const bee = makeBee(store, "history-deleted").bee;
+    const kept = makeBee(store, "history-kept").bee;
     bootToRunning(store, bee.id, 202, 2_002);
     const delivered = store.send(bee.id, "already delivered").message;
     assert.deepEqual(store.markDelivered(delivered.id, 1), { applied: true });
-    const firstQueued = store.send(bee.id, "deleted queued one", { urgency: "idle" }).message;
-    const secondQueued = store.send(bee.id, "deleted queued two", { urgency: "now" }).message;
+    const queued = store.send(bee.id, "deleted queued", { urgency: "idle" }).message;
+    const canceled = store.send(bee.id, "canceled before delete").message;
+    assert.equal(store.cancelMessage(bee.id, canceled.id).canceled, true);
+    const other = store.send(kept.id, "other bee").message;
 
     store.deleteBee(bee.id);
 
-    const byId = new Map(store.mailHistory().messages.map((message) => [message.messageId, message]));
-    assert.equal(byId.get(delivered.id)?.lifecycle.state, "delivered");
-    for (const message of [firstQueued, secondQueued]) {
-      const lifecycle = byId.get(message.id)?.lifecycle;
-      assert.deepEqual(lifecycle, {
-        state: "canceled",
-        reason: "bee_deleted",
-        canceledAt: store.auditRows().find((row) => row.kind === "bee.deleted")?.ts,
-      });
-    }
-
-    const deleteCancellations = store.auditRows().filter(
-      (row) => row.kind === "mail.canceled" && row.payload.reason === "bee_deleted",
-    );
-    assert.deepEqual(deleteCancellations, []);
+    assert.deepEqual(store.mailHistory().messages.map((message) => message.messageId), [other.id]);
+    for (const id of [delivered.id, queued.id, canceled.id]) assert.equal(store.getMessage(id), null);
+    assert.notEqual(store.getMessage(other.id), null);
+    assert.deepEqual(store.auditRows().filter((row) => row.kind === "mail.canceled" && row.payload.reason === "bee_deleted"), []);
     assert.equal(store.auditRows().filter((row) => row.kind === "bee.deleted").length, 1);
   } finally {
     store.close();
+  }
+});
+
+test("history keeps no copy of text the mailbox row holds and keeps one when the row goes", () => {
+  const rig = harness();
+  try {
+    const store = rig.open();
+    const bee = makeBee(store, "history-text").bee;
+    const delivered = store.send(bee.id, "delivered text", { sender: "op" }).message;
+    assert.deepEqual(store.markDelivered(delivered.id, 1), { applied: true });
+    const expedited = store.send(bee.id, "expedited text", { urgency: "idle" }).message;
+    store.expediteMessage(bee.id, expedited.id, "now");
+    const canceled = store.send(bee.id, "canceled text", { urgency: "idle" }).message;
+    assert.equal(store.cancelMessage(bee.id, canceled.id).canceled, true);
+    const pending = store.pendingMail(bee.id).messages;
+    assert.deepEqual(pending.map((message) => [message.id, message.body, message.urgency]), [[expedited.id, "expedited text", "now"]]);
+    const byId = new Map(store.mailHistory().messages.map((message) => [message.messageId, message]));
+    assert.equal(byId.get(delivered.id)?.body, "delivered text");
+    assert.equal(byId.get(delivered.id)?.sender, "op");
+    assert.equal(byId.get(canceled.id)?.body, "canceled text");
+    store.close();
+    const db = new DatabaseSync(rig.path, { readOnly: true });
+    try {
+      const copies = new Map((db.prepare("SELECT message_id, length(body) AS body, length(sender) AS sender FROM mail_history_enqueues").all() as Array<{ message_id: number; body: number; sender: number }>).map((row) => [row.message_id, row.body + row.sender]));
+      assert.equal(copies.get(delivered.id), 0);
+      assert.equal(copies.get(expedited.id), 0);
+      assert.equal(copies.get(canceled.id), Buffer.byteLength("canceled text") + Buffer.byteLength(canceled.sender));
+    } finally {
+      db.close();
+    }
+  } finally {
+    rig.cleanup();
   }
 });
 
@@ -408,7 +432,7 @@ test("mail history folds only the latest repeated lifecycle event of each kind",
   }
 });
 
-test("mail history reopens pre-fix bee deletion audit as snapshot-correct cancellation", () => {
+test("a store reopened after a pre-fix bee deletion projects no history for the deleted bee", () => {
   const rig = harness();
   try {
     const initial = rig.open();
@@ -429,14 +453,8 @@ test("mail history reopens pre-fix bee deletion audit as snapshot-correct cancel
 
     const reopened = rig.open();
     try {
-      assert.deepEqual(reopened.mailHistory({ snapshotSeq: deleteSeq - 1 }).messages[0]?.lifecycle, {
-        state: "queued",
-      });
-      assert.deepEqual(reopened.mailHistory().messages[0]?.lifecycle, {
-        state: "canceled",
-        reason: "bee_deleted",
-        canceledAt: deletedAt,
-      });
+      assert.deepEqual(reopened.mailHistory({ snapshotSeq: deleteSeq - 1 }).messages, []);
+      assert.deepEqual(reopened.mailHistory().messages, []);
       assert.equal(reopened.getMessage(message.id), null);
     } finally {
       reopened.close();

@@ -226,7 +226,7 @@ import {
   TASK_TRANSITIONS,
 } from "./tasks.ts";
 import { deliveredSenderKind } from "./automation.ts";
-import { ACCOUNT_CREDENTIAL_ATTENTION_TABLE_SQL, QUESTIONS_TABLE_SQL, ACTIONS_TABLE_SQL, AUTH_INTERRUPTIONS_TABLE_SQL, ACCOUNT_ADMISSIONS_TABLE_SQL, ACCOUNT_CREDENTIAL_AUTHORITIES_TABLE_SQL, ACCOUNT_CREDENTIAL_AUTHORITIES_V27_COLUMNS, ACCOUNT_LIMITS_TABLE_SQL, ACCOUNTS_NATIVE_INDEX_SQL, BEES_ADDITIVE_COLUMNS, BEES_ACTIVE_MOVE_INDEX_SQL, BEES_ACTIVE_HANDOFF_INDEX_SQL, BEE_HANDOFFS_TABLE_SQL, TRANSCRIPT_SEGMENTS_TABLE_SQL, TRANSCRIPT_SEGMENT_OBJECTS_SQL, CHAMPIONS_SQL, GATEWAYS_SQL, BEE_RESUME_BUNDLES_SQL, MAILBOX_PENDING_METADATA_INDEX_SQL, BEE_MOVES_TABLE_SQL, CELLS_TABLE_SQL, CELLS_V22_COLUMNS, CELLS_ADDITIVE_COLUMNS, CELL_OPS_TABLE_SQL, FLAGS_ADDITIVE_COLUMNS, FLAGS_EXPIRY_INDEX_SQL, HANDLE_INDEX_SQL, IDEMPOTENCY_INDEX_SQL, MAILBOX_ADDITIVE_COLUMNS, MAIL_HISTORY_INDEX_SQL, MAIL_HISTORY_PROJECTION_SQL, RUNTIMES_ADDITIVE_COLUMNS, SCHEMA_SQL, SCHEMA_VERSION, MIN_READER_SCHEMA } from "./schema.ts";
+import { ACCOUNT_CREDENTIAL_ATTENTION_TABLE_SQL, QUESTIONS_TABLE_SQL, ACTIONS_TABLE_SQL, AUTH_INTERRUPTIONS_TABLE_SQL, ACCOUNT_ADMISSIONS_TABLE_SQL, ACCOUNT_CREDENTIAL_AUTHORITIES_TABLE_SQL, ACCOUNT_CREDENTIAL_AUTHORITIES_V27_COLUMNS, ACCOUNT_LIMITS_TABLE_SQL, ACCOUNTS_NATIVE_INDEX_SQL, BEES_ADDITIVE_COLUMNS, BEES_ACTIVE_MOVE_INDEX_SQL, BEES_ACTIVE_HANDOFF_INDEX_SQL, BEE_HANDOFFS_TABLE_SQL, TRANSCRIPT_SEGMENTS_TABLE_SQL, TRANSCRIPT_SEGMENT_OBJECTS_SQL, CHAMPIONS_SQL, GATEWAYS_SQL, BEE_RESUME_BUNDLES_SQL, MAILBOX_PENDING_METADATA_INDEX_SQL, BEE_MOVES_TABLE_SQL, CELLS_TABLE_SQL, CELLS_V22_COLUMNS, CELLS_ADDITIVE_COLUMNS, CELL_OPS_TABLE_SQL, FLAGS_ADDITIVE_COLUMNS, FLAGS_EXPIRY_INDEX_SQL, HANDLE_INDEX_SQL, IDEMPOTENCY_INDEX_SQL, MAILBOX_ADDITIVE_COLUMNS, MAIL_HISTORY_BEE_INDEX_SQL, MAIL_HISTORY_INDEX_SQL, MAIL_HISTORY_PROJECTION_SQL, RUNTIMES_ADDITIVE_COLUMNS, SCHEMA_SQL, SCHEMA_VERSION, MIN_READER_SCHEMA } from "./schema.ts";
 import { beeMoveReviveKey, beeMoveStopKey, beeMoveTransitionLegal, toBeeMoveView } from "./cellMove.ts";
 import {
   ACTION_DISPATCH_SENDER,
@@ -1748,16 +1748,32 @@ function mailHistoryProjectionString(value: unknown, label: string): string {
   }
 }
 
+function mailHistoryText(row: Row, label: string): { sender: string; senderTruncated: boolean; body: string; bodyTruncated: boolean } {
+  if (row.live_sender == null) {
+    return {
+      sender: mailHistoryProjectionString(row.sender, `${label} sender`),
+      senderTruncated: Number(row.sender_truncated) === 1,
+      body: mailHistoryProjectionString(row.body, `${label} body`),
+      bodyTruncated: Number(row.body_truncated) === 1,
+    };
+  }
+  const sender = boundedUtf8Preview(String(row.live_sender), MAIL_HISTORY_SENDER_PREVIEW_BYTES);
+  const body = boundedUtf8Preview(String(row.live_body), MAIL_HISTORY_BODY_PREVIEW_BYTES);
+  return {
+    sender: sender.value,
+    senderTruncated: sender.truncated || Number(row.live_sender_chars) > MAIL_HISTORY_SENDER_PREVIEW_BYTES,
+    body: body.value,
+    bodyTruncated: body.truncated || Number(row.live_body_chars) > MAIL_HISTORY_BODY_PREVIEW_BYTES,
+  };
+}
+
 function mailHistoryEnqueue(row: Row): MailHistoryMessage {
   const seq = auditNumber(row.seq, "mail.enqueued seq");
   return {
     seq,
     messageId: auditNumber(row.message_id, `mail.enqueued message.id at seq ${seq}`),
     beeId: auditString(row.bee_id, `mail.enqueued message.beeId at seq ${seq}`),
-    sender: mailHistoryProjectionString(row.sender, `mail.enqueued message.sender at seq ${seq}`),
-    senderTruncated: Number(row.sender_truncated) === 1,
-    body: mailHistoryProjectionString(row.body, `mail.enqueued message.body at seq ${seq}`),
-    bodyTruncated: Number(row.body_truncated) === 1,
+    ...mailHistoryText(row, `mail.enqueued message at seq ${seq}`),
     priority: auditNumber(row.priority, `mail.enqueued message.priority at seq ${seq}`),
     urgency: auditUrgency(row.urgency ?? "next", `mail.enqueued message.urgency at seq ${seq}`),
     enqueuedAt: auditNumber(row.enqueued_at, `mail.enqueued message.enqueuedAt at seq ${seq}`),
@@ -1772,12 +1788,9 @@ function mailPendingMessage(row: Row): MailPendingMessage {
     id,
     beeId: auditString(row.bee_id, `pending beeId for message ${id}`),
     origin: auditMailOrigin(row.origin, `pending origin for message ${id}`),
-    sender: mailHistoryProjectionString(row.sender, `pending sender for message ${id}`),
-    senderTruncated: Number(row.sender_truncated) === 1,
-    body: mailHistoryProjectionString(row.body, `pending body for message ${id}`),
-    bodyTruncated: Number(row.body_truncated) === 1,
+    ...mailHistoryText(row, `pending message ${id}`),
     priority: auditNumber(row.priority, `pending priority for message ${id}`),
-    urgency: auditUrgency(row.urgency, `pending urgency for message ${id}`),
+    urgency: auditUrgency(row.current_urgency, `pending urgency for message ${id}`),
     enqueuedAt: auditNumber(row.enqueued_at, `pending enqueuedAt for message ${id}`),
   };
 }
@@ -1941,10 +1954,29 @@ export class CoreStore {
            WHERE status IN ('done','failed') AND next_attempt_at < ? AND COALESCE(finished_at, enqueued_at) < ?
            LIMIT ?)`,
       ).run(cutoff, cutoff, STORE_RETENTION.sliceCommandRows).changes);
-      const done = insideWindow && commands < STORE_RETENTION.sliceCommandRows;
+      const mailHistory = this.pruneMailHistorySlice();
+      const done = insideWindow && commands < STORE_RETENTION.sliceCommandRows && mailHistory.done;
       if (done) this.putMetaNumber("store_retention_last_pass_at", now);
-      return { auditRows: expired.length, commands, floorSeq: examined, done };
+      return { auditRows: expired.length, commands, mailHistoryCopiesCleared: mailHistory.cleared, mailHistoryOrphansRemoved: mailHistory.removed, floorSeq: examined, done };
     });
+  }
+
+  private pruneMailHistorySlice(): { cleared: number; removed: number; done: boolean } {
+    const floor = this.metaNumber("mail_history_text_floor_seq") ?? 0;
+    const rows = this.stmt(
+      `SELECT h.seq, m.id IS NOT NULL AS in_mailbox, b.id IS NOT NULL AS bee_exists, length(h.sender) + length(h.body) AS copied_bytes
+       FROM mail_history_enqueues h
+       LEFT JOIN mailbox m ON m.id = h.message_id
+       LEFT JOIN bees b ON b.id = h.bee_id
+       WHERE h.seq > ? ORDER BY h.seq LIMIT ?`,
+    ).all(floor, STORE_RETENTION.sliceMailHistoryRows) as Row[];
+    const orphans = rows.filter(row => Number(row.bee_exists) === 0).map(row => Number(row.seq));
+    const duplicates = rows.filter(row => Number(row.bee_exists) === 1 && Number(row.in_mailbox) === 1 && Number(row.copied_bytes) > 0).map(row => Number(row.seq));
+    if (duplicates.length > 0) this.stmt("UPDATE mail_history_enqueues SET sender = X'', sender_truncated = 0, body = X'', body_truncated = 0 WHERE seq IN (SELECT value FROM json_each(?))").run(JSON.stringify(duplicates));
+    if (orphans.length > 0) this.stmt("DELETE FROM mail_history_enqueues WHERE seq IN (SELECT value FROM json_each(?))").run(JSON.stringify(orphans));
+    const last = rows[rows.length - 1];
+    if (last) this.putMetaNumber("mail_history_text_floor_seq", Number(last.seq));
+    return { cleared: duplicates.length, removed: orphans.length, done: rows.length < STORE_RETENTION.sliceMailHistoryRows };
   }
 
   private auditMessageSettled(messageId: unknown): boolean {
@@ -2383,6 +2415,7 @@ export class CoreStore {
       "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'mail_history_enqueues'",
     ).get() !== undefined;
     this.db.exec(MAIL_HISTORY_PROJECTION_SQL);
+    this.db.exec(MAIL_HISTORY_BEE_INDEX_SQL);
     if (!hadMailHistoryProjection) {
       this.stmt("DELETE FROM meta WHERE key = 'mail_history_projection_seq'").run();
     }
@@ -2812,8 +2845,6 @@ export class CoreStore {
   }
 
   private insertMailHistoryEnqueue(seq: number, message: MessageRow, origin: MailOrigin): void {
-    const sender = boundedUtf8Preview(message.sender, MAIL_HISTORY_SENDER_PREVIEW_BYTES);
-    const body = boundedUtf8Preview(message.body, MAIL_HISTORY_BODY_PREVIEW_BYTES);
     this.stmt(
       `INSERT INTO mail_history_enqueues(
          seq, message_id, bee_id, origin, sender, sender_truncated, body,
@@ -2824,15 +2855,22 @@ export class CoreStore {
       message.id,
       message.beeId,
       origin,
-      Buffer.from(sender.value, "utf8"),
-      sender.truncated ? 1 : 0,
-      Buffer.from(body.value, "utf8"),
-      body.truncated ? 1 : 0,
+      Buffer.alloc(0),
+      0,
+      Buffer.alloc(0),
+      0,
       message.priority,
       message.urgency,
       message.enqueuedAt,
     );
+  }
 
+  private deleteMailboxRowKeepingHistoryText(message: MessageRow): void {
+    const sender = boundedUtf8Preview(message.sender, MAIL_HISTORY_SENDER_PREVIEW_BYTES);
+    const body = boundedUtf8Preview(message.body, MAIL_HISTORY_BODY_PREVIEW_BYTES);
+    this.stmt("UPDATE mail_history_enqueues SET sender = ?, sender_truncated = ?, body = ?, body_truncated = ?, urgency = ? WHERE message_id = ?")
+      .run(Buffer.from(sender.value, "utf8"), sender.truncated ? 1 : 0, Buffer.from(body.value, "utf8"), body.truncated ? 1 : 0, message.urgency, message.id);
+    this.stmt("DELETE FROM mailbox WHERE id = ?").run(message.id);
   }
 
   /** One-time bounded-memory projection fill for stores created by older builds. */
@@ -2868,6 +2906,7 @@ export class CoreStore {
          FROM audit a
          LEFT JOIN mail_history_enqueues h ON h.seq = a.seq
          WHERE a.kind = 'mail.enqueued' AND a.seq > ? AND a.seq <= ? AND h.seq IS NULL AND json_valid(a.payload)
+           AND EXISTS (SELECT 1 FROM bees WHERE bees.id = a.bee_id)
            AND json_type(CASE WHEN json_valid(a.payload) THEN a.payload ELSE '{}' END, '$.message.id') = 'integer'
            AND json_type(CASE WHEN json_valid(a.payload) THEN a.payload ELSE '{}' END, '$.message.sender') = 'text'
            AND json_type(CASE WHEN json_valid(a.payload) THEN a.payload ELSE '{}' END, '$.message.body') = 'text'
@@ -3415,6 +3454,7 @@ export class CoreStore {
       // ON DELETE CASCADE removes runtimes, flags, mailbox, questions, seals,
       // tasks, and task_supply.
       this.stmt("DELETE FROM delivery_confirmation_decisions WHERE bee_id = ?").run(beeId);
+      this.stmt("DELETE FROM mail_history_enqueues WHERE bee_id = ?").run(beeId);
       this.stmt("DELETE FROM bees WHERE id = ?").run(beeId);
       this.audit(
         "bee.deleted",
@@ -4755,7 +4795,7 @@ export class CoreStore {
         replacement.replacesMessageId = message.id;
         this.stmt("UPDATE mailbox SET queue_order = ?, replaces_message_id = ? WHERE id = ?").run(replacement.queueOrder, message.id, replacement.id);
         this.replaceMessageLinks(message.id, replacement.id);
-        this.stmt("DELETE FROM mailbox WHERE id = ?").run(message.id);
+        this.deleteMailboxRowKeepingHistoryText(message);
         this.multilineUnsupportedActive.delete(message.id);
         this.audit("mail.replaced", input.beeId, { messageId: message.id, replacementMessageId: replacement.id, replacedAt: this.now(), replacement });
       }
@@ -5257,7 +5297,7 @@ export class CoreStore {
       ? Math.max(1, Math.min(MAIL_HISTORY_MAX_LIMIT, Math.floor(requestedLimit)))
       : MAIL_HISTORY_DEFAULT_LIMIT;
     const rows = this.stmt(
-      `SELECT h.*, m.queue_order, m.replaces_message_id
+      `SELECT h.*, m.queue_order, m.replaces_message_id, m.urgency AS current_urgency, substr(m.sender, 1, 1024) AS live_sender, length(m.sender) AS live_sender_chars, substr(m.body, 1, 16384) AS live_body, length(m.body) AS live_body_chars
        FROM mailbox m
        JOIN mail_history_enqueues h ON h.message_id = m.id
        WHERE m.bee_id = ? AND m.delivered_at IS NULL
@@ -5309,9 +5349,10 @@ export class CoreStore {
       : snapshotSeq + 1;
 
     const enqueueRows = this.stmt(
-      `SELECT * FROM mail_history_enqueues
-       WHERE seq <= ? AND seq < ?
-       ORDER BY seq DESC LIMIT ?`,
+      `SELECT h.*, substr(m.sender, 1, 1024) AS live_sender, length(m.sender) AS live_sender_chars, substr(m.body, 1, 16384) AS live_body, length(m.body) AS live_body_chars
+       FROM mail_history_enqueues h LEFT JOIN mailbox m ON m.id = h.message_id
+       WHERE h.seq <= ? AND h.seq < ?
+       ORDER BY h.seq DESC LIMIT ?`,
     ).all(snapshotSeq, beforeSeq, limit + 1) as Row[];
     const candidates = enqueueRows.slice(0, limit).map(row => this.withPhoneInput(mailHistoryEnqueue(row), Number(row.message_id)));
 
@@ -5467,7 +5508,7 @@ export class CoreStore {
   private removeOwnedMessage(message: MessageRow, owner: string, at: number): void {
     if (message.mailBatchId && owner !== "mail.batch.resolve") throw new CoreError("batch_frozen");
     const intent = this.getDeliveryConfirmationIntent(message.id);
-    this.stmt("DELETE FROM mailbox WHERE id = ?").run(message.id);
+    this.deleteMailboxRowKeepingHistoryText(message);
     this.multilineUnsupportedActive.delete(message.id);
     this.auditMailCanceled(message, "requested", at, intent ? { owner, confirmation: publicDeliveryConfirmation(intent) } : undefined);
   }
