@@ -111,3 +111,40 @@ test("capacity: above the floor from the start announces nothing and reports acc
     r.cleanup();
   }
 });
+
+test("capacity: Cells are counted from the registry and only the bees that can be using one are asked", () => {
+  const dir = mkdtempSync(join(tmpdir(), "hb-v2-capacity-count-"));
+  const store = openCoreStore(join(dir, "core.sqlite3"), { ephemeral: true });
+  try {
+    const cell = (beeId: string) => {
+      store.createBee({ id: beeId, name: beeId, agent: "stub", substrate: "cell", cwd: join(dir, "cells", beeId, "space") });
+      return store.putCell({ sourceBeeId: beeId, originRepo: join(dir, "origin"), sha: "a".repeat(40), wrapper: join(dir, "cells", beeId), spaceName: `space-${beeId}`, spaceDir: join(dir, "cells", beeId, "space"), gitCommonDirRealpath: join(dir, "origin", ".git"), objectFormat: "sha1", sandbox: true });
+    };
+    for (const beeId of ["evicted-1", "evicted-2", "evicted-3"]) store.evictCell(cell(beeId).id, { head: null, bytes: null, reason: "archived_age" });
+    for (const beeId of ["retained-1", "retained-2"]) store.retainCell(cell(beeId).id);
+    for (const beeId of ["idle-1", "idle-2", "live", "booting"]) cell(beeId);
+    const asked: string[] = [];
+    const build = (users: (() => Iterable<string>) | undefined) => new CellRetentionService({
+      cellsRoot: join(dir, "cells"),
+      policy: { ...defaultCellRetention("workstation"), minFreePercent: 10, minFreeBytes: null },
+      store: () => store,
+      now: () => 1_000_000,
+      log: () => undefined,
+      cellInUse: (beeId) => { asked.push(beeId); return beeId === "live" || beeId === "booting"; },
+      ...(users ? { cellUsers: users } : {}),
+      opInFlight: () => false,
+      forgetCell: () => undefined,
+      statfs: () => ({ totalBytes: 100 * GIB, freeBytes: 50 * GIB }),
+      diskCheckMs: 1_000,
+    });
+    const narrowed = build(() => ["live", "booting", "live", "retained-1", "evicted-1", "no-cell"]);
+    narrowed.tick();
+    assert.deepEqual([narrowed.capacity()?.cells.cellCount, narrowed.capacity()?.cells.liveCells], [9, 2]);
+    assert.deepEqual(asked.sort(), ["booting", "live"], "only active Cells of bees that can be using one are asked");
+    asked.length = 0;
+    const everyone = build(undefined);
+    everyone.tick();
+    assert.deepEqual([everyone.capacity()?.cells.cellCount, everyone.capacity()?.cells.liveCells], [9, 2]);
+    assert.deepEqual(asked.sort(), ["booting", "idle-1", "idle-2", "live"]);
+  } finally { store.close(); rmSync(dir, { recursive: true, force: true }); }
+});

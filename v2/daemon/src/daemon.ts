@@ -1073,6 +1073,7 @@ export class HiveDaemon {
         store.retainsMultilineRuntimeContent(beeId, canonicalPath(this.cfg.dataDir)) || (cellState === "retained"
           ? this.cellRuntimeLive(beeId, runtime?.generation ?? 0)
           : (runtime != null && runtime.state !== "stopped") || driver.hasProcess(beeId, runtime?.generation ?? 0)),
+      cellUsers: () => [...store.beesWithLiveRuntime(), ...store.beesWithMultilineDelivery(), ...driver.snapshotLive().map((live) => live.beeId)],
       opInFlight: (cellId) => {
         this.releaseAbsentCellOps(cellId);
         return this.cellHasInFlightOp(cellId);

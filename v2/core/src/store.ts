@@ -9327,6 +9327,18 @@ export class CoreStore {
     return row ? mapCell(row) : null;
   }
 
+  cellStates(): Array<{ sourceBeeId: string; state: CellState }> {
+    return (this.stmt("SELECT source_bee_id, state FROM cells").all() as Row[]).map((row) => ({ sourceBeeId: String(row.source_bee_id), state: row.state as CellState }));
+  }
+
+  beesWithLiveRuntime(): string[] {
+    return (this.stmt("SELECT DISTINCT bee_id FROM runtimes WHERE state != 'stopped'").all() as Row[]).map((row) => String(row.bee_id));
+  }
+
+  beesWithMultilineDelivery(): string[] {
+    return (this.stmt("SELECT DISTINCT bee_id FROM multiline_delivery").all() as Row[]).map((row) => String(row.bee_id));
+  }
+
   listCells(lifecycle?: Lifecycle): CellRow[] {
     const rows = lifecycle === undefined
       ? this.stmt("SELECT * FROM cells ORDER BY id").all()

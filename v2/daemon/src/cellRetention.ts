@@ -105,6 +105,8 @@ export interface CellRetentionDeps {
    * elsewhere) only a live Cell-substrate process for that bee counts.
    */
   cellInUse: (beeId: string, runtime: RuntimeRow | null, cellState: CellRow["state"]) => boolean;
+  /** Every bee `cellInUse` could answer true for on an `active` Cell; when given, only their Cells are asked. */
+  cellUsers?: () => Iterable<string>;
   /** A capture/exec/remove op currently holds the Cell gate. */
   opInFlight: (cellId: string) => boolean;
   /** Drop the driver's cached allocation after a park. */
@@ -486,10 +488,12 @@ export class CellRetentionService {
     let liveCells = 0;
     try {
       const store = this.deps.store();
-      for (const cell of store.listCells()) {
+      const users = this.deps.cellUsers ? new Set(this.deps.cellUsers()) : null;
+      for (const cell of store.cellStates()) {
         if (cell.state === "removed" || cell.state === "removing") continue;
         cellCount += 1;
-        if (cell.state === "active" && this.deps.cellInUse(cell.sourceBeeId, store.currentRuntime(cell.sourceBeeId), cell.state)) liveCells += 1;
+        if (cell.state !== "active" || (users !== null && !users.has(cell.sourceBeeId))) continue;
+        if (this.deps.cellInUse(cell.sourceBeeId, store.currentRuntime(cell.sourceBeeId), cell.state)) liveCells += 1;
       }
     } catch (err) {
       this.deps.log(`cell.capacity.count_failed ${err instanceof Error ? err.message : String(err)}`);
