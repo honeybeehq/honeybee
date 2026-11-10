@@ -982,6 +982,10 @@ export function isAccountId(value: unknown): value is string {
   return typeof value === "string" && value.length <= MAX_ACCOUNT_ID_LENGTH && /^[A-Za-z0-9][A-Za-z0-9_.:@-]*$/.test(value) && value !== "auto" && value !== "rr";
 }
 
+export function isAccountLabel(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0 && value.length <= MAX_ACCOUNT_ID_LENGTH && !/[\u0000-\u001f\u007f]/.test(value);
+}
+
 /** The account id for (harness, label): `<harness>-<safe(label)>`, lower-cased — the old registry's rule. */
 export function accountIdFor(harness: string, label: string): string {
   return safeName(`${harness}-${label.trim()}`).toLowerCase();

@@ -106,7 +106,7 @@ test("hb-lease-fix: trusted-caller gate, owner-signed authority, node-bound payl
     const infoA = await A.request<DeployInfoResult>("deployInfo"), infoB = await B.request<DeployInfoResult>("deployInfo");
     assert.ok(infoA.nodeId && infoB.nodeId, "deployInfo carries the node id");
     const exp = Math.floor(Date.now() / 1000) + 8 * 24 * 3600;
-    await A.request<AccountAddResult>("account.add", { harness: "codex", label: "lx" });
+    await A.request<AccountAddResult>("account.add", { harness: "codex", label: "Lx personal", id: "codex-lx" });
     const vaultDir = join(dirs[0]!.dir, "vault", "codex", "codex-lx"); mkdirSync(vaultDir, { recursive: true });
     writeFileSync(join(vaultDir, "auth.json"), JSON.stringify({ tokens: { id_token: "id-fixture", access_token: fakeJwt(exp), refresh_token: CODEX_REFRESH, account_id: "acct" } }));
     const grantFor = (nodeId: string, extra: Record<string, unknown> = {}) => ({ id: "codex-lx", nodeId, shareId: "share-codex-lx", epoch: 1, ...extra });
@@ -141,6 +141,7 @@ test("hb-lease-fix: trusted-caller gate, owner-signed authority, node-bound payl
     // L1: the payload names its node; the receiving node refuses a payload addressed elsewhere
     const granted = await A.request<AccountLeaseGrantResult>("account.lease.grant", grantFor("apiary-node-b"));
     assert.equal(granted.install.nodeId, "apiary-node-b"); assert.equal(granted.grant.authorityNodeId, infoA.nodeId);
+    assert.equal(granted.install.label, "Lx personal", "grant carries the owner's human label");
     const bound: Record<string, string> = {};
     bound["payload for B installed on B (registered alias)"] = await code(B.request("account.lease.install", { ...granted.install }, 60_000));
     const forStore = await A.request<AccountLeaseGrantResult>("account.lease.grant", grantFor(infoB.nodeId!, { ttlMs: 48 * 3_600_000 }));
@@ -149,7 +150,7 @@ test("hb-lease-fix: trusted-caller gate, owner-signed authority, node-bound payl
     bound["payload for node-x installed on B"] = await code(B.request("account.lease.install", { ...forX.install }, 60_000));
     bound["payload for B installed on A (the owner)"] = await code(A.request("account.lease.install", { ...granted.install, id: "codex-lx-copy", label: "copy" }, 60_000));
     show("L1 node-bound payloads", bound);
-    assert.equal(bound["payload for B installed on B (registered alias)"], "ok"); assert.equal(bound["payload for B's store id installed on B"], "ok");
+    assert.equal(bound["payload for B installed on B (registered alias)"], "ok"); assert.deepEqual((await B.request<{ accounts: Array<{ id: string; label: string }> }>("account.list")).accounts.map(row => row.label), ["Lx personal"], "B installs the human label"); assert.equal(bound["payload for B's store id installed on B"], "ok");
     assert.equal(bound["payload for node-x installed on B"], "account_lease_conflict (node_mismatch)"); assert.equal(bound["payload for B installed on A (the owner)"], "account_lease_conflict (node_mismatch)");
 
     // M1: the key is bound to the items digest and the principal; replays re-mint under the recorded window and audit replay:true

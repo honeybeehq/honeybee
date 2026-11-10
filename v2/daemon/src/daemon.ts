@@ -70,6 +70,7 @@ import { GatewayMcpSeedLockError } from "./gatewayMcpSeed.ts";
 import {
   accountIdFor,
   isAccountId,
+  isAccountLabel,
   resolveAccount,
   homeEnvFor,
   exportTemplate,
@@ -7877,7 +7878,7 @@ export class HiveDaemon {
   private async rpcAccountLeaseInstall(params: Record<string, unknown>, conn: RpcConn): Promise<AccountLeaseInstallResult> {
     const invalid = () => new RpcError("invalid_request", "Lease install requires safe ids, a supported harness, epoch, access expiry, and access-only credential files.");
     const safeId = (value: unknown): value is string => typeof value === "string" && /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,199}$/.test(value);
-    if (!isAccountId(params.id) || !safeId(params.shareId) || params.shareId.length < 8 || !safeId(params.authorityNodeId) || !safeId(params.harness) || !isAccountId(params.label)) throw invalid();
+    if (!isAccountId(params.id) || !safeId(params.shareId) || params.shareId.length < 8 || !safeId(params.authorityNodeId) || !safeId(params.harness) || !isAccountLabel(params.label)) throw invalid();
     if (params.adopt !== undefined && typeof params.adopt !== "boolean" && params.adopt !== "explicit") throw invalid();
     if (params.enrol !== undefined && typeof params.enrol !== "boolean" || params.enrol && params.adopt !== undefined || params.enrol && !safeId(params.viaNodeId) || params.viaNodeId !== undefined && !safeId(params.viaNodeId)) throw invalid();
     if (params.authorityInstanceId !== undefined && !safeId(params.authorityInstanceId)) throw invalid();
