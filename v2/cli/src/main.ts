@@ -4813,6 +4813,7 @@ async function adoptServiceRuntime(ctx: CliContext): Promise<{ adopted: AdoptedR
 }
 
 const SCRATCH_STOP_TIMEOUT_MS = 15_000;
+const STORE_BACKUP_RPC_TIMEOUT_MS = 110_000;
 
 async function stopScratchDaemon(ctx: CliContext, scope: ServiceScope): Promise<number> {
   if (scope.socketOwned && isNodeDataDir(scope, ctx.cfg.dataDir)) throw refuseNodeDaemon(scope, ctx.target, "stop", ctx.cfg.dataDir);
@@ -5141,8 +5142,8 @@ export async function runV2Cli(argv: string[], io: CliIo = defaultIo): Promise<n
       }
       case "store": {
         const operation = parsed.positional[1];
-        if (parsed.positional.length !== 2 || !["backup", "restore"].includes(operation ?? "")) throw new Error("Usage: hive v2 store backup | restore --from <receipt> --data-dir <dir>");
-        const { backupStoreOffline, restoreStoreOffline, StoreRestoreError } = await import("../../core/src/storeBackup.ts");
+        if (parsed.positional.length !== 2 || !["backup", "restore"].includes(operation ?? "")) throw new Error("Usage: hive v2 store backup [--timeout ms] | restore --from <receipt> --data-dir <dir>");
+        const { backupStoreOffline, restoreStoreOffline, StoreBackupError, StoreRestoreError } = await import("../../core/src/storeBackup.ts");
         if (operation === "restore") {
           const from = parsed.flags.get("--from");
           if (typeof from !== "string") throw new Error("store restore requires --from <receipt>");
@@ -5151,11 +5152,19 @@ export async function runV2Cli(argv: string[], io: CliIo = defaultIo): Promise<n
           emit(ctx, [`Restored schema ${result.schemaVersion}; preserved current store at ${result.preservedPath}`, result.lossWindow], result, false);
           return 0;
         }
+        const timeoutMs = numFlag(parsed, "--timeout", STORE_BACKUP_RPC_TIMEOUT_MS);
+        let daemon: RpcClient | null = null;
+        try { daemon = await connectDaemon(ctx, { legacyProtocolVerbs: ["store.backup"] }); }
+        catch (error) { if (!(error instanceof DaemonDownError) || socketConfigured(ctx.target)) throw error; }
         let result;
-        try { result = await withClient(ctx, client => client.request("store.backup", {}), { legacyProtocolVerbs: ["store.backup"] }); }
-        catch (error) {
-          if (!(error instanceof DaemonDownError) || socketConfigured(ctx.target)) throw error;
-          result = backupStoreOffline(ctx.cfg.storePath, String(parsed.flags.get("--source-build") ?? "unknown: offline store; supply --source-build with the previous build identity"));
+        if (daemon === null) result = backupStoreOffline(ctx.cfg.storePath, String(parsed.flags.get("--source-build") ?? "unknown: offline store; supply --source-build with the previous build identity"));
+        else {
+          try { result = await daemon.request("store.backup", {}, timeoutMs); }
+          catch (error) {
+            if (!(error instanceof DaemonDownError)) throw error;
+            throw new StoreBackupError(`The running daemon did not return the store backup within ${timeoutMs} ms (${error.reason}). It owns the store, so no offline backup was attempted; it may still finish and write its receipt.`);
+          }
+          finally { daemon.close(); }
         }
         emit(ctx, [JSON.stringify(result)], result, false);
         return 0;

@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { createServer } from "node:net";
+import { existsSync, readFileSync } from "node:fs";
+import { createServer, type Socket } from "node:net";
 import { join } from "node:path";
 import { LEGACY_PROTOCOL, RpcClient } from "../src/client.ts";
 import { RpcError } from "../../daemon/src/protocol.ts";
@@ -34,6 +34,90 @@ test("store maintenance CLI uses owner RPC; restore refuses live daemon and succ
     assert.match(JSON.parse(restored.out[0]!).lossWindow, /after the backup are discarded/);
     openCoreStore(receipt.storePath).close();
   } finally { await daemon.stop(); h.cleanup(); }
+});
+
+test("store backup falls back to the offline backup only when no daemon answers the socket", async () => {
+  const h = makeDaemonDir();
+  const daemon = await startDaemon(h.dir);
+  try {
+    await daemon.stop();
+    const offline = capture();
+    assert.equal(await runV2Cli(["store", "backup", "--data-dir", h.dir, "--source-build", "offline-build", "--json"], offline.io), 0, offline.err.join("\n"));
+    const receipt = JSON.parse(offline.out[0]!);
+    assert.equal(receipt.sourceBuild, "offline-build");
+    assert.equal(receipt.integrityCheck, "ok");
+  } finally { await daemon.stop(); h.cleanup(); }
+});
+
+test("a store backup the running daemon has not returned in time is reported as such, without an offline backup", async () => {
+  const h = makeDaemonDir();
+  openCoreStore(join(h.dir, "core.sqlite3")).close();
+  const requests: string[] = [];
+  const sockets: Socket[] = [];
+  const server = createServer(socket => {
+    sockets.push(socket);
+    socket.write(`${JSON.stringify({ protocol: LEGACY_PROTOCOL, capabilities: [] })}\n`);
+    let buffer = "";
+    socket.on("data", chunk => {
+      buffer += chunk;
+      for (;;) {
+        const nl = buffer.indexOf("\n");
+        if (nl < 0) break;
+        const frame = JSON.parse(buffer.slice(0, nl));
+        buffer = buffer.slice(nl + 1);
+        if (frame.id !== undefined) requests.push(frame.verb);
+      }
+    });
+  });
+  await new Promise<void>((resolve, reject) => { server.once("error", reject); server.listen(join(h.dir, "hived.sock"), resolve); });
+  try {
+    const slow = capture();
+    const startedAt = Date.now();
+    assert.equal(await runV2Cli(["store", "backup", "--data-dir", h.dir, "--timeout", "300", "--json"], slow.io), 1);
+    const { error, daemonTarget } = JSON.parse(slow.out[0]!);
+    assert.equal(error.code, "store_backup_failed");
+    assert.match(error.message, /running daemon did not return the store backup within 300 ms \(rpc timeout on store\.backup\)/);
+    assert.equal(daemonTarget.connected, true);
+    assert.deepEqual(requests, ["store.backup"]);
+    assert.ok(Date.now() - startedAt >= 300);
+    assert.equal(existsSync(`${join(h.dir, "core.sqlite3")}.backups`), false, "no offline backup was written beside the daemon-owned store");
+  } finally {
+    for (const socket of sockets) socket.destroy();
+    await new Promise<void>(resolve => server.close(() => resolve()));
+    h.cleanup();
+  }
+});
+
+test("the store backup request waits long enough for a large store by default", async () => {
+  const h = makeDaemonDir();
+  const receipt = { format: 1, receiptPath: join(h.dir, "receipt.json"), integrityCheck: "ok", sourceBuild: "slow" };
+  const sockets: Socket[] = [];
+  const server = createServer(socket => {
+    sockets.push(socket);
+    socket.write(`${JSON.stringify({ protocol: LEGACY_PROTOCOL, capabilities: [] })}\n`);
+    let buffer = "";
+    socket.on("data", chunk => {
+      buffer += chunk;
+      for (;;) {
+        const nl = buffer.indexOf("\n");
+        if (nl < 0) break;
+        const frame = JSON.parse(buffer.slice(0, nl));
+        buffer = buffer.slice(nl + 1);
+        if (frame.id !== undefined) setTimeout(() => socket.write(`${JSON.stringify({ id: frame.id, ok: true, result: receipt })}\n`), 10_500);
+      }
+    });
+  });
+  await new Promise<void>((resolve, reject) => { server.once("error", reject); server.listen(join(h.dir, "hived.sock"), resolve); });
+  try {
+    const slow = capture();
+    assert.equal(await runV2Cli(["store", "backup", "--data-dir", h.dir, "--json"], slow.io), 0, slow.out.join("\n"));
+    const { daemonTarget: _target, ...reported } = JSON.parse(slow.out[0]!);
+    assert.deepEqual(reported, receipt);
+  } finally {
+    for (const socket of sockets) socket.destroy();
+    await new Promise<void>(resolve => server.close(() => resolve()));
+    h.cleanup();
+  }
 });
 
 test("backup failures preserve their typed RPC error", () => {
