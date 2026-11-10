@@ -27,6 +27,7 @@ import { makeDaemonDir, waitFor } from "./helpers.ts";
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const BUILT_CLI = join(ROOT, "dist", "v2", "cli.js");
 const BUILT_PROVISION_WORKER = join(ROOT, "dist", "v2", "provision-worker.js");
+const BUILT_TRANSCRIPT_SEGMENT_WORKER = join(ROOT, "dist", "v2", "transcript-segment-worker.js");
 const BUILT_RUNNER_HOST = join(ROOT, "dist", "v2", "runner-host.js");
 const EMBEDDED_ENTRY = "renamed-honeybee-runtime.mjs";
 
@@ -148,6 +149,7 @@ function stageRuntime(dir: string, releaseBHost: "poison" | "missing"): StagedRu
     copyFileSync(BUILT_CLI, join(release, "v2", EMBEDDED_ENTRY));
     for (const chunk of readdirSync(dirname(BUILT_CLI)).filter((name) => /^cli-chunk-[A-Z0-9]+\.js$/.test(name))) copyFileSync(join(dirname(BUILT_CLI), chunk), join(release, "v2", chunk));
     copyFileSync(BUILT_PROVISION_WORKER, join(release, "v2", "provision-worker.js"));
+    copyFileSync(BUILT_TRANSCRIPT_SEGMENT_WORKER, join(release, "v2", "transcript-segment-worker.js"));
     cpSync(join(ROOT, "dist", "v2", "peercred"), join(release, "v2", "peercred"), { recursive: true });
   }
   copyFileSync(BUILT_RUNNER_HOST, join(releaseA, "v2", "runner-host.js"));

@@ -37,6 +37,8 @@ export interface TranscriptSegmenterDeps {
   workerUrl?: URL;
 }
 
+const ignoreErrorFromRetiredWorker = (): void => undefined;
+
 const DEFAULT_CHUNK = 1024 * 1024;
 const DEFAULT_MAX_CHUNK = 64 * 1024 * 1024;
 const DEFAULT_REPLAY_LIMIT = 64 * 1024 * 1024;
@@ -252,6 +254,7 @@ export class TranscriptSegmenter {
     const idleAt = this.idle.indexOf(seat);
     if (idleAt >= 0) this.idle.splice(idleAt, 1);
     seat.worker.removeAllListeners();
+    seat.worker.on("error", ignoreErrorFromRetiredWorker);
     const terminated = seat.worker.terminate();
     const inFlight = seat.inFlight;
     seat.inFlight = null;
