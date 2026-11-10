@@ -94,6 +94,7 @@ import {
   segmentSessionLogPath,
   hashCellOpRequest,
   openCoreStore,
+  STORE_RETENTION,
   placementContextText,
   toBeeHandoffView,
   toBeeMoveView,
@@ -637,6 +638,9 @@ const MIN_TICK_YIELD_MS = 1;
 const AUTO_TITLE_SCAN_MS = 1000;
 const WEEKLY_CEILING_SWEEP_MS = 15_000;
 const AUTO_TITLE_KEY = "daemon:autoTitle";
+const STORE_RETENTION_KEY = "daemon:storeRetention";
+const STORE_RETENTION_BOOT_DELAY_MS = 10 * 60_000;
+const STORE_RETENTION_SLICE_GAP_MS = 250;
 const WEEKLY_CEILING_KEY = "daemon:weeklyCeiling";
 const ACCOUNTS_PERIODIC_KEY = "daemon:accounts.periodic";
 const ACCOUNTS_CENTRAL_KEY = "daemon:accounts.central";
@@ -703,6 +707,7 @@ export interface HiveDaemonDeps {
   championHomeMinIntervalMs?: number;
   championStaleHomeRetentionMs?: number;
   resumeBundleMinIntervalMs?: number;
+  storeRetentionDelayMs?: number;
   /** v31 tests: delay before the first automatic retention pass (default 5 min). */
   retentionInitialDelayMs?: number;
   /** P7 tests: free-space check cadence (default 60 s). */
@@ -1676,6 +1681,7 @@ export class HiveDaemon {
       // stays detached. Once a second keeps the roster scan off most ticks.
       const autoTitle = this.autoTitle;
       const store = this.store;
+      if (store) this.storeRetentionTick(core, store, first);
       const titleDue = core.takeDue(AUTO_TITLE_KEY);
       for (const beeId of previous.titleBees) this.autoTitleCandidates.add(beeId);
       for (const beeId of this.changes.titleBees) this.autoTitleCandidates.add(beeId);
@@ -1720,6 +1726,30 @@ export class HiveDaemon {
         `tick.slow total=${tEnd - t0}ms step=${tStep - t0}ms accounts=${tAccounts - tStep}ms maintenance=${tWatch - tAccounts}ms flush=${tEnd - tWatch}ms`,
       );
     }
+  }
+
+  private storeRetentionPass = { auditRows: 0, commands: 0, slices: 0, slowestMs: 0 };
+
+  private storeRetentionTick(core: DaemonCore, store: CoreStore, first: boolean): void {
+    if (first) {
+      const delayMs = this.deps.storeRetentionDelayMs ?? STORE_RETENTION_BOOT_DELAY_MS;
+      core.schedule(STORE_RETENTION_KEY, Math.max(Date.now() + delayMs, (store.retentionLastPassAt() ?? 0) + STORE_RETENTION.passEveryMs));
+    }
+    if (!core.takeDue(STORE_RETENTION_KEY)) return;
+    const started = performance.now();
+    const slice = store.pruneRetained();
+    const pass = this.storeRetentionPass;
+    pass.auditRows += slice.auditRows;
+    pass.commands += slice.commands;
+    pass.slices += 1;
+    pass.slowestMs = Math.max(pass.slowestMs, performance.now() - started);
+    if (!slice.done) {
+      core.schedule(STORE_RETENTION_KEY, Date.now() + STORE_RETENTION_SLICE_GAP_MS);
+      return;
+    }
+    this.log(`store.retention.pass audit=${pass.auditRows} commands=${pass.commands} floor=${slice.floorSeq} slices=${pass.slices} slowest_ms=${pass.slowestMs.toFixed(1)}`);
+    this.storeRetentionPass = { auditRows: 0, commands: 0, slices: 0, slowestMs: 0 };
+    core.schedule(STORE_RETENTION_KEY, Date.now() + STORE_RETENTION.passEveryMs);
   }
 
   private flushWatchers(): void {

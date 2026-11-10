@@ -95,3 +95,4 @@ export { publicDeliveryConfirmation, readDeliveryConfirmations, DELIVERY_CONFIRM
 
 export * from "./humanOutput.ts";
 export { ChampionNotFoundError, championSlug, type PutChampionInput } from "./store.ts";
+export { STORE_RETENTION, auditRetention, type AuditRetention, type StoreRetentionSlice } from "./storeRetention.ts";

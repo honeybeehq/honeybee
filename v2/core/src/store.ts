@@ -1,4 +1,5 @@
 import { StoreBackupError, backupStore, backupStoreOnline, type OnlineBackupOptions, type StoreBackupReceipt } from "./storeBackup.ts";
+import { STORE_RETENTION, auditRetention, type StoreRetentionSlice } from "./storeRetention.ts";
 import { HUMAN_OUTPUT_SQL, HUMAN_OUTPUT_FACT_COLUMNS, HUMAN_OUTPUT_FACT_JOIN, HumanOutputLedger, humanOutputFacts, type BeeTellParams, type BeeReactParams, type HumanOutputMode, type BeeTellRow, type BeeReactionRow } from "./humanOutput.ts";
 import { readMailBatchPage, renderMailBatch } from "./mailBatch.ts";
 import { automationDeliveryClass, type AutomationKind, type AutomationReference, type MailBatch, type MailBatchingPolicy } from "./types.ts";
@@ -1880,6 +1881,70 @@ export class CoreStore {
 
   private totalChanges(): number {
     return Number((this.stmt("SELECT total_changes() AS n").get() as Row).n);
+  }
+
+  private metaNumber(key: string): number | null {
+    const row = this.stmt("SELECT value FROM meta WHERE key = ?").get(key) as Row | undefined;
+    const value = row === undefined ? Number.NaN : Number(row.value);
+    return Number.isFinite(value) ? value : null;
+  }
+
+  private putMetaNumber(key: string, value: number): void {
+    this.stmt("INSERT INTO meta(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(key, String(value));
+  }
+
+  retentionLastPassAt(): number | null {
+    return this.metaNumber("store_retention_last_pass_at");
+  }
+
+  auditRetentionFloorSeq(): number {
+    return this.metaNumber("store_retention_audit_floor_seq") ?? 0;
+  }
+
+  pruneRetained(now: number = this.now()): StoreRetentionSlice {
+    return this.tx(() => {
+      const cutoff = now - STORE_RETENTION.windowMs;
+      const floor = this.auditRetentionFloorSeq();
+      this.backfillMailHistoryEnqueues();
+      const projection = this.metaNumber("mail_history_projection_seq") ?? 0;
+      const rows = this.stmt(
+        `SELECT seq, ts, kind,
+                CASE WHEN kind IN ('mail.confirmation_prepared','mail.confirmation_released','mail.delivery_fallback_prepared') AND json_valid(payload)
+                     THEN json_extract(payload, '$.row.messageId') END AS message_id
+         FROM audit WHERE seq > ? ORDER BY seq LIMIT ?`,
+      ).all(floor, STORE_RETENTION.sliceAuditRows) as Row[];
+      const expired: number[] = [];
+      let examined = floor;
+      let insideWindow = rows.length < STORE_RETENTION.sliceAuditRows;
+      for (const row of rows) {
+        const ts = Number(row.ts);
+        if (ts >= cutoff && ts <= now) { insideWindow = true; break; }
+        examined = Number(row.seq);
+        if (ts > now) continue;
+        const retention = auditRetention(String(row.kind));
+        if (retention === "kept") continue;
+        if (retention === "kept_above_mail_projection" && examined > projection) continue;
+        if (retention === "kept_while_message_undelivered" && !this.auditMessageSettled(row.message_id)) continue;
+        expired.push(examined);
+      }
+      if (expired.length > 0) this.stmt("DELETE FROM audit WHERE seq IN (SELECT value FROM json_each(?))").run(JSON.stringify(expired));
+      if (examined !== floor) this.putMetaNumber("store_retention_audit_floor_seq", examined);
+      const commands = Number(this.stmt(
+        `DELETE FROM commands WHERE id IN (
+           SELECT id FROM commands INDEXED BY commands_ready
+           WHERE status IN ('done','failed') AND next_attempt_at < ? AND COALESCE(finished_at, enqueued_at) < ?
+           LIMIT ?)`,
+      ).run(cutoff, cutoff, STORE_RETENTION.sliceCommandRows).changes);
+      const done = insideWindow && commands < STORE_RETENTION.sliceCommandRows;
+      if (done) this.putMetaNumber("store_retention_last_pass_at", now);
+      return { auditRows: expired.length, commands, floorSeq: examined, done };
+    });
+  }
+
+  private auditMessageSettled(messageId: unknown): boolean {
+    if (typeof messageId !== "number" || !Number.isSafeInteger(messageId)) return false;
+    const row = this.stmt("SELECT delivered_at FROM mailbox WHERE id = ?").get(messageId) as Row | undefined;
+    return row === undefined || row.delivered_at !== null;
   }
 
   backupOnline(sourceBuild: string, options: Omit<OnlineBackupOptions, "restarts"> = {}): Promise<StoreBackupReceipt> {
