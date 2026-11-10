@@ -96,3 +96,16 @@ test("aliases to the recorded executable cannot migrate changed bytes", () => fi
     assert.throws(() => resolveNodePin(data, { HIVE_NODE_PATH: path }, undefined, true), /identity drift|identity probe failed/);
   }
 }));
+
+test("an unchanged executable is probed once per process; a rewritten one is probed again", () => fixture(dir => {
+  const node = join(dir, "counting-node"), runs = join(dir, "runs");
+  const script = `#!/bin/sh\necho run >> '${runs}'\nprintf '{"node":"24.18.0","execPath":"${node}"}'\n`;
+  writeFileSync(node, script, { mode: 0o755 });
+  const count = (): number => readFileSync(runs, "utf8").split("\n").filter(Boolean).length;
+  const first = probeNativeNode(node);
+  assert.deepEqual(probeNativeNode(node), first);
+  assert.equal(count(), 1);
+  writeFileSync(node, `${script}# rewritten\n`, { mode: 0o755 });
+  assert.notEqual(probeNativeNode(node).sha256, first.sha256);
+  assert.equal(count(), 2);
+}));

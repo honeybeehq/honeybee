@@ -2,7 +2,7 @@ import { nativeNodeEnv } from "./runtimeEnvironment.ts";
 export { nativeNodeEnv, withoutInspectorArgs } from "./runtimeEnvironment.ts";
 import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { accessSync, closeSync, constants, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { accessSync, closeSync, constants, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 
@@ -16,11 +16,27 @@ export function nodePinFile(dataDir: string): string {
   return join(resolve(dataDir, ".."), "node-runtime.json");
 }
 
+const probedNodes = new Map<string, { identity: string; pin: NodePin }>();
+
+function fileIdentity(path: string): string {
+  const stat = statSync(path, { bigint: true });
+  return [stat.dev, stat.ino, stat.size, stat.mtimeNs, stat.ctimeNs, stat.mode].join(":");
+}
+
 export function probeNativeNode(path: string): NodePin {
   if (!isAbsolute(path) || /\.app[/\\]Contents[/\\]MacOS[/\\]/i.test(path)) throw new Error("HIVE_NODE_PATH must be an absolute native Node executable, never Electron");
   const real = realpathSync(path);
   if (/\.app[/\\]Contents[/\\]MacOS[/\\]/i.test(real)) throw new Error("HIVE_NODE_PATH refuses an Electron app executable");
   accessSync(real, constants.X_OK);
+  const identity = fileIdentity(real);
+  const probed = probedNodes.get(real);
+  if (probed?.identity === identity) return { ...probed.pin };
+  const pin = probeNodeExecutable(real);
+  if (fileIdentity(real) === identity) probedNodes.set(real, { identity, pin });
+  return { ...pin };
+}
+
+function probeNodeExecutable(real: string): NodePin {
   const sha256 = createHash("sha256").update(readFileSync(real)).digest("hex");
   let identity: { node?: unknown; electron?: unknown; execPath?: unknown };
   try {
