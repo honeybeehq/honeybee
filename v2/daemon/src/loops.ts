@@ -2354,6 +2354,15 @@ export class DaemonCore {
     return this.store.mailBatchReleaseReason(beeId) !== null && (batch ? batch.memberIds[0] === messageId : this.store.mailBatchCandidate(messageId));
   }
 
+  private recoverOverdue(beeId: string): void {
+    this.deliveryRetries.delete(beeId);
+    for (const intent of this.store.listDeliveryConfirmationIntents(beeId)) this.confirmationPolls.delete(intent.messageId);
+    this.hot.add(beeId);
+    const runtime = this.store.currentRuntime(beeId);
+    const wake = !runtime || runtime.state === "stopped" ? this.store.enqueueWake(beeId) : null;
+    this.log(`i1.recover bee=${beeId} runtime=${runtime?.state ?? "none"}` + (wake ? ` wake=${wake.outcome}` : ""));
+  }
+
   private i1Telemetry(rows: readonly I1PendingBee[], scope: ReadonlySet<string> | null): void {
     const bound = this.policy.i1DeadlineSteps as number;
     const record = this.onI1Violation as (violation: I1ViolationEvent) => void;
@@ -2432,6 +2441,7 @@ export class DaemonCore {
         const detail = `message ${m.id} undelivered past deadline (enqueued=${m.enqueuedAt} urgency=${m.urgency} pos=${pos} deadline=${deadline} now=${now})`;
         record({ detectedAt: now, beeId, messageId: m.id, enqueuedAt: m.enqueuedAt, deadline, detail });
         this.log(`i1.violation bee=${beeId} msg=${m.id} deadline=${deadline}`);
+        this.recoverOverdue(beeId);
       });
       if (nextAt !== null) this.scheduleBee(beeId, nextAt);
     }
