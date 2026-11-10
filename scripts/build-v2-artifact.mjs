@@ -115,6 +115,21 @@ await build({
   preserveSymlinks: true,
   logLevel: "silent",
 });
+await build({
+  absWorkingDir: root,
+  entryPoints: [join(root, "v2", "daemon", "src", "readWorker.ts")],
+  outfile: join(outDir, "read-worker.js"),
+  bundle: true,
+  platform: "node",
+  format: "esm",
+  target: "node22",
+  minify: false,
+  preserveSymlinks: true,
+  logLevel: "silent",
+  alias: {
+    "jsonc-parser": join(root, "node_modules", "jsonc-parser", "lib", "esm", "main.js"),
+  },
+});
 const runnerHostBuild = await build({
   absWorkingDir: root,
   entryPoints: [join(root, "v2", "driver-hsr", "src", "runner-host-main.ts")],
@@ -155,5 +170,5 @@ if (runnerHostBytes > runnerHostMaxBytes) {
 }
 
 process.stdout.write(
-  `hive entry staged at dist/cli.js; v2 artifacts staged at dist/v2/cli.js, dist/v2/provision-worker.js, dist/v2/pool-worker.js, dist/v2/retention-worker.js, dist/v2/transcript-segment-worker.js, and dist/v2/runner-host.js (${runnerHostBytes} bytes)\n`,
+  `hive entry staged at dist/cli.js; v2 artifacts staged at dist/v2/cli.js, dist/v2/provision-worker.js, dist/v2/pool-worker.js, dist/v2/retention-worker.js, dist/v2/transcript-segment-worker.js, dist/v2/read-worker.js, and dist/v2/runner-host.js (${runnerHostBytes} bytes)\n`,
 );

@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { backupStore, backupStoreOffline, restoreStoreOffline, StoreBackupError, type StoreBackupReceipt } from "../src/storeBackup.ts";
-import { openCoreStore, SCHEMA_VERSION } from "../src/index.ts";
+import { acquireStoreWriterLock, openCoreStore, SCHEMA_VERSION } from "../src/index.ts";
 
 function fixture() {
   const dir = mkdtempSync(join(tmpdir(), "hb-backup-"));
@@ -38,6 +38,62 @@ test("owner backs up WAL rows, refuses other writer and restore preserves curren
   const preserved = new DatabaseSync(restored.preservedPath);
   assert.equal(preserved.prepare("SELECT value FROM proof").get()?.value, "after");
   preserved.close();
+});
+
+test("backup is consistent with a reader attached; restore waits for readers to detach and the writer to let go", () => {
+  const { path } = fixture();
+  const reader = new DatabaseSync(path, { readOnly: true });
+  reader.exec("BEGIN");
+  assert.equal(reader.prepare("SELECT value FROM proof").get()?.value, "before");
+  const receipt = backupStoreOffline(path, "with-reader");
+  const snapshot = new DatabaseSync(receipt.backupPath, { readOnly: true });
+  assert.equal(snapshot.prepare("SELECT value FROM proof").get()?.value, "before");
+  assert.equal(snapshot.prepare("PRAGMA integrity_check").get()?.integrity_check, "ok");
+  snapshot.close();
+  const writer = new DatabaseSync(path);
+  writer.exec("UPDATE proof SET value='after'");
+  writer.close();
+  assert.throws(() => restoreStoreOffline(path, receipt.receiptPath), /locked/);
+  reader.exec("COMMIT");
+  assert.throws(() => restoreStoreOffline(path, receipt.receiptPath), /locked/);
+  assert.equal(reader.prepare("SELECT value FROM proof").get()?.value, "after", "a refused restore leaves the store as it was");
+  assert.equal(readdirSync(join(path, "..")).some(name => name.includes(".restore-") || name.includes(".before-restore-")), false);
+  reader.close();
+  const lock = acquireStoreWriterLock(path);
+  assert.throws(() => backupStoreOffline(path, "held"), /already held by another writer/);
+  assert.throws(() => restoreStoreOffline(path, receipt.receiptPath), /already held by another writer/);
+  lock.release();
+  restoreStoreOffline(path, receipt.receiptPath);
+  const restored = new DatabaseSync(path, { readOnly: true });
+  assert.equal(restored.prepare("SELECT value FROM proof").get()?.value, "before");
+  restored.close();
+});
+
+test("the owning store backs up while a read-only handle reads beside it", () => {
+  const dir = mkdtempSync(join(tmpdir(), "hb-backup-reader-"));
+  const path = join(dir, "core.sqlite3");
+  const store = openCoreStore(path);
+  const reader = openCoreStore(path, { readOnly: true });
+  try {
+    const { bee } = store.createBee({ name: "kept", agent: "claude", substrate: "tmux", cwd: dir });
+    const read = reader.readAtSeq(() => {
+      const receipt = store.backup("owner-build");
+      store.send(bee.id, "after the backup");
+      return { receipt, undelivered: reader.undeliveredMessages(bee.id).length };
+    });
+    assert.equal(read.value.undelivered, 0);
+    const snapshot = new DatabaseSync(read.value.receipt.backupPath, { readOnly: true });
+    assert.equal(snapshot.prepare("SELECT name FROM bees WHERE id=?").get(bee.id)?.name, "kept");
+    assert.equal(snapshot.prepare("SELECT COUNT(*) AS n FROM mailbox").get()?.n, 0);
+    assert.equal(snapshot.prepare("PRAGMA integrity_check").get()?.integrity_check, "ok");
+    snapshot.close();
+    assert.equal(reader.undeliveredMessages(bee.id).length, 1);
+    assert.throws(() => backupStoreOffline(path, "offline"), /already held by another writer/);
+    assert.throws(() => restoreStoreOffline(path, read.value.receipt.receiptPath), /already held by another writer/);
+  } finally {
+    reader.close();
+    store.close();
+  }
 });
 
 test("checksum or schema receipt mismatch refuses restore without replacing store", () => {

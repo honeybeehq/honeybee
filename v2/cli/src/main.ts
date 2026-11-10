@@ -138,6 +138,7 @@ import type { ReadOnlyStore } from "./readonly.ts";
 import { beeTaskList, isTaskStatus, isTaskTransitionAction, parseTaskListRef } from "../../core/src/tasks.ts";
 import { filterMailbox, INBOX_AGENT, isInboxAgent, TASK_STATUSES, type AuditRow, type CommandRow, type NodeCapacity, type TemplateRow, type ChampionRow } from "../../core/src/types.ts";
 import { matchAccount } from "../../core/src/accountMatch.ts";
+import { storeWriterLockHeld } from "../../core/src/writerLock.ts";
 import { publicAuditRow, publicEnvRecords } from "../../core/src/envRedaction.ts";
 import { hostname } from "node:os";
 import type { AuditTailResult, DeployInfoResult, GatewayRegisterResult, RuntimeActivateResult, RuntimeInstallResult, RuntimeProbeResult, RuntimePruneResult, RuntimeStatusResult, RuntimeVersion, SkillsInstallResult } from "../../daemon/src/protocol.ts";
@@ -687,15 +688,20 @@ async function readPath<T>(
     if (!existsSync(ctx.cfg.storePath)) {
       throw new Error(`daemon not running and no store at ${ctx.cfg.storePath}`);
     }
+    // A held writer lock → a live daemon owns the store (B9), so "daemon
+    // down" was a misdiagnosis — the rpc failed some other way (slow verb
+    // past its timeout, mid-restart socket). Report that instead of serving
+    // rows labeled stale beside a running daemon.
+    if (storeWriterLockHeld(ctx.cfg.storePath)) {
+      throw new Error(`daemon appears to be running (store is held by its writer) but the request failed: ${err.message}`);
+    }
     let store: ReadOnlyStore;
     try {
       store = new (await import("./readonly.ts")).ReadOnlyStore(ctx.cfg.storePath);
     } catch (openErr) {
-      // The store is exclusively locked → a live daemon holds it (B9), so
-      // "daemon down" was a misdiagnosis — the rpc failed some other way
-      // (slow verb past its timeout, mid-restart socket). Surfacing SQLite's
-      // bare "database is locked" here sent the 2026-08-19 soak down the
-      // wrong trail; report what actually happened instead.
+      // A daemon from before the writer lock holds the store exclusively.
+      // Surfacing SQLite's bare "database is locked" here sent the
+      // 2026-08-19 soak down the wrong trail; report what actually happened.
       if (openErr instanceof Error && /locked|busy/i.test(openErr.message)) {
         throw new Error(`daemon appears to be running (store is locked) but the request failed: ${err.message}`);
       }

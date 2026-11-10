@@ -10,7 +10,7 @@ import { isFableModel, autoswapDisabled } from "../../core/src/index.ts";
 export { autoswapDisabled } from "../../core/src/index.ts";
 import {IdentityRecovery} from "./identityRecovery.ts";
 import {inspectProcess, sameProcess, type ProcessInspection} from "../../harness/src/processIdentity.ts";
-import { bindSpawnParent, spawnCallerBee } from "./spawnLineage.ts";
+import { bindSpawnParent } from "./spawnLineage.ts";
 import type { ExecutionStart } from "../../core/src/executionStart.ts";
 import { ExecutionFenceError, type ExecutionRequest } from "../../core/src/executionFence.ts";
 import { type PhoneOriginRequest, parsePhoneOrigin } from "../../core/src/phoneOrigin.ts";
@@ -63,7 +63,7 @@ import { homedir, tmpdir, hostname } from "node:os";
 import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { canonicalPath, removeEndpointRecord, samePath, writeEndpointRecord } from "./endpointRecord.ts";
-import { placeDaemonSockets } from "./socketPath.ts";
+import { placeDaemonSockets, socketPathFits } from "./socketPath.ts";
 import { monitorEventLoopDelay, type IntervalHistogram } from "node:perf_hooks";
 import { getSystemErrorMap } from "node:util";
 import { GatewayMcpSeedLockError } from "./gatewayMcpSeed.ts";
@@ -78,12 +78,10 @@ import {
   beeTaskList,
   isTaskStatus,
   isTaskTransitionAction,
-  MAIL_HISTORY_MAX_LIMIT,
   MESSAGE_URGENCIES,
   SENDER_KINDS,
   INBOX_AGENT,
   isInboxAgent,
-  filterMailbox,
   ContinuationUnsupportedError,
   MOVE_CONTINUATION_AGENTS,
   BEE_HANDOFF_STOP_AT,
@@ -118,7 +116,6 @@ import {
   AUTH_INTERRUPTION_RETENTION_MS,
   type AuditRow,
   type BeeHandoffRow,
-  type BeeViewRow,
   type BeeHandoffStopAt,
   type BeeMoveRow,
   type BeeRow,
@@ -347,7 +344,6 @@ import { BEE_IMPORT_BUNDLE_BYTES_MAX,
   type AccountRemoveResult,
   type AccountUpdateResult,
   type AccountVerifyResult,
-  type AuditTailResult,
   type SwapAccountResult,
   type BeeMoveResult,
   type BeeHandoffResult,
@@ -369,7 +365,6 @@ import { BEE_IMPORT_BUNDLE_BYTES_MAX,
   type CellCaptureResult,
   type CellEvictResult,
   type CellParkResult,
-  type TranscriptSegmentsResult,
   type ChampionListResult,
   type ChampionGetResult,
   type ChampionPutResult,
@@ -401,10 +396,6 @@ import { BEE_IMPORT_BUNDLE_BYTES_MAX,
   type HealthResult,
   type InterruptResult,
   type NodeHarnessesResult,
-  type ListResult,
-  type MailHistoryParams,
-  type MailHistoryResult,
-  type MailPendingResult,
   type MutationResult,
   type QuestionAnswerResult,
   type QuestionAskResult,
@@ -442,12 +433,11 @@ import { BEE_IMPORT_BUNDLE_BYTES_MAX,
   type TemplatePutResult,
   type ViewResult,
   type RuntimeProbeResult,
-  LIST_PAGE_MAX_LIMIT,
-  TRANSCRIPT_SEGMENTS_MAX_ROWS,
-  LIST_REF_MAX_BYTES,
-  LIST_REFS_MAX,
 } from "./protocol.ts";
-import { archivedCursor, archivedCursorText, snapshotLifecycle } from "./rosterRead.ts";
+import { snapshotLifecycle } from "./rosterRead.ts";
+import { StoreReads, publicConfirmationAudit } from "./storeReads.ts";
+import { ReadServer, readSocketPath } from "./readServer.ts";
+import { admitConfinedPeer, peerOwnerOf } from "./peerAuthority.ts";
 
 export const RUNTIME_PROBE_AGENT = "runtime-probe";
 const RUNTIME_PROBE_IDLE_MS = 60_000;
@@ -1241,7 +1231,11 @@ export class HiveDaemon {
     this.activeStartupPhase = null;
     const rpc = this.performance.startSpan("daemon.start.rpc");
     this.activeStartupPhase = rpc;
+    store.ensureMailHistoryProjection();
+    this.readServer = await this.startReadServer();
+    this.syncReadServer();
     this.rpc = new RpcServer({
+      readSocket: () => this.readServer?.socketPath ?? null,
       admitConfined: (verb, params, conn) => this.admitConfined(verb, params, conn),
       classifyPeer: peer => classifyPeer(peer, {owner: () => this.peerOwner(peer)}),
       peerConfinement: (peerClass, registered) => peerConfinement(peerClass, {strict: this.confinementReasons.size > 0, registered}),
@@ -1314,6 +1308,8 @@ export class HiveDaemon {
       await this.loginFlows?.shutdown();
       await this.threadOperations?.shutdown();
       await this.rpc?.close();
+      await this.readServer?.close();
+      this.readServer = null;
       removeEndpointRecord(this.cfg.dataDir, this.instanceId);
       this.core?.detachReconnectOwner();
       if (options.preserveRuntimes === false) {
@@ -1734,7 +1730,7 @@ export class HiveDaemon {
   private mirrorAuditRows(rows: AuditRow[], includeOperatorLocalHomes = false): AuditRow[] {
     const accounts = this.accounts;
     return rows.map((source) => {
-      const row = this.publicConfirmationAudit(publicAuditRow(source, includeOperatorLocalHomes));
+      const row = publicConfirmationAudit(publicAuditRow(source, includeOperatorLocalHomes));
       if (row.kind === "thread_operation.put") return { ...row, payload: { operation: row.payload.operation } };
       if (!accounts) return row;
       if (row.kind !== "account.put") return row;
@@ -1744,19 +1740,6 @@ export class HiveDaemon {
     });
   }
 
-  private publicConfirmationAudit(row: AuditRow): AuditRow {
-    if (!row.kind.startsWith("mail.confirmation_")) return row;
-    const payload = { ...row.payload };
-    for (const key of ["wireLine", "digest", "host", "priorDigest"]) delete payload[key];
-    for (const key of ["row", "prior"]) {
-      const value = payload[key];
-      if (value && typeof value === "object" && !Array.isArray(value)) {
-        const { wireLine, digest, host, ...visible } = value as Record<string, unknown>;
-        payload[key] = visible;
-      }
-    }
-    return { ...row, payload };
-  }
 
   private mirrorAccount(account: AccountRow): MirrorAccountRow {
     return this.mustAccounts().mirrorRow(account);
@@ -1975,6 +1958,7 @@ export class HiveDaemon {
     if (this.stopping) return;
     if (!this.identityRecovery.has(beeId, generation)) this.identityRecovery.retain({beeId, generation, since: this.mustStore().runtimeIdentityUnresolvedSince(beeId, generation)});
     this.core?.retainProcessIdentity(beeId, generation);
+    this.syncReadServer();
   }
 
   private retryProcessIdentities(): void {
@@ -2007,6 +1991,7 @@ export class HiveDaemon {
     });
     const counts = this.identityRecovery.counts(Date.now());
     if (counts.overdue && Date.now() - this.identityWarningAt >= 60000) { this.identityWarningAt = Date.now(); this.log(`doctor.process_identity_unresolved count=${counts.overdue}`); }
+    this.syncReadServer();
   }
 
   private adoptSurvivors(store: CoreStore, driver: RuntimeHost): Array<{beeId: string; generation: number}> {
@@ -2685,29 +2670,23 @@ export class HiveDaemon {
           this.rpcEnqueue("delete", this.param(params, "beeId"), {}, params),
         );
       case "view":
-        return this.viewOf(this.mustStore(), this.param(params, "beeId"));
+        return this.reads.view(this.param(params, "beeId"));
       case "list":
-        if (conn.confinement === "confined") {
-          const owner = peerOwner(conn);
-          if (!owner) throw new RpcError("confined_peer_refused", "Confined caller has no owning bee");
-          const own = this.viewOf(this.mustStore(), owner.beeId);
-          return {views: [own]};
-        }
-        return this.rpcList(params);
+        return this.reads.listFor(params, conn);
       case "mailbox":
-        return this.rpcMailbox(params);
+        return this.reads.mailbox(params);
+      case "mail.history":
+        return this.reads.mailHistory(params);
+      case "mail.pending":
+        return this.reads.mailPending(params);
+      case "commands":
+        return this.reads.commands(params);
+      case "audit.tail":
+        return this.reads.auditTail(params);
+      case "transcript.segments":
+        return this.reads.transcriptSegments(params);
       case "mail.ack":
         return this.rpcMailAck(params);
-      case "mail.history":
-        return this.rpcMailHistory(params);
-      case "mail.pending":
-        return this.rpcMailPending(params);
-      case "commands":
-        return { commands: this.mustStore().listCommands({ beeId: this.requireBee(params) }) };
-      case "audit.tail":
-        return this.rpcAuditTail(params);
-      case "transcript.segments":
-        return this.rpcTranscriptSegments(params);
       case "champion.list":
         return { champions: this.mustStore().listChampions() } satisfies ChampionListResult;
       case "champion.get":
@@ -3052,16 +3031,7 @@ export class HiveDaemon {
   private lineageInspect(pid: number): ProcessInspection { return inspectProcess(pid); }
   private readonly confinedAdmission = new ConfinedAdmission();
   private admitConfined(verb: RpcVerb, params: Record<string, unknown>, conn: RpcConn): Record<string, unknown> {
-    const store = this.mustStore();
-    const owner = conn.ingress === "local_unix" ? peerOwner(conn) : null;
-    const bee = owner ? store.getBee(owner.beeId) : null;
-    const runtime = owner ? store.currentRuntime(owner.beeId) : null;
-    if (!owner || !bee || bee.lifecycle !== "active" || !runtime || runtime.state === "stopped") throw new RpcError("confined_peer_refused", "Confined caller has no live owning bee");
-    if (runtime.generation !== owner.generation || store.runtimeProcessIdentity(bee.id, runtime.generation).kind !== "bound") throw new RpcError("confined_peer_refused", "Confined caller generation is stale");
-    return this.confinedAdmission.admit(verb, params, {
-      beeId: bee.id, generation: runtime.generation, parentId: bee.parentExternal ? null : bee.parentId,
-      canSend: target => { const parent = store.getBee(target); return !!parent && parent.agent !== INBOX_AGENT; },
-    });
+    return admitConfinedPeer(this.mustStore(), this.confinedAdmission, verb, params, conn);
   }
 
   private observeCellRuntimeNamespace(beeId: string, pid: number | null): void {
@@ -3080,6 +3050,7 @@ export class HiveDaemon {
       if ([...this.cellNamespaces.values()].some(value => value !== "different")) this.confinementReason("cell_userns_unisolated");
       else if (this.confinementReasons.delete("cell_userns_unisolated")) this.log(`security.confinement strict=${this.confinementReasons.size > 0} reasons=${[...this.confinementReasons].join(",")}`);
     } catch { this.log("security.confinement cell_namespace_unrecorded"); }
+    this.syncReadServer();
   }
 
   private readonly cellNamespaces = new Map<string, "same" | "different" | "unavailable">();
@@ -3089,6 +3060,50 @@ export class HiveDaemon {
     if (process.platform !== "linux" || this.confinementReasons.has(reason)) return;
     this.confinementReasons.add(reason);
     this.log(`security.confinement strict=true reasons=${[...this.confinementReasons].join(",")}`);
+    this.syncReadServer();
+  }
+
+  private readServer: ReadServer | null = null;
+  private readServerState = "";
+
+  private async startReadServer(): Promise<ReadServer | null> {
+    const socketPath = readSocketPath(this.cfg.socketPath);
+    if (!socketPathFits(socketPath)) {
+      this.log("read.socket.unavailable reason=socket_path_too_long");
+      return null;
+    }
+    try {
+      const server = await ReadServer.start({
+        storePath: this.cfg.storePath,
+        socketPath,
+        dataDir: this.cfg.dataDir,
+        instance: { id: this.instanceId, dataDir: canonicalPath(this.cfg.dataDir) },
+        localTrust: this.cfg.rpcLocalTrust,
+        transcriptStore: this.transcriptObjects?.locator ?? null,
+        strictConfinement: true,
+        identity: [],
+      }, {
+        audit: (kind, payload) => { if (!this.stopping) this.store?.recordLocalRpcEvent(kind as "rpc.peer_credentials_unavailable" | "rpc.local_refused" | "rpc.local_registered", payload); },
+        log: op => this.log(`read.${op}`),
+        lost: (reason) => { this.readServer = null; this.log(`read.socket.lost reason=${reason}`); },
+      });
+      return server;
+    } catch (error) {
+      this.log(`read.socket.unavailable reason=${error instanceof Error ? error.message : String(error)}`);
+      return null;
+    }
+  }
+
+  private syncReadServer(): void {
+    const server = this.readServer;
+    if (!server) return;
+    const strict = this.confinementReasons.size > 0;
+    const identity = this.identityRecovery.entries();
+    const state = JSON.stringify([strict, identity]);
+    if (state === this.readServerState) return;
+    this.readServerState = state;
+    server.setStrictConfinement(strict);
+    server.setIdentity(identity);
   }
 
   private authenticatedSpawnParams(params: Record<string, unknown>, conn: RpcConn): Record<string, unknown> {
@@ -3119,12 +3134,7 @@ export class HiveDaemon {
   }
 
   private peerOwner(peer: NonNullable<RpcConn["localPeer"]>): PeerOwner | null {
-    const store = this.mustStore();
-    const owner = spawnCallerBee(peer, pid => store.runtimesByPid(pid).map(runtime => {
-      const binding = store.runtimeProcessIdentity(runtime.beeId, runtime.generation);
-      return { beeId: runtime.beeId, generation: runtime.generation, substrate: runtime.substrate, identity: binding.kind === "bound" ? binding.identity : null, pid: runtime.stopped ? null : pid };
-    }), pid => this.lineageInspect(pid));
-    return owner && { beeId: owner.beeId, generation: owner.generation, substrate: owner.substrate };
+    return peerOwnerOf(this.mustStore(), peer, pid => this.lineageInspect(pid));
   }
 
   private rpcSpawnEffect(params: Record<string, unknown>): Promise<SpawnResult> {
@@ -6278,14 +6288,6 @@ export class HiveDaemon {
     });
   }
 
-  private rpcMailbox(params: Record<string, unknown>): { messages: MessageRow[] } {
-    const beeId = this.requireBee(params);
-    const sinceId = params.sinceId === undefined || params.sinceId === null ? undefined : this.numberParam(params, "sinceId");
-    if (params.unread !== undefined && typeof params.unread !== "boolean") {
-      throw new RpcError("invalid_request", "mailbox: unread must be a boolean");
-    }
-    return { messages: filterMailbox(this.mustStore().listMessages(beeId), { sinceId, unread: params.unread === true }) };
-  }
 
   private rpcMailAck(params: Record<string, unknown>): { acked: number[] } {
     const beeId = this.requireBee(params);
@@ -6315,48 +6317,20 @@ export class HiveDaemon {
     return { commandId: cmd.id };
   }
 
+  private storeReads: StoreReads | null = null;
+  private get reads(): StoreReads {
+    return this.storeReads ??= new StoreReads({ store: () => this.mustStore(), identity: this.identityRecovery, transcriptStore: () => this.transcriptObjects?.locator ?? null });
+  }
+
   private identityDiagnostic(beeId: string, generation: number | null) {
-    const diagnostic = this.identityRecovery.diagnostic(beeId, generation, Date.now());
-    return diagnostic ? {identityDiagnostic: diagnostic} : {};
+    return this.reads.identityDiagnostic(beeId, generation);
   }
 
   private viewOf(store: CoreStore, beeId: string): ViewResult {
-    const bee = store.getBee(beeId);
-    return {
-      ...this.identityDiagnostic(beeId, store.currentRuntime(beeId)?.generation ?? null),
-      view: store.view(beeId),
-      bee: mirrorBeeRow(bee),
-      runtime: bee ? store.currentRuntime(beeId) : null,
-      move: bee ? (() => { const m = store.latestMoveOf(bee.id); return m ? toBeeMoveView(m) : null; })() : null,
-      cell: bee?.cellId ? store.getCell(bee.cellId) : null,
-      handoff: bee ? (() => { const h = store.latestHandoffOf(bee.id); return h ? toBeeHandoffView(h) : null; })() : null,
-    };
+    if (store !== this.mustStore()) throw new Error("viewOf reads the daemon store");
+    return this.reads.view(beeId);
   }
 
-  private rpcList(params: Record<string, unknown>): ListResult {
-    const store = this.mustStore();
-    const { limit, after, refs } = params;
-    const lifecycle = params.lifecycle ?? null;
-    if (lifecycle !== null && lifecycle !== "active" && lifecycle !== "archived") throw new RpcError("invalid_request", "list: lifecycle must be active or archived");
-    const shape = (rows: BeeViewRow[]): ViewResult[] => rows.map(row => ({...row, bee: mirrorBeeRow(row.bee), ...this.identityDiagnostic(row.view.beeId, row.view.generation)}));
-    if (refs !== undefined) {
-      if (!Array.isArray(refs) || refs.length === 0 || refs.length > LIST_REFS_MAX || !refs.every((ref): ref is string => typeof ref === "string" && ref.length > 0 && Buffer.byteLength(ref) <= LIST_REF_MAX_BYTES)) {
-        throw new RpcError("invalid_request", `list: refs must be 1 to ${LIST_REFS_MAX} non-empty strings of at most ${LIST_REF_MAX_BYTES} bytes`);
-      }
-      if (lifecycle !== null || limit !== undefined || after !== undefined) throw new RpcError("invalid_request", "list: refs cannot be combined with lifecycle, limit or after");
-      return {views: shape(store.listBeeViewRowsForRefs(refs))};
-    }
-    if (limit === undefined) {
-      if (after !== undefined) throw new RpcError("invalid_request", "list: after requires limit");
-      return {views: shape(store.listBeeViewRows(lifecycle))};
-    }
-    if (lifecycle !== "archived") throw new RpcError("invalid_request", "list: limit pages archived bees; pass lifecycle archived");
-    if (typeof limit !== "number" || !Number.isSafeInteger(limit) || limit < 1 || limit > LIST_PAGE_MAX_LIMIT) throw new RpcError("invalid_request", `list: limit must be an integer from 1 to ${LIST_PAGE_MAX_LIMIT}`);
-    const rows = store.listBeeViewRows("archived", { limit: limit + 1, ...(after === undefined ? {} : { after: archivedCursor(after) }) });
-    const page = rows.slice(0, limit);
-    const last = page[page.length - 1];
-    return {views: shape(page), next: rows.length > limit && last ? archivedCursorText({ archivedAt: last.bee.archivedAt ?? 0, id: last.bee.id }) : null};
-  }
 
   /**
    * `audit.tail` — bounded audit-log read for `hive v2 events`. `afterSeq`
@@ -7000,74 +6974,9 @@ export class HiveDaemon {
     return { champion: deleted };
   }
 
-  private rpcTranscriptSegments(params: Record<string, unknown>): TranscriptSegmentsResult {
-    const beeId = this.requireBee(params);
-    const store = this.mustStore();
-    const { afterOrdinal, limit, last, beforeOrdinal } = params;
-    const rowCount = (value: unknown): value is number => typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= TRANSCRIPT_SEGMENTS_MAX_ROWS;
-    if (afterOrdinal !== undefined && (typeof afterOrdinal !== "number" || !Number.isInteger(afterOrdinal))) throw new RpcError("invalid_request", "transcript.segments: afterOrdinal must be an integer when given");
-    if (limit !== undefined && !rowCount(limit)) throw new RpcError("invalid_request", `transcript.segments: limit must be an integer from 1 to ${TRANSCRIPT_SEGMENTS_MAX_ROWS} when given`);
-    if (last !== undefined && !rowCount(last)) throw new RpcError("invalid_request", `transcript.segments: last must be an integer from 1 to ${TRANSCRIPT_SEGMENTS_MAX_ROWS} when given`);
-    if (beforeOrdinal !== undefined && (typeof beforeOrdinal !== "number" || !Number.isInteger(beforeOrdinal) || beforeOrdinal < 0)) throw new RpcError("invalid_request", "transcript.segments: beforeOrdinal must be a non-negative integer when given");
-    if (last !== undefined && (afterOrdinal !== undefined || limit !== undefined)) throw new RpcError("invalid_request", "transcript.segments: last cannot be combined with afterOrdinal or limit");
-    if (beforeOrdinal !== undefined && last === undefined) throw new RpcError("invalid_request", "transcript.segments: beforeOrdinal requires last");
-    return {
-      beeId,
-      segments: last !== undefined
-        ? store.listTranscriptSegmentObjects(beeId, { last, ...(beforeOrdinal === undefined ? {} : { beforeOrdinal }) })
-        : store.listTranscriptSegmentObjects(beeId, { ...(afterOrdinal === undefined ? {} : { afterOrdinal }), limit: limit ?? 1000 }),
-      store: this.transcriptObjects?.locator ?? null,
-      cursor: store.getTranscriptSegmentCursor(beeId),
-      historyStartLine: store.transcriptSegmentHistoryStartLine(beeId),
-    };
-  }
 
-  private rpcAuditTail(params: Record<string, unknown>): AuditTailResult {
-    const store = this.mustStore();
-    const afterSeq = typeof params.afterSeq === "number" && Number.isFinite(params.afterSeq) ? params.afterSeq : 0;
-    const rawLimit = typeof params.limit === "number" && Number.isFinite(params.limit) ? Math.floor(params.limit) : 100;
-    const limit = Math.max(1, Math.min(1000, rawLimit));
-    const beeId = typeof params.beeId === "string" && params.beeId.length > 0 ? params.beeId : null;
-    return { rows: store.auditTail(afterSeq, limit, beeId).map(row => this.publicConfirmationAudit(row)) };
-  }
 
-  private rpcMailHistory(params: Record<string, unknown>): MailHistoryResult {
-    const limit = params.limit;
-    if (limit !== undefined && (typeof limit !== "number" || !Number.isSafeInteger(limit) || limit <= 0)) {
-      throw new RpcError("invalid_request", "mail.history: limit must be a positive integer");
-    }
-    const beforeSeq = params.beforeSeq;
-    if (
-      beforeSeq !== undefined &&
-      (typeof beforeSeq !== "number" || !Number.isSafeInteger(beforeSeq) || beforeSeq < 0)
-    ) {
-      throw new RpcError("invalid_request", "mail.history: beforeSeq must be a non-negative integer");
-    }
-    const snapshotSeq = params.snapshotSeq;
-    if (
-      snapshotSeq !== undefined &&
-      (typeof snapshotSeq !== "number" || !Number.isSafeInteger(snapshotSeq) || snapshotSeq < 0)
-    ) {
-      throw new RpcError("invalid_request", "mail.history: snapshotSeq must be a non-negative integer");
-    }
-    const query = {
-      ...(typeof limit === "number" ? { limit: Math.min(limit, MAIL_HISTORY_MAX_LIMIT) } : {}),
-      ...(typeof beforeSeq === "number" ? { beforeSeq } : {}),
-      ...(typeof snapshotSeq === "number" ? { snapshotSeq } : {}),
-    } satisfies MailHistoryParams;
-    return this.mustStore().mailHistory(query);
-  }
 
-  private rpcMailPending(params: Record<string, unknown>): MailPendingResult {
-    const limit = params.limit;
-    if (limit !== undefined && (typeof limit !== "number" || !Number.isSafeInteger(limit) || limit <= 0)) {
-      throw new RpcError("invalid_request", "mail.pending: limit must be a positive integer");
-    }
-    return this.mustStore().pendingMail(
-      this.requireBee(params),
-      typeof limit === "number" ? { limit: Math.min(limit, MAIL_HISTORY_MAX_LIMIT) } : {},
-    );
-  }
 
   private rpcDeployInfo(): DeployInfoResult {
     return {

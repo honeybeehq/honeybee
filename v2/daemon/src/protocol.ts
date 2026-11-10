@@ -352,6 +352,7 @@ export interface HelloFrame {
   instance?: { id: string; dataDir: string };
   protocol: string;
   capabilities: readonly DaemonCapability[];
+  readSocket?: string;
 }
 
 /** Closed-list, typed errors — never fuzzy (spec 04). */
@@ -821,8 +822,8 @@ export interface RpcErrorShape {
 }
 
 export type RpcResponse =
-  | { id: number; ok: true; result: unknown }
-  | { id: number; ok: false; error: RpcErrorShape };
+  | { id: number; ok: true; result: unknown; seq?: number }
+  | { id: number; ok: false; error: RpcErrorShape; seq?: number };
 
 export type WatchFrame =
   | { type: "delta"; baseSeq: number; seq: number; events: AuditRow[] }

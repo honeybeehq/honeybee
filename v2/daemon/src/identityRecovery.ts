@@ -4,6 +4,7 @@ export class IdentityRecovery {
   private lastAttempt = -Infinity;
   private cursor = 0;
   retain(row: UnresolvedRuntime): void { this.rows.set(`${row.beeId}:${row.generation}`, row); }
+  replace(rows: readonly UnresolvedRuntime[]): void { this.rows.clear(); for (const row of rows) this.retain(row); }
   has(beeId: string, generation: number): boolean { return this.rows.has(`${beeId}:${generation}`); }
   diagnostic(beeId: string, generation: number | null, now: number): {message: "identity unresolved"; warning: boolean} | undefined {
     const row = generation === null ? undefined : this.rows.get(`${beeId}:${generation}`);

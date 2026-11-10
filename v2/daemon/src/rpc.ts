@@ -181,7 +181,20 @@ export type RpcDispatch = (
   conn: RpcConn,
 ) => unknown;
 
+export class StoreRead {
+  readonly value: unknown;
+  readonly seq: number;
+  constructor(value: unknown, seq: number) { this.value = value; this.seq = seq; }
+}
+
+export class StoreReadFailure extends Error {
+  readonly failure: unknown;
+  readonly seq: number;
+  constructor(failure: unknown, seq: number) { super("store read failed"); this.failure = failure; this.seq = seq; }
+}
+
 export interface RpcServerOptions {
+  readSocket?: () => string | null;
   admitConfined?: (verb: RpcVerb, params: Record<string, unknown>, conn: RpcConn) => Record<string, unknown>;
   classifyPeer?: (peer: NonNullable<RpcConn["localPeer"]>) => PeerClass;
   peerConfinement?: (peerClass: () => PeerClass | null, registered: boolean) => Confinement;
@@ -464,7 +477,8 @@ export class RpcServer {
     socket.setEncoding("utf8");
     // Versioned hello, server side (negotiated once). Capability tags are
     // additive: a pre-v16 client ignores the extra key.
-    conn.send({ protocol: PROTOCOL, capabilities: this.capabilities, identity: BUILD_IDENTITY, ...(this.opts.instance ? { instance: this.opts.instance } : {}) } satisfies HelloFrame);
+    const readSocket = this.opts.readSocket?.() ?? null;
+    conn.send({ protocol: PROTOCOL, capabilities: this.capabilities, identity: BUILD_IDENTITY, ...(this.opts.instance ? { instance: this.opts.instance } : {}), ...(readSocket === null ? {} : { readSocket }) } satisfies HelloFrame);
     socket.on("data", (chunk: string) => this.onData(conn, chunk));
     socket.on("error", () => socket.destroy());
     socket.on("close", () => { conn.peerConnection?.close(); this.trust.disconnect(conn); this.conns.delete(conn); });
@@ -771,11 +785,15 @@ export class RpcServer {
         this.sendSnapshot(conn, id, verb, result, includeOperatorLocalHomes);
         return;
       }
-      conn.send({ id, ok: true, result: publicBeeResponse(verb, projectQuestionDismissalResult(verb, projectAnswerTriggerResult(verb, projectMailDeliveryResult(verb, result, conn.clientCapabilities), conn.clientCapabilities), conn.clientCapabilities), includeOperatorLocalHomes) });
-    } catch (err) {
+      const read = result instanceof StoreRead ? result : null;
+      const value = read ? read.value : result;
+      conn.send({ id, ok: true, result: publicBeeResponse(verb, projectQuestionDismissalResult(verb, projectAnswerTriggerResult(verb, projectMailDeliveryResult(verb, value, conn.clientCapabilities), conn.clientCapabilities), conn.clientCapabilities), includeOperatorLocalHomes), ...(read ? { seq: read.seq } : {}) });
+    } catch (thrown) {
+      const failed = thrown instanceof StoreReadFailure ? thrown : null;
+      const err = failed ? failed.failure : thrown;
       if (err instanceof RpcError && err.code === "caller_not_trusted") this.refusals.record(err.code, conn.localPeer?.uid ?? null, conn.localPeer?.pid ?? null);
       span.end("error");
-      conn.send({ id, ok: false, error: publicEnvRecords(projectQuestionDismissalError(toRpcError(err), conn.clientCapabilities)) });
+      conn.send({ id, ok: false, error: publicEnvRecords(projectQuestionDismissalError(toRpcError(err), conn.clientCapabilities)), ...(failed ? { seq: failed.seq } : {}) });
     }
   }
 }

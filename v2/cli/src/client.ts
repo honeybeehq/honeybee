@@ -71,7 +71,7 @@ export interface ConnectOptions {
 }
 
 interface Pending {
-  resolve: (v: unknown) => void;
+  resolve: (v: unknown, seq: number | null) => void;
   reject: (e: Error) => void;
 }
 
@@ -84,6 +84,7 @@ export class RpcClient {
   private legacyVerbs: readonly RpcVerb[] | null = null;
   capabilities: readonly string[] = [];
   instance: DaemonInstance | null = null;
+  readSocket: string | null = null;
   /** Watch push frames (deltas/gaps) land here. */
   onEvent: ((frame: WatchFrame) => void) | null = null;
   onClose: (() => void) | null = null;
@@ -164,6 +165,7 @@ export class RpcClient {
           }
           client.capabilities = Array.isArray(hello.capabilities) ? hello.capabilities.filter((value): value is string => typeof value === "string") : [];
           client.instance = instanceOf(hello.instance);
+          client.readSocket = typeof hello.readSocket === "string" && hello.readSocket.length > 0 ? hello.readSocket : null;
           try {
             options.verifyInstance?.(client.instance);
           } catch (err) {
@@ -203,6 +205,14 @@ export class RpcClient {
   }
 
   request<T = unknown>(verb: RpcVerb, params: Record<string, unknown> = {}, timeoutMs = 10_000, context?: RpcRequestContext): Promise<T> {
+    return this.exchange<T>(verb, params, timeoutMs, context).then(reply => reply.result);
+  }
+
+  read<T = unknown>(verb: RpcVerb, params: Record<string, unknown> = {}, timeoutMs = 10_000): Promise<{ result: T; seq: number | null }> {
+    return this.exchange<T>(verb, params, timeoutMs);
+  }
+
+  private exchange<T>(verb: RpcVerb, params: Record<string, unknown>, timeoutMs: number, context?: RpcRequestContext): Promise<{ result: T; seq: number | null }> {
     if (this.legacyVerbs && !this.legacyVerbs.includes(verb)) return Promise.reject(new RpcError("protocol_mismatch", `Legacy ${LEGACY_PROTOCOL} compatibility permits only ${this.legacyVerbs.join(", ")}`));
     if (verb.startsWith("rpc.execution.")) return Promise.reject(new RpcError("rpc_execution_fence_unsupported", "Owner does not support archive/send execution fencing; do not fall back"));
     if ((verb === "rpc.effect.resolve" || verb === "rpc.effect.status") && !this.capabilities.includes("rpc-effect-resolve.v1")) return Promise.reject(new RpcError("rpc_effect_resolve_unsupported", "Owner does not support effect resolution"));
@@ -210,16 +220,16 @@ export class RpcClient {
     if (verb === "question.withdraw" && !this.capabilities.includes("question.withdraw.v1")) return Promise.reject(new RpcError("question_withdraw_unsupported", "Question withdrawal is unsupported by this Honeybee."));
     if (this.closed) return Promise.reject(new DaemonDownError("(closed)", "connection closed"));
     const id = this.nextId++;
-    return new Promise<T>((resolve, reject) => {
+    return new Promise<{ result: T; seq: number | null }>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(id);
         reject(new DaemonDownError(this.socket.remoteAddress ?? "(socket)", `rpc timeout on ${verb}`));
       }, timeoutMs);
       timer.unref();
       this.pending.set(id, {
-        resolve: (v) => {
+        resolve: (v, seq) => {
           clearTimeout(timer);
-          resolve(v as T);
+          resolve({ result: v as T, seq });
         },
         reject: (e) => {
           clearTimeout(timer);
@@ -258,7 +268,7 @@ export class RpcClient {
     if (!pending) return;
     this.pending.delete(frame.id);
     if (frame.ok === true) {
-      pending.resolve(frame.result);
+      pending.resolve(frame.result, typeof frame.seq === "number" ? frame.seq : null);
     } else {
       const err = (frame.error ?? {}) as { code?: string; message?: string; details?: Record<string, unknown> };
       pending.reject(

@@ -62,11 +62,9 @@ test("quiet facts through a throwaway daemon: root/child isolation, failure, int
       messageEnd = Buffer.byteLength(journal.slice(0, journal.indexOf("\n", messageAt) + 1));
       return value;
     }, "quiet final native message before restart", 10_000);
-    // The live daemon holds its store with locking_mode=EXCLUSIVE, so no
-    // second connection can read it before the kill. The observation fold
-    // logs obs.checkpoint inside the same synchronous transaction that
-    // advances the cursor; a view() answered after we read the line proves
-    // that transaction committed.
+    // The observation fold logs obs.checkpoint inside the same synchronous
+    // transaction that advances the cursor; a view() answered after we read
+    // the line proves that transaction committed.
     const checkpoint = new RegExp(`"op":"obs\\.checkpoint bee=${beeId} gen=1 cursor=(\\d+)"`, "g");
     const committedCursor = () => {
       let log: string;

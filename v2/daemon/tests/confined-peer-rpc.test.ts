@@ -52,12 +52,18 @@ try {
  const codes = [];
  for (const [verb,params] of requests) {try {await c.request(verb,params); codes.push('ALLOWED');} catch(e) {codes.push(e.code);}}
  let inbox; try {await c.request('spawn',{name:'safe-inbox',agent:'inbox'}); inbox = 'ALLOWED';} catch(e) {inbox = e.code;}
- console.log(JSON.stringify({codes,inbox}));
+ const reads = [];
+ const r = await RpcClient.connect(c.readSocket);
+ try {
+  for (const [verb,params] of [['view',{}],['list',{}],['mailbox',{}],['audit.tail',{}],['rpc.localTrust.challenge',{}]]) {try {await r.request(verb,params); reads.push('ALLOWED');} catch(e) {reads.push(e.code);}}
+ } finally {r.close();}
+ console.log(JSON.stringify({codes,inbox,reads}));
 } finally {c.close();}`;
   const {stdout} = await exec("unshare", ["-U", process.execPath, "--input-type=module", "-e", script], {timeout: 20000});
   const result = JSON.parse(stdout);
   assert.deepEqual(result.codes, Array(9).fill("confined_peer_refused"));
   assert.equal(result.inbox, "confined_peer_refused");
+  assert.deepEqual(result.reads, Array(5).fill("confined_peer_refused"));
   const challenge = await client.request<import("../src/localRpcTrust.ts").LocalTrustChallenge>("rpc.localTrust.challenge", {});
   const secret = readFileSync(keyFile);
   const token = createHmac("sha256", secret).update(localTrustMessage(challenge)).digest("hex");
@@ -79,6 +85,15 @@ try {
   ['transcript','bee.transcript',{}], ['fork','bee.fork',{}],
   ['context','view',{}, {sessionPrincipal:{beeId:${JSON.stringify(parent.beeId)}}}]
  ]) {try {results[name] = await c.request(verb,params,5000,context);} catch(e) {results[name] = e.code;}}
+ const reader = await RpcClient.connect(c.readSocket);
+ try {
+  for (const [name,verb,params] of [
+   ['readOwn','view',{}], ['readList','list',{}],
+   ['readForeign','view',{beeId:${JSON.stringify(parent.beeId)}}],
+   ['readMailbox','mailbox',{}], ['readAudit','audit.tail',{}], ['readSegments','transcript.segments',{}],
+   ['readSend','send',{beeId:${JSON.stringify(parent.beeId)},body:'through the reader'}]
+  ]) {try {results[name] = await reader.request(verb,params,5000);} catch(e) {results[name] = e.code;}}
+ } finally {reader.close();}
  const relay = await RpcClient.connect(${JSON.stringify(daemon.socketPath)}, 3000, 'node_relay');
  try { results.relaySpawn = await relay.request('spawn', {name:'relayed', agent:'inbox', parentId:${JSON.stringify(parent.beeId)}}); } catch(e) { results.relaySpawn = e.code; } finally { relay.close(); }
  console.log(JSON.stringify(results));
@@ -111,6 +126,10 @@ createInterface({input:process.stdin}).on('line', line => {
   assert.equal(typeof own.send.messageId, "number");
   for (const key of ["foreign", "thread", "fork", "context", "relaySpawn"]) assert.equal(own[key], "confined_peer_refused");
   assert.equal(own.transcript, "invalid_request");
+  assert.equal(own.readOwn.bee.id, child.beeId);
+  assert.deepEqual(own.readList.views.map((row: {bee:{id:string}}) => row.bee.id), [child.beeId]);
+  for (const key of ["readForeign", "readMailbox", "readAudit", "readSegments"]) assert.equal(own[key], "confined_peer_refused", key);
+  assert.equal(own.readSend, "invalid_request");
 
 });
 

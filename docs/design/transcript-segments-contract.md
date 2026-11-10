@@ -54,7 +54,7 @@ CLI: `hive transcript <bee> --segments` lists the pointers; `hive transcript <be
 
 `transcript.segments` returns at most 1000 rows by default and refuses `limit` above 10000; page with `afterOrdinal`.
 
-**v3 (`transcript.segments.v3`).** `last` (1 to 10000) returns the newest rows in ascending ordinal order without listing the rest; `beforeOrdinal` (requires `last`) limits them to ordinals below it, so a reader pages backwards by passing the lowest ordinal it holds. `last` does not combine with `afterOrdinal` or `limit`. Every reply carries `historyStartLine`: the `firstLine` of the bee's oldest segment row, whatever rows the reply holds, or `null` when the bee has none. A reader holding only the newest rows compares it with its own first row to know whether older history exists. A daemon without the tag ignores `last` and answers the first rows.
+**v3 (`transcript.segments.v3`).** `last` (1 to 10000) returns the newest rows in ascending ordinal order without listing the rest; `beforeOrdinal` (requires `last`) limits them to ordinals below it, so a reader pages backwards by passing the lowest ordinal it holds. `last` does not combine with `afterOrdinal` or `limit`. Every reply carries `historyStartLine`: the `firstLine` of the bee's oldest segment row, whatever rows the reply holds, or `null` when the bee has none. A reader holding only the newest rows compares it with its own first row to know whether older history exists. A daemon without the tag ignores `last` and answers the first rows. The verb is also served on the read socket (`readSocket` in the daemon hello), where every reply carries the store `seq` it was read at.
 
 ## Config
 

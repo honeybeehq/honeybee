@@ -3,6 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { chmodSync, closeSync, copyFileSync, existsSync, fsyncSync, linkSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { CoreError } from "./types.ts";
+import { acquireStoreWriterLock, type StoreWriterLock } from "./writerLock.ts";
 
 export class StoreBackupError extends CoreError {
   readonly code = "store_backup_failed";
@@ -120,15 +121,19 @@ function prune(directory: string): void {
 
 export function backupStoreOffline(storePath: string, sourceBuild: string): StoreBackupReceipt {
   let db: DatabaseSync | undefined;
+  let writer: StoreWriterLock | undefined;
   try {
     if (!existsSync(storePath)) throw new StoreBackupError(`No store at ${storePath}`);
+    writer = acquireStoreWriterLock(storePath);
     db = new DatabaseSync(storePath);
-    db.exec("PRAGMA busy_timeout=0; PRAGMA locking_mode=EXCLUSIVE; BEGIN EXCLUSIVE; COMMIT");
+    db.exec("PRAGMA busy_timeout=0");
     return backupStore(db, storePath, sourceBuild);
   } catch (error) {
     if (error instanceof StoreBackupError) throw error;
     throw new StoreBackupError(`Backup refused: ${error instanceof Error ? error.message : String(error)}`);
-  } finally { db?.close(); }
+  } finally {
+    try { db?.close(); } finally { writer?.release(); }
+  }
 }
 
 function restoreStore(storePath: string, receiptPath: string): { preservedPath: string; schemaVersion: number; lossWindow: string } {
@@ -143,6 +148,7 @@ function restoreStore(storePath: string, receiptPath: string): { preservedPath: 
     const checked = facts(snapshot);
     if (checked.schemaVersion !== receipt.schemaVersion || checked.ddlDigest !== receipt.ddlDigest || receipt.integrityCheck !== "ok") throw new StoreBackupError("Backup schema differs from receipt");
   } finally { snapshot.close(); }
+  const writer = acquireStoreWriterLock(storePath);
   const db = new DatabaseSync(storePath);
   const preservedPath = `${storePath}.before-restore-${randomUUID()}`;
   const temporary = `${storePath}.restore-${randomUUID()}`;
@@ -168,7 +174,9 @@ function restoreStore(storePath: string, receiptPath: string): { preservedPath: 
     return { preservedPath, schemaVersion: receipt.schemaVersion, lossWindow: "Writes made after the backup are discarded." };
   } finally {
     try { db.close(); } finally {
-      try { replacement?.close(); } finally { unlinkIfPresent(temporary); }
+      try { replacement?.close(); } finally {
+        try { unlinkIfPresent(temporary); } finally { writer.release(); }
+      }
     }
   }
 }

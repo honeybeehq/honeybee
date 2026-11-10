@@ -1,4 +1,5 @@
 import { backupStore, type StoreBackupReceipt } from "./storeBackup.ts";
+import { acquireStoreWriterLock, type StoreWriterLock } from "./writerLock.ts";
 import { HUMAN_OUTPUT_SQL, HUMAN_OUTPUT_FACT_COLUMNS, HUMAN_OUTPUT_FACT_JOIN, HumanOutputLedger, humanOutputFacts, type BeeTellParams, type BeeReactParams, type HumanOutputMode, type BeeTellRow, type BeeReactionRow } from "./humanOutput.ts";
 import { readMailBatchPage, renderMailBatch } from "./mailBatch.ts";
 import { automationDeliveryClass, type AutomationKind, type AutomationReference, type MailBatch, type MailBatchingPolicy } from "./types.ts";
@@ -30,9 +31,9 @@ import { THREAD_OPERATIONS_TABLE_SQL } from "./schema.ts";
 /**
  * The v2 core store — the single serialized write API (B9).
  *
- * One SQLite database per node, WAL journal, EXCLUSIVE locking mode: this process's
- * connection is the only writer (and, under WAL+EXCLUSIVE, the only reader) for the
- * lifetime of the handle. A second `openCoreStore` on the same path fails loudly.
+ * One SQLite database per node, WAL journal. The writer holds the store's writer lock
+ * (writerLock.ts) for the lifetime of the handle, so a second `openCoreStore` on the same
+ * path fails loudly; `readOnly` handles attach beside it and never write.
  *
  * Every write is transactional and appends audit rows in the same transaction (test 13:
  * replaying the audit log reproduces the exact table state — see audit.ts).
@@ -300,12 +301,13 @@ export interface CoreStoreOptions {
    */
   maxRpcIdempotencyRows?: number;
   /**
-   * Test-only: keep WAL + EXCLUSIVE (B9 / second-writer) but skip fsync and
+   * Test-only: keep WAL and the writer lock (B9 / second-writer) but skip fsync and
    * keep temp/pager in memory. Crash/reopen in the same process still works;
    * an OS crash is allowed to lose the file. Production never sets this.
    */
   ephemeral?: boolean;
   buildIdentity?: string;
+  readOnly?: boolean;
 }
 
 export interface CreateBeeInput {
@@ -1786,6 +1788,8 @@ export class CoreStore {
   private readonly executionStarts: ExecutionStarts;
   private executionKey: string | null = null;
   private readonly db: DatabaseSync;
+  private readonly writerLock: StoreWriterLock | null;
+  readonly readOnly: boolean;
   private readonly now: () => number;
   private readonly random: () => number;
   private readonly maxAttempts: number;
@@ -1811,16 +1815,32 @@ export class CoreStore {
     this.maxAttempts = opts.maxAttempts ?? 5;
     this.backoffBaseMs = opts.backoffBaseMs ?? 30_000;
     this.maxRpcIdempotencyRows = opts.maxRpcIdempotencyRows ?? 10_000;
-    this.db = new DatabaseSync(path);
+    this.readOnly = opts.readOnly === true;
+    this.writerLock = this.readOnly || path === ":memory:" ? null : acquireStoreWriterLock(path);
+    try {
+      this.db = new DatabaseSync(path, { readOnly: this.readOnly });
+    } catch (error) {
+      this.writerLock?.release();
+      throw error;
+    }
     this.effectLedger = new EffectLedger(this.db, this.now);
     this.executionLedger = new ExecutionLedger(this.db, this.now, () => this.effectCoverage(), (kind, beeId, data) => { this.audit(kind, beeId, data); }, claim => this.executionStarts.assertAdvance(claim));
     this.executionStarts = new ExecutionStarts(this.db, claim => this.executionLedger.validateCurrent(claim), (kind,beeId,data) => { this.audit(kind,beeId,data); }, key => this.executionLedger.spawnStarted(key), key => this.executionLedger.spawnUnknown(key));
+    if (this.readOnly) {
+      try {
+        this.db.exec("PRAGMA busy_timeout = 5000");
+        this.db.exec("PRAGMA query_only = ON");
+        this.db.exec(`PRAGMA cache_size = -${STORE_PAGE_CACHE_KIB}`);
+        if (this.readableStoredSchema().stored !== SCHEMA_VERSION) throw new SchemaVersionError("schema_migration_required", `core store at ${path} is not at schema v${SCHEMA_VERSION}; a read-only handle never migrates`);
+      } catch (error) {
+        this.db.close();
+        throw error;
+      }
+      return;
+    }
     try {
       // Fail immediately (no waiting) if another writer holds the lock.
       this.db.exec("PRAGMA busy_timeout = 0");
-      // B9: WAL + EXCLUSIVE — the first write below acquires an exclusive lock that is
-      // held until close(); any second connection's first access throws SQLITE_BUSY.
-      this.db.exec("PRAGMA locking_mode = EXCLUSIVE");
       this.db.exec("PRAGMA journal_mode = WAL");
       // Production durability. Tests pass `ephemeral` to skip fsync; B9 locking
       // and crash/reopen-in-process semantics stay intact.
@@ -1853,7 +1873,7 @@ export class CoreStore {
           if (error instanceof CoreError) throw error;
           throw new CoreError("Effect ledger initialization failed; store recovery required");
         }
-        // Guaranteed write on open: takes the exclusive lock now, not lazily.
+        // Guaranteed write on open: a store still held exclusively by an older build refuses here, not lazily.
         this.stmt(
           "INSERT INTO meta(key, value) VALUES('opened_at', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
         ).run(String(this.now()));
@@ -1867,6 +1887,7 @@ export class CoreStore {
       } catch {
         /* already unusable */
       }
+      this.writerLock?.release();
       if (err instanceof CoreError) throw err;
       throw new SecondWriterError(path, err);
     }
@@ -1898,7 +1919,26 @@ export class CoreStore {
     if (this.closed) return;
     this.closed = true;
     this.stmts.clear();
-    this.db.close();
+    try { this.db.close(); }
+    finally { this.writerLock?.release(); }
+  }
+
+  readAtSeq<T>(read: () => T): { value: T; seq: number } {
+    if (this.txDepth > 0) throw new CoreError("readAtSeq: a transaction is already open");
+    this.db.exec("BEGIN");
+    this.txDepth = 1;
+    try {
+      const seq = this.lastAuditSeq();
+      return { value: read(), seq };
+    } finally {
+      this.txDepth = 0;
+      this.db.exec("COMMIT");
+    }
+  }
+
+  ensureMailHistoryProjection(): void {
+    if (this.readOnly) return;
+    this.tx(() => this.backfillMailHistoryEnqueues());
   }
 
   /** Reuse StatementSync objects. `prepare()` on every dumpState/getBee is the sim hot path. */
@@ -4977,7 +5017,7 @@ export class CoreStore {
   }
 
   pendingHumanFirstSeedMessageId(beeId: string): number | null {
-    this.tx(() => this.backfillMailHistoryEnqueues());
+    this.ensureMailHistoryProjection();
     const row = this.stmt("SELECT message.id FROM mailbox AS message JOIN mail_history_enqueues AS history ON history.message_id = message.id WHERE message.bee_id = ? AND message.delivered_at IS NULL AND history.origin IN ('spawn.prompt','auth.resume') ORDER BY COALESCE(message.queue_order,message.id),message.id LIMIT 1").get(beeId) as Row | undefined;
     return row ? Number(row.id) : null;
   }
@@ -5133,7 +5173,7 @@ export class CoreStore {
 
   /** Bounded undelivered-only mailbox snapshot for frequent live indicators. */
   pendingMail(beeId: string, params: MailPendingParams = {}): MailPendingResult {
-    this.tx(() => this.backfillMailHistoryEnqueues());
+    this.ensureMailHistoryProjection();
     const requestedLimit = params.limit ?? MAIL_HISTORY_DEFAULT_LIMIT;
     const limit = Number.isFinite(requestedLimit)
       ? Math.max(1, Math.min(MAIL_HISTORY_MAX_LIMIT, Math.floor(requestedLimit)))
@@ -5175,7 +5215,7 @@ export class CoreStore {
    * messages' lifecycle events, so unrelated audit traffic cannot evict mail.
    */
   mailHistory(params: MailHistoryParams = {}): MailHistoryResult {
-    this.tx(() => this.backfillMailHistoryEnqueues());
+    this.ensureMailHistoryProjection();
     const headSeq = this.lastAuditSeq();
     const requestedSnapshot = params.snapshotSeq ?? headSeq;
     const snapshotSeq = Number.isSafeInteger(requestedSnapshot)
@@ -5551,7 +5591,7 @@ export class CoreStore {
   }
 
   mailOrigin(messageId: number): MailOrigin {
-    this.tx(() => this.backfillMailHistoryEnqueues());
+    this.ensureMailHistoryProjection();
     const row = this.stmt("SELECT origin FROM mail_history_enqueues WHERE message_id = ?").get(messageId) as Row | undefined;
     return row === undefined ? "legacy.unknown" : auditMailOrigin(row.origin, `origin for message ${messageId}`);
   }
@@ -7488,7 +7528,7 @@ export class CoreStore {
   }
 
   demoteCredentialAuthority(account: string, epoch: number): void {
-    this.tx(() => {
+    this.credentialHandoffTx(() => {
       if (this.credentialAuthorityIsDemoted(account) && this.credentialAuthorityEpoch(account) === epoch) return;
       this.putCredentialAuthorityEpoch(account, epoch, true);
       this.stmt("INSERT INTO credential_handoff_events(handoff_id,role,state,at) VALUES(?,?,?,?)").run(`stand-down:${account}:${epoch}`, "source", "stood_down", this.now());
@@ -7498,7 +7538,7 @@ export class CoreStore {
   }
 
   completeCredentialAdoption(record: CredentialHandoffRecord): void {
-    this.tx(() => {
+    this.credentialHandoffTx(() => {
       this.applyAccountUpdate(record.account, { source: "local", leasedFrom: null, statusReason: "Central credential authority adopted" }, "central credential authority adopted");
       this.putCredentialAuthorityEpoch(record.account, record.binding.epoch, false);
       if (record.binding.shareId !== undefined && this.mustGetAccount(record.account).shareId === null) this.setAccountShare(record.account, { shareId: record.binding.shareId, epoch: record.binding.epoch });
@@ -9141,7 +9181,7 @@ export class CoreStore {
     if (this.cachedAuditSeq !== null) return this.cachedAuditSeq;
     const row = this.stmt("SELECT MAX(seq) AS seq FROM audit").get() as Row | undefined;
     const seq = row?.seq == null ? 0 : Number(row.seq);
-    this.cachedAuditSeq = seq;
+    if (!this.readOnly) this.cachedAuditSeq = seq;
     return seq;
   }
 
