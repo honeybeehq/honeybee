@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { matchAccount } from "../src/index.ts";
+import { matchAccount, resolveAccount } from "../src/index.ts";
 
 const accounts = [
   { id: "claude-personal", harness: "claude", label: "owner@gmail.com" },
@@ -35,4 +35,25 @@ test("account selector: `<harness>-<query>` scopes fuzzy matching and ambiguity 
 
   const missing = matchAccount(accounts, "claude-nowhere");
   assert.deepEqual(missing, { ok: false, reason: "not_found", matches: [], scopedHarness: null });
+});
+
+test("account selector: an exact id is one keyed read and never lists accounts; every other selector lists once and matches as before", () => {
+  const listed = { times: 0 };
+  const source = {
+    byId: (id: string) => accounts.find((account) => account.id === id) ?? null,
+    all: () => { listed.times += 1; return accounts; },
+  };
+
+  for (const account of accounts) assert.deepEqual(resolveAccount(source, account.id), matchAccount(accounts, account.id));
+  assert.equal(listed.times, 0);
+
+  for (const selector of ["CLAUDE-PERSONAL", "OWNER@EXAMPLE.COM", "example", "claude-gmail", "gmail", "claude-nowhere"]) {
+    const listedBefore: number = listed.times;
+    assert.deepEqual(resolveAccount(source, selector), matchAccount(accounts, selector), selector);
+    assert.equal(listed.times, listedBefore + 1, selector);
+  }
+
+  const preferred = resolveAccount(source, "gmail", "codex");
+  assert.equal(preferred.ok && preferred.account.id, "codex-personal");
+  assert.deepEqual(resolveAccount(source, "gmail", "grok"), matchAccount(accounts, "gmail"));
 });

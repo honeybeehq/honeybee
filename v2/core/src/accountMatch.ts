@@ -78,3 +78,22 @@ export function matchAccount<T extends AccountMatchCandidate>(
   const shorthand = matchInPool(scoped, raw.slice(dash + 1), scoped[0]!.harness);
   return !shorthand.ok && shorthand.reason === "not_found" ? direct : shorthand;
 }
+
+export interface AccountMatchSource<T extends AccountMatchCandidate> {
+  byId(id: string): T | null;
+  all(): readonly T[];
+}
+
+export function resolveAccount<T extends AccountMatchCandidate>(
+  source: AccountMatchSource<T>,
+  selector: string,
+  preferredHarness?: string,
+): AccountMatchResult<T> {
+  const keyed = source.byId(selector);
+  if (keyed) return { ok: true, account: keyed, kind: "id", scopedHarness: null };
+  const all = source.all();
+  const matched = matchAccount(all, selector);
+  if (matched.ok || !preferredHarness) return matched;
+  const scoped = matchAccount(all.filter((account) => account.harness === preferredHarness), selector);
+  return scoped.ok ? scoped : matched;
+}

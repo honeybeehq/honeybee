@@ -70,7 +70,7 @@ import { GatewayMcpSeedLockError } from "./gatewayMcpSeed.ts";
 import {
   accountIdFor,
   isAccountId,
-  matchAccount,
+  resolveAccount,
   homeEnvFor,
   exportTemplate,
   importLocalConfig,
@@ -7259,12 +7259,8 @@ export class HiveDaemon {
 
   /** One daemon-owned resolver for every operator-facing account selector. */
   private resolveAccountSelector(selector: string, preferredHarness?: string): AccountRow {
-    const all = this.mustStore().listAccounts();
-    let matched = matchAccount(all, selector);
-    if (!matched.ok && preferredHarness) {
-      const scoped = matchAccount(all.filter((account) => account.harness === preferredHarness), selector);
-      if (scoped.ok) matched = scoped;
-    }
+    const store = this.mustStore();
+    const matched = resolveAccount({ byId: (id) => store.getAccount(id), all: () => store.listAccounts() }, selector, preferredHarness);
     if (matched.ok) return matched.account;
     if (matched.reason === "ambiguous") {
       throw new RpcError("invalid_request", `ambiguous account '${selector}': ${matched.matches.map((account) => account.id).join(", ")}`);
