@@ -482,6 +482,7 @@ test("readyAtSpawn: silent-until-input runtime becomes deliverable when its runn
     assert.ok(seen.includes("turn_ended"), "turn_ended from the late stream");
   } finally {
     driver.stop("ras-1", 1, "stopped_by_system");
+    await driver.disposeAllAndWait();
   }
 });
 
@@ -534,7 +535,7 @@ test("readyAtSpawn with NOTHING to deliver: the synthetic booted is paired with 
     assert.notEqual(ofKind(turn, "turn_ended")[0]!.synthetic, true, "the parsed result is the real turn_ended");
   } finally {
     driver.stop("ras-idle", 1, "stopped_by_system");
-    driver.disposeAll();
+    await driver.disposeAllAndWait();
   }
 });
 

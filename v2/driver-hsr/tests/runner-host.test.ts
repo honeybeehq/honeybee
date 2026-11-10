@@ -426,8 +426,11 @@ async function deliverUntilAccepted(
   body: string,
 ): Promise<void> {
   const deadline = Date.now() + HOST_TEST_TIMEOUT_MS;
+  const runtimes = (driver as unknown as { procs: Map<string, { generation: number; pendingDeliveries: Set<number>; confirmedDeliveries: Set<number> }> }).procs;
   for (;;) {
-    driver.observe();
+    const runtime = runtimes.get(beeId);
+    const written = runtime?.generation === generation && (runtime.pendingDeliveries.has(messageId) || runtime.confirmedDeliveries.has(messageId));
+    if (!written) driver.observe();
     if (driver.deliver(beeId, generation, messageId, body).accepted) return;
     if (Date.now() > deadline) throw new Error(`delivery ${messageId} was never confirmed for ${beeId}`);
     await sleep(10);
