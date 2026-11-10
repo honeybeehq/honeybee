@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { backupStore, backupStoreOffline, restoreStoreOffline, StoreBackupError, type StoreBackupReceipt } from "../src/storeBackup.ts";
-import { openCoreStore, SCHEMA_VERSION } from "../src/index.ts";
+import { INBOX_AGENT, openCoreStore, SCHEMA_VERSION } from "../src/index.ts";
 
 function fixture() {
   const dir = mkdtempSync(join(tmpdir(), "hb-backup-"));
@@ -196,4 +196,102 @@ test("a failed install keeps the current database and removes the restore tempor
   assert.equal(db.prepare("SELECT value FROM proof").get()?.value, "before");
   assert.equal(db.prepare("PRAGMA journal_mode").get()?.journal_mode, "delete");
   db.close();
+});
+
+function paddedStore(megabytes: number) {
+  const dir = mkdtempSync(join(tmpdir(), "hb-backup-online-"));
+  const path = join(dir, "core.sqlite3");
+  const store = openCoreStore(path, { ephemeral: true });
+  store.createBee({ id: "inbox", name: "inbox", agent: INBOX_AGENT, substrate: "hsr", cwd: "" });
+  const body = "x".repeat(60_000);
+  while (statSync(path).size < megabytes * 1024 * 1024) store.transact(() => { for (let i = 0; i < 50; i++) store.send("inbox", body, { sender: "operator" }); });
+  return { dir, path, store };
+}
+
+function mailCounts(db: DatabaseSync): number[] {
+  return [
+    Number(db.prepare("SELECT COUNT(*) AS n FROM mailbox").get()?.n),
+    Number(db.prepare("SELECT COUNT(*) AS n FROM mail_history_enqueues").get()?.n),
+    Number(db.prepare("SELECT COUNT(*) AS n FROM audit WHERE kind = 'mail.enqueued'").get()?.n),
+  ];
+}
+
+test("online backup copies a consistent store while it keeps writing, and leaves a plain rollback-mode file", { timeout: 60_000 }, async () => {
+  const { path, store } = paddedStore(40);
+  const before = store.undeliveredMessages("inbox").length;
+  let writing = true;
+  let written = 0;
+  const writer = (async () => {
+    while (writing) {
+      store.send("inbox", `during ${written++}`, { sender: "operator" });
+      if (written % 7 === 0) assert.throws(() => store.transact(() => { store.getBee("inbox"); throw new Error("nothing written"); }), /nothing written/);
+      await new Promise((resume) => setImmediate(resume));
+    }
+  })();
+  const blocking: string[] = [];
+  const running = store.backupOnline("online-build", { blocking: (reason) => blocking.push(reason) });
+  await assert.rejects(store.backupOnline("second"), /already running/);
+  const receipt = await running;
+  writing = false;
+  await writer;
+  assert.deepEqual(blocking, [], "rollbacks that wrote nothing do not restart the copy");
+  assert.ok(written > 0, "the store accepted writes during the copy");
+  assert.equal(receipt.integrityCheck, "ok");
+  assert.equal(receipt.sourceBuild, "online-build");
+  assert.equal(receipt.sha256, createHash("sha256").update(readFileSync(receipt.backupPath)).digest("hex"));
+  assert.equal(statSync(receipt.backupPath).mode & 0o777, 0o600);
+  const snapshot = new DatabaseSync(receipt.backupPath, { readOnly: true });
+  try {
+    assert.equal(snapshot.prepare("PRAGMA journal_mode").get()?.journal_mode, "delete");
+    const [mailbox, history, enqueued] = mailCounts(snapshot);
+    assert.equal(mailbox, history, "each send's rows are all in the copy or none are");
+    assert.equal(mailbox, enqueued);
+    assert.ok(mailbox! >= before && mailbox! <= before + written, `${before} <= ${mailbox} <= ${before + written}`);
+  } finally { snapshot.close(); }
+  assert.deepEqual(readdirSync(`${path}.backups`).filter((name) => !/\.(sqlite3|json)$/.test(name)), [], "no partial, journal or WAL files are left beside the copy");
+  const again = await store.backupOnline("after");
+  assert.notEqual(again.backupPath, receipt.backupPath);
+  store.close();
+  restoreStoreOffline(path, receipt.receiptPath);
+  const restored = openCoreStore(path);
+  assert.ok(restored.undeliveredMessages("inbox").length >= before);
+  restored.close();
+});
+
+test("online backup falls back to the blocking snapshot when write transactions keep rolling back", { timeout: 60_000 }, async () => {
+  const { path, store } = paddedStore(40);
+  let failing = true;
+  let rolledBack = 0;
+  const failer = (async () => {
+    while (failing) {
+      assert.throws(() => store.transact(() => { store.send("inbox", "rolled back", { sender: "operator" }); rolledBack += 1; throw new Error("after writing"); }), /after writing/);
+      await new Promise((resume) => setImmediate(resume));
+    }
+  })();
+  const blocking: string[] = [];
+  const receipt = await store.backupOnline("contended", { blocking: (reason) => blocking.push(reason) });
+  failing = false;
+  await failer;
+  assert.equal(blocking.length, 1);
+  assert.match(blocking[0]!, /rolled back/);
+  assert.ok(rolledBack > 3);
+  assert.equal(receipt.sha256, createHash("sha256").update(readFileSync(receipt.backupPath)).digest("hex"));
+  const snapshot = new DatabaseSync(receipt.backupPath, { readOnly: true });
+  try {
+    assert.equal(snapshot.prepare("PRAGMA integrity_check").get()?.integrity_check, "ok");
+    assert.equal(Number(snapshot.prepare("SELECT COUNT(*) AS n FROM mailbox WHERE body = 'rolled back'").get()?.n), 0);
+    const [mailbox, history, enqueued] = mailCounts(snapshot);
+    assert.deepEqual([history, enqueued], [mailbox, mailbox]);
+  } finally { snapshot.close(); }
+  assert.deepEqual(readdirSync(`${path}.backups`).filter((name) => !/\.(sqlite3|json)$/.test(name)), []);
+  store.close();
+});
+
+test("a failed online verification leaves no snapshot behind and the store stays usable", { timeout: 60_000 }, async () => {
+  const { path, store } = paddedStore(2);
+  await assert.rejects(store.backupOnline("unverified", { verify: async () => { throw new Error("verifier lost"); } }), (error: unknown) => error instanceof StoreBackupError && /verifier lost/.test(error.message));
+  assert.deepEqual(readdirSync(`${path}.backups`), []);
+  const receipt = await store.backupOnline("verified");
+  assert.equal(receipt.integrityCheck, "ok");
+  store.close();
 });

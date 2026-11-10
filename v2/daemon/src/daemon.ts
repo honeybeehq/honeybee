@@ -448,6 +448,7 @@ import { BEE_IMPORT_BUNDLE_BYTES_MAX,
   LIST_REFS_MAX,
 } from "./protocol.ts";
 import { archivedCursor, archivedCursorText, snapshotLifecycle } from "./rosterRead.ts";
+import { verifyStoreBackupOffLoop } from "./storeBackupWorker.ts";
 
 export const RUNTIME_PROBE_AGENT = "runtime-probe";
 const RUNTIME_PROBE_IDLE_MS = 60_000;
@@ -2736,7 +2737,10 @@ export class HiveDaemon {
       case "deployInfo":
         return this.rpcDeployInfo();
       case "store.backup":
-        return this.mustStore().backup(JSON.stringify(BUILD_IDENTITY));
+        return this.mustStore().backupOnline(JSON.stringify(BUILD_IDENTITY), {
+          verify: (path) => verifyStoreBackupOffLoop(path),
+          blocking: (reason) => this.log(`store.backup.blocking ${reason}`),
+        });
       case "runtime.status":
         return this.runtimeUpdate().status();
       case "runtime.install":

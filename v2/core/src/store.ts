@@ -1,4 +1,4 @@
-import { backupStore, type StoreBackupReceipt } from "./storeBackup.ts";
+import { StoreBackupError, backupStore, backupStoreOnline, type OnlineBackupOptions, type StoreBackupReceipt } from "./storeBackup.ts";
 import { HUMAN_OUTPUT_SQL, HUMAN_OUTPUT_FACT_COLUMNS, HUMAN_OUTPUT_FACT_JOIN, HumanOutputLedger, humanOutputFacts, type BeeTellParams, type BeeReactParams, type HumanOutputMode, type BeeTellRow, type BeeReactionRow } from "./humanOutput.ts";
 import { readMailBatchPage, renderMailBatch } from "./mailBatch.ts";
 import { automationDeliveryClass, type AutomationKind, type AutomationReference, type MailBatch, type MailBatchingPolicy } from "./types.ts";
@@ -1800,6 +1800,8 @@ export class CoreStore {
   private cachedAuditSeq: number | null = null;
   private mailHistoryProjectionSeq: number | null = null;
   private closed = false;
+  private onlineBackup: Promise<StoreBackupReceipt> | null = null;
+  private onlineBackupRestarts = 0;
   private rpcIdempotencyRedaction: RpcIdempotencyRedactionReceipt | null = null;
   /** Commands requeued running→queued by open() (B5 boot replay); reported by reconcileAtBoot. */
   private bootRequeuedCommandIds: number[] = [];
@@ -1876,6 +1878,18 @@ export class CoreStore {
     return backupStore(this.db, this.path, sourceBuild);
   }
 
+  private totalChanges(): number {
+    return Number((this.stmt("SELECT total_changes() AS n").get() as Row).n);
+  }
+
+  backupOnline(sourceBuild: string, options: Omit<OnlineBackupOptions, "restarts"> = {}): Promise<StoreBackupReceipt> {
+    if (this.onlineBackup) return Promise.reject(new StoreBackupError("A store backup is already running"));
+    this.onlineBackupRestarts = 0;
+    const run = backupStoreOnline(this.db, this.path, sourceBuild, { ...options, restarts: () => this.onlineBackupRestarts }).finally(() => { this.onlineBackup = null; });
+    this.onlineBackup = run;
+    return run;
+  }
+
   private assertQuestionMigrationForeignKeys(): void {
     const tables = this.db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all().map(row => String(row.name));
     const quote = (name: string) => '"' + name.replaceAll('"', '""') + '"';
@@ -1924,6 +1938,7 @@ export class CoreStore {
         this.txDepth -= 1;
       }
     }
+    const changesBefore = this.onlineBackup ? this.totalChanges() : null;
     this.db.exec("BEGIN IMMEDIATE");
     this.txDepth = 1;
     try {
@@ -1938,6 +1953,7 @@ export class CoreStore {
       this.cachedAuditSeq = null;
       this.mailHistoryProjectionSeq = null;
       try {
+        if (changesBefore !== null && this.totalChanges() !== changesBefore) this.onlineBackupRestarts += 1;
         this.db.exec("ROLLBACK");
       } catch {
         /* rollback after failed commit */

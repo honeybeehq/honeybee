@@ -1,6 +1,6 @@
-import { DatabaseSync } from "node:sqlite";
+import { DatabaseSync, backup } from "node:sqlite";
 import { createHash, randomUUID } from "node:crypto";
-import { chmodSync, closeSync, copyFileSync, existsSync, fsyncSync, linkSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, closeSync, copyFileSync, existsSync, fsync, fsyncSync, linkSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { CoreError } from "./types.ts";
 
@@ -52,44 +52,126 @@ function facts(db: DatabaseSync): { schemaVersion: number; ddlDigest: string; in
   return { schemaVersion, ddlDigest: digest(JSON.stringify(ddl)), integrityCheck: "ok" };
 }
 
+export type StoreBackupVerification = ReturnType<typeof facts> & { sha256: string };
+
+interface BackupTarget {
+  directory: string;
+  backupPath: string;
+  temporary: string;
+  receiptPath: string;
+}
+
+function backupTarget(storePath: string): BackupTarget {
+  if (storePath === ":memory:") throw new StoreBackupError("An in-memory store has no durable backup");
+  const directory = `${resolve(storePath)}.backups`;
+  mkdirSync(directory, { recursive: true, mode: 0o700 });
+  chmodSync(directory, 0o700);
+  sync(dirname(directory));
+  const base = join(directory, `${Date.now()}-${randomUUID()}`);
+  return { directory, backupPath: `${base}.sqlite3`, temporary: `${base}.partial`, receiptPath: `${base}.json` };
+}
+
+function publishBackup(target: BackupTarget, storePath: string, sourceBuild: string, verified: StoreBackupVerification): StoreBackupReceipt {
+  renameSync(target.temporary, target.backupPath);
+  sync(target.directory);
+  const receipt: StoreBackupReceipt = { format: 1, sourceBuild, storePath: resolve(storePath), schemaVersion: verified.schemaVersion, ddlDigest: verified.ddlDigest,
+    integrityCheck: verified.integrityCheck, createdAt: new Date().toISOString(), sha256: verified.sha256, backupPath: target.backupPath, receiptPath: target.receiptPath };
+  writeFileSync(`${target.receiptPath}.partial`, `${JSON.stringify(receipt, null, 2)}\n`, { mode: 0o600, flag: "wx" });
+  sync(`${target.receiptPath}.partial`);
+  renameSync(`${target.receiptPath}.partial`, target.receiptPath);
+  sync(target.directory);
+  prune(target.directory);
+  return receipt;
+}
+
+function discardBackup(target: BackupTarget | undefined): void {
+  if (!target) return;
+  for (const path of [target.temporary, `${target.receiptPath}.partial`, existsSync(target.receiptPath) ? undefined : target.backupPath]) {
+    if (path && existsSync(path)) try { unlinkSync(path); } catch {}
+  }
+}
+
+function refusedBackup(error: unknown): StoreBackupError {
+  return error instanceof StoreBackupError ? error : new StoreBackupError(`Backup refused: ${error instanceof Error ? error.message : String(error)}`);
+}
+
 export function backupStore(db: DatabaseSync, storePath: string, sourceBuild: string): StoreBackupReceipt {
-  let temporary: string | undefined;
-  let receiptTemporary: string | undefined;
-  let backupPath: string | undefined;
-  let receiptPath: string | undefined;
+  let target: BackupTarget | undefined;
   try {
-    if (storePath === ":memory:") throw new StoreBackupError("An in-memory store has no durable backup");
-    const directory = `${resolve(storePath)}.backups`;
-    mkdirSync(directory, { recursive: true, mode: 0o700 });
-    chmodSync(directory, 0o700);
-    sync(dirname(directory));
-    const base = join(directory, `${Date.now()}-${randomUUID()}`);
-    backupPath = `${base}.sqlite3`;
-    temporary = `${base}.partial`;
-    db.exec(`VACUUM INTO ${quote(temporary)}`);
-    chmodSync(temporary, 0o600);
-    const snapshot = new DatabaseSync(temporary, { readOnly: true });
+    target = backupTarget(storePath);
+    db.exec(`VACUUM INTO ${quote(target.temporary)}`);
+    chmodSync(target.temporary, 0o600);
+    const snapshot = new DatabaseSync(target.temporary, { readOnly: true });
     let verified: ReturnType<typeof facts>;
     try { verified = facts(snapshot); } finally { snapshot.close(); }
-    sync(temporary);
-    renameSync(temporary, backupPath);
-    sync(directory);
-    receiptPath = `${base}.json`;
-    receiptTemporary = `${receiptPath}.partial`;
-    const receipt: StoreBackupReceipt = { format: 1, sourceBuild, storePath: resolve(storePath), ...verified,
-      createdAt: new Date().toISOString(), sha256: fileDigest(backupPath), backupPath, receiptPath };
-    writeFileSync(`${receiptPath}.partial`, `${JSON.stringify(receipt, null, 2)}\n`, { mode: 0o600, flag: "wx" });
-    sync(`${receiptPath}.partial`);
-    renameSync(`${receiptPath}.partial`, receiptPath);
-    sync(directory);
-    prune(directory);
-    return receipt;
+    sync(target.temporary);
+    return publishBackup(target, storePath, sourceBuild, { ...verified, sha256: fileDigest(target.temporary) });
   } catch (error) {
-    for (const path of [temporary, receiptTemporary, receiptPath && !existsSync(receiptPath) ? backupPath : undefined]) {
-      if (path && existsSync(path)) try { unlinkSync(path); } catch {}
+    discardBackup(target);
+    throw refusedBackup(error);
+  }
+}
+
+export function verifyStoreBackupFile(path: string): StoreBackupVerification {
+  const snapshot = new DatabaseSync(path);
+  let verified: ReturnType<typeof facts>;
+  try {
+    if (snapshot.prepare("PRAGMA journal_mode=DELETE").get()?.journal_mode !== "delete") throw new StoreBackupError("Backup snapshot could not leave WAL mode");
+    verified = facts(snapshot);
+  } finally { snapshot.close(); }
+  sync(path);
+  return { ...verified, sha256: fileDigest(path) };
+}
+
+export const ONLINE_BACKUP_STEP_PAGES = 64;
+export const ONLINE_BACKUP_SYNC_EVERY_STEPS = 32;
+export const ONLINE_BACKUP_MAX_RESTARTS = 3;
+
+class OnlineBackupRestarted extends Error {}
+
+export interface OnlineBackupOptions {
+  verify?: (path: string) => Promise<StoreBackupVerification>;
+  blocking?: (reason: string) => void;
+  restarts?: () => number;
+}
+
+async function copyStoreOnline(db: DatabaseSync, temporary: string, restarts: () => number): Promise<void> {
+  let steps = 0;
+  let flush: Promise<void> | null = null;
+  let fd: number | undefined;
+  try {
+    await backup(db, temporary, {
+      rate: ONLINE_BACKUP_STEP_PAGES,
+      progress: () => {
+        if (restarts() > ONLINE_BACKUP_MAX_RESTARTS) throw new OnlineBackupRestarted();
+        if (++steps % ONLINE_BACKUP_SYNC_EVERY_STEPS !== 0 || flush) return;
+        const open = fd ??= openSync(temporary, "r");
+        flush = new Promise<void>((done) => fsync(open, () => { flush = null; done(); }));
+      },
+    });
+  } finally {
+    if (flush) await flush;
+    if (fd !== undefined) closeSync(fd);
+  }
+}
+
+export async function backupStoreOnline(db: DatabaseSync, storePath: string, sourceBuild: string, options: OnlineBackupOptions = {}): Promise<StoreBackupReceipt> {
+  let target: BackupTarget | undefined;
+  try {
+    target = backupTarget(storePath);
+    try { await copyStoreOnline(db, target.temporary, options.restarts ?? (() => 0)); }
+    catch (error) {
+      if (!(error instanceof OnlineBackupRestarted)) throw error;
+      discardBackup(target);
+      options.blocking?.(`write transactions rolled back ${ONLINE_BACKUP_MAX_RESTARTS + 1} times during the copy`);
+      return backupStore(db, storePath, sourceBuild);
     }
-    if (error instanceof StoreBackupError) throw error;
-    throw new StoreBackupError(`Backup refused: ${error instanceof Error ? error.message : String(error)}`);
+    chmodSync(target.temporary, 0o600);
+    const verified = await (options.verify ?? (async (path: string) => verifyStoreBackupFile(path)))(target.temporary);
+    return publishBackup(target, storePath, sourceBuild, verified);
+  } catch (error) {
+    discardBackup(target);
+    throw refusedBackup(error);
   }
 }
 

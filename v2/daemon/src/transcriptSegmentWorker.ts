@@ -1,4 +1,5 @@
 import { parentPort, workerData } from "node:worker_threads";
+import { verifyStoreBackupFile, type StoreBackupVerification } from "../../core/src/storeBackup.ts";
 import { open, readdir, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 import type { TranscriptSegmentCursorRow, TranscriptSegmentObjectRow } from "../../core/src/types.ts";
@@ -127,6 +128,16 @@ export async function sweepTranscriptObjects(request: TranscriptSweepRequest): P
     result.bytes += info.size;
   }
   return result;
+}
+
+export interface StoreBackupVerifyRequest {
+  kind: "verifyStoreBackup";
+  path: string;
+}
+
+export interface StoreBackupVerifyResult {
+  verified: StoreBackupVerification | null;
+  error: string | null;
 }
 
 export function transcriptSegmentWorkerUrl(): URL {
@@ -307,6 +318,11 @@ if (parentPort && workerData && (workerData as { kind?: unknown }).kind === "ser
   bundleChampionHome(request.home, request.storeRoot, { maxFileBytes: request.maxFileBytes, includeSecrets: request.includeSecrets })
     .then((result) => parentPort!.postMessage(result satisfies HomeBundleResult))
     .catch((error: unknown) => parentPort!.postMessage({ bundle: null, refused: null, error: error instanceof Error ? error.message : String(error) } satisfies HomeBundleResult));
+} else if (parentPort && workerData && (workerData as { kind?: unknown }).kind === "verifyStoreBackup") {
+  let result: StoreBackupVerifyResult;
+  try { result = { verified: verifyStoreBackupFile((workerData as StoreBackupVerifyRequest).path), error: null }; }
+  catch (error) { result = { verified: null, error: error instanceof Error ? error.message : String(error) }; }
+  parentPort.postMessage(result);
 } else if (parentPort && workerData && (workerData as { kind?: unknown }).kind === "sweep") {
   sweepTranscriptObjects(workerData as TranscriptSweepRequest)
     .then((result) => parentPort!.postMessage(result))
