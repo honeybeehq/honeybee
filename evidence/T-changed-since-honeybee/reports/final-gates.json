@@ -1,0 +1,43 @@
+{
+  "head": "154ab53201cf323d444ea4e0fd8790f7f9d8d486",
+  "base": "f28a251b7e276543b81a5f9a481c0d64a347be32",
+  "oldHead": "5c38894cb835d9d54184155e4c3a8a4ce3617b80",
+  "protocolPatchesIdentical": true,
+  "wholeProductionTreeEquivalentToOldHead": false,
+  "mainDelta": "Five commits: background sync/shutdown/champion restore behavior and checkpoint/fixture tests",
+  "lintGate": {
+    "available": false,
+    "claimedRan": false
+  },
+  "productionTimersAdded": 0,
+  "productionIntervalsAdded": 0,
+  "productionSelfRearmAdded": 0,
+  "keeperWatchdog": {
+    "milliseconds": 30000,
+    "clearedOnExit": true
+  },
+  "typecheck": {
+    "passed": true,
+    "output": ".proof/changed-since/final-154ab532/typecheck.log"
+  },
+  "build": {
+    "passed": true,
+    "output": ".proof/changed-since/final-154ab532/build.log"
+  },
+  "coreTests": {
+    "passed": 723,
+    "failed": 0,
+    "output": ".proof/changed-since/final-154ab532/core-tests.log"
+  },
+  "selectedRegressions": {
+    "passed": 68,
+    "failed": 0,
+    "output": ".proof/changed-since/final-154ab532/regressions.log"
+  },
+  "keeper": {
+    "command": "node scripts/labs/changed-since.mjs --seed 93941 --rounds 24",
+    "receipt": "/Users/trmd/.hive/v2/cells/changed-since-honeybee-13b8250cbc51/github-com-honeybeehq-honeybee-a9015b303498-space-13b8250cbc51/.proof/cs-93941-76754/report.json",
+    "output": ".proof/changed-since/final-154ab532/keeper-93941.log",
+    "passed": true
+  }
+}

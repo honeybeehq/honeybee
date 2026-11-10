@@ -1,0 +1,178 @@
+{
+  "seed": 91942,
+  "rounds": 24,
+  "root": "/Users/trmd/.hive/v2/cells/changed-since-honeybee-13b8250cbc51/github-com-honeybeehq-honeybee-a9015b303498-space-13b8250cbc51/.proof/cs-91942-51798",
+  "schedule": [
+    {
+      "round": 1,
+      "node": "node-2",
+      "fault": 1
+    },
+    {
+      "round": 2,
+      "node": "node-0",
+      "fault": 2
+    },
+    {
+      "round": 3,
+      "node": "node-0",
+      "fault": 3
+    },
+    {
+      "round": 4,
+      "node": "node-0",
+      "fault": 4
+    },
+    {
+      "round": 5,
+      "node": "node-0",
+      "fault": 5
+    },
+    {
+      "round": 6,
+      "node": "node-1",
+      "fault": 6
+    },
+    {
+      "round": 7,
+      "node": "node-0",
+      "fault": 7
+    },
+    {
+      "round": 8,
+      "node": "node-1",
+      "fault": 0
+    },
+    {
+      "round": 9,
+      "node": "node-0",
+      "fault": 1
+    },
+    {
+      "round": 10,
+      "node": "node-2",
+      "fault": 2
+    },
+    {
+      "round": 11,
+      "node": "node-0",
+      "fault": 3
+    },
+    {
+      "round": 12,
+      "node": "node-0",
+      "fault": 4
+    },
+    {
+      "round": 13,
+      "node": "node-2",
+      "fault": 5
+    },
+    {
+      "round": 14,
+      "node": "node-2",
+      "fault": 6
+    },
+    {
+      "round": 15,
+      "node": "node-0",
+      "fault": 7
+    },
+    {
+      "round": 16,
+      "node": "node-1",
+      "fault": 0
+    },
+    {
+      "round": 17,
+      "node": "node-2",
+      "fault": 1
+    },
+    {
+      "round": 18,
+      "node": "node-0",
+      "fault": 2
+    },
+    {
+      "round": 19,
+      "node": "node-2",
+      "fault": 3
+    },
+    {
+      "round": 20,
+      "node": "node-2",
+      "fault": 4
+    },
+    {
+      "round": 21,
+      "node": "node-1",
+      "fault": 5
+    },
+    {
+      "round": 22,
+      "node": "node-1",
+      "fault": 6
+    },
+    {
+      "round": 23,
+      "node": "node-0",
+      "fault": 7
+    },
+    {
+      "round": 24,
+      "node": "node-2",
+      "fault": 0
+    }
+  ],
+  "crashes": {
+    "before-fetch": 5,
+    "mid-apply": 4,
+    "after-commit": 2,
+    "before-apply": 2,
+    "after-apply-before-cursor": 3
+  },
+  "refusals": {
+    "epoch_changed": 4,
+    "too_old": 6
+  },
+  "unchanged": {
+    "calls": 38,
+    "events": 0,
+    "receiptRefs": 0,
+    "perBeeQueries": 0
+  },
+  "comparisons": 38,
+  "missedUpdates": 0,
+  "doubleApplies": 0,
+  "staleRows": 0,
+  "emptyAuthority": true,
+  "restore": {
+    "owner": "restoreStoreOffline",
+    "automaticEpochRotation": true,
+    "divergentHeadAtOrPastOldCursor": true,
+    "oldCursorRefused": true,
+    "ordinaryRestartStable": true,
+    "backupUnchanged": true,
+    "preservedAuthorityUnchanged": true
+  },
+  "projections": {
+    "public": true,
+    "registeredHomes": true,
+    "replayHomes": true,
+    "crossProjectionRefused": true,
+    "contextDowngradeRefused": true,
+    "expiredWatchClosed": true
+  },
+  "liveWatch": {
+    "attached": true,
+    "contiguous": true,
+    "events": 1
+  },
+  "archivedSend": {
+    "beeId": "b-0",
+    "messageId": 1,
+    "lifecycle": "active",
+    "delivered": true
+  },
+  "ok": true
+}

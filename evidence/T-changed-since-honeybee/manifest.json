@@ -1,0 +1,111 @@
+{
+  "task": "T-changed-since-honeybee",
+  "status": "parked_by_explicit_stop",
+  "sourceSha": "154ab53201cf323d444ea4e0fd8790f7f9d8d486",
+  "sourceRef": "measure/T-changed-since-honeybee",
+  "baseSha": "f28a251b7e276543b81a5f9a481c0d64a347be32",
+  "sourceVerdict": "Correctness gates passed; combined performance acceptance failed/not accepted. Nothing landed; no proof submitted; no deployment.",
+  "gates": {
+    "typecheck": "passed",
+    "build": "passed",
+    "coreTests": 723,
+    "selectedRegressions": 68,
+    "lint": "No repository lint or loop-bound gate available; not claimed run",
+    "newProductionTimers": 0
+  },
+  "keeper": {
+    "command": "node scripts/labs/changed-since.mjs --seed 93941 --rounds 24",
+    "comparisons": 37,
+    "consumerKills": 16,
+    "missedUpdates": 0,
+    "doubleApplies": 0,
+    "staleRows": 0,
+    "unchangedPerBeeQueries": 0,
+    "unchangedEvents": 0,
+    "unchangedReceiptRefs": 0
+  },
+  "combinedMetricVerdict": {
+    "provenance": "Parent stop message 2658, forwarding Needle/parent2656; not independently rerun or validated here",
+    "n": 8,
+    "agent_wait": "FAIL 6/8",
+    "deltaAsReported": "+5.920658",
+    "units": "not supplied in stop message; no units inferred"
+  },
+  "hypotheses": {
+    "batchingDirectoryLead": "Parent-reported lead only; counter refinement cancelled; no new analysis",
+    "instrumentationHazards": "Parent requests retention of ASI/import hazards; Honeybee worker has no independent instrumentation finding or artifact to substantiate more detail"
+  },
+  "processes": "No active owned fixture handles; all previously started keeper/selected test runs finished and stopped owned hived handles. No new process probes or kills needed.",
+  "proof": "HOLD; taskId T-changed-since-honeybee; no proof submitted",
+  "sourceRefsToRetain": [
+    "measure/T-changed-since-honeybee",
+    "measure/T-changed-since-honeybee-pre-rebase-02c1414e",
+    "measure/T-changed-since-honeybee-pre-rebase-5c38894c"
+  ],
+  "canDropRefs": [],
+  "retention": "Do not delete local evidence, fixtures, source or refs under stop order.",
+  "localOutputs": [
+    {
+      "path": "/Users/trmd/.hive/v2/cells/changed-since-honeybee-13b8250cbc51/github-com-honeybeehq-honeybee-a9015b303498-space-13b8250cbc51/.proof/changed-since/final-154ab532/typecheck.log",
+      "sha256": "b11de4544c6a6784e7d6d4dd7b38ea55eb51d625d200efe75e62219feee87a7b",
+      "uploaded": false
+    },
+    {
+      "path": "/Users/trmd/.hive/v2/cells/changed-since-honeybee-13b8250cbc51/github-com-honeybeehq-honeybee-a9015b303498-space-13b8250cbc51/.proof/changed-since/final-154ab532/build.log",
+      "sha256": "1c12046e6b5c21cd7bc4c7c67fa56061d936332704bbb57b3527116714ab8c95",
+      "uploaded": false
+    },
+    {
+      "path": "/Users/trmd/.hive/v2/cells/changed-since-honeybee-13b8250cbc51/github-com-honeybeehq-honeybee-a9015b303498-space-13b8250cbc51/.proof/changed-since/final-154ab532/core-tests.log",
+      "sha256": "e7f47cfe18e595b75e0fdb82f80ff73c28785b139434df9167ab45056bb708d0",
+      "uploaded": false
+    },
+    {
+      "path": "/Users/trmd/.hive/v2/cells/changed-since-honeybee-13b8250cbc51/github-com-honeybeehq-honeybee-a9015b303498-space-13b8250cbc51/.proof/changed-since/final-154ab532/regressions.log",
+      "sha256": "096a7144a4786e88f116fd1548ebb1249635e00f51fb42af16772b454d8ca96d",
+      "uploaded": false
+    },
+    {
+      "path": "/Users/trmd/.hive/v2/cells/changed-since-honeybee-13b8250cbc51/github-com-honeybeehq-honeybee-a9015b303498-space-13b8250cbc51/.proof/changed-since/final-154ab532/keeper-syntax.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "uploaded": false
+    },
+    {
+      "path": "/Users/trmd/.hive/v2/cells/changed-since-honeybee-13b8250cbc51/github-com-honeybeehq-honeybee-a9015b303498-space-13b8250cbc51/.proof/changed-since/final-154ab532/keeper-93941.log",
+      "sha256": "4113054f32a37f015df0f56d642111991946918ad7ad4f92c8b454a583a9a2f6",
+      "uploaded": false
+    }
+  ],
+  "files": [
+    {
+      "name": "reports/final-gates.json",
+      "originalPath": "/Users/trmd/.hive/v2/cells/changed-since-honeybee-13b8250cbc51/github-com-honeybeehq-honeybee-a9015b303498-space-13b8250cbc51/.proof/changed-since/final-154ab532/gates.json",
+      "sha256": "82e89b34c4ba872669ae599b2450dce56e596859a027f0ec333d65bc1e5426b0",
+      "bytes": 1445
+    },
+    {
+      "name": "reports/final-keeper-93941.json",
+      "originalPath": "/Users/trmd/.hive/v2/cells/changed-since-honeybee-13b8250cbc51/github-com-honeybeehq-honeybee-a9015b303498-space-13b8250cbc51/.proof/cs-93941-76754/report.json",
+      "sha256": "f34f460b45da6cd715e7882af9e57a2e7bd3007f42df5f21a26d3a5bd6db30c8",
+      "bytes": 3059
+    },
+    {
+      "name": "reports/projection-keeper-81942.json",
+      "originalPath": "/Users/trmd/.hive/v2/cells/changed-since-honeybee-13b8250cbc51/github-com-honeybeehq-honeybee-a9015b303498-space-13b8250cbc51/.proof/cs-81942-34005/report.json",
+      "sha256": "b5f79b11419a3bb479ed44e2a407cd92a7b789f94c5dd5c798d8bb5422b3a953",
+      "bytes": 6884
+    },
+    {
+      "name": "reports/rebase-range-diff.log",
+      "originalPath": "/Users/trmd/.hive/v2/cells/changed-since-honeybee-13b8250cbc51/github-com-honeybeehq-honeybee-a9015b303498-space-13b8250cbc51/.proof/changed-since/final-154ab532/range-diff.log",
+      "sha256": "80b613fd3b05d28db288be9f7a36f8352a2a8c2465654138afc7931724dcbc50",
+      "bytes": 264
+    },
+    {
+      "name": "reports/restore-keeper-91942.json",
+      "originalPath": "/Users/trmd/.hive/v2/cells/changed-since-honeybee-13b8250cbc51/github-com-honeybeehq-honeybee-a9015b303498-space-13b8250cbc51/.proof/cs-91942-51798/report.json",
+      "sha256": "0c8415263fe0b35824de9fe5e9b254b34b9757bca8695823eb0607bf602c8205",
+      "bytes": 3059
+    }
+  ]
+}
