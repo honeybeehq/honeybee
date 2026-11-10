@@ -56,6 +56,7 @@ export type TranscriptProjectedEvent =
       role: TranscriptMessageRole;
       text: string;
       providerEventId?: string;
+      deliveryId?: string;
       answerPhase?: "final" | "intermediate";
       isCompactSummary?: boolean;
     })

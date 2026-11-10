@@ -303,6 +303,7 @@ export function codexAdapter(opts: CodexAdapterOptions): HarnessAdapter {
     acceptsMidTurn: true,
     midTurnMessageNeedsTurnId: true,
     confirmsDelivery: true,
+    carriesDeliveryId: true,
     readyAtSpawn: false,
     recoveryProbe(requestId): string {
       return JSON.stringify({jsonrpc: "2.0", id: `${requestId}:list`, method: "thread/loaded/list", params: {}});
@@ -360,6 +361,7 @@ export function codexAdapter(opts: CodexAdapterOptions): HarnessAdapter {
         method: ctx.turnActive ? "turn/steer" : "turn/start",
         params: {
           threadId: ctx.sessionId,
+          ...(ctx.deliveryId ? { clientUserMessageId: ctx.deliveryId } : {}),
           input: [{ type: "text", text: body, text_elements: [] }],
           ...(ctx.turnActive ? { expectedTurnId: ctx.turnId } : {}),
         },
@@ -597,6 +599,7 @@ function completedItemEvent(
     }
     case "userMessage": {
       const text = textFromContent(item.content) ?? nonEmptyString(item.text);
+      const deliveryId = nonEmptyString(item.clientId);
       return text
         ? [{
           kind: "message",
@@ -604,6 +607,7 @@ function completedItemEvent(
           role: messageRole(item, "user"),
           text,
           ...(itemId ? { providerEventId: itemId } : {}),
+          ...(deliveryId ? { deliveryId } : {}),
         }]
         : [];
     }

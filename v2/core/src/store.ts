@@ -4611,8 +4611,8 @@ export class CoreStore {
         ELSE 0 END), 0) AS count FROM audit WHERE bee_id = ?`).get(messageId, generation, beeId) as Row).count);
   }
 
-  markDeliveredByJournal(messageId: number, generation: number, source?: TurnTriggerSource, reorderMessageIds?: number[]): { applied: boolean } {
-    return this.commitMessageDelivery(messageId, generation, source, true, reorderMessageIds);
+  markDeliveredByJournal(messageId: number, generation: number, source?: TurnTriggerSource, reorderMessageIds?: number[], deliveryId?: string): { applied: boolean } {
+    return this.commitMessageDelivery(messageId, generation, source, true, reorderMessageIds, false, undefined, deliveryId);
   }
 
   interruptAwaitsTurnEnd(beeId: string, generation: number, runningSince: number): boolean {
@@ -5556,8 +5556,8 @@ export class CoreStore {
    * B4 — delivery marks delivered_generation; never twice, and only to the bee's
    * CURRENT generation (a stale consumer's mark is a recorded no-op, mirroring B6).
    */
-  markDelivered(messageId: number, generation: number, source?: TurnTriggerSource, reorderMessageIds?: number[]): { applied: boolean } {
-    return this.commitMessageDelivery(messageId, generation, source, false, reorderMessageIds);
+  markDelivered(messageId: number, generation: number, source?: TurnTriggerSource, reorderMessageIds?: number[], deliveryId?: string): { applied: boolean } {
+    return this.commitMessageDelivery(messageId, generation, source, false, reorderMessageIds, false, undefined, deliveryId);
   }
 
   completeMultilineFallback(messageId: number, generation: number, source: TurnTriggerSource, paneInputCleared = true): { applied: boolean } {
@@ -5572,7 +5572,7 @@ export class CoreStore {
     });
   }
 
-  private commitMessageDelivery(messageId: number, generation: number, source: TurnTriggerSource | undefined, recoveredFallback: boolean, reorderMessageIds?: unknown, batchSettlement = false, deliveryAt?: number): { applied: boolean } {
+  private commitMessageDelivery(messageId: number, generation: number, source: TurnTriggerSource | undefined, recoveredFallback: boolean, reorderMessageIds?: unknown, batchSettlement = false, deliveryAt?: number, deliveryId?: string): { applied: boolean } {
     return this.tx(() => {
       const message = this.getMessage(messageId);
       if (!message) throw new CoreError(`message not found: ${messageId}`);
@@ -5617,6 +5617,7 @@ export class CoreStore {
         messageId,
         deliveredAt: at,
         deliveredGeneration: generation,
+        ...(deliveryId ? { deliveryId } : {}),
         ...(recoveredFallback ? { fallbackReceipt: true } : {}),
         ...(message.mailBatchId ? { mailBatchId: message.mailBatchId } : {}),
         ...(message.phoneInput ? { phoneOrigin: message.phoneInput.envelope } : {}),

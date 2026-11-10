@@ -1922,6 +1922,11 @@ export class DaemonCore {
     this.log(`policy.refused_head_stop bee=${intent.beeId} gen=${runtime.generation} msg=${intent.messageId}`);
   }
 
+  private deliveryIdOf(beeId: string, intent: DeliveryConfirmationIntent): string | undefined {
+    const deliveryId = this.driver.deliveryId?.(beeId, intent.generation, intent.messageId) ?? undefined;
+    return deliveryId && intent.wireLine !== null && intent.wireLine.includes(deliveryId) ? deliveryId : undefined;
+  }
+
   private settleAccepted(intent: DeliveryConfirmationIntent, journalProof: boolean): boolean {
     const message = this.store.getMessage(intent.messageId);
     if (!message) return false;
@@ -1936,8 +1941,8 @@ export class DaemonCore {
       : pointer
       ? this.store.completeMultilineFallback(intent.messageId, intent.generation, source, true).applied
       : journalProof
-      ? this.store.markDeliveredByJournal(intent.messageId, intent.generation, source, settlement?.reorderMessageIds ?? []).applied
-      : this.store.markDelivered(intent.messageId, intent.generation, source, settlement?.reorderMessageIds ?? []).applied;
+      ? this.store.markDeliveredByJournal(intent.messageId, intent.generation, source, settlement?.reorderMessageIds ?? [], this.deliveryIdOf(message.beeId, intent)).applied
+      : this.store.markDelivered(intent.messageId, intent.generation, source, settlement?.reorderMessageIds ?? [], this.deliveryIdOf(message.beeId, intent)).applied;
     if (!applied) return false;
     this.interruptRequested.delete(intent.messageId);
     const instruction = settlement?.placementMoveId ? this.store.getBeeMove(settlement.placementMoveId) : null;
@@ -2372,7 +2377,7 @@ export class DaemonCore {
           if (fallback?.confirmationBody) this.store.completeMultilineFallback(msg.id, rt.generation, this.turnTriggerSourceOf(msg, peer), true);
           else if (!fallback?.handled) {
             if (batch) this.store.markMailBatchDelivered(batch.id,rt.generation,reorderNotice.messageIds);
-            else this.store.markDelivered(msg.id, rt.generation, this.turnTriggerSourceOf(msg, peer), reorderNotice.messageIds);
+            else this.store.markDelivered(msg.id, rt.generation, this.turnTriggerSourceOf(msg, peer), reorderNotice.messageIds, this.driver.deliveryId?.(rt.beeId, rt.generation, msg.id) ?? undefined);
           }
           const deliveredGeneration = fallback?.generation ?? rt.generation;
           this.interruptRequested.delete(msg.id);

@@ -151,6 +151,7 @@ rl.on("line", (raw) => {
       const slow = /@slow:(\d+)/.exec(String(text));
       emit({ jsonrpc: "2.0", id: msg.id, result: { turn: { id: turnId } } });
       emit({ jsonrpc: "2.0", method: "turn/started", params: { threadId, turn: { id: turnId } } });
+      emitUserMessage(turnId, msg.params);
       const quotaMode = /@quota:(text_fallback|native|delayed|once|weekly_only|weekly)/.exec(String(text))?.[1];
       const marker = process.env.FAKE_QUOTA_ONCE_PATH ?? join(process.cwd(), ".fake-codex-quota-once");
       if (String(text).includes("@usageLimit") || (quotaMode && !(quotaMode === "once" && marker && existsSync(marker)))) {
@@ -192,6 +193,7 @@ rl.on("line", (raw) => {
       const expected = String(msg.params?.expectedTurnId ?? "");
       if (turnTimer && currentTurnId === expected) {
         emit({ jsonrpc: "2.0", id: msg.id, result: { turnId: currentTurnId } });
+        emitUserMessage(currentTurnId, msg.params);
       } else {
         emit({
           jsonrpc: "2.0",
@@ -218,4 +220,9 @@ rl.on("line", (raw) => {
       if (msg.id !== undefined) emit({ jsonrpc: "2.0", id: msg.id, error: { code: -32601, message: `fake-codex: ${msg.method}` } });
   }
 });
+function emitUserMessage(turnId, params) {
+  const item = { type: "userMessage", id: randomUUID(), clientId: typeof params?.clientUserMessageId === "string" ? params.clientUserMessageId : null, content: params?.input ?? [] };
+  emit({ jsonrpc: "2.0", method: "item/started", params: { threadId, turnId, item } });
+  emit({ jsonrpc: "2.0", method: "item/completed", params: { threadId, turnId, item } });
+}
 rl.on("close", () => process.exit(0));

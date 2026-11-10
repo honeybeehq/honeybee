@@ -230,6 +230,8 @@ export type MirrorDelta = AuditRow;
  * Delivery markers (additive inside an existing payload, capabilities `mail.answer_marker.v1`, `mail.automation_marker.v1`):
  *   mail.delivered  → may carry { questionId: string }                   (the delivered message answers that question)
  *   mail.delivered  → may carry { senderKind: 'human'|'automation' }     (derived: deliveredSenderKind, automation for automation senders)
+ * Delivery join (additive inside an existing payload, capability `mail.delivery_id.v1`):
+ *   mail.delivered  → may carry { deliveryId: string }                   (equals deliveryId on the projected transcript user row: claude uuid / queued_command source_uuid, codex userMessage clientId)
  */
 export const MIRROR_TEMPLATE_AUDIT_KINDS = ["template.put", "template.deleted"] as const;
 export const MIRROR_CHAMPION_AUDIT_KINDS = ["champion.put", "champion.deleted"] as const;

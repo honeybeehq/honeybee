@@ -151,7 +151,7 @@ rl.on("line", (raw) => {
     emit({ type: "system", subtype: "init", session_id: sessionId, cwd: process.cwd(), model: "fake", claude_code_version: "0.0.0-fake" });
     recordTranscript({ type: "init", resumed: resumed ?? null, forked });
   }
-  recordTranscript({ type: "user", text });
+  recordTranscript({ type: "user", text, ...(typeof msg.uuid === "string" ? { uuid: msg.uuid } : {}) });
   const quotaMode = /@quota:(text_fallback|weekly_event|weekly_local|backpressure|unknown_status|weekly|five_hour|result_five_hour|delayed|once|quote)/.exec(text)?.[1];
   if (quotaMode === "text_fallback" || quotaMode === "backpressure" || quotaMode === "unknown_status" || quotaMode === "weekly_event") {
     if (quotaMode !== "backpressure" && quotaMode !== "text_fallback") emit({ type: "rate_limit_event", rate_limit_info: { status: quotaMode === "weekly_event" ? "rejected" : "temporarily_unavailable", rateLimitType: "seven_day", resetsAt: Math.floor(Date.parse(process.env.FAKE_QUOTA_RESETS_AT ?? new Date(Date.now() + 3600000).toISOString()) / 1000) }, session_id: sessionId });

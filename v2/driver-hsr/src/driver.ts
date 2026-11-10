@@ -33,7 +33,7 @@ import type {
   StopCause,
 } from "../../harness/src/driver.ts";
 import type { HarnessAdapter } from "../../adapters/src/index.ts";
-import type {ReadinessRecovery} from "../../adapters/src/types.ts";
+import {deliveryIdOf, type ReadinessRecovery} from "../../adapters/src/types.ts";
 import { executableNotFoundDetail, type SpawnCommandResolution } from "../../core/src/executables.ts";
 import { inspectProcess, sameProcess, processDisposition, legacyProcessCandidate, ProcessIdentityUnavailableError, verifyProcessIdentity, type ProcessIdentity } from "./psutil.ts";
 import { persistentSocketDir, socketPathFits } from "../../core/src/socketPath.ts";
@@ -811,6 +811,16 @@ export class RuntimeHost implements RuntimeDriver {
     return matching && (this.consumed.get(messageId) === generation || p?.generation === generation && p.confirmedDeliveries.has(messageId)) ? "accepted" : "unknown";
   }
 
+  deliveryId(beeId: string, generation: number, messageId: number): string | null {
+    const live = this.procs.get(beeId);
+    let adapter: HarnessAdapter | null = live?.generation === generation ? live.adapter : null;
+    if (!adapter) {
+      try { adapter = this.cfg.resolveExecutionAdapter?.(beeId) ?? this.cfg.resolve(beeId, generation).adapter; }
+      catch { return null; }
+    }
+    return adapter?.carriesDeliveryId ? deliveryIdOf(beeId, generation, messageId) : null;
+  }
+
   deliveryEvidence(beeId: string, generation: number, messageId: number): DeliveryEvidence | null {
     const live = this.procs.get(beeId);
     let adapter: HarnessAdapter | null = live?.generation === generation ? live.adapter : null;
@@ -845,7 +855,7 @@ export class RuntimeHost implements RuntimeDriver {
     if (!p || p.generation !== generation || p.exited) return null;
     if (p.authFailureSince !== undefined && this.now() - p.authFailureSince >= 30_000) return "host_auth_failed";
     if (body === undefined) return null;
-    const line = p.adapter?.encodeMessage(body, { sessionId: p.sessionId, messageId, turnActive: p.phase === "running", turnId: p.turnId });
+    const line = p.adapter?.encodeMessage(body, { sessionId: p.sessionId, messageId, deliveryId: deliveryIdOf(p.beeId, p.generation, messageId), turnActive: p.phase === "running", turnId: p.turnId });
     if (line == null) return null;
     return this.deliveryFrameOversized(p, messageId, line) ? "message_too_large" : null;
   }
@@ -893,7 +903,7 @@ export class RuntimeHost implements RuntimeDriver {
     if (p.exited || !p.processIdentity || !p.deliveryProtocol?.authenticated || p.socketBroken
       || !p.socket || p.socket.destroyed || !p.socket.writable || !p.deliveryProtocol.supported && !p.deliveryProtocol.legacy
       || p.phase === "booting" || p.stopCause || p.phase === "running" && !p.adapter.acceptsMidTurn) return "not_ready";
-    const wireLine = p.adapter.encodeMessage(body, { sessionId: p.sessionId, messageId, turnActive: p.phase === "running", turnId: p.turnId, freshTurn: options?.freshTurn });
+    const wireLine = p.adapter.encodeMessage(body, { sessionId: p.sessionId, messageId, deliveryId: deliveryIdOf(p.beeId, p.generation, messageId), turnActive: p.phase === "running", turnId: p.turnId, freshTurn: options?.freshTurn });
     if (wireLine == null) return "not_ready";
     return { wireLine, digest: createHash("sha256").update(wireLine).digest("hex"), host: p.processIdentity,
       supported: p.deliveryProtocol?.authenticated === true && p.deliveryProtocol.supported,
@@ -956,6 +966,7 @@ export class RuntimeHost implements RuntimeDriver {
     const currentEncoding = options?.confirmation && !options.freshTurn ? options.confirmation.wireLine : p.adapter.encodeMessage(body, {
       sessionId: p.sessionId,
       messageId,
+      deliveryId: deliveryIdOf(beeId, generation, messageId),
       turnActive: p.phase === "running",
       turnId: p.turnId,
       freshTurn: options?.freshTurn,

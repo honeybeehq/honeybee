@@ -3,6 +3,8 @@ import { test } from "node:test";
 import { checkpointVerifiedProjector } from "./checkpoint-helpers.ts";
 const createClaudeProjector = () => checkpointVerifiedProjector("claude");
 import { createTranscriptProjector } from "../src/transcripts.ts";
+import { claudeAdapter } from "../src/claude.ts";
+import { deliveryIdOf } from "../src/types.ts";
 
 const line = (value: unknown): string => JSON.stringify(value);
 
@@ -255,4 +257,18 @@ test("claude projector: out-of-range numeric timestamps preserve events with an 
       type: "assistant", timestamp, message: { content: "valid boundary" },
     })), [{ kind: "message", ts: new Date(timestamp).toISOString(), role: "assistant", text: "valid boundary" }]);
   }
+});
+
+test("claude delivery id: hived's input uuid and a mid-turn queued_command's source_uuid name the user row", () => {
+  const deliveryId = deliveryIdOf("bee-1", 2, 7);
+  assert.match(deliveryId, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+  assert.equal(deliveryIdOf("bee-1", 2, 7), deliveryId);
+  assert.notEqual(deliveryIdOf("bee-1", 3, 7), deliveryId);
+  const wire = claudeAdapter.encodeMessage("hello", { sessionId: null, messageId: 7, deliveryId, turnActive: false, turnId: null })!;
+  assert.equal(JSON.parse(wire).uuid, deliveryId);
+  const p = createTranscriptProjector("claude");
+  const direct = p.pushLine(wire).find((event) => event.kind === "message");
+  assert.equal(direct?.kind === "message" ? direct.deliveryId : null, deliveryId);
+  const steered = p.pushLine(line({ type: "attachment", uuid: "row-uuid", attachment: { type: "queued_command", prompt: [{ type: "text", text: "steer" }], source_uuid: "steer-id" } })).find((event) => event.kind === "message");
+  assert.deepEqual(steered?.kind === "message" ? [steered.text, steered.providerEventId, steered.deliveryId] : null, ["steer", "row-uuid", "steer-id"]);
 });

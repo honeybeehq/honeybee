@@ -337,6 +337,7 @@ export const DAEMON_CAPABILITIES = [
   "health.delivery_held.v1",
   "transcript.segments.v3",
   "roster.read.refs_limit.v1",
+  "mail.delivery_id.v1",
 ] as const;
 export type DaemonCapability = (typeof DAEMON_CAPABILITIES)[number];
 

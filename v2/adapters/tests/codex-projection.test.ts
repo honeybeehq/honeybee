@@ -4,6 +4,7 @@ import { test } from "node:test";
 import { checkpointVerifiedProjector } from "./checkpoint-helpers.ts";
 const createCodexProjector = () => checkpointVerifiedProjector("codex");
 import { renderTranscriptLines } from "../src/transcripts.ts";
+import { codexAdapter } from "../src/codex.ts";
 import type { TranscriptProjectedEvent } from "../src/transcript.ts";
 
 const j = (value: unknown): string => JSON.stringify(value);
@@ -341,4 +342,16 @@ test("codex projector: app-server tokenUsage.total becomes cumulative usage with
   assert.equal(usage.threadId, "t-1");
   assert.equal(usage.model, "gpt-5.6-luna");
   assert.deepEqual(usage.usage, { input: 16699, output: 195, cacheRead: 1000, cacheWrite: 0, reasoning: 24, total: 17894 });
+});
+
+test("codex delivery id: clientUserMessageId on turn/start and turn/steer comes back as the userMessage item's clientId", () => {
+  const adapter = codexAdapter({ cwd: "/tmp/work" });
+  const start = JSON.parse(adapter.encodeMessage("go", { sessionId: "thread-1", messageId: 1, deliveryId: "id-start", turnActive: false, turnId: null })!);
+  const steer = JSON.parse(adapter.encodeMessage("more", { sessionId: "thread-1", messageId: 2, deliveryId: "id-steer", turnActive: true, turnId: "turn-1" })!);
+  assert.deepEqual([start.method, start.params.clientUserMessageId, steer.method, steer.params.clientUserMessageId], ["turn/start", "id-start", "turn/steer", "id-steer"]);
+  const rows = project([
+    j({ method: "item/completed", params: { threadId: "thread-1", turnId: "turn-1", item: { type: "userMessage", id: "item-1", clientId: "id-start", content: [{ type: "text", text: "go", text_elements: [] }] } } }),
+    j({ method: "item/completed", params: { threadId: "thread-1", turnId: "turn-1", item: { type: "userMessage", id: "item-2", clientId: null, content: [{ type: "text", text: "typed", text_elements: [] }] } } }),
+  ]).filter((event) => event.kind === "message");
+  assert.deepEqual(rows.map((event) => event.kind === "message" ? [event.text, event.providerEventId, event.deliveryId] : null), [["go", "item-1", "id-start"], ["typed", "item-2", undefined]]);
 });

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { QuotaBoundary } from "../../core/src/quota.ts";
 export type { QuotaBoundary } from "../../core/src/quota.ts";
 /**
@@ -84,8 +85,14 @@ export type AdapterSignal =
   | { kind: "respond"; lines: string[]; bootstrap?: boolean };
 
 /** Context the driver supplies when encoding a delivered mailbox message. */
+export function deliveryIdOf(beeId: string, generation: number, messageId: number): string {
+  const hex = createHash("sha256").update(`hive-delivery\0${beeId}\0${generation}\0${messageId}`).digest("hex");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-${((parseInt(hex[16]!, 16) & 3) | 8).toString(16)}${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
+}
+
 export interface EncodeContext {
   freshTurn?: boolean;
+  deliveryId?: string;
   /** Provider session/thread id learned from the `booted` signal, if any. */
   sessionId: string | null;
   /** The mailbox message id being delivered (stable across retries). */
@@ -132,6 +139,7 @@ export interface HarnessAdapter {
    * after confirmation.
    */
   readonly confirmsDelivery?: boolean;
+  readonly carriesDeliveryId?: boolean;
   /**
    * Whether the adapter emits `turn_progress` for every provider-served step.
    * Without it a turn cut off by an auth failure has unknown progress and is

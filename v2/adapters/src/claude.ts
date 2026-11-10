@@ -139,9 +139,10 @@ export function parseClaudeLine(line: string): AdapterSignal[] {
 }
 
 /** One stream-json user message line (the same shape the old system verified). */
-export function encodeClaudeMessage(body: string): string {
+export function encodeClaudeMessage(body: string, deliveryId?: string): string {
   return JSON.stringify({
     type: "user",
+    ...(deliveryId ? { uuid: deliveryId } : {}),
     message: { role: "user", content: [{ type: "text", text: body }] },
   });
 }
@@ -195,6 +196,7 @@ export const claudeAdapter: HarnessAdapter = {
   // queues them at its own safe boundary (verified by the old system's
   // nativeSteering path).
   acceptsMidTurn: true,
+  carriesDeliveryId: true,
   reportsTurnProgress: true,
   readyAtSpawn: true,
   bootLines(): string[] {
@@ -203,7 +205,7 @@ export const claudeAdapter: HarnessAdapter = {
   parseLine: parseClaudeLine,
   encodeMessage(body: string, ctx: EncodeContext): string | null {
     if (ctx.freshTurn && ctx.turnActive) return null;
-    return encodeClaudeMessage(body);
+    return encodeClaudeMessage(body, ctx.deliveryId);
   },
   resumeArgs: claudeResumeArgs,
   forkArgs: claudeForkArgs,
@@ -509,7 +511,7 @@ export function createClaudeProjector(): TranscriptProjector {
             ts,
             role: "user",
             text,
-            ...(providerEventId ? { providerEventId } : {}),
+            ...(providerEventId ? { providerEventId, deliveryId: providerEventId } : {}),
           },
         ];
       }
@@ -744,12 +746,14 @@ function queuedCommandMessage(row: JsonObject, ts: string | null): TranscriptPro
   if (text.length === 0) return null;
 
   const providerEventId = nonEmptyString(row.uuid);
+  const deliveryId = nonEmptyString(attachment.source_uuid);
   return {
     kind: "message",
     ts,
     role: "user",
     text,
     ...(providerEventId ? { providerEventId } : {}),
+    ...(deliveryId ? { deliveryId } : {}),
   };
 }
 
