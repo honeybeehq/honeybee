@@ -2086,7 +2086,8 @@ export class DaemonCore {
         const seedCandidate = seedId == null ? null : pending.find((m) => m.id === seedId) ?? null;
         const seed = seedCandidate && (handoffSeedId !== null || this.humanFirstEligible(seedCandidate, trulyMidTurn, humanState)) ? seedCandidate : null;
         if (eligible.length === 0 && !seed && !urgentHuman) continue;
-        if (!trulyMidTurn && this.beforeTurn && !this.beforeTurn(rt.beeId, rt.generation)) { this.deliveryRetries.delete(rt.beeId); continue; }
+        let admission: boolean | undefined;
+        const turnAdmitted = (): boolean => trulyMidTurn || !this.beforeTurn || (admission ??= this.beforeTurn(rt.beeId, rt.generation));
         if (rt.state === "running") {
           // Mid-turn `now`: interrupt first (the v6 verb), then deliver. One
           // interrupt per message; an eligible `now` behind an undelivered
@@ -2094,6 +2095,7 @@ export class DaemonCore {
           // whole FIFO, which keeps delivering in enqueue order.
           const urgent = urgentHuman ?? eligible.find((m) => !batching && m.urgency === "now" && !this.interruptRequested.has(m.id) && !this.store.getDeliveryConfirmationIntent(m.id));
           if (urgent) {
+            if (!turnAdmitted()) { this.deliveryRetries.delete(rt.beeId); continue; }
             // Give the driver the triggering mailbox id so an asynchronously
             // confirmed delivery cannot interrupt the turn it just opened.
             const res = this.driver.interrupt(rt.beeId, rt.generation, urgent.id);
@@ -2125,6 +2127,7 @@ export class DaemonCore {
         }
         let batch = selected && quotaGate.messageIds.length === 0 ? this.store.mailBatchForMessage(selected.id) : null;
         if (batching && selected && quotaGate.messageIds.length === 0 && !seed && !this.store.getMessage(selected.id)?.humanChat && !this.store.mailBatchControl(selected.id) && automationDeliveryClass(this.store.getMessage(selected.id)?.automationKind) === "ordinary") {
+          if (!batch && !turnAdmitted()) { this.deliveryRetries.delete(rt.beeId); continue; }
           batch = this.store.freezeMailBatch(rt.beeId);
           if (!batch || batch.memberIds[0] !== selected.id) continue;
         }
@@ -2205,7 +2208,8 @@ export class DaemonCore {
           holdIssue(initialIssue);
           continue;
         }
-        const fallback = batch ? undefined : this.multilineFallback?.deliver(msg, body, rt.generation, peer, this.store.answeredQuestionId(msg.id), this.turnTriggerSourceOf(msg, peer), reorderNotice.messageIds);
+        const fallback = batch ? undefined : this.multilineFallback?.deliver(msg, body, rt.generation, peer, this.store.answeredQuestionId(msg.id), this.turnTriggerSourceOf(msg, peer), reorderNotice.messageIds, turnAdmitted);
+        if (fallback?.turnRefused) { this.deliveryRetries.delete(rt.beeId); continue; }
         if (fallback?.confirmationBody) body = fallback.confirmationBody;
         const issue = fallback?.confirmationBody ? this.driver.deliveryIssue?.(rt.beeId, rt.generation, msg.id, body) : null;
         if (issue && !this.store.inTransaction) {
@@ -2213,6 +2217,7 @@ export class DaemonCore {
           continue;
         }
         let confirmation: DeliveryConfirmationPlan | undefined;
+        let writeIntent: (() => DeliveryConfirmationPlan) | null = null;
         const settlement = { ...(batch ? { mailBatchId: batch.id, batchMemberIds: batch.memberIds } : {}), reorderMessageIds: reorderNotice.messageIds, placementMoveId: instruction?.id ?? null,
           handoffId: handoff?.id ?? null, ...(fallback?.confirmationBody ? { multilineFallbackId: this.store.multilineDelivery(msg.id)?.fallback?.id } : {}) };
         const recordPointerAttempt = (): void => {
@@ -2231,9 +2236,12 @@ export class DaemonCore {
             if (this.store.inTransaction) continue;
             const input = { beeId: rt.beeId, messageId: msg.id, generation: rt.generation, wireLine: plan.wireLine, digest: plan.digest, host: plan.host, settlement };
             if (!deliveryConfirmationIntentFits(input)) { holdIssue("message_too_large"); continue; }
-            confirmation = this.store.transact(() => { const row = this.store.replanDeliveryConfirmationIntent(input, existing.digest); recordPointerAttempt(); return row; });
-            this.confirmationReady.delete(msg.id);
-            if (refused) this.log(`deliver.replanned bee=${rt.beeId} msg=${msg.id} gen=${rt.generation} after=refused`);
+            writeIntent = () => {
+              const row = this.store.transact(() => { const row = this.store.replanDeliveryConfirmationIntent(input, existing.digest); recordPointerAttempt(); return row; });
+              this.confirmationReady.delete(msg.id);
+              if (refused) this.log(`deliver.replanned bee=${rt.beeId} msg=${msg.id} gen=${rt.generation} after=refused`);
+              return row;
+            };
           } else {
             const plan = this.driver.planDeliveryConfirmation?.(rt.beeId, rt.generation, msg.id, body, { freshTurn });
             if (plan === "not_ready") { refusePlan(); continue; }
@@ -2244,13 +2252,17 @@ export class DaemonCore {
                 this.store.prepareUnknownDeliveryConfirmationIntent({ beeId: rt.beeId, messageId: msg.id, generation: rt.generation }, "message_too_large");
                 continue;
               }
-              confirmation = this.store.transact(() => { const row = this.store.prepareDeliveryConfirmationIntent(input); recordPointerAttempt(); return row; });
+              const prepareIntent = (): DeliveryConfirmationPlan => this.store.transact(() => { const row = this.store.prepareDeliveryConfirmationIntent(input); recordPointerAttempt(); return row; });
               if (!plan.supported && !plan.legacyFirstWriteSafe) {
+                prepareIntent();
                 this.store.holdDeliveryConfirmation(msg.id, "old_host");
                 continue;
               }
+              writeIntent = prepareIntent;
             }
           }
+          if (!turnAdmitted()) { this.deliveryRetries.delete(rt.beeId); continue; }
+          confirmation = writeIntent?.();
         }
         const outcome = fallback?.handled ? { accepted: fallback.accepted, reason: "not_ready" as const, detail: undefined }
           : this.driver.deliver(rt.beeId, rt.generation, msg.id, body, { confirmation, freshTurn, multilineWaitExpired: msg.deliveryHold?.stage === "expired" });

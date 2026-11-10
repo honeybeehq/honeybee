@@ -62,7 +62,7 @@ export class MultilineFallback {
     return false;
   }
 
-  deliver(message: MessageRow, text: string, generation: number, peer: boolean, questionId: string | null, source: TurnTriggerSource, reorderMessageIds: number[] = []): { handled: boolean; accepted: boolean; generation?: number; confirmationBody?: string } {
+  deliver(message: MessageRow, text: string, generation: number, peer: boolean, questionId: string | null, source: TurnTriggerSource, reorderMessageIds: number[] = [], turnAdmitted: () => boolean = () => true): { handled: boolean; accepted: boolean; generation?: number; confirmationBody?: string; turnRefused?: true } {
     const hold = this.store.multilineDelivery(message.id);
     if (!hold || !hold.fallback && !["held", "expired"].includes(hold.stage)) return { handled: false, accepted: false };
     if (this.store.inTransaction) return { handled: true, accepted: false };
@@ -71,6 +71,7 @@ export class MultilineFallback {
     if (!bee || message.deliveredAt !== null) return { handled: true, accepted: false };
     let fallback = hold.fallback;
     if (!fallback) {
+      if (!turnAdmitted()) return { handled: true, accepted: false, turnRefused: true };
       try {
         fallback = this.store.prepareMultilineFallback(message.id, this.options.rootForBee?.(bee) ?? this.options.root, this.options.worktrees(bee), reorderMessageIds);
       } catch (error) {
@@ -94,6 +95,7 @@ export class MultilineFallback {
       return { handled: true, accepted: this.reconcile(message, source), ...(fallback.generation === null ? {} : { generation: fallback.generation }) };
     }
     if (fallback.state !== "preparing" && fallback.state !== "ready") return { handled: true, accepted: false };
+    if (fallback.state === "preparing" && !turnAdmitted()) return { handled: true, accepted: false, turnRefused: true };
     try {
       if (fallback.ownerStoreId !== this.store.effectCoverage().ownerStoreId) throw Object.assign(new Error("owner differs"), { code: "delivery_file_owner_mismatch" });
       if (fallback.state === "preparing") {
@@ -112,6 +114,7 @@ export class MultilineFallback {
     if (fallback.pointer && this.driver.planDeliveryConfirmation?.(message.beeId, generation, message.id, fallback.pointer) != null) {
       return { handled: false, accepted: false, confirmationBody: fallback.pointer };
     }
+    if (!turnAdmitted()) return { handled: true, accepted: false, turnRefused: true };
     fallback = this.store.transitionMultilineFallback(message.id, "ready", "in_flight", { generation, attempts: (fallback.attempts ?? 0) + 1, attemptPhase: "injecting" })!;
     try {
       const outcome = this.driver.deliver(message.beeId, generation, message.id, fallback.pointer!, { singleAttempt: true });
