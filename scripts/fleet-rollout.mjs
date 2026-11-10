@@ -14,7 +14,7 @@ const MIN_FREE_BYTES = 1024 * 1024 * 1024;
 const SUCCESSOR_WAIT_S = 180;
 
 const USAGE = `usage:
-  node scripts/fleet-rollout.mjs <[user@]host> <sha> [--artifact <dir>|<host>:<dir>] [--dry-run] [--no-probe] [--allow-low-disk] [--json]
+  node scripts/fleet-rollout.mjs <[user@]host|local> <sha> [--artifact <dir>|<host>:<dir>] [--dry-run] [--no-probe] [--allow-low-disk] [--json]
   node scripts/fleet-rollout.mjs <[user@]host> --inventory [--json]
   node scripts/fleet-rollout.mjs <[user@]host> --rollback [--dry-run] [--force-store] [--json]
   lab only: --lab-root <dir on the host>   (scratch data dir, runtime root, unit dir, PATH shim; never the node's own)`;
@@ -62,8 +62,10 @@ function labPrelude() {
   return `export PATH=${q(join(options.labRoot, "bin"))}:"$PATH" HIVE_V2_SERVICE_DIR=${q(join(options.labRoot, "units"))} HIVE_V2_SERVICE_LABEL=${q(LAB_LABEL)}\n`;
 }
 
+const LOCAL_HOST = "local";
+
 async function remote(script, { timeoutMs = 120_000, allowFailure = false } = {}) {
-  const child = spawn("ssh", [...SSH, options.host, "sh", "-s"], { stdio: ["pipe", "pipe", "pipe"] });
+  const child = options.host === LOCAL_HOST ? spawn("sh", ["-s"], { stdio: ["pipe", "pipe", "pipe"] }) : spawn("ssh", [...SSH, options.host, "sh", "-s"], { stdio: ["pipe", "pipe", "pipe"] });
   let stdout = "", stderr = "";
   child.stdout.on("data", (d) => { stdout += d; });
   child.stderr.on("data", (d) => { stderr += d; });
@@ -76,6 +78,7 @@ async function remote(script, { timeoutMs = 120_000, allowFailure = false } = {}
 }
 
 async function scpTo(localPaths, remoteDir) {
+  if (options.host === LOCAL_HOST) { await execFileAsync("cp", [...localPaths, `${remoteDir}/`]); return; }
   await execFileAsync("scp", ["-q", ...SSH, ...localPaths, `${options.host}:${remoteDir}/`], { maxBuffer: 1024 * 1024 });
 }
 
