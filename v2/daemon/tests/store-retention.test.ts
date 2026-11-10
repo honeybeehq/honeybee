@@ -6,7 +6,17 @@ import { STORE_RETENTION, openCoreStore } from "../../core/src/index.ts";
 import type { AuditTailResult } from "../src/protocol.ts";
 import { makeDaemonDir, sleep, startDaemon, waitFor, type DaemonHandle } from "./helpers.ts";
 
-const passes = (dir: string): string[] => readFileSync(join(dir, "hived.log"), "utf8").split("\n").filter((line) => line.includes("store.retention.pass"));
+const PASS_FIELDS = ["audit", "commands", "mail_history_copies_cleared", "mail_history_orphans_removed", "floor", "slices"] as const;
+type Pass = Record<(typeof PASS_FIELDS)[number], number> & { line: string };
+function passOf(line: string): Pass | null {
+  const op = (() => { try { return (JSON.parse(line) as { op?: unknown }).op; } catch { return null; } })();
+  if (typeof op !== "string" || !op.startsWith("store.retention.pass ")) return null;
+  const fields = new Map([...op.matchAll(/(\w+)=(\d+(?:\.\d+)?)/g)].map((match) => [match[1]!, Number(match[2])]));
+  if (!PASS_FIELDS.every((name) => fields.has(name))) return null;
+  const field = (name: (typeof PASS_FIELDS)[number]): number => fields.get(name)!;
+  return { audit: field("audit"), commands: field("commands"), mail_history_copies_cleared: field("mail_history_copies_cleared"), mail_history_orphans_removed: field("mail_history_orphans_removed"), floor: field("floor"), slices: field("slices"), line: op };
+}
+const passes = (dir: string): Pass[] => readFileSync(join(dir, "hived.log"), "utf8").split("\n").flatMap((line) => { const pass = passOf(line); return pass ? [pass] : []; });
 
 test("the daemon prunes the store once a day through its deadline heap, in slices, and a restart does not buy another pass", { timeout: 120_000 }, async () => {
   const { dir, cleanup } = makeDaemonDir();
@@ -22,11 +32,12 @@ test("the daemon prunes the store once a day through its deadline heap, in slice
     store.close();
 
     daemon = await startDaemon(dir, { env: { HIVE_TEST_STORE_RETENTION_DELAY_MS: "0" } });
-    const line = await waitFor(() => passes(dir)[0] ?? null, "the first retention pass", 60_000, 50);
-    const pass = /audit=(\d+) commands=(\d+) floor=(\d+) slices=(\d+)/.exec(line)!;
-    assert.ok(Number(pass[1]) >= rows, line);
-    assert.equal(Number(pass[3]), expired);
-    assert.ok(Number(pass[4]) >= 4, `a backlog of ${rows} rows takes several slices: ${line}`);
+    const pass = await waitFor(() => passes(dir)[0] ?? null, "the first complete retention pass line", 60_000, 50);
+    assert.ok(pass.audit >= rows, pass.line);
+    assert.equal(pass.floor, expired);
+    assert.ok(pass.slices >= 4, `a backlog of ${rows} rows takes several slices: ${pass.line}`);
+    assert.equal(pass.mail_history_copies_cleared, 0, pass.line);
+    assert.equal(pass.mail_history_orphans_removed, 0, pass.line);
     const client = await daemon.client();
     try {
       const old = await client.request<AuditTailResult>("audit.tail", { beeId: "old", afterSeq: 0, limit: 1000 });
