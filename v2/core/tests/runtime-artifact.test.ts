@@ -27,6 +27,7 @@ import {
 
 const SHA = "0123456789abcdef0123456789abcdef01234567";
 const FIXED_NOW = () => new Date("2026-08-26T10:00:00.000Z");
+const PROTOCOL_CHUNK = "cli-chunk-PR0T0C0L.js";
 
 async function withTempDir<T>(fn: (dir: string) => Promise<T>): Promise<T> {
   const dir = await mkdtemp(join(tmpdir(), "hive-runtime-artifact-"));
@@ -48,9 +49,10 @@ async function seedArtifact(dir: string, options: { protocol?: string } = {}): P
   await mkdir(join(stage, "node_modules", "uuid"), { recursive: true });
   await mkdir(join(stage, "docs"), { recursive: true });
   await writeFile(join(stage, "dist", "cli.js"), "#!/usr/bin/env node\nconsole.log('hive');\n");
+  await writeFile(join(stage, "dist", "v2", "cli.js"), `import { PROTOCOL } from "./${PROTOCOL_CHUNK}";\nconsole.log(PROTOCOL);\n`);
   await writeFile(
-    join(stage, "dist", "v2", "cli.js"),
-    `// bundle\nvar PROTOCOL = ${JSON.stringify(options.protocol ?? "v2/1")};\nconsole.log(PROTOCOL);\n`,
+    join(stage, "dist", "v2", PROTOCOL_CHUNK),
+    `var PROTOCOL = ${JSON.stringify(options.protocol ?? "v2/1")};\nexport { PROTOCOL };\n`,
   );
   await writeFile(join(stage, "dist", "v2", "runner-host.js"), "// dedicated runner host\n");
   await cp(join(process.cwd(), "contracts", "execution", "v1"), join(stage, "contracts", "execution", "v1"), { recursive: true });
@@ -115,13 +117,29 @@ test("a changed dist byte changes artifactHash; other stage files do not", async
   });
 });
 
-test("protocol is read from the artifact's own v2 bundle", async () => {
+test("protocol is read from the chunks the v2 entry loads and from nothing else in the bundle directory", async () => {
   await withTempDir(async (dir) => {
     const stage = await seedArtifact(dir, { protocol: "v2/7" });
+    const bundle = (name: string): string => join(stage, "dist", "v2", name);
     assert.equal(await readArtifactProtocol(stage), "v2/7");
-    await writeFile(join(stage, "dist", "v2", "cli.js"), "// no constant here\n");
+
+    await writeFile(bundle("cli-chunk-STALE000.js"), 'var PROTOCOL = "v2/1";\n');
+    await writeFile(bundle("runner-host.js"), 'var PROTOCOL = "v2/3";\n');
+    assert.equal(await readArtifactProtocol(stage), "v2/7");
+
+    await writeFile(bundle("cli.js"), 'import "./cli-chunk-STATIC00.js";\nvar LEGACY_PROTOCOL = "v2/1";\nconst lazy = () => import("./cli-chunk-LAZY0000.js");\n');
+    await writeFile(bundle("cli-chunk-STATIC00.js"), "console.log('no protocol here');\n");
+    await writeFile(bundle("cli-chunk-LAZY0000.js"), `export * from "./${PROTOCOL_CHUNK}";\n`);
+    await writeFile(bundle(PROTOCOL_CHUNK), 'var PROTOCOL2 = "v2/9";\nexport { PROTOCOL2 as PROTOCOL };\n');
+    assert.equal(await readArtifactProtocol(stage), "v2/9");
+
+    await writeFile(bundle("cli-chunk-STATIC00.js"), 'var PROTOCOL = "v2/8";\n');
+    await assert.rejects(readArtifactProtocol(stage), /more than one daemon protocol \(v2\/8, v2\/9\)/);
+
+    await writeFile(bundle("cli-chunk-STATIC00.js"), "console.log('no protocol here');\n");
+    await rm(bundle(PROTOCOL_CHUNK));
     await assert.rejects(readArtifactProtocol(stage), /cannot find the daemon PROTOCOL constant/);
-    await rm(join(stage, "dist", "v2", "cli.js"));
+    await rm(bundle("cli.js"));
     await assert.rejects(readArtifactProtocol(stage), /no v2 CLI bundle/);
   });
 });
@@ -164,6 +182,7 @@ test("pack writes tarball + manifest + SHA256SUMS; tarball is the stage dir with
     for (const required of [
       "dist/cli.js",
       "dist/v2/cli.js",
+      `dist/v2/${PROTOCOL_CHUNK}`,
       "dist/v2/runner-host.js",
       `dist/${BUILD_STAMP_FILENAME}`,
       "contracts/execution/v1/digest.json",

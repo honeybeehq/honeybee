@@ -24,7 +24,7 @@ import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createReadStream, existsSync } from "node:fs";
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
-import { basename, join } from "node:path";
+import { basename, dirname, join, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 import { writeBuildStamp } from "./settle.ts";
 import { computeSchemaDigest, loadExecutionContract } from "./executionContract.ts";
@@ -99,23 +99,46 @@ export function formatSha256Sums(entries: Array<{ name: string; sha256: string }
   return `${entries.map((entry) => `${entry.sha256}  ${entry.name}`).join("\n")}\n`;
 }
 
+const DAEMON_PROTOCOL_DECLARATION = /\bPROTOCOL\d* = "(v2\/\d+)"/g;
+const BUNDLE_RELATIVE_IMPORT = /\b(?:from|import)\s*\(?\s*"(\.\/[^"\n]+\.js)"/g;
+
 /**
  * The protocol the artifact's own daemon will announce. Read from the
- * artifact bytes (the esbuild v2 bundle keeps `var PROTOCOL = "v2/N"`)
- * rather than the working tree, so the manifest describes the sha that was
- * built, not whoever ran the script.
+ * artifact bytes (the esbuild v2 bundle keeps `var PROTOCOL = "v2/N"` in
+ * dist/v2/cli.js or in one of the chunks it loads) rather than the working
+ * tree, so the manifest describes the sha that was built, not whoever ran
+ * the script.
  */
 export async function readArtifactProtocol(artifactDir: string): Promise<string> {
-  const bundle = join(artifactDir, "dist", "v2", "cli.js");
-  let source: string;
-  try {
-    source = await readFile(bundle, "utf8");
-  } catch {
-    throw new Error(`runtime-artifact: no v2 CLI bundle at ${bundle}`);
+  const bundleDir = resolve(artifactDir, "dist", "v2");
+  const entry = join(bundleDir, "cli.js");
+  const unread = [entry];
+  const bundleFiles = new Set<string>();
+  const protocols = new Set<string>();
+  while (unread.length > 0) {
+    const file = unread.pop()!;
+    if (bundleFiles.has(file)) continue;
+    let source: string;
+    try {
+      source = await readFile(file, "utf8");
+    } catch {
+      if (file === entry) throw new Error(`runtime-artifact: no v2 CLI bundle at ${entry}`);
+      continue;
+    }
+    bundleFiles.add(file);
+    for (const declaration of source.matchAll(DAEMON_PROTOCOL_DECLARATION)) protocols.add(declaration[1]!);
+    for (const imported of source.matchAll(BUNDLE_RELATIVE_IMPORT)) {
+      const target = resolve(dirname(file), imported[1]!);
+      if (target.startsWith(`${bundleDir}${sep}`)) unread.push(target);
+    }
   }
-  const match = /\bPROTOCOL\d* = "(v2\/\d+)"/.exec(source);
-  if (!match) throw new Error(`runtime-artifact: cannot find the daemon PROTOCOL constant in ${bundle}`);
-  return match[1]!;
+  if (protocols.size === 0) {
+    throw new Error(`runtime-artifact: cannot find the daemon PROTOCOL constant in ${entry} or the ${bundleFiles.size - 1} bundle files it loads`);
+  }
+  if (protocols.size > 1) {
+    throw new Error(`runtime-artifact: the v2 bundle at ${entry} declares more than one daemon protocol (${[...protocols].sort().join(", ")})`);
+  }
+  return [...protocols][0]!;
 }
 
 /**
