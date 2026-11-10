@@ -1,6 +1,6 @@
 import { serviceDirectory } from "../../core/src/servicePaths.ts";
 import { resolveNodePin, persistNodePin, nodePinEnv, validateDaemonNode, readNodeRepair } from "../../core/src/nodeRuntime.ts";
-import { BUILD_IDENTITY, ROSTER_READ_CAPABILITY } from "../../daemon/src/protocol.ts";
+import { BUILD_IDENTITY, ROSTER_READ_CAPABILITY, TRANSCRIPT_SEGMENTS_MAX_ROWS } from "../../daemon/src/protocol.ts";
 import { pidAlive, readLiveEndpointRecord, samePath } from "../../daemon/src/endpointRecord.ts";
 import { assertServiceOwned, isNodeDataDir, refuseNodeDaemon, resolveServiceScope, ServiceScopeError, type ServiceScope } from "./serviceScope.ts";
 /**
@@ -4382,7 +4382,15 @@ async function transcriptFromObjects(ctx: CliContext, parsed: Parsed, view: View
   const beeId = view.view.beeId;
   const { result, stale } = await readPath(
     ctx,
-    (c) => c.request<TranscriptSegmentsResult>("transcript.segments", { beeId }),
+    async (c) => {
+      let page = await c.request<TranscriptSegmentsResult>("transcript.segments", { beeId, limit: TRANSCRIPT_SEGMENTS_MAX_ROWS });
+      const segments = [...page.segments];
+      while (page.segments.length === TRANSCRIPT_SEGMENTS_MAX_ROWS) {
+        page = await c.request<TranscriptSegmentsResult>("transcript.segments", { beeId, afterOrdinal: segments[segments.length - 1]!.ordinal, limit: TRANSCRIPT_SEGMENTS_MAX_ROWS });
+        segments.push(...page.segments);
+      }
+      return { ...page, segments };
+    },
     (store) => {
       const segments = store.listTranscriptSegmentObjects(beeId);
       return { beeId, segments, store: null, cursor: null, historyStartLine: segments[0]?.firstLine ?? null };
