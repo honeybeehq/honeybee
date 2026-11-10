@@ -310,6 +310,16 @@ const FLAGS_KEY = "core:flags";
 const COMMANDS_KEY = "core:commands";
 const BEE_KEY_PREFIX = "b:";
 const NAMED_KEY_PREFIX = "k:";
+/**
+ * A head message held because the bee's detached host fails host auth waits
+ * for the driver's lane to recover. Nothing in the store changes when it does,
+ * so the bee is re-checked on this cadence instead of on every step.
+ */
+const HOST_AUTH_RECHECK_MS = 1_000;
+
+function neverWrittenAuthHold(intent: DeliveryConfirmationIntent | null, generation: number): boolean {
+  return intent !== null && intent.wireLine === null && intent.state === "held" && intent.reason === "host_auth_failed" && intent.generation === generation;
+}
 const QUIET_GLOBAL_CHANGE_PREFIXES = ["account", "rpc.", "cell.retention.", "cell.pressure.", "cell.parked", "cell_op.", "node.capacity", "login_flow.", "template.", "selection_cursor.", "legacy_birth_bound", "auth_interruption.pruned", "champion"];
 
 type StepSnapshot =
@@ -1837,13 +1847,17 @@ export class DaemonCore {
         this.confirmationReady.delete(intent.messageId);
         continue;
       }
-      this.hot.add(intent.beeId);
       if (intent.wireLine === null && intent.reason === "host_auth_failed" && this.driver.deliveryLaneReady?.(intent.beeId, intent.generation)) {
+        this.hot.add(intent.beeId);
         this.store.releaseNeverWrittenDeliveryHold(intent.messageId, intent.generation, "host_auth_failed");
         this.confirmationPolls.delete(intent.messageId);
         this.deliveryRetries.delete(intent.beeId);
         continue;
       }
+      // A never-written auth hold is not open work: it waits for the host's
+      // lane, which no store change announces. Re-check it on a cadence.
+      if (neverWrittenAuthHold(intent, runtime.generation)) this.scheduleBee(intent.beeId, this.now() + HOST_AUTH_RECHECK_MS);
+      else this.hot.add(intent.beeId);
       if (this.confirmationReady.has(intent.messageId)) {
         if (this.now() - intent.since >= 30_000) {
           this.store.holdDeliveryConfirmation(intent.messageId, "lane_unavailable");
@@ -1954,6 +1968,7 @@ export class DaemonCore {
     for (const row of quarantines) this.hot.add(row.beeId);
     try {
       for (const { runtime: rt, pending: ordinaryPending } of work) {
+        const hotBeforeDelivery = this.hot.has(rt.beeId);
         if (ordinaryPending.length > 0 || (heldMail?.get(rt.beeId)?.length ?? 0) > 0) this.hot.add(rt.beeId);
         let quarantined = false;
         for (const row of quarantines) {
@@ -1972,9 +1987,19 @@ export class DaemonCore {
         const pending = quotaGate.messageIds.length > 0 ? allPending.filter(message => quotaGate.messageIds.includes(message.id)) : allPending;
         const authHead = pending[0];
         const authFallback = authHead ? this.store.multilineDelivery(authHead.id)?.fallback : null;
-        if (authHead && !authFallback && this.driver.deliveryIssue?.(rt.beeId, rt.generation, authHead.id) === "host_auth_failed" && !this.store.inTransaction && !this.store.getDeliveryConfirmationIntent(authHead.id)) {
-          this.store.prepareUnknownDeliveryConfirmationIntent({ beeId: rt.beeId, messageId: authHead.id, generation: rt.generation }, "host_auth_failed");
-          this.log(`deliver.held bee=${rt.beeId} msg=${authHead.id} reason=host_auth_failed`);
+        if (authHead && !authFallback && !this.store.inTransaction && this.driver.deliveryIssue?.(rt.beeId, rt.generation, authHead.id) === "host_auth_failed") {
+          const prior = this.store.getDeliveryConfirmationIntent(authHead.id);
+          if (!prior) {
+            this.store.prepareUnknownDeliveryConfirmationIntent({ beeId: rt.beeId, messageId: authHead.id, generation: rt.generation }, "host_auth_failed");
+            this.log(`deliver.held bee=${rt.beeId} msg=${authHead.id} reason=host_auth_failed`);
+          }
+          // The FIFO head stays held and nothing behind it may overtake, so
+          // there is nothing to deliver until the host's auth recovers.
+          if (!prior || neverWrittenAuthHold(prior, rt.generation)) {
+            if (!hotBeforeDelivery) this.hot.delete(rt.beeId);
+            this.scheduleBee(rt.beeId, this.now() + HOST_AUTH_RECHECK_MS);
+            continue;
+          }
         }
         if (rt.state === "booting") continue;
         if (rt.state === "idle" && this.store.hasPendingReconnect(rt.beeId, rt.generation)) continue;
@@ -2116,10 +2141,11 @@ export class DaemonCore {
         const fallbackHold = this.store.multilineDelivery(msg.id);
         const holdIssue = (issue: "host_auth_failed" | "message_too_large"): void => {
           const prior = this.store.getDeliveryConfirmationIntent(msg.id);
+          const alreadyHeld = prior?.state === "held" && prior.reason === issue;
           if (prior?.wireLine != null) this.store.holdDeliveryConfirmation(msg.id, issue);
           else this.store.prepareUnknownDeliveryConfirmationIntent({ beeId: rt.beeId, messageId: msg.id, generation: rt.generation }, issue);
           this.confirmationReady.delete(msg.id);
-          this.log(`deliver.held bee=${rt.beeId} msg=${msg.id} reason=${issue}`);
+          if (!alreadyHeld) this.log(`deliver.held bee=${rt.beeId} msg=${msg.id} reason=${issue}`);
         };
         const usesFallback = fallbackHold && (fallbackHold.fallback || ["held", "expired"].includes(fallbackHold.stage));
         const initialIssue = usesFallback ? null : this.driver.deliveryIssue?.(rt.beeId, rt.generation, msg.id, body);
