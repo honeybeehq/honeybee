@@ -235,6 +235,13 @@ test("spec01.9: unknown flag write throws; the four known flags set/clear with c
   assert.deepEqual(store.activeFlags(bee.id), []);
   assert.equal(store.view(bee.id).blocked, false);
   for (const f of store.dumpState().flags) assert.ok(f.clearedAt != null && f.clearedAt >= f.setAt);
+
+  const settled = store.lastAuditSeq();
+  const flagRows = store.dumpState().flags.length;
+  for (const flag of FLAGS) assert.deepEqual(store.clearFlag(bee.id, flag, "already clear"), { applied: false });
+  assert.equal(store.lastAuditSeq(), settled, "a clear that changes nothing writes no audit row");
+  assert.equal(store.dumpState().flags.length, flagRows);
+  assert.equal(store.auditRows().some((r) => r.kind === "flag.clear_noop"), false);
   store.close();
 });
 
@@ -343,7 +350,7 @@ test("spec01.13: audit rows exist for every write — replaying audit reproduces
   store.setFlag(b.id, "auth_needed", "login expired");
   store.setFlag(b.id, "auth_needed", "login expired again"); // re-set updates detail
   store.clearFlag(b.id, "auth_needed", "re-authed");
-  store.clearFlag(b.id, "node_unreachable"); // clear_noop
+  store.clearFlag(b.id, "node_unreachable"); // not set: changes nothing
 
   const spawn = store.enqueueCommand("spawn", c.id);
   store.claimNextCommand(); // moot-settles b's send_wake (gen moved 1→2), claims spawn

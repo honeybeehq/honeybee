@@ -3570,7 +3570,7 @@ export class CoreStore {
     }
     // Contrary evidence clears the flag (spec 03): every setter has a clearer.
     // Silent when nothing was set — success is the common case.
-    if (this.applyClearFlag(beeId, "spawn_failed", reason, { auditNoop: false }).applied) applied = true;
+    if (this.applyClearFlag(beeId, "spawn_failed", reason).applied) applied = true;
     return { applied };
   }
 
@@ -4072,7 +4072,7 @@ export class CoreStore {
     this.assertKnownFlag(flag);
     return this.tx(() => {
       this.mustGetBee(beeId);
-      return this.applyClearFlag(beeId, flag, detail ?? null, { auditNoop: true });
+      return this.applyClearFlag(beeId, flag, detail ?? null);
     });
   }
 
@@ -4080,15 +4080,11 @@ export class CoreStore {
     beeId: string,
     flag: Flag,
     detail: string | null,
-    opts: { auditNoop: boolean },
   ): { applied: boolean } {
     const existing = this.db
       .prepare("SELECT id FROM flags WHERE bee_id = ? AND flag = ? AND cleared_at IS NULL")
       .get(beeId, flag) as Row | undefined;
-    if (!existing) {
-      if (opts.auditNoop) this.audit("flag.clear_noop", beeId, { beeId, flag });
-      return { applied: false };
-    }
+    if (!existing) return { applied: false };
     const at = this.now();
     this.stmt("UPDATE flags SET cleared_at = ? WHERE id = ?").run(at, Number(existing.id));
     this.audit("flag.cleared", beeId, {
@@ -4119,7 +4115,6 @@ export class CoreStore {
           row.beeId,
           row.flag,
           `provider-declared reset ${new Date(row.resetsAt as number).toISOString()} passed`,
-          { auditNoop: false },
         );
       }
       return due;

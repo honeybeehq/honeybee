@@ -1282,6 +1282,13 @@ test("unit.3: flag policy — adapter evidence sets flags and contrary evidence 
     });
     rig.core.step();
     assert.equal(rig.store.activeFlags("bee-1").length, 0);
+    // Every later clean turn repeats the contrary evidence; with nothing set it writes nothing.
+    const settled = rig.store.lastAuditSeq();
+    for (const flag of ["auth_needed", "resource_blocked"] as const) {
+      rig.driver.evidence.push({ beeId: "bee-1", generation: 1, flag, action: "clear", detail: "successful authenticated turn" });
+    }
+    rig.core.step();
+    assert.deepEqual(rig.store.auditTail(settled, 100, null).filter((row) => row.kind.startsWith("flag.")), []);
     // Evidence for a deleted bee is skipped, never a crash.
     rig.driver.evidence.push({
       beeId: "ghost",
