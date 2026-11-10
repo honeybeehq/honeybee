@@ -56,7 +56,7 @@ test("send: exact-ID lookup preserves fallback and sender authority", async (t) 
     await t.test("names, case-insensitive handles, prefixes and non-UUID IDs keep full lookup", async () => {
       for (const [needle, id] of [["worker", target], ["co.WORK", target], ["work", target], ["old-id", "old-id"]]) {
         const result = await run(needle!); assert.equal(result.exit, 0); assert.deepEqual(result.verbs, ["list", "send"]); assert.equal(result.send?.beeId, id);
-        assert.deepEqual(result.list, { refs: [needle] });
+        assert.deepEqual(result.list, { refs: [needle], limit: 64 });
       }
     });
     await t.test("UUID-shaped name falls back and exact ID takes precedence over a name", async () => {
