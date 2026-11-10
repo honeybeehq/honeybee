@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
-import type { BeeRow } from "./types.ts";
+import type { BeeRow, Lifecycle } from "./types.ts";
 import type { HumanOutputErrorCode, HumanOutputMode, UnansweredHumanMessage, HumanOutputFacts, BeeTellRow, BeeReactionRow, BeeTellParams, BeeReactParams, BeeTellResult, BeeReactResult, SetHumanOutputModeResult } from "./humanOutputTypes.ts";
 export * from "./humanOutputTypes.ts";
 import { CoreError, IdempotencyConflictError } from "./types.ts";
@@ -56,6 +56,28 @@ function key(value: string): void {
 }
 
 type SqlRow = Record<string, unknown>;
+
+export const HUMAN_OUTPUT_FACT_COLUMNS = `human_state.mode AS human_output_mode,
+  human_state.tracking_since AS human_tracking_since,
+  human_state.last_ack_at AS human_last_ack_at,
+  CASE WHEN human_state.bee_id IS NULL THEN NULL ELSE (
+    SELECT delivery.fact_json FROM bee_human_deliveries AS delivery
+    WHERE delivery.bee_id = bees.id
+      AND NOT EXISTS (SELECT 1 FROM bee_human_acknowledgements AS ack WHERE ack.delivery_seq = delivery.seq)
+    ORDER BY delivery.seq LIMIT 1
+  ) END AS human_unanswered_fact`;
+export const HUMAN_OUTPUT_FACT_JOIN = "LEFT JOIN bee_human_output_state AS human_state ON human_state.bee_id = bees.id";
+
+export function humanOutputFacts(row: SqlRow | undefined): HumanOutputFacts {
+  const tracked = row != null && row.human_tracking_since != null;
+  return {
+    humanOutputMode: row?.human_output_mode === "explicit" ? "explicit" : "legacy",
+    humanAcknowledgementTrackingSince: tracked ? Number(row.human_tracking_since) : null,
+    lastHumanAcknowledgementAt: row?.human_last_ack_at == null ? null : Number(row.human_last_ack_at),
+    unansweredHumanMessage: row?.human_unanswered_fact == null ? null : JSON.parse(String(row.human_unanswered_fact)) as UnansweredHumanMessage,
+  };
+}
+
 export class HumanOutputLedger {
   private db: Pick<DatabaseSync, "prepare">;
   private now: () => number;
@@ -65,14 +87,7 @@ export class HumanOutputLedger {
   }
 
   facts(beeId: string): HumanOutputFacts {
-    const state = this.db.prepare("SELECT * FROM bee_human_output_state WHERE bee_id = ?").get(beeId) as SqlRow | undefined;
-    const pending = state && this.db.prepare("SELECT fact_json FROM bee_human_deliveries d WHERE bee_id = ? AND NOT EXISTS (SELECT 1 FROM bee_human_acknowledgements a WHERE a.delivery_seq = d.seq) ORDER BY seq LIMIT 1").get(beeId) as SqlRow | undefined;
-    return {
-      humanOutputMode: state?.mode === "explicit" ? "explicit" : "legacy",
-      humanAcknowledgementTrackingSince: state ? Number(state.tracking_since) : null,
-      lastHumanAcknowledgementAt: state?.last_ack_at == null ? null : Number(state.last_ack_at),
-      unansweredHumanMessage: pending ? JSON.parse(String(pending.fact_json)) as UnansweredHumanMessage : null,
-    };
+    return humanOutputFacts(this.db.prepare(`SELECT ${HUMAN_OUTPUT_FACT_COLUMNS} FROM (SELECT ? AS id) AS bees ${HUMAN_OUTPUT_FACT_JOIN}`).get(beeId) as SqlRow | undefined);
   }
 
   private replay<T>(beeId: string, kind: string, idempotencyKey: string, request: unknown): T | null {
@@ -152,7 +167,10 @@ export class HumanOutputLedger {
     this.audit("bee.reacted", bee.id, { reaction, ...this.facts(bee.id) }, at);
     return { reaction };
   }
-  list<T extends BeeTellRow | BeeReactionRow>(kind: "tell" | "react"): T[] {
-    return (this.db.prepare("SELECT row_json FROM bee_human_outputs WHERE kind=? ORDER BY id").all(kind) as SqlRow[]).map(row => JSON.parse(String(row.row_json)) as T);
+  list<T extends BeeTellRow | BeeReactionRow>(kind: "tell" | "react", lifecycle?: Lifecycle): T[] {
+    const rows = lifecycle === undefined
+      ? this.db.prepare("SELECT row_json FROM bee_human_outputs WHERE kind=? ORDER BY id").all(kind)
+      : this.db.prepare("SELECT row_json FROM bee_human_outputs WHERE kind=? AND bee_id IN (SELECT id FROM bees WHERE lifecycle = ?) ORDER BY id").all(kind, lifecycle);
+    return (rows as SqlRow[]).map(row => JSON.parse(String(row.row_json)) as T);
   }
 }

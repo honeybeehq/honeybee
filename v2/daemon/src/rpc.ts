@@ -577,7 +577,7 @@ export class RpcServer {
       let captureExpiresAt = 0;
       const result = withRpcCaller(caller, () => {
         if (verb === "mirror.local.snapshot" || verb === "mirror.local.watch") {
-          includeOperatorLocalHomes = frame.context === undefined && Object.keys(params).length === 0 && this.operatorLocalAllowed(conn);
+          includeOperatorLocalHomes = frame.context === undefined && Object.keys(params).every(key => key === "lifecycle") && this.operatorLocalAllowed(conn);
           return this.opts.dispatch(verb, params, { ...conn, operatorLocalHomes: includeOperatorLocalHomes });
         }
         const automationContext = frame.context as Record<string, unknown> | undefined;

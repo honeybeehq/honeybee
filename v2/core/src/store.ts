@@ -1,5 +1,5 @@
 import { backupStore, type StoreBackupReceipt } from "./storeBackup.ts";
-import { HUMAN_OUTPUT_SQL, HumanOutputLedger, type BeeTellParams, type BeeReactParams, type HumanOutputMode, type BeeTellRow, type BeeReactionRow } from "./humanOutput.ts";
+import { HUMAN_OUTPUT_SQL, HUMAN_OUTPUT_FACT_COLUMNS, HUMAN_OUTPUT_FACT_JOIN, HumanOutputLedger, humanOutputFacts, type BeeTellParams, type BeeReactParams, type HumanOutputMode, type BeeTellRow, type BeeReactionRow } from "./humanOutput.ts";
 import { readMailBatchPage, renderMailBatch } from "./mailBatch.ts";
 import { automationDeliveryClass, type AutomationKind, type AutomationReference, type MailBatch, type MailBatchingPolicy } from "./types.ts";
 import type { HumanChatAdmission, HumanChatProvenance, HumanChatReceipt, HumanFirstPolicy } from "./types.ts";
@@ -9,7 +9,7 @@ import { DELIVERY_CONFIRMATION_SQL, publicDeliveryConfirmation, readDeliveryConf
 import { DELIVERY_CONFIRMATION_MAX_WIRE_BYTES, DELIVERY_CONFIRMATION_AUDIT_RESERVE_BYTES, deliveryConfirmationIntentFits, MAX_DELIVERY_CONFIRMATION_BYTES, type NeverWrittenDeliveryHoldReason, DELIVERY_CONFIRMATION_REASONS, type DeliveryConfirmation, type DeliveryConfirmationIntent, type KnownDeliveryConfirmationIntent, type PrepareDeliveryConfirmationIntent, type PrepareUnknownDeliveryConfirmationIntent, type DeliveryConfirmationReason, type ResolveDeliveryConfirmation, type DeliveryConfirmationResolution, type DeliveryConfirmationDecision } from "./deliveryConfirmationTypes.ts";
 import { DeliveryNotHeldError } from "./types.ts";
 import type { TranscriptSegmentReadyReason } from "./types.ts";
-import type { QuotaRecoveryRow, QuotaRecoveryReasonDetail } from "./types.ts";
+import type { Lifecycle, QuotaRecoveryRow, QuotaRecoveryReasonDetail } from "./types.ts";
 import { QUOTA_RECOVERIES_TABLE_SQL } from "./schema.ts";
 import { automaticQuotaRecovery, quotaRecoveryMatches, type QuotaObservedEvent } from "./quota.ts";
 import { MULTILINE_UNSUPPORTED_DETAILS, MULTILINE_DELIVERY_SQL, MULTILINE_UNKNOWN_SQL, advanceMultilineUnsupported, deliveryHold, publicDeliveryFallback, readMultilineDelivery, readDeliveryFallback, type DeliveryFallback, type DeliveryHoldReceipt, type MultilineDeliveryRow } from "./multilineDelivery.ts";
@@ -356,6 +356,9 @@ export interface CreateBeeInput {
    */
   createdAt?: number;
 }
+
+export interface ArchivedBeeCursor { archivedAt: number; id: string }
+export interface ArchivedBeePage { limit: number; after?: ArchivedBeeCursor }
 
 /** One authoritative, internally consistent bee/read-model row for list RPCs. */
 export interface BeeViewRow {
@@ -721,6 +724,23 @@ export function handlePrefix(agent: string): string {
   const letters = agent.replace(/[^a-zA-Z]/g, "").slice(0, 2).toUpperCase();
   return letters.length === 2 ? letters : (letters + "XX").slice(0, 2);
 }
+
+export function beeRefCandidate(bee: Pick<BeeRow, "id" | "name" | "handle" | "human_ref">, ref: string): boolean {
+  const lower = ref.toLowerCase();
+  const handle = bee.handle?.toLowerCase() ?? null;
+  const humanRef = bee.human_ref?.toLowerCase() ?? null;
+  if (bee.id === ref || bee.name === ref || bee.id.toLowerCase() === lower || handle === lower || humanRef === lower) return true;
+  return ref.length >= 3 && (bee.id.startsWith(ref) || bee.name.startsWith(ref) || (handle?.startsWith(lower) ?? false) || (humanRef?.startsWith(lower) ?? false));
+}
+
+export const STORE_PAGE_CACHE_KIB = 32 * 1024;
+const BEES_OF_LIFECYCLE = "(SELECT id FROM bees WHERE lifecycle = ?)";
+const beeRowSelect = (source: string): string => `SELECT bees.*, ${HUMAN_OUTPUT_FACT_COLUMNS}, phone_origin.origin_json AS phone_origin_json
+  FROM ${source} ${HUMAN_OUTPUT_FACT_JOIN}
+  LEFT JOIN phone_spawn_origins AS phone_origin ON phone_origin.bee_id = bees.id`;
+const BEE_ROW_SELECT = beeRowSelect("bees");
+const ARCHIVED_PAGE_SELECT = `${beeRowSelect("bees INDEXED BY bees_archived_recent")} WHERE bees.lifecycle = 'archived'`;
+const ARCHIVED_PAGE_ORDER = "ORDER BY bees.archived_at DESC, bees.id DESC LIMIT ?";
 
 function mapBee(r: Row): BeeRow {
   return {
@@ -1808,6 +1828,8 @@ export class CoreStore {
       if (opts.ephemeral) {
         this.db.exec("PRAGMA temp_store = MEMORY");
         this.db.exec("PRAGMA cache_size = -8000");
+      } else {
+        this.db.exec(`PRAGMA cache_size = -${STORE_PAGE_CACHE_KIB}`);
       }
       this.db.exec("PRAGMA foreign_keys = ON");
       const hasMeta = this.db.prepare("SELECT 1 FROM sqlite_master WHERE name='meta' AND type='table'").get();
@@ -2468,10 +2490,12 @@ export class CoreStore {
     });
   }
 
-  listQuotaRecoveries(beeId?: string): QuotaRecoveryRow[] {
-    return (beeId === undefined
-      ? this.stmt("SELECT payload FROM quota_recoveries ORDER BY id").all()
-      : this.stmt("SELECT payload FROM quota_recoveries WHERE bee_id = ? ORDER BY id").all(beeId) as Row[])
+  listQuotaRecoveries(beeId?: string, lifecycle?: Lifecycle): QuotaRecoveryRow[] {
+    return (beeId !== undefined
+      ? this.stmt("SELECT payload FROM quota_recoveries WHERE bee_id = ? ORDER BY id").all(beeId)
+      : lifecycle !== undefined
+        ? this.stmt(`SELECT payload FROM quota_recoveries WHERE bee_id IN ${BEES_OF_LIFECYCLE} ORDER BY id`).all(lifecycle)
+        : this.stmt("SELECT payload FROM quota_recoveries ORDER BY id").all() as Row[])
       .map(row => ({ trigger: "provider_limit", ...JSON.parse(String(row.payload)) }) as QuotaRecoveryRow);
   }
 
@@ -3046,9 +3070,8 @@ export class CoreStore {
   }
 
   private mapPhoneBee(row: Row): BeeRow {
-    const bee = { ...mapBee(row), ...this.humanOutputLedger().facts(String(row.id)) };
-    const origin = this.stmt("SELECT origin_json FROM phone_spawn_origins WHERE bee_id = ?").get(bee.id) as Row | undefined;
-    return origin ? { ...bee, phoneOperationOrigin: JSON.parse(String(origin.origin_json)) as PhoneOperationOrigin } : bee;
+    const bee = { ...mapBee(row), ...humanOutputFacts(row) };
+    return row.phone_origin_json == null ? bee : { ...bee, phoneOperationOrigin: JSON.parse(String(row.phone_origin_json)) as PhoneOperationOrigin };
   }
 
   private humanOutputLedger(): HumanOutputLedger {
@@ -3067,8 +3090,8 @@ export class CoreStore {
     return this.tx(() => this.humanOutputLedger().setMode(this.mustGetBee(beeId), mode, idempotencyKey));
   }
 
-  listTells(): BeeTellRow[] { return this.humanOutputLedger().list<BeeTellRow>("tell"); }
-  listReactions(): BeeReactionRow[] { return this.humanOutputLedger().list<BeeReactionRow>("react"); }
+  listTells(lifecycle?: Lifecycle): BeeTellRow[] { return this.humanOutputLedger().list<BeeTellRow>("tell", lifecycle); }
+  listReactions(lifecycle?: Lifecycle): BeeReactionRow[] { return this.humanOutputLedger().list<BeeReactionRow>("react", lifecycle); }
 
   private prepareHumanDelivery(beeId: string, messageId: number, generation: number, at: number, source?: TurnTriggerSource) {
     const message = this.getMessage(messageId);
@@ -3087,12 +3110,12 @@ export class CoreStore {
   }
 
   getBee(beeId: string): BeeRow | null {
-    const row = this.stmt("SELECT * FROM bees WHERE id = ?").get(beeId) as Row | undefined;
+    const row = this.stmt(`${BEE_ROW_SELECT} WHERE bees.id = ?`).get(beeId) as Row | undefined;
     return row ? this.mapPhoneBee(row) : null;
   }
 
   listBees(): BeeRow[] {
-    const rows = this.stmt("SELECT * FROM bees ORDER BY id").all() as Row[];
+    const rows = this.stmt(`${BEE_ROW_SELECT} ORDER BY bees.id`).all() as Row[];
     return rows.map(row => this.mapPhoneBee(row));
   }
 
@@ -3181,7 +3204,7 @@ export class CoreStore {
   /** v21 — local children of this bee (any lifecycle), by id. */
   listChildren(beeId: string): BeeRow[] {
     const rows = this.stmt(
-      "SELECT * FROM bees WHERE parent_id = ? AND parent_external = 0 ORDER BY id",
+      `${BEE_ROW_SELECT} WHERE bees.parent_id = ? AND bees.parent_external = 0 ORDER BY bees.id`,
     ).all(beeId) as Row[];
     return rows.map(row => this.mapPhoneBee(row));
   }
@@ -3328,6 +3351,16 @@ export class CoreStore {
     if (!row) return null;
     const { bee } = JSON.parse(row.payload as string) as { bee: BeeRow };
     return { parentId: bee.parentId, parentExternal: bee.parentExternal };
+  }
+
+  runtimesByPid(pid: number): Array<{ beeId: string; generation: number; substrate: string; stopped: boolean }> {
+    return (this.stmt(
+      `SELECT runtime.bee_id, runtime.generation, runtime.state, bee.substrate
+       FROM runtimes AS runtime
+       JOIN bees AS bee ON bee.id = runtime.bee_id
+       WHERE runtime.pid = ?
+       ORDER BY runtime.bee_id, runtime.generation`,
+    ).all(pid) as Row[]).map(row => ({ beeId: String(row.bee_id), generation: Number(row.generation), substrate: String(row.substrate), stopped: row.state === "stopped" }));
   }
 
   listRuntimes(beeId: string): RuntimeRow[] {
@@ -4683,8 +4716,11 @@ export class CoreStore {
     return { beeId, enabled: row?.enabled === 1, updatedAt: row?.updated_at == null ? null : Number(row.updated_at) };
   }
 
-  listMailBatchingPolicies(): MailBatchingPolicy[] {
-    return (this.stmt("SELECT bee_id FROM mail_batching_policies ORDER BY bee_id").all() as Row[]).map(row => this.mailBatchingPolicy(String(row.bee_id)));
+  listMailBatchingPolicies(lifecycle?: Lifecycle): MailBatchingPolicy[] {
+    const rows = lifecycle === undefined
+      ? this.stmt("SELECT bee_id FROM mail_batching_policies ORDER BY bee_id").all()
+      : this.stmt(`SELECT bee_id FROM mail_batching_policies WHERE bee_id IN ${BEES_OF_LIFECYCLE} ORDER BY bee_id`).all(lifecycle);
+    return (rows as Row[]).map(row => this.mailBatchingPolicy(String(row.bee_id)));
   }
 
   setMailBatchingPolicy(beeId: string, enabled: boolean): MailBatchingPolicy {
@@ -4748,8 +4784,11 @@ export class CoreStore {
     return due.length === 0 ? null : Math.min(...due);
   }
 
-  listMailBatches(beeId?: string): MailBatch[] {
-    return (this.stmt("SELECT row_json FROM mail_batches WHERE (? IS NULL OR bee_id=?) ORDER BY id").all(beeId ?? null, beeId ?? null) as Row[]).map(row => JSON.parse(String(row.row_json)) as MailBatch);
+  listMailBatches(beeId?: string, lifecycle?: Lifecycle): MailBatch[] {
+    const rows = beeId === undefined && lifecycle !== undefined
+      ? this.stmt(`SELECT row_json FROM mail_batches WHERE bee_id IN ${BEES_OF_LIFECYCLE} ORDER BY id`).all(lifecycle)
+      : this.stmt("SELECT row_json FROM mail_batches WHERE (? IS NULL OR bee_id=?) ORDER BY id").all(beeId ?? null, beeId ?? null);
+    return (rows as Row[]).map(row => JSON.parse(String(row.row_json)) as MailBatch);
   }
 
   mailBatchForMessage(messageId: number): MailBatch | null {
@@ -4873,8 +4912,11 @@ export class CoreStore {
     return (this.stmt("SELECT * FROM human_chat_admissions ORDER BY idempotency_key").all() as Row[]).map(row => ({ version: 1, authorityId: String(row.authority_id), admissionId: String(row.admission_id), beeId: String(row.bee_id), bodySha256: String(row.body_sha256), idempotencyKey: String(row.idempotency_key), messageId: Number(row.message_id), ...(row.policy_enabled == null ? {} : { humanFirst: row.policy_enabled === 1 }) }));
   }
 
-  listHumanFirstPolicies(): HumanFirstPolicy[] {
-    return (this.stmt("SELECT bee_id FROM human_first_policies ORDER BY bee_id").all() as Row[]).map(row => this.humanFirstPolicy(String(row.bee_id)));
+  listHumanFirstPolicies(lifecycle?: Lifecycle): HumanFirstPolicy[] {
+    const rows = lifecycle === undefined
+      ? this.stmt("SELECT bee_id FROM human_first_policies ORDER BY bee_id").all()
+      : this.stmt(`SELECT bee_id FROM human_first_policies WHERE bee_id IN ${BEES_OF_LIFECYCLE} ORDER BY bee_id`).all(lifecycle);
+    return (rows as Row[]).map(row => this.humanFirstPolicy(String(row.bee_id)));
   }
 
   setHumanFirstPolicy(beeId: string, enabled: boolean): HumanFirstPolicy {
@@ -6808,19 +6850,35 @@ export class CoreStore {
    * then repeated getBee/currentRuntime once more while shaping the RPC),
    * making `hive ls` scale as hundreds of queries on an ordinary hive.
    */
-  listBeeViewRows(lifecycle: string | null = null): BeeViewRow[] {
-    const bees = lifecycle === null
-      ? this.listBees()
-      : (this.stmt("SELECT * FROM bees WHERE lifecycle = ? ORDER BY id").all(lifecycle) as Row[]).map(row => this.mapPhoneBee(row));
+  listBeeViewRows(lifecycle: string | null = null, page?: ArchivedBeePage): BeeViewRow[] {
+    if (page !== undefined && lifecycle !== "archived") throw new CoreError("listBeeViewRows: a page covers archived bees only");
+    return this.beeViewRowsOf(this.beesForList(lifecycle, page), lifecycle === null);
+  }
+
+  listBeeViewRowsForRefs(refs: readonly string[]): BeeViewRow[] {
+    const ids = (this.stmt("SELECT id, name, handle, human_ref FROM bees").all() as Row[])
+      .filter(row => {
+        const names = { id: String(row.id), name: String(row.name), handle: (row.handle as string | null) ?? null, human_ref: (row.human_ref as string | null) ?? null };
+        return refs.some(ref => beeRefCandidate(names, ref));
+      })
+      .map(row => String(row.id));
+    if (ids.length === 0) return [];
+    const bees = (this.stmt(`${BEE_ROW_SELECT} WHERE bees.id IN (SELECT value FROM json_each(?)) ORDER BY bees.id`).all(JSON.stringify(ids)) as Row[]).map(row => this.mapPhoneBee(row));
+    return this.beeViewRowsOf(bees, false);
+  }
+
+  private beeViewRowsOf(bees: BeeRow[], wholeRoster: boolean): BeeViewRow[] {
     if (bees.length === 0) return [];
     const selected = new Set(bees.map((bee) => bee.id));
+    const selectedIds = wholeRoster ? null : JSON.stringify(bees.map((bee) => bee.id));
 
     // Seek the maximum generation through the (bee_id, generation) primary
     // key. Comparing every generation with every newer one is quadratic in
     // a bee's history, even though this read returns only its current runtime.
     const runtimes = (
-      this.stmt(
-        `SELECT runtime.*
+      (selectedIds === null
+        ? this.stmt(
+          `SELECT runtime.*
          FROM bees AS bee
          JOIN runtimes AS runtime
            ON runtime.bee_id = bee.id
@@ -6829,7 +6887,16 @@ export class CoreStore {
           )
          WHERE ? IS NULL OR bee.lifecycle = ?
          ORDER BY bee.id`,
-      ).all(lifecycle, lifecycle) as Row[]
+        ).all(null, null)
+        : this.stmt(
+          `SELECT runtime.*
+         FROM json_each(?) AS selected
+         JOIN runtimes AS runtime
+           ON runtime.bee_id = selected.value
+          AND runtime.generation = (
+            SELECT MAX(latest.generation) FROM runtimes AS latest WHERE latest.bee_id = selected.value
+          )`,
+        ).all(selectedIds)) as Row[]
     ).map(mapRuntime);
     const runtimeByBee = new Map(
       runtimes
@@ -6861,11 +6928,14 @@ export class CoreStore {
       confirmationsByBee.set(intent.beeId, [...(confirmationsByBee.get(intent.beeId) ?? []), confirmation]);
     }
 
-    const cells = (this.stmt(
-      `SELECT * FROM cells WHERE id IN (
+    const cells = ((selectedIds === null
+      ? this.stmt(
+        `SELECT * FROM cells WHERE id IN (
          SELECT cell_id FROM bees WHERE cell_id != '' AND (? IS NULL OR lifecycle = ?)
        )`,
-    ).all(lifecycle, lifecycle) as Row[]).map(mapCell);
+      ).all(null, null)
+      : this.stmt("SELECT * FROM cells WHERE id IN (SELECT value FROM json_each(?))")
+        .all(JSON.stringify([...new Set(bees.flatMap((bee) => bee.cellId ? [bee.cellId] : []))]))) as Row[]).map(mapCell);
     const cellsById = new Map(cells.map((cell) => [cell.id, cell] as const));
     const latestMoveByBee = new Map<string, Row>();
     for (const row of this.stmt("SELECT * FROM bee_moves ORDER BY created_at, rowid").all() as Row[]) {
@@ -6873,8 +6943,9 @@ export class CoreStore {
       if (selected.has(beeId)) latestMoveByBee.set(beeId, row);
     }
     const latestHandoffByBee = new Map<string, BeeHandoffRow>();
-    for (const row of this.stmt(
-      `SELECT handoff.*
+    for (const row of (selectedIds === null
+      ? this.stmt(
+        `SELECT handoff.*
        FROM bees AS bee
        JOIN bee_handoffs AS handoff ON handoff.rowid = (
          SELECT latest.rowid FROM bee_handoffs AS latest
@@ -6882,7 +6953,16 @@ export class CoreStore {
          ORDER BY latest.created_at DESC, latest.rowid DESC LIMIT 1
        )
        WHERE ? IS NULL OR bee.lifecycle = ?`,
-    ).all(lifecycle, lifecycle) as Row[]) {
+      ).all(null, null)
+      : this.stmt(
+        `SELECT handoff.*
+       FROM json_each(?) AS selected
+       JOIN bee_handoffs AS handoff ON handoff.rowid = (
+         SELECT latest.rowid FROM bee_handoffs AS latest
+         WHERE latest.bee_id = selected.value
+         ORDER BY latest.created_at DESC, latest.rowid DESC LIMIT 1
+       )`,
+      ).all(selectedIds)) as Row[]) {
       const handoff = mapBeeHandoff(row);
       latestHandoffByBee.set(handoff.beeId, handoff);
     }
@@ -6899,6 +6979,16 @@ export class CoreStore {
         handoff: handoff ? toBeeHandoffView(handoff) : null,
       };
     });
+  }
+
+  private beesForList(lifecycle: string | null, page: ArchivedBeePage | undefined): BeeRow[] {
+    if (lifecycle === null) return this.listBees();
+    const rows = page === undefined
+      ? this.stmt(`${BEE_ROW_SELECT} WHERE bees.lifecycle = ? ORDER BY bees.id`).all(lifecycle)
+      : page.after
+        ? this.stmt(`${ARCHIVED_PAGE_SELECT} AND (bees.archived_at, bees.id) < (?, ?) ${ARCHIVED_PAGE_ORDER}`).all(page.after.archivedAt, page.after.id, page.limit)
+        : this.stmt(`${ARCHIVED_PAGE_SELECT} ${ARCHIVED_PAGE_ORDER}`).all(page.limit);
+    return (rows as Row[]).map(row => this.mapPhoneBee(row));
   }
 
   views(): BeeView[] {
@@ -7160,12 +7250,16 @@ export class CoreStore {
     return row ? mapQuestion(row) : null;
   }
 
-  listQuestions(filter: { beeId?: string; open?: boolean } = {}): QuestionRow[] {
+  listQuestions(filter: { beeId?: string; open?: boolean; lifecycle?: Lifecycle } = {}): QuestionRow[] {
     const where: string[] = [];
     const params: string[] = [];
     if (filter.beeId !== undefined) {
       where.push("bee_id = ?");
       params.push(filter.beeId);
+    }
+    if (filter.lifecycle !== undefined) {
+      where.push(`bee_id IN ${BEES_OF_LIFECYCLE}`);
+      params.push(filter.lifecycle);
     }
     if (filter.open === true) where.push("status = 'open'");
     else if (filter.open === false) where.push("status <> 'open'");
@@ -7207,11 +7301,13 @@ export class CoreStore {
     return seal;
   }
 
-  listSeals(filter: { beeId?: string } = {}): SealRow[] {
+  listSeals(filter: { beeId?: string; lifecycle?: Lifecycle } = {}): SealRow[] {
     const rows = (
       filter.beeId !== undefined
         ? this.stmt("SELECT * FROM seals WHERE bee_id = ? ORDER BY created_at, rowid").all(filter.beeId)
-        : this.stmt("SELECT * FROM seals ORDER BY created_at, rowid").all()
+        : filter.lifecycle !== undefined
+          ? this.stmt(`SELECT * FROM seals WHERE bee_id IN ${BEES_OF_LIFECYCLE} ORDER BY created_at, rowid`).all(filter.lifecycle)
+          : this.stmt("SELECT * FROM seals ORDER BY created_at, rowid").all()
     ) as Row[];
     return rows.map(mapSeal);
   }
@@ -7488,7 +7584,7 @@ export class CoreStore {
 
   /** Bees (any lifecycle) bound to the account, by id. */
   beesOnAccount(accountId: string): BeeRow[] {
-    const rows = this.stmt("SELECT * FROM bees WHERE account = ? ORDER BY id").all(accountId) as Row[];
+    const rows = this.stmt(`${BEE_ROW_SELECT} WHERE bees.account = ? ORDER BY bees.id`).all(accountId) as Row[];
     return rows.map(row => this.mapPhoneBee(row));
   }
 
@@ -8766,9 +8862,13 @@ export class CoreStore {
     return task;
   }
 
-  listTasks(filter: { list?: string; beeId?: string; statuses?: TaskStatus[] } = {}): TaskRow[] {
+  listTasks(filter: { list?: string; beeId?: string; statuses?: TaskStatus[]; lifecycle?: Lifecycle } = {}): TaskRow[] {
     const where: string[] = [];
     const params: Array<string> = [];
+    if (filter.lifecycle !== undefined) {
+      where.push(`(bee_id IS NULL OR bee_id IN ${BEES_OF_LIFECYCLE})`);
+      params.push(filter.lifecycle);
+    }
     if (filter.list !== undefined) {
       where.push("list = ?");
       params.push(filter.list);
@@ -8897,11 +8997,10 @@ export class CoreStore {
     return row ? mapTaskSupply(row) : defaultTaskSupply(beeId);
   }
 
-  listTaskSupply(filter: { on?: boolean } = {}): TaskSupplyRow[] {
-    const query = filter.on === true
-      ? "SELECT * FROM task_supply WHERE enabled = 1 ORDER BY bee_id"
-      : "SELECT * FROM task_supply ORDER BY bee_id";
-    return (this.stmt(query).all() as Row[]).map(mapTaskSupply);
+  listTaskSupply(filter: { on?: boolean; lifecycle?: Lifecycle } = {}): TaskSupplyRow[] {
+    const where = [...(filter.on === true ? ["enabled = 1"] : []), ...(filter.lifecycle === undefined ? [] : [`bee_id IN ${BEES_OF_LIFECYCLE}`])];
+    const query = `SELECT * FROM task_supply${where.length > 0 ? ` WHERE ${where.join(" AND ")}` : ""} ORDER BY bee_id`;
+    return (this.stmt(query).all(...(filter.lifecycle === undefined ? [] : [filter.lifecycle])) as Row[]).map(mapTaskSupply);
   }
 
   setTaskSupply(beeId: string, patch: SetTaskSupplyInput): TaskSupplyRow {
@@ -9099,8 +9198,11 @@ export class CoreStore {
     return row ? mapCell(row) : null;
   }
 
-  listCells(): CellRow[] {
-    return (this.stmt("SELECT * FROM cells ORDER BY id").all() as Row[]).map(mapCell);
+  listCells(lifecycle?: Lifecycle): CellRow[] {
+    const rows = lifecycle === undefined
+      ? this.stmt("SELECT * FROM cells ORDER BY id").all()
+      : this.stmt("SELECT * FROM cells WHERE id IN (SELECT cell_id FROM bees WHERE lifecycle = ? AND cell_id != '') ORDER BY id").all(lifecycle);
+    return (rows as Row[]).map(mapCell);
   }
 
   private mustGetCell(cellId: string): CellRow {
@@ -9214,8 +9316,11 @@ export class CoreStore {
     return row ? mapBeeMove(row) : null;
   }
 
-  listBeeMoves(): BeeMoveRow[] {
-    return (this.stmt("SELECT * FROM bee_moves ORDER BY id").all() as Row[]).map(mapBeeMove);
+  listBeeMoves(lifecycle?: Lifecycle): BeeMoveRow[] {
+    const rows = lifecycle === undefined
+      ? this.stmt("SELECT * FROM bee_moves ORDER BY id").all()
+      : this.stmt(`SELECT * FROM bee_moves WHERE bee_id IN ${BEES_OF_LIFECYCLE} ORDER BY id`).all(lifecycle);
+    return (rows as Row[]).map(mapBeeMove);
   }
 
   latestMoveOf(beeId: string): BeeMoveRow | null {
@@ -9553,8 +9658,9 @@ export class CoreStore {
     return row ? JSON.parse(String(row.row_json)) as ThreadOperationRow : null;
   }
 
-  listThreadOperations(pendingOnly = false): ThreadOperationRow[] {
-    return (this.stmt(`SELECT row_json FROM thread_operations ${pendingOnly ? "WHERE phase NOT IN ('ready','failed')" : ""} ORDER BY id`).all() as Row[])
+  listThreadOperations(pendingOnly = false, lifecycle?: Lifecycle): ThreadOperationRow[] {
+    const where = [...(pendingOnly ? ["phase NOT IN ('ready','failed')"] : []), ...(lifecycle === undefined ? [] : [`successor_bee_id IN ${BEES_OF_LIFECYCLE}`])];
+    return (this.stmt(`SELECT row_json FROM thread_operations ${where.length > 0 ? `WHERE ${where.join(" AND ")}` : ""} ORDER BY id`).all(...(lifecycle === undefined ? [] : [lifecycle])) as Row[])
       .map(row => JSON.parse(String(row.row_json)) as ThreadOperationRow);
   }
 
@@ -10057,10 +10163,12 @@ export class CoreStore {
     ).run(beeId, cursor.path, cursor.lineNo, cursor.byteOffset, cursor.epoch, cursor.projectorCheckpoint == null ? null : JSON.stringify(cursor.projectorCheckpoint), this.now());
   }
 
-  listTranscriptSegments(beeId?: string): TranscriptSegmentRow[] {
-    const rows = beeId === undefined
-      ? (this.stmt("SELECT * FROM transcript_segments ORDER BY bee_id, ordinal").all() as Row[])
-      : (this.stmt("SELECT * FROM transcript_segments WHERE bee_id = ? ORDER BY ordinal").all(beeId) as Row[]);
+  listTranscriptSegments(beeId?: string, lifecycle?: Lifecycle): TranscriptSegmentRow[] {
+    const rows = beeId !== undefined
+      ? (this.stmt("SELECT * FROM transcript_segments WHERE bee_id = ? ORDER BY ordinal").all(beeId) as Row[])
+      : lifecycle !== undefined
+        ? (this.stmt(`SELECT * FROM transcript_segments WHERE bee_id IN ${BEES_OF_LIFECYCLE} ORDER BY bee_id, ordinal`).all(lifecycle) as Row[])
+        : (this.stmt("SELECT * FROM transcript_segments ORDER BY bee_id, ordinal").all() as Row[]);
     return rows.map(mapTranscriptSegment);
   }
 
@@ -10089,8 +10197,11 @@ export class CoreStore {
     return row ? mapBeeHandoff(row) : null;
   }
 
-  listBeeHandoffs(): BeeHandoffRow[] {
-    return (this.stmt("SELECT * FROM bee_handoffs ORDER BY id").all() as Row[]).map(mapBeeHandoff);
+  listBeeHandoffs(lifecycle?: Lifecycle): BeeHandoffRow[] {
+    const rows = lifecycle === undefined
+      ? this.stmt("SELECT * FROM bee_handoffs ORDER BY id").all()
+      : this.stmt(`SELECT * FROM bee_handoffs WHERE bee_id IN ${BEES_OF_LIFECYCLE} ORDER BY id`).all(lifecycle);
+    return (rows as Row[]).map(mapBeeHandoff);
   }
 
   latestHandoffOf(beeId: string): BeeHandoffRow | null {
@@ -10616,9 +10727,13 @@ export class CoreStore {
     return (this.stmt("SELECT * FROM actions WHERE bee_id = ? ORDER BY position").all(beeId) as Row[]).map((r) => this.mapActionRow(r));
   }
 
-  listActions(filter: { beeId?: string; statuses?: readonly ActionStatus[] } = {}): ActionRow[] {
+  listActions(filter: { beeId?: string; statuses?: readonly ActionStatus[]; lifecycle?: Lifecycle } = {}): ActionRow[] {
     const where: string[] = [];
     const params: Array<string> = [];
+    if (filter.lifecycle !== undefined) {
+      where.push(`bee_id IN ${BEES_OF_LIFECYCLE}`);
+      params.push(filter.lifecycle);
+    }
     if (filter.beeId !== undefined) {
       where.push("bee_id = ?");
       params.push(filter.beeId);
@@ -10657,8 +10772,11 @@ export class CoreStore {
     return row ? this.mapActionQueue(row) : null;
   }
 
-  listActionQueues(): ActionQueueRow[] {
-    return (this.stmt("SELECT * FROM action_queues ORDER BY bee_id").all() as Row[]).map((r) => this.mapActionQueue(r));
+  listActionQueues(lifecycle?: Lifecycle): ActionQueueRow[] {
+    const rows = lifecycle === undefined
+      ? this.stmt("SELECT * FROM action_queues ORDER BY bee_id").all()
+      : this.stmt(`SELECT * FROM action_queues WHERE bee_id IN ${BEES_OF_LIFECYCLE} ORDER BY bee_id`).all(lifecycle);
+    return (rows as Row[]).map((r) => this.mapActionQueue(r));
   }
 
   private mapActionQueue(r: Row): ActionQueueRow {
@@ -10697,7 +10815,7 @@ export class CoreStore {
   }
 
   /** Views for the mirror: every action grouped by bee, holds/controls derived per lane. */
-  listActionViews(filter: { beeId?: string; statuses?: readonly ActionStatus[] } = {}): ActionView[] {
+  listActionViews(filter: { beeId?: string; statuses?: readonly ActionStatus[]; lifecycle?: Lifecycle } = {}): ActionView[] {
     const selections = new Map<string, ActionRow[]>();
     for (const row of this.listActions(filter)) {
       let selected = selections.get(row.beeId);
@@ -10712,8 +10830,8 @@ export class CoreStore {
     return out;
   }
 
-  listActionQueueViews(): ActionQueueView[] {
-    return this.listActionQueues().map(toActionQueueView);
+  listActionQueueViews(lifecycle?: Lifecycle): ActionQueueView[] {
+    return this.listActionQueues(lifecycle).map(toActionQueueView);
   }
 
   getActionEnqueue(idempotencyKey: string): ActionEnqueueRow | null {

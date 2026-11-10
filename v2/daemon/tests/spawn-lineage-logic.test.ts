@@ -87,3 +87,26 @@ test("a permission denial between the caller and its bee runtime never attribute
   assert.throws(() => spawnCallerBee(peer, [{ beeId: "hidden", identity: proc(3, 2), pid: 3 }], inspect), refused);
   assert.equal(owner(peer, [{ beeId: "below", identity: proc(4, 3) }, { beeId: "above", identity: proc(2, 1) }], inspect), "below");
 });
+
+test("a keyed runtime lookup answers like the full roster and is asked only about the ancestry", () => {
+  const processes = new Map([proc(4, 3), proc(3, 2), proc(2, 1), proc(1, 0)].map(value => [value.pid, value]));
+  const inspect = (pid: number): ProcessInspection => processes.get(pid) ?? { kind: "gone" };
+  const peer = { pid: 4, uid: 1000, processBirth: "linux:4" };
+  const rosters = [
+    [],
+    [{ beeId: "parent", identity: proc(2, 1), pid: 2 }],
+    [{ beeId: "parent", identity: proc(2, 1), pid: 2 }, { beeId: "nested", identity: proc(3, 2), pid: 3 }],
+    [{ beeId: "stale", identity: { ...proc(3, 2), birth: "linux:99" }, pid: null }, { beeId: "stopped-but-alive", identity: proc(3, 2), pid: null }],
+    [{ beeId: "unrelated", identity: null, pid: 99 }, { beeId: "far", identity: proc(77, 1), pid: 77 }],
+  ];
+  for (const roster of rosters) {
+    const asked: number[] = [];
+    const keyed = (pid: number) => { asked.push(pid); return roster.filter(runtime => (runtime.identity?.pid ?? runtime.pid) === pid); };
+    assert.equal(owner(peer, keyed, inspect), owner(peer, roster, inspect));
+    assert.ok(asked.every(pid => processes.has(pid)));
+  }
+  assert.throws(() => spawnCallerBee(peer, pid => pid === 3 ? [{ beeId: "unresolved", identity: null, pid: 3 }] : [], inspect), refused);
+  const hidden = (pid: number): ProcessInspection => pid === 3 ? { kind: "unavailable", reason: "permission_denied" } : inspect(pid);
+  assert.throws(() => spawnCallerBee(peer, pid => pid === 3 ? [{ beeId: "hidden", identity: proc(3, 2), pid: 3 }] : [], hidden), refused);
+  assert.equal(owner(peer, () => [], hidden), null);
+});

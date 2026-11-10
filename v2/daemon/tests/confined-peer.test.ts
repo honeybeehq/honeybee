@@ -141,7 +141,8 @@ test("a confined caller whose ancestry is denied before its bee runtime is refus
   const bee = {id: "cell-bee", lifecycle: "active", parentId: "parent", parentExternal: false, agent: "stub", substrate: "cell"};
   const runtime = {beeId: bee.id, generation: 1, state: "running", pid: 2};
   const store = {
-    listBees: () => [bee], listRuntimes: () => [runtime], getBee: (id: string) => id === bee.id ? bee : null, currentRuntime: () => runtime,
+    runtimesByPid: (pid: number) => pid === runtime.pid ? [{beeId: bee.id, generation: runtime.generation, substrate: bee.substrate, stopped: false}] : [],
+    getBee: (id: string) => id === bee.id ? bee : null, currentRuntime: () => runtime,
     runtimeProcessIdentity: () => ({kind: "bound", identity: {pid: 2, birth: "linux:2", bootId}}),
   };
   const localPeer = {uid: 1000, pid: 4, processBirth: "linux:4"};

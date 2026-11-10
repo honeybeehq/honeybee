@@ -1,6 +1,6 @@
 import { serviceDirectory } from "../../core/src/servicePaths.ts";
 import { resolveNodePin, persistNodePin, nodePinEnv, validateDaemonNode, readNodeRepair } from "../../core/src/nodeRuntime.ts";
-import { BUILD_IDENTITY } from "../../daemon/src/protocol.ts";
+import { BUILD_IDENTITY, ROSTER_READ_CAPABILITY } from "../../daemon/src/protocol.ts";
 import { pidAlive, readLiveEndpointRecord, samePath } from "../../daemon/src/endpointRecord.ts";
 import { assertServiceOwned, isNodeDataDir, refuseNodeDaemon, resolveServiceScope, ServiceScopeError, type ServiceScope } from "./serviceScope.ts";
 /**
@@ -576,6 +576,14 @@ function beeLabel(b: { id: string; handle: string | null; human_ref?: string | n
   return `${b.human_ref ?? b.handle ?? b.id} (${b.name}; ${b.id})`;
 }
 
+async function viewsMatching(c: RpcClient, ...refs: string[]): Promise<ViewResult[]> {
+  return (await c.request<ListResult>("list", c.capabilities.includes(ROSTER_READ_CAPABILITY) ? { refs } : {})).views;
+}
+
+async function resolveBee(c: RpcClient, ref: string): Promise<string> {
+  return resolveBeeIn(await viewsMatching(c, ref), ref);
+}
+
 export function resolveBeeIn(views: ViewResult[], needle: string): string {
   const byId = views.find((v) => v.bee?.id === needle);
   // Old imports sometimes used their pretty handle as the canonical id.
@@ -785,13 +793,11 @@ async function spawnBee(
     const explicitParent = parsed.flags.get("--parent") as string | undefined;
     let parentId: string | undefined;
     if (explicitParent) {
-      const list = await c.request<ListResult>("list");
-      parentId = resolveBeeIn(list.views, explicitParent);
+      parentId = await resolveBee(c, explicitParent);
     } else if (parsed.flags.get("--no-parent") !== true) {
       const self = selfBeeId();
       if (self) {
-        const list = await c.request<ListResult>("list");
-        if (list.views.some((v) => v.bee?.id === self)) parentId = self;
+        if ((await viewsMatching(c, self)).some((v) => v.bee?.id === self)) parentId = self;
       }
     }
     // Explicit --account wins over an embedded <agent>-auto/-rr selector,
@@ -1493,8 +1499,7 @@ async function cmdRename(ctx: CliContext, parsed: Parsed): Promise<number> {
   const [, needle, name] = parsed.positional;
   if (!needle || !name) throw new Error("usage: hive rename <bee> <new-name> [--idempotency-key k]");
   return withClient(ctx, async (c) => {
-    const list = await c.request<ListResult>("list");
-    const beeId = resolveBeeIn(list.views, needle);
+    const beeId = await resolveBee(c, needle);
     const r = await c.request<RenameResult>("bee.rename", { beeId, name, idempotencyKey: parsed.flags.get("--idempotency-key") as string | undefined });
     emit(ctx, [confirm(r.applied ? "ok" : "info", r.applied ? "renamed" : "unchanged", `${beeId} → ${JSON.stringify(r.bee.name)}`, r.deduped)], publicEnvRecords(r), false);
     return 0;
@@ -1509,8 +1514,7 @@ async function cmdTag(ctx: CliContext, parsed: Parsed): Promise<number> {
     throw new Error("usage: hive tag <bee> [--add t]... [--remove t]... [--idempotency-key k]");
   }
   return withClient(ctx, async (c) => {
-    const list = await c.request<ListResult>("list");
-    const beeId = resolveBeeIn(list.views, needle);
+    const beeId = await resolveBee(c, needle);
     const r = await c.request<TagResult>("bee.tag", {
       beeId,
       ...(add.length > 0 ? { add } : {}),
@@ -1674,8 +1678,7 @@ async function cmdReconnectTools(ctx: CliContext, parsed: Parsed): Promise<numbe
   const needle = parsed.positional[1];
   if (!needle) throw new Error("usage: hive reconnect-tools <bee> [--idempotency-key k] | hive reconnect-tools <bee> --command-id <id>");
   return withClient(ctx, async c => {
-    const list = await c.request<ListResult>("list");
-    const beeId = resolveBeeIn(list.views, needle);
+    const beeId = await resolveBee(c, needle);
     const commandId = parsed.flags.get("--command-id");
     const result = await c.request<import("../../daemon/src/protocol.ts").ReconnectToolsResult>(
       commandId === undefined ? "bee.reconnectTools" : "bee.reconnectTools.get",
@@ -1690,8 +1693,7 @@ async function cmdInterrupt(ctx: CliContext, parsed: Parsed): Promise<number> {
   const needle = parsed.positional[1];
   if (!needle) throw new Error("usage: hive interrupt <bee> [--idempotency-key k]");
   return withClient(ctx, async (c) => {
-    const list = await c.request<ListResult>("list");
-    const beeId = resolveBeeIn(list.views, needle);
+    const beeId = await resolveBee(c, needle);
     const r = await c.request<InterruptResult>("bee.interrupt", { beeId, idempotencyKey: parsed.flags.get("--idempotency-key") as string | undefined });
     emit(
       ctx,
@@ -1726,8 +1728,7 @@ async function cmdThreadOperation(ctx: CliContext, parsed: Parsed): Promise<numb
   const kind = command === "thread-fork" ? "fork" : "handoff";
   validateThreadArgs(parsed, kind === "handoff");
   return withClient(ctx, async c => {
-    const list = await c.request<ListResult>("list");
-    const beeId = resolveBeeIn(list.views, needle);
+    const beeId = await resolveBee(c, needle);
     const view = await c.request<ViewResult>("view", { beeId });
     const result = await c.request<import("../../daemon/src/protocol.ts").ThreadOperationResult>(kind === "fork" ? "thread.fork" : "thread.handoff", {
       beeId, sourceProviderSessionId: view.bee?.providerSessionId,
@@ -1752,8 +1753,7 @@ async function cmdFork(ctx: CliContext, parsed: Parsed): Promise<number> {
   if (promptParts.length || parsed.flags.has("--prompt") || parsed.flags.has("--instruction") || parsed.flags.has("--compact")) throw new Error("Fork is a plain conversation copy; use thread-handoff for instructed compaction");
   validateThreadArgs(parsed, false);
   return withClient(ctx, async (c) => {
-    const list = await c.request<ListResult>("list");
-    const beeId = resolveBeeIn(list.views, needle);
+    const beeId = await resolveBee(c, needle);
     const r = await c.request<ForkResult>("bee.fork", {
       beeId,
       ...(parsed.flags.has("--name") ? { name: parsed.flags.get("--name") as string } : {}),
@@ -1827,7 +1827,7 @@ async function cmdAction(ctx: CliContext, parsed: Parsed): Promise<number> {
     case "list":
       return withClient(ctx, async (c) => {
         const beeFlag = parsed.flags.get("--bee") as string | undefined;
-        const beeId = beeFlag ? resolveBeeIn((await c.request<ListResult>("list")).views, beeFlag) : undefined;
+        const beeId = beeFlag ? await resolveBee(c, beeFlag) : undefined;
         const status = parsed.flags.get("--status") as string | undefined;
         const r = await c.request<ActionListResult>("action.list", { ...(beeId ? { beeId } : {}), ...(status ? { statuses: [status] } : {}) });
         emit(ctx, r.actions.length === 0 ? [dim("no actions")] : r.actions.map(actionLine), r, false);
@@ -1862,7 +1862,7 @@ async function cmdAction(ctx: CliContext, parsed: Parsed): Promise<number> {
         items = [{ kind, inputs, ...(title ? { title } : {}) }];
       }
       return withClient(ctx, async (c) => {
-        const beeId = resolveBeeIn((await c.request<ListResult>("list")).views, needle);
+        const beeId = await resolveBee(c, needle);
         const r = await c.request<ActionEnqueueResult>("action.enqueue", { beeId, idempotencyKey: key ?? randomUUID(), items });
         emit(ctx, [confirm("ok", r.deduped ? "accepted (replayed)" : "accepted", `${r.actions.length} action(s) on ${beeId}${r.queue.paused ? " (queue paused)" : ""}`, r.deduped), ...r.actions.map(actionLine)], r, false);
         return 0;
@@ -1898,7 +1898,7 @@ async function cmdAction(ctx: CliContext, parsed: Parsed): Promise<number> {
       const needle = parsed.positional[2];
       if (!needle) throw new Error(usage);
       return withClient(ctx, async (c) => {
-        const beeId = resolveBeeIn((await c.request<ListResult>("list")).views, needle);
+        const beeId = await resolveBee(c, needle);
         const r = await c.request<ActionQueueControlResult>(sub === "pause" ? "action.queue.pause" : "action.queue.resume", { beeId, ...(key ? { idempotencyKey: key } : {}) });
         emit(ctx, [confirm("ok", `queue ${r.queue.paused ? "paused" : "running"}`, `${beeId}${r.applied ? "" : " (unchanged)"}`, r.deduped)], r, false);
         return 0;
@@ -1909,7 +1909,7 @@ async function cmdAction(ctx: CliContext, parsed: Parsed): Promise<number> {
       const order = parsed.positional.slice(3);
       if (!needle || order.length === 0) throw new Error(usage);
       return withClient(ctx, async (c) => {
-        const beeId = resolveBeeIn((await c.request<ListResult>("list")).views, needle);
+        const beeId = await resolveBee(c, needle);
         const r = await c.request<ActionReorderResult>("action.reorder", { beeId, order, ...(key ? { idempotencyKey: key } : {}) });
         emit(ctx, [confirm("ok", "reordered", beeId, r.deduped), ...r.actions.filter((a) => a.status === "queued").map(actionLine)], r, false);
         return 0;
@@ -1956,7 +1956,7 @@ async function cmdAction(ctx: CliContext, parsed: Parsed): Promise<number> {
       if (!executor) throw new Error(usage);
       return withClient(ctx, async (c) => {
         const beeFlag = parsed.flags.get("--bee") as string | undefined;
-        const beeId = beeFlag ? resolveBeeIn((await c.request<ListResult>("list")).views, beeFlag) : undefined;
+        const beeId = beeFlag ? await resolveBee(c, beeFlag) : undefined;
         const kind = parsed.flags.get("--kind") as string | undefined;
         const actionId = parsed.flags.get("--action") as string | undefined;
         const r = await c.request<ActionClaimResult>("action.claim", { executor, ...(beeId ? { beeId } : {}), ...(kind ? { kinds: [kind] } : {}), ...(actionId ? { actionId } : {}) });
@@ -1996,8 +1996,7 @@ async function cmdHandoff(ctx: CliContext, parsed: Parsed): Promise<number> {
     const needle = parsed.positional[2];
     if (!needle) throw new Error(usage);
     return withClient(ctx, async (c) => {
-      const list = await c.request<ListResult>("list");
-      const beeId = resolveBeeIn(list.views, needle);
+      const beeId = await resolveBee(c, needle);
       const view = await c.request<ViewResult>("view", { beeId });
       if (!view.handoff) {
         emit(ctx, [confirm("info", "no handoff", `${beeId} has never been handed off`)], { beeId, handoff: null }, false);
@@ -2019,9 +2018,9 @@ async function cmdHandoff(ctx: CliContext, parsed: Parsed): Promise<number> {
   const wait = parsed.flags.get("--wait") === true;
   const timeoutMs = numFlag(parsed, "--timeout", 600_000);
   return withClient(ctx, async (c) => {
-    const list = await c.request<ListResult>("list");
-    const beeId = resolveBeeIn(list.views, needle);
-    const current = list.views.find((v) => v.bee?.id === beeId);
+    const views = await viewsMatching(c, needle);
+    const beeId = resolveBeeIn(views, needle);
+    const current = views.find((v) => v.bee?.id === beeId);
     if (!current?.bee) throw new Error(`handoff: bee ${beeId} not found`);
     const generation = current.runtime?.generation ?? 0;
     const target: Record<string, unknown> = { agent: to };
@@ -2079,8 +2078,7 @@ async function cmdChildren(ctx: CliContext, parsed: Parsed): Promise<number> {
   const { result, stale } = await readPath(
     ctx,
     async (c) => {
-      const list = await c.request<ListResult>("list");
-      return c.request<ChildrenResult>("bee.children", { beeId: resolveBeeIn(list.views, needle) });
+      return c.request<ChildrenResult>("bee.children", { beeId: await resolveBee(c, needle) });
     },
     (store) => {
       const beeId = resolveBeeIn(store.list(null), needle);
@@ -2095,8 +2093,7 @@ async function cmdChildren(ctx: CliContext, parsed: Parsed): Promise<number> {
 async function targetBee(c: RpcClient, parsed: Parsed, verb: string): Promise<string> {
   const flag = parsed.flags.get("--bee") as string | undefined;
   if (flag) {
-    const list = await c.request<ListResult>("list");
-    return resolveBeeIn(list.views, flag);
+    return resolveBee(c, flag);
   }
   const self = selfBeeId();
   if (!self) throw new Error(`hive ${verb}: not running inside a bee (HIVE_BEE_ID unset) — pass --bee <bee>`);
@@ -2142,7 +2139,7 @@ async function cmdQuestion(ctx: CliContext, parsed: Parsed): Promise<number> {
       const { result, stale } = await readPath(
         ctx,
         async (c) => {
-          const beeId = beeFlag ? resolveBeeIn((await c.request<ListResult>("list")).views, beeFlag) : undefined;
+          const beeId = beeFlag ? await resolveBee(c, beeFlag) : undefined;
           return c.request<QuestionListResult>("question.list", { ...(beeId ? { beeId } : {}), ...(open !== undefined ? { open } : {}) });
         },
         (store) => {
@@ -2204,7 +2201,7 @@ async function cmdSeal(ctx: CliContext, parsed: Parsed): Promise<number> {
     const { result, stale } = await readPath(
       ctx,
       async (c) => {
-        const beeId = beeFlag ? resolveBeeIn((await c.request<ListResult>("list")).views, beeFlag) : undefined;
+        const beeId = beeFlag ? await resolveBee(c, beeFlag) : undefined;
         return c.request<SealListResult>("seal.list", beeId ? { beeId } : {});
       },
       (store) => {
@@ -2257,8 +2254,7 @@ async function cmdSeal(ctx: CliContext, parsed: Parsed): Promise<number> {
 async function resolveTaskList(c: RpcClient, raw: string): Promise<string> {
   const parsed = parseTaskListRef(raw);
   if (parsed.kind === "shared") return `shared:${parsed.name}`;
-  const list = await c.request<ListResult>("list");
-  return beeTaskList(resolveBeeIn(list.views, parsed.name));
+  return beeTaskList(await resolveBee(c, parsed.name));
 }
 
 function resolveAutoFlag(parsed: Parsed): boolean | undefined {
@@ -2333,8 +2329,7 @@ async function cmdTaskAdd(ctx: CliContext, parsed: Parsed): Promise<number> {
     if (human) {
       originSender = human;
     } else if (senderBee) {
-      const views = (await c.request<ListResult>("list")).views;
-      originSender = resolveBeeIn(views, senderBee);
+      originSender = await resolveBee(c, senderBee);
       originKind = list === beeTaskList(originSender) ? "self" : "bee";
     } else {
       const self = selfBeeId();
@@ -2447,7 +2442,7 @@ async function cmdTaskClaim(ctx: CliContext, parsed: Parsed): Promise<number> {
     const self = selfBeeId();
     const claimantNeedle = senderFlag ?? self;
     if (!claimantNeedle) throw new Error("task claim: the claimant must be a bee; pass --sender <bee>");
-    const claimant = resolveBeeIn((await c.request<ListResult>("list")).views, claimantNeedle);
+    const claimant = await resolveBee(c, claimantNeedle);
     const r = await c.request<TaskClaimResult>("task.claim", {
       list,
       claimant,
@@ -2515,7 +2510,7 @@ async function cmdTaskSupply(ctx: CliContext, parsed: Parsed): Promise<number> {
     const { result, stale } = await readPath(
       ctx,
       async (c) => {
-        const beeId = resolveBeeIn((await c.request<ListResult>("list")).views, ref);
+        const beeId = await resolveBee(c, ref);
         return c.request<TaskSupplyGetResult>("task.supply.get", { beeId });
       },
       (store) => {
@@ -2533,7 +2528,7 @@ async function cmdTaskSupply(ctx: CliContext, parsed: Parsed): Promise<number> {
     return 0;
   }
   return withClient(ctx, async (c) => {
-    const beeId = resolveBeeIn((await c.request<ListResult>("list")).views, ref);
+    const beeId = await resolveBee(c, ref);
     const r = await c.request<TaskSupplySetResult>("task.supply.set", {
       beeId,
       ...(on ? { on: true } : {}),
@@ -2573,20 +2568,21 @@ async function cmdSend(ctx: CliContext, parsed: Parsed, options: { humanSender?:
     throw new Error("usage: hive send <bee> <message…> [--urgency now|next|idle] [--sender s] [--sender-kind human|automation] [--wait] [--timeout ms] [--idempotency-key k]");
   }
   return withClient(ctx, async (c) => {
-    // Exact IDs need no hive-wide list. Explicit sender aliases still use the
-    // full resolver, and a UUID-shaped name falls back when no exact bee exists.
+    // Exact IDs need no list. An explicit sender alias resolves in the same
+    // list as the target, and a UUID-shaped name falls back when no exact bee exists.
     const exact = parsed.flags.get("--sender") === undefined &&
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(needle)
       ? await c.request<ViewResult>("view", { beeId: needle })
       : null;
-    const views = exact?.bee?.id === needle ? [exact] : (await c.request<ListResult>("list")).views;
+    const explicitSender = parsed.flags.get("--sender") as string | undefined;
+    const views = exact?.bee?.id === needle ? [exact] : await viewsMatching(c, needle, ...(explicitSender === undefined ? [] : [explicitSender]));
     const beeId = resolveBeeIn(views, needle);
     const humanSender = options.humanSender?.trim();
     if (options.humanSender !== undefined && !humanSender) {
       throw new Error("buz: --sender-human must be a non-empty name");
     }
     if (humanSender) throw new Error("buz: human input requires the authenticated Apiary UI");
-    const sender = resolveSendSender(views, parsed.flags.get("--sender") as string | undefined, ctx.cfg.dataDir);
+    const sender = resolveSendSender(views, explicitSender, ctx.cfg.dataDir);
     const result = await c.request<SendRpcResult>("send", {
       beeId,
       body,
@@ -2650,8 +2646,7 @@ async function cmdMutation(
   const needle = parsed.positional[1];
   if (!needle) throw new Error(`usage: hive ${verb} <bee>${verb === "revive" ? " [--arg a]... | [-- <args…>]" : ""}`);
   return withClient(ctx, async (c) => {
-    const list = await c.request<ListResult>("list");
-    const beeId = resolveBeeIn(list.views, needle);
+    const beeId = await resolveBee(c, needle);
     // revive may replace the per-bee args as it runs (`--arg` or `-- …`).
     const reviveArgs = verb === "revive" ? (parsed.rest ?? (parsed.args.length > 0 ? parsed.args : undefined)) : undefined;
     const result = await c.request<import("../../daemon/src/protocol.ts").MutationResult>(verb, { beeId, ...(reviveArgs !== undefined ? { args: reviveArgs } : {}) });
@@ -2843,8 +2838,7 @@ async function cmdCell(ctx: CliContext, parsed: Parsed): Promise<number> {
     case "evict": {
       if (!needle) throw new Error(usage);
       return withClient(ctx, async (c) => {
-        const list = await c.request<ListResult>("list");
-        const beeId = resolveBeeIn(list.views, needle);
+        const beeId = await resolveBee(c, needle);
         const r = await c.request<CellEvictResult>("cell.evict", {
           beeId,
           force: parsed.flags.get("--force") === true,
@@ -2863,8 +2857,7 @@ async function cmdCell(ctx: CliContext, parsed: Parsed): Promise<number> {
     case "park": {
       if (!needle) throw new Error(usage);
       return withClient(ctx, async (c) => {
-        const list = await c.request<ListResult>("list");
-        const beeId = resolveBeeIn(list.views, needle);
+        const beeId = await resolveBee(c, needle);
         const r = await c.request<CellParkResult>("cell.park", {
           beeId,
           idempotencyKey: (parsed.flags.get("--idempotency-key") as string | undefined) ?? randomUUID(),
@@ -2887,8 +2880,7 @@ async function cmdCell(ctx: CliContext, parsed: Parsed): Promise<number> {
       if (!needle || !onto) throw new Error(usage);
       const mode = parsed.flags.get("--rebase") === true ? "rebase" : "merge";
       return withClient(ctx, async (c) => {
-        const list = await c.request<ListResult>("list");
-        const beeId = resolveBeeIn(list.views, needle);
+        const beeId = await resolveBee(c, needle);
         const r = await c.request<CellCaptureResult>("cell.capture", {
           beeId,
           targetBranch: onto,
@@ -2933,8 +2925,7 @@ async function cmdCell(ctx: CliContext, parsed: Parsed): Promise<number> {
     case "rm": {
       if (!needle) throw new Error(usage);
       return withClient(ctx, async (c) => {
-        const list = await c.request<ListResult>("list");
-        const beeId = resolveBeeIn(list.views, needle);
+        const beeId = await resolveBee(c, needle);
         const r = await c.request<CellRemoveResult>("cell.remove", {
           beeId,
           force: parsed.flags.get("--force") === true,
@@ -3243,8 +3234,7 @@ async function cmdBee(ctx: CliContext, parsed: Parsed): Promise<number> {
       const gitCommon = (parsed.flags.get("--git-common-dir") as string | undefined) ?? identity.gitCommonDirRealpath;
       const objectFormat = (parsed.flags.get("--object-format") as string | undefined) ?? identity.objectFormat;
       return withClient(ctx, async (c) => {
-        const list = await c.request<ListResult>("list");
-        const beeId = resolveBeeIn(list.views, needle);
+        const beeId = await resolveBee(c, needle);
         const current = await c.request<ViewResult>("view", { beeId });
         if (!current.bee) throw new Error(`cell move: bee ${beeId} not found`);
         // Keep inferred CAS inputs stable across a retry after placement. The
@@ -3280,8 +3270,7 @@ async function cmdBee(ctx: CliContext, parsed: Parsed): Promise<number> {
       const account = parsed.positional[3];
       if (!needle || !account) throw new Error(usage);
       return withClient(ctx, async (c) => {
-        const list = await c.request<ListResult>("list");
-        const beeId = resolveBeeIn(list.views, needle);
+        const beeId = await resolveBee(c, needle);
         const r = await c.request<SwapAccountResult>("bee.swapAccount", { beeId, account, idempotencyKey: parsed.flags.get("--idempotency-key") as string | undefined });
         const what = r.action === "noop" ? "already on" : r.action === "stop_then_revive" ? `swapping to` : "rebound to";
         emit(
@@ -3306,8 +3295,7 @@ async function cmdBee(ctx: CliContext, parsed: Parsed): Promise<number> {
       const args = clear ? null : (parsed.rest ?? (parsed.args.length > 0 ? parsed.args : null));
       if (!clear && (args === null || args.length === 0)) throw new Error(`${usage}\n(pass the args after \`--\`, or --clear to remove them)`);
       return withClient(ctx, async (c) => {
-        const list = await c.request<ListResult>("list");
-        const beeId = resolveBeeIn(list.views, needle);
+        const beeId = await resolveBee(c, needle);
         const result = await c.request<SetArgsResult>("bee.setArgs", {
           beeId,
           args,
@@ -3333,8 +3321,7 @@ async function cmdBee(ctx: CliContext, parsed: Parsed): Promise<number> {
       const { result, stale } = await readPath(
         ctx,
         async (c) => {
-          const list = await c.request<ListResult>("list");
-          return c.request<ViewResult>("view", { beeId: resolveBeeIn(list.views, needle) });
+          return c.request<ViewResult>("view", { beeId: await resolveBee(c, needle) });
         },
         (store) => store.view(resolveBeeIn(store.list(null), needle)),
       );
@@ -3353,8 +3340,7 @@ async function cmdView(ctx: CliContext, parsed: Parsed): Promise<number> {
   const { result, stale } = await readPath(
     ctx,
     async (c) => {
-      const list = await c.request<ListResult>("list");
-      const beeId = resolveBeeIn(list.views, needle);
+      const beeId = await resolveBee(c, needle);
       return c.request<ViewResult>("view", { beeId });
     },
     (store) => {
@@ -3373,12 +3359,16 @@ async function cmdList(ctx: CliContext, parsed: Parsed): Promise<number> {
       : parsed.flags.get("--all") === true
         ? null
         : ((parsed.flags.get("--lifecycle") as string | undefined) ?? "active");
-  const { result, stale } = await readPath(
+  const limit = parsed.flags.get("--limit") as string | undefined;
+  const after = parsed.flags.get("--after") as string | undefined;
+  if (limit === undefined && after !== undefined) throw new Error("ls: --after requires --limit");
+  const page = limit === undefined ? {} : { limit: Number(limit), ...(after === undefined ? {} : { after }) };
+  const { result, stale } = await readPath<ListResult>(
     ctx,
-    (c) => c.request<ListResult>("list", { ...(lifecycle == null ? {} : { lifecycle }) }),
+    (c) => c.request<ListResult>("list", { ...(lifecycle == null ? {} : { lifecycle }), ...page }),
     (store) => ({ views: store.list(lifecycle) }),
   );
-  emit(ctx, () => renderBeeList(result.views, stale), publicEnvRecords(result), stale);
+  emit(ctx, () => [...renderBeeList(result.views, stale), ...(typeof result.next === "string" ? [dim(`next page: --after ${result.next}`)] : [])], publicEnvRecords(result), stale);
   return 0;
 }
 
@@ -3389,8 +3379,7 @@ async function cmdMailBatch(ctx: CliContext, parsed: Parsed): Promise<number> {
   const field = parsed.flags.get("--field") ?? "body";
   if (field !== "body" && field !== "sender") throw new Error("mail-batch --field must be body or sender");
   const {result,stale} = await readPath(ctx, async c => {
-    const list = await c.request<ListResult>("list");
-    const beeId = resolveBeeIn(list.views,needle);
+    const beeId = await resolveBee(c, needle);
     return c.request<{body:string}>("mail.batch.read",{beeId,batchId,messageId,offset,limit,field});
   }, () => { throw new Error("mail.batch.read requires the registered Apiary authority or its attested owning-bee proxy"); });
   emit(ctx,[result.body],result,stale);
@@ -3412,8 +3401,7 @@ async function cmdMailbox(ctx: CliContext, parsed: Parsed): Promise<number> {
   const { result, stale } = await readPath(
     ctx,
     async (c) => {
-      const list = await c.request<ListResult>("list");
-      const beeId = resolveBeeIn(list.views, needle);
+      const beeId = await resolveBee(c, needle);
       return c.request<MailboxResult>("mailbox", { beeId, ...filters });
     },
     (store) => {
@@ -3442,8 +3430,7 @@ async function cmdAck(ctx: CliContext, parsed: Parsed): Promise<number> {
     throw new Error(`${ACK_USAGE}\n(message id must be a positive integer, got '${idRaw}')`);
   }
   const result = await withClient(ctx, async (c) => {
-    const list = await c.request<ListResult>("list");
-    const beeId = resolveBeeIn(list.views, needle);
+    const beeId = await resolveBee(c, needle);
     return c.request<{ acked: number[] }>("mail.ack", { beeId, ...(all ? { all: true } : { throughId }) });
   });
   emit(
@@ -3544,8 +3531,7 @@ async function cmdCommands(ctx: CliContext, parsed: Parsed): Promise<number> {
   const { result, stale } = await readPath(
     ctx,
     async (c) => {
-      const list = await c.request<ListResult>("list");
-      const beeId = resolveBeeIn(list.views, needle);
+      const beeId = await resolveBee(c, needle);
       return c.request<CommandsResult>("commands", { beeId });
     },
     (store) => {
@@ -4048,8 +4034,7 @@ async function readBee(ctx: CliContext, needle: string): Promise<{ result: ViewR
   return readPath(
     ctx,
     async (c) => {
-      const list = await c.request<ListResult>("list");
-      return c.request<ViewResult>("view", { beeId: resolveBeeIn(list.views, needle) });
+      return c.request<ViewResult>("view", { beeId: await resolveBee(c, needle) });
     },
     (store) => store.view(resolveBeeIn(store.list(null), needle)),
   );
@@ -4153,8 +4138,7 @@ async function cmdWait(ctx: CliContext, parsed: Parsed): Promise<number> {
   const timeoutMs = numFlag(parsed, "--timeout", 600_000);
   const idleMs = numFlag(parsed, "--idle-ms", 300);
   return withClient(ctx, async (c) => {
-    const list = await c.request<ListResult>("list");
-    const beeId = resolveBeeIn(list.views, needle);
+    const beeId = await resolveBee(c, needle);
     const { outcome, view } = await waitForBeeIdle(c, beeId, { timeoutMs, idleMs });
     if (outcome === "timeout") {
       ctx.io.err(`${red(bold("timeout:"))} ${beeId} still ${view.view.runtimeState ?? "booting"} after ${timeoutMs}ms`);
@@ -4546,7 +4530,7 @@ async function cmdEvents(ctx: CliContext, parsed: Parsed): Promise<number> {
     readPath(
       ctx,
       async (c) => {
-        const beeId = beeFlag ? resolveBeeIn((await c.request<ListResult>("list")).views, beeFlag) : undefined;
+        const beeId = beeFlag ? await resolveBee(c, beeFlag) : undefined;
         return c.request<AuditTailResult>("audit.tail", { afterSeq, limit: n, ...(beeId ? { beeId } : {}) });
       },
       (store) => {
@@ -4661,9 +4645,9 @@ async function cmdSetModel(ctx: CliContext, parsed: Parsed): Promise<number> {
   if (!needle || (!model && !clear)) throw new Error(usage);
   if (model && clear) throw new Error(`set-model: pass either <model> or --clear, not both\n${usage}`);
   return withClient(ctx, async (c) => {
-    const list = await c.request<ListResult>("list");
-    const beeId = resolveBeeIn(list.views, needle);
-    const bee = list.views.find((v) => v.bee?.id === beeId)?.bee;
+    const views = await viewsMatching(c, needle);
+    const beeId = resolveBeeIn(views, needle);
+    const bee = views.find((v) => v.bee?.id === beeId)?.bee;
     const args = withModelArg(bee?.agent ?? "", bee?.args ?? null, clear ? null : (model as string));
     if (parsed.flags.get("--apply") === true) {
       const r = await c.request<ReconfigureResult>("bee.reconfigure", {

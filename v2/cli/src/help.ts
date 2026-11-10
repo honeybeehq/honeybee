@@ -41,7 +41,7 @@ export const GROUPS: Group[] = [
   {
     title: "Observe",
     rows: [
-      ["list", "[--all|--archived]", "all bees with state (aliases: ls, ps)"],
+      ["list", "[--all|--archived [--limit n [--after cursor]]]", "all bees with state; --limit pages archived bees, newest archived first (aliases: ls, ps)"],
       ["view", "<bee>", "one bee, with env key names only"],
       ["mailbox", "<bee> [--since id] [--unread]", "queued + delivered mail; --since/--unread for pollers"],
       ["ack", "<bee> <id>|--all", "mark a mailbox-only bee's mail read through <id>"],

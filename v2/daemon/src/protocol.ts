@@ -333,6 +333,7 @@ export const DAEMON_CAPABILITIES = [
    */
   "runtime.update.v1",
   "health.process_cpu.v1",
+  "roster.read.v1",
 ] as const;
 export type DaemonCapability = (typeof DAEMON_CAPABILITIES)[number];
 
@@ -2056,8 +2057,25 @@ export interface ViewResult {
   handoff: BeeHandoffView | null;
 }
 
+export const ROSTER_READ_CAPABILITY = "roster.read.v1" satisfies DaemonCapability;
+export const LIST_PAGE_MAX_LIMIT = 1000;
+export const LIST_REF_MAX_BYTES = 512;
+export const LIST_REFS_MAX = 16;
+
+export interface ListParams {
+  lifecycle?: "active" | "archived" | null;
+  limit?: number;
+  after?: string;
+  refs?: string[];
+}
+
 export interface ListResult {
   views: ViewResult[];
+  next?: string | null;
+}
+
+export interface SnapshotParams {
+  lifecycle?: "active" | null;
 }
 
 export interface MailboxResult {

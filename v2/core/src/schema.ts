@@ -437,6 +437,7 @@ CREATE TABLE IF NOT EXISTS bees (
 -- record row immediately, so a missing row IS the deleted state.
 -- These columns exist since v1; additive indexes also repair existing stores.
 CREATE INDEX IF NOT EXISTS bees_by_lifecycle ON bees(lifecycle, id);
+CREATE INDEX IF NOT EXISTS bees_archived_recent ON bees(archived_at, id) WHERE lifecycle = 'archived';
 CREATE INDEX IF NOT EXISTS bees_auto_title_candidates ON bees(lifecycle, id, title)
   WHERE lifecycle = 'active' AND (title IS NULL OR title = '');
 
@@ -464,6 +465,7 @@ CREATE TABLE IF NOT EXISTS runtimes (
 -- open, so existing stores gain the absence proof without a format migration.
 CREATE INDEX IF NOT EXISTS runtimes_daemon_live
   ON runtimes(bee_id, generation) WHERE state != 'stopped';
+CREATE INDEX IF NOT EXISTS runtimes_by_pid ON runtimes(pid) WHERE pid IS NOT NULL;
 
 -- v15: applied cursor into one runner-owned, output-only journal per runtime
 -- generation. This is recovery metadata, not a competing lifecycle state.

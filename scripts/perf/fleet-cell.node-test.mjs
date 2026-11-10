@@ -49,16 +49,22 @@ test('fleet Cell projection follows replacement, retention, eviction, removal, r
 test('fleet Cell query seeks the existing primary key, independent of retained history', () => {
   const f = fixture(8, 64);
   const original = f.store.stmt;
-  let sql;
+  const seen = new Map();
   f.store.stmt = function(query) {
-    if (/\bFROM cells WHERE id IN\b/i.test(query)) sql = query;
-    return original.call(this, query);
+    const statement = original.call(this, query);
+    if (!/\bFROM cells WHERE id IN\b/i.test(query)) return statement;
+    return new Proxy(statement, { get(target, key) {
+      const value = Reflect.get(target, key, target);
+      if (key !== 'all') return typeof value === 'function' ? value.bind(target) : value;
+      return (...args) => { seen.set(query, args); return value.apply(target, args); };
+    } });
   };
   try {
     assert.equal(capture(f.store, 'active').cellRows, 4);
-    assert.ok(sql);
-    for (const lifecycle of [null, 'active', 'archived', 'unknown']) {
-      const plan = original.call(f.store, `EXPLAIN QUERY PLAN ${sql}`).all(lifecycle, lifecycle).map(row => row.detail).join('\n');
+    assert.equal(capture(f.store, null).cellRows, 8);
+    assert.equal(seen.size, 2);
+    for (const [sql, args] of seen) {
+      const plan = original.call(f.store, `EXPLAIN QUERY PLAN ${sql}`).all(...args).map(row => row.detail).join('\n');
       assert.match(plan, /SEARCH cells USING INDEX sqlite_autoindex_cells_1/);
       assert.doesNotMatch(plan, /SCAN cells/);
     }

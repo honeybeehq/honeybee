@@ -118,6 +118,7 @@ import {
   AUTH_INTERRUPTION_RETENTION_MS,
   type AuditRow,
   type BeeHandoffRow,
+  type BeeViewRow,
   type BeeHandoffStopAt,
   type BeeMoveRow,
   type BeeRow,
@@ -441,7 +442,11 @@ import { BEE_IMPORT_BUNDLE_BYTES_MAX,
   type TemplatePutResult,
   type ViewResult,
   type RuntimeProbeResult,
+  LIST_PAGE_MAX_LIMIT,
+  LIST_REF_MAX_BYTES,
+  LIST_REFS_MAX,
 } from "./protocol.ts";
+import { archivedCursor, archivedCursorText, snapshotLifecycle } from "./rosterRead.ts";
 
 export const RUNTIME_PROBE_AGENT = "runtime-probe";
 const RUNTIME_PROBE_IDLE_MS = 60_000;
@@ -2785,14 +2790,14 @@ export class HiveDaemon {
       case "mirror.local.snapshot":
       case "snapshot": {
         const includeHomes = verb === "mirror.local.snapshot" && conn.operatorLocalHomes === true;
-        const snap = this.snapshot(includeHomes);
+        const snap = this.snapshot(includeHomes, snapshotLifecycle(verb, params));
         conn.alignWatch(snap.seq, includeHomes);
         return snap;
       }
       case "mirror.local.watch":
       case "watch": {
         const includeHomes = verb === "mirror.local.watch" && conn.operatorLocalHomes === true;
-        const snap = this.snapshot(includeHomes);
+        const snap = this.snapshot(includeHomes, snapshotLifecycle(verb, params));
         conn.subscribeWatch(snap.seq, includeHomes);
         return snap;
       }
@@ -3115,11 +3120,10 @@ export class HiveDaemon {
 
   private peerOwner(peer: NonNullable<RpcConn["localPeer"]>): PeerOwner | null {
     const store = this.mustStore();
-    const runtimes = store.listBees().flatMap(bee => store.listRuntimes(bee.id).map(runtime => {
-      const binding = store.runtimeProcessIdentity(bee.id, runtime.generation);
-      return { beeId: bee.id, generation: runtime.generation, substrate: bee.substrate ?? null, identity: binding.kind === "bound" ? binding.identity : null, pid: runtime.state === "stopped" ? null : runtime.pid };
-    }));
-    const owner = spawnCallerBee(peer, runtimes, pid => this.lineageInspect(pid));
+    const owner = spawnCallerBee(peer, pid => store.runtimesByPid(pid).map(runtime => {
+      const binding = store.runtimeProcessIdentity(runtime.beeId, runtime.generation);
+      return { beeId: runtime.beeId, generation: runtime.generation, substrate: runtime.substrate, identity: binding.kind === "bound" ? binding.identity : null, pid: runtime.stopped ? null : pid };
+    }), pid => this.lineageInspect(pid));
     return owner && { beeId: owner.beeId, generation: owner.generation, substrate: owner.substrate };
   }
 
@@ -6330,9 +6334,27 @@ export class HiveDaemon {
 
   private rpcList(params: Record<string, unknown>): ListResult {
     const store = this.mustStore();
-    const lifecycle = typeof params.lifecycle === "string" ? params.lifecycle : null;
-    const views = store.listBeeViewRows(lifecycle);
-    return {views: views.map(row => ({...row, bee: mirrorBeeRow(row.bee), ...this.identityDiagnostic(row.view.beeId, row.view.generation)}))};
+    const { limit, after, refs } = params;
+    const lifecycle = params.lifecycle ?? null;
+    if (lifecycle !== null && lifecycle !== "active" && lifecycle !== "archived") throw new RpcError("invalid_request", "list: lifecycle must be active or archived");
+    const shape = (rows: BeeViewRow[]): ViewResult[] => rows.map(row => ({...row, bee: mirrorBeeRow(row.bee), ...this.identityDiagnostic(row.view.beeId, row.view.generation)}));
+    if (refs !== undefined) {
+      if (!Array.isArray(refs) || refs.length === 0 || refs.length > LIST_REFS_MAX || !refs.every((ref): ref is string => typeof ref === "string" && ref.length > 0 && Buffer.byteLength(ref) <= LIST_REF_MAX_BYTES)) {
+        throw new RpcError("invalid_request", `list: refs must be 1 to ${LIST_REFS_MAX} non-empty strings of at most ${LIST_REF_MAX_BYTES} bytes`);
+      }
+      if (lifecycle !== null || limit !== undefined || after !== undefined) throw new RpcError("invalid_request", "list: refs cannot be combined with lifecycle, limit or after");
+      return {views: shape(store.listBeeViewRowsForRefs(refs))};
+    }
+    if (limit === undefined) {
+      if (after !== undefined) throw new RpcError("invalid_request", "list: after requires limit");
+      return {views: shape(store.listBeeViewRows(lifecycle))};
+    }
+    if (lifecycle !== "archived") throw new RpcError("invalid_request", "list: limit pages archived bees; pass lifecycle archived");
+    if (typeof limit !== "number" || !Number.isSafeInteger(limit) || limit < 1 || limit > LIST_PAGE_MAX_LIMIT) throw new RpcError("invalid_request", `list: limit must be an integer from 1 to ${LIST_PAGE_MAX_LIMIT}`);
+    const rows = store.listBeeViewRows("archived", { limit: limit + 1, ...(after === undefined ? {} : { after: archivedCursor(after) }) });
+    const page = rows.slice(0, limit);
+    const last = page[page.length - 1];
+    return {views: shape(page), next: rows.length > limit && last ? archivedCursorText({ archivedAt: last.bee.archivedAt ?? 0, id: last.bee.id }) : null};
   }
 
   /**
@@ -7161,7 +7183,7 @@ export class HiveDaemon {
 
   private readonly snapshots: { public?: { seq: number; stamp: string; snapshot: SnapshotResult }; operatorLocal?: { seq: number; stamp: string; snapshot: SnapshotResult } } = {};
 
-  private snapshot(includeOperatorLocalHomes = false): SnapshotResult {
+  private snapshot(includeOperatorLocalHomes = false, lifecycle?: "active"): SnapshotResult {
     const store = this.mustStore();
     // Single-threaded: reading the seq and the rows is atomic w.r.t. writes.
     const seq = store.lastAuditSeq();
@@ -7169,37 +7191,37 @@ export class HiveDaemon {
     const accounts = store.listAccounts().map((account) => this.mirrorAccount(account));
     const stamp = JSON.stringify({ identity: this.identityRecovery.stamp(Date.now()), capacity, accounts });
     const variant = includeOperatorLocalHomes ? "operatorLocal" : "public";
-    const hit = this.snapshots[variant];
+    const hit = lifecycle === undefined ? this.snapshots[variant] : undefined;
     if (hit && hit.seq === seq && hit.stamp === stamp) return hit.snapshot;
     const snapshot: SnapshotResult = {
       seq,
-      humanFirstPolicies: store.listHumanFirstPolicies(),
-      mailBatchingPolicies: store.listMailBatchingPolicies(),
-      mailBatches: store.listMailBatches(),
-      views: store.listBeeViewRows().map((row) => ({ ...row, bee: includeOperatorLocalHomes ? operatorLocalBee(row.bee) : mirrorBeeRow(row.bee), ...this.identityDiagnostic(row.view.beeId, row.view.generation) })),
+      humanFirstPolicies: store.listHumanFirstPolicies(lifecycle),
+      mailBatchingPolicies: store.listMailBatchingPolicies(lifecycle),
+      mailBatches: store.listMailBatches(undefined, lifecycle),
+      views: store.listBeeViewRows(lifecycle ?? null).map((row) => ({ ...row, bee: includeOperatorLocalHomes ? operatorLocalBee(row.bee) : mirrorBeeRow(row.bee), ...this.identityDiagnostic(row.view.beeId, row.view.generation) })),
       capacity,
       templates: store.listTemplates(),
       ...(store.listChampions().length > 0 ? { champions: store.listChampions() } : {}),
-      tells: store.listTells(),
-      reactions: store.listReactions(),
-      questions: store.listQuestions(),
-      seals: store.listSeals(),
+      tells: store.listTells(lifecycle),
+      reactions: store.listReactions(lifecycle),
+      questions: store.listQuestions({ lifecycle }),
+      seals: store.listSeals({ lifecycle }),
       accounts,
       accountLimits: store.listAccountLimits(),
       accountAdmissions: store.listAccountAdmissions(),
-      quotaRecoveries: store.listQuotaRecoveries(),
-      tasks: store.listTasks(),
-      taskSupply: store.listTaskSupply(),
+      quotaRecoveries: store.listQuotaRecoveries(undefined, lifecycle),
+      tasks: store.listTasks({ lifecycle }),
+      taskSupply: store.listTaskSupply({ lifecycle }),
       loginFlows: store.listLoginFlows(),
-      cells: store.listCells(),
-      beeMoves: store.listBeeMoves().map(toBeeMoveView),
-      beeHandoffs: store.listBeeHandoffs().map(toBeeHandoffView),
-      transcriptSegments: store.listTranscriptSegments(),
-      threadOperations: store.listThreadOperations().map(threadOperationView),
-      actions: store.listActionViews(),
-      actionQueues: store.listActionQueueViews(),
+      cells: store.listCells(lifecycle),
+      beeMoves: store.listBeeMoves(lifecycle).map(toBeeMoveView),
+      beeHandoffs: store.listBeeHandoffs(lifecycle).map(toBeeHandoffView),
+      transcriptSegments: store.listTranscriptSegments(undefined, lifecycle),
+      threadOperations: store.listThreadOperations(false, lifecycle).map(threadOperationView),
+      actions: store.listActionViews({ lifecycle }),
+      actionQueues: store.listActionQueueViews(lifecycle),
     };
-    this.snapshots[variant] = { seq, stamp, snapshot };
+    if (lifecycle === undefined) this.snapshots[variant] = { seq, stamp, snapshot };
     return snapshot;
   }
 

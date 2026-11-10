@@ -4,22 +4,23 @@ import { RpcError } from "./protocol.ts";
 
 export function spawnCallerBee<T extends { beeId: string; identity: ProcessIdentity | null; pid?: number | null }>(
   peer: { pid: number; uid: number; processBirth: string | null },
-  runtimes: ReadonlyArray<T>,
+  runtimes: ReadonlyArray<T> | ((pid: number) => ReadonlyArray<T>),
   inspect: (pid: number) => ProcessInspection,
 ): T | null {
+  const runtimesAt = typeof runtimes === "function" ? runtimes : () => runtimes;
   const chain: Extract<ProcessInspection, { kind: "present" }>[] = [];
   let pid = peer.pid;
   for (let depth = 0; depth < 256; depth++) {
     const value = inspect(pid);
     const boundary = depth > 0 && value.kind === "unavailable" && value.reason === "permission_denied";
-    if (boundary && runtimes.some(runtime => (runtime.pid !== undefined ? runtime.pid : runtime.identity?.pid) === pid)) throw new RpcError("caller_not_trusted", "Spawning bee process identity is unresolved");
+    if (boundary && runtimesAt(pid).some(runtime => (runtime.pid !== undefined ? runtime.pid : runtime.identity?.pid) === pid)) throw new RpcError("caller_not_trusted", "Spawning bee process identity is unresolved");
     if (boundary) return verifiedAncestry(chain, inspect, null);
     if (value.kind !== "present" || value.state !== "live"
       || depth === 0 && (value.birth !== peer.processBirth || value.uid !== peer.uid) || chain.some(item => item.pid === pid)) {
       throw new RpcError("caller_not_trusted", "Spawn caller process ancestry is unavailable");
     }
     chain.push(value);
-    const owner = runtimes.find(runtime => runtime.identity ? sameProcess(runtime.identity, value) : runtime.pid === value.pid);
+    const owner = runtimesAt(value.pid).find(runtime => runtime.identity ? sameProcess(runtime.identity, value) : runtime.pid === value.pid);
     if (owner && !owner.identity) throw new RpcError("caller_not_trusted", "Spawning bee process identity is unresolved");
     if (owner || value.ppid === 0) return verifiedAncestry(chain, inspect, owner ?? null);
     pid = value.ppid;

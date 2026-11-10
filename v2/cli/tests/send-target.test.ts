@@ -42,7 +42,7 @@ test("send: exact-ID lookup preserves fallback and sender authority", async (t) 
     requests.length = 0;
     const out: string[] = [], err: string[] = [];
     const exit = await runV2Cli([verb, ...(verb === "buz" ? ["send"] : []), needle, "payload", "--socket", socketPath, "--data-dir", dir, "--json", ...flags], { out: (s) => out.push(s), err: (s) => err.push(s) });
-    return { exit, out, err, verbs: requests.map((r) => r.verb), send: requests.find((r) => r.verb === "send")?.params };
+    return { exit, out, err, verbs: requests.map((r) => r.verb), send: requests.find((r) => r.verb === "send")?.params, list: requests.find((r) => r.verb === "list")?.params };
   }
   try {
     await server.listen();
@@ -56,6 +56,7 @@ test("send: exact-ID lookup preserves fallback and sender authority", async (t) 
     await t.test("names, case-insensitive handles, prefixes and non-UUID IDs keep full lookup", async () => {
       for (const [needle, id] of [["worker", target], ["co.WORK", target], ["work", target], ["old-id", "old-id"]]) {
         const result = await run(needle!); assert.equal(result.exit, 0); assert.deepEqual(result.verbs, ["list", "send"]); assert.equal(result.send?.beeId, id);
+        assert.deepEqual(result.list, { refs: [needle] });
       }
     });
     await t.test("UUID-shaped name falls back and exact ID takes precedence over a name", async () => {
@@ -79,6 +80,7 @@ test("send: exact-ID lookup preserves fallback and sender authority", async (t) 
       const env = { HIVE_BEE_ID: sender, HIVE_BEE: "caller", HIVE_V2_DATA_DIR: dir };
       for (const alias of [sender, "caller", "CO.call", "call"]) {
         const result = await run(target, ["--sender", alias], env); assert.equal(result.exit, 0); assert.deepEqual(result.verbs, ["list", "send"]); assert.equal(result.send?.sender, sender);
+        assert.deepEqual(result.list, { refs: [target, alias] });
       }
       for (const [alias, identity] of [[target, env], [sender, {}], [sender, { ...env, HIVE_V2_DATA_DIR: join(dir, "other") }]] as const) {
         const result = await run(target, ["--sender", alias], identity); assert.equal(result.exit, 1); assert.equal(result.send, undefined); assert.deepEqual(result.verbs, ["list"]);
