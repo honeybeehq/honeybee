@@ -4383,7 +4383,10 @@ async function transcriptFromObjects(ctx: CliContext, parsed: Parsed, view: View
   const { result, stale } = await readPath(
     ctx,
     (c) => c.request<TranscriptSegmentsResult>("transcript.segments", { beeId }),
-    (store) => ({ beeId, segments: store.listTranscriptSegmentObjects(beeId), store: null, cursor: null }),
+    (store) => {
+      const segments = store.listTranscriptSegmentObjects(beeId);
+      return { beeId, segments, store: null, cursor: null, historyStartLine: segments[0]?.firstLine ?? null };
+    },
   );
   const root = result.store?.root ?? ctx.cfg.transcriptSegments.storeDir;
   const anyStale = stale || staleBee;

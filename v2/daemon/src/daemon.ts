@@ -443,6 +443,7 @@ import { BEE_IMPORT_BUNDLE_BYTES_MAX,
   type ViewResult,
   type RuntimeProbeResult,
   LIST_PAGE_MAX_LIMIT,
+  TRANSCRIPT_SEGMENTS_MAX_ROWS,
   LIST_REF_MAX_BYTES,
   LIST_REFS_MAX,
 } from "./protocol.ts";
@@ -7002,13 +7003,22 @@ export class HiveDaemon {
   private rpcTranscriptSegments(params: Record<string, unknown>): TranscriptSegmentsResult {
     const beeId = this.requireBee(params);
     const store = this.mustStore();
-    if (params.afterOrdinal !== undefined && (typeof params.afterOrdinal !== "number" || !Number.isInteger(params.afterOrdinal))) throw new RpcError("invalid_request", "transcript.segments: afterOrdinal must be an integer when given");
-    if (params.limit !== undefined && (typeof params.limit !== "number" || !Number.isInteger(params.limit) || params.limit < 1 || params.limit > 10_000)) throw new RpcError("invalid_request", "transcript.segments: limit must be an integer from 1 to 10000 when given");
+    const { afterOrdinal, limit, last, beforeOrdinal } = params;
+    const rowCount = (value: unknown): value is number => typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= TRANSCRIPT_SEGMENTS_MAX_ROWS;
+    if (afterOrdinal !== undefined && (typeof afterOrdinal !== "number" || !Number.isInteger(afterOrdinal))) throw new RpcError("invalid_request", "transcript.segments: afterOrdinal must be an integer when given");
+    if (limit !== undefined && !rowCount(limit)) throw new RpcError("invalid_request", `transcript.segments: limit must be an integer from 1 to ${TRANSCRIPT_SEGMENTS_MAX_ROWS} when given`);
+    if (last !== undefined && !rowCount(last)) throw new RpcError("invalid_request", `transcript.segments: last must be an integer from 1 to ${TRANSCRIPT_SEGMENTS_MAX_ROWS} when given`);
+    if (beforeOrdinal !== undefined && (typeof beforeOrdinal !== "number" || !Number.isInteger(beforeOrdinal) || beforeOrdinal < 0)) throw new RpcError("invalid_request", "transcript.segments: beforeOrdinal must be a non-negative integer when given");
+    if (last !== undefined && (afterOrdinal !== undefined || limit !== undefined)) throw new RpcError("invalid_request", "transcript.segments: last cannot be combined with afterOrdinal or limit");
+    if (beforeOrdinal !== undefined && last === undefined) throw new RpcError("invalid_request", "transcript.segments: beforeOrdinal requires last");
     return {
       beeId,
-      segments: store.listTranscriptSegmentObjects(beeId, { ...(params.afterOrdinal === undefined ? {} : { afterOrdinal: params.afterOrdinal as number }), limit: (params.limit as number | undefined) ?? 1000 }),
+      segments: last !== undefined
+        ? store.listTranscriptSegmentObjects(beeId, { last, ...(beforeOrdinal === undefined ? {} : { beforeOrdinal }) })
+        : store.listTranscriptSegmentObjects(beeId, { ...(afterOrdinal === undefined ? {} : { afterOrdinal }), limit: limit ?? 1000 }),
       store: this.transcriptObjects?.locator ?? null,
       cursor: store.getTranscriptSegmentCursor(beeId),
+      historyStartLine: store.transcriptSegmentHistoryStartLine(beeId),
     };
   }
 

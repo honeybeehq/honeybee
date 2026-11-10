@@ -37,3 +37,38 @@ test("segment objects: pointer rows are dense per bee, land with their cursor, r
     h.cleanup();
   }
 });
+
+test("segment objects: the newest rows read in ascending order without listing the rest, and the history start is one lookup", () => {
+  const h = harness();
+  try {
+    const store = h.open();
+    const { bee } = makeBee(store, "long");
+    const { bee: other } = makeBee(store, "other");
+    assert.equal(store.transcriptSegmentHistoryStartLine(bee.id), null);
+    assert.deepEqual(store.listTranscriptSegmentObjects(bee.id, { last: 3 }), []);
+    for (let ordinal = 0; ordinal < 7; ordinal++) {
+      store.putTranscriptSegmentObject(segment(bee.id, ordinal, ordinal * 3 + 5, ordinal * 3 + 7), { path: "/logs/bee.jsonl", lineNo: ordinal * 3 + 7, byteOffset: ordinal * 30 + 70, epoch: null, projectorCheckpoint: null });
+    }
+    store.putTranscriptSegmentObject(segment(other.id, 0, 1, 3), { path: "/logs/bee.jsonl", lineNo: 3, byteOffset: 30, epoch: null, projectorCheckpoint: null });
+    const all = store.listTranscriptSegmentObjects(bee.id);
+    assert.deepEqual(store.listTranscriptSegmentObjects(bee.id, { last: 3 }), all.slice(-3));
+    assert.deepEqual(store.listTranscriptSegmentObjects(bee.id, { last: 3 }).map((r) => r.ordinal), [4, 5, 6]);
+    assert.deepEqual(store.listTranscriptSegmentObjects(bee.id, { last: 1 }), [store.lastTranscriptSegmentObject(bee.id)]);
+    assert.deepEqual(store.listTranscriptSegmentObjects(bee.id, { last: 50 }), all);
+    assert.deepEqual(store.listTranscriptSegmentObjects(bee.id, { last: 3, beforeOrdinal: 4 }).map((r) => r.ordinal), [1, 2, 3]);
+    assert.deepEqual(store.listTranscriptSegmentObjects(bee.id, { last: 3, beforeOrdinal: 2 }).map((r) => r.ordinal), [0, 1]);
+    assert.deepEqual(store.listTranscriptSegmentObjects(bee.id, { last: 3, beforeOrdinal: 0 }), []);
+    assert.deepEqual(store.listTranscriptSegmentObjects(bee.id, { last: 2, beforeOrdinal: 99 }).map((r) => r.ordinal), [5, 6]);
+    assert.deepEqual(store.listTranscriptSegmentObjects(other.id, { last: 2 }).map((r) => r.ordinal), [0]);
+    assert.equal(store.transcriptSegmentHistoryStartLine(bee.id), 5);
+    assert.equal(store.transcriptSegmentHistoryStartLine(other.id), 1);
+    assert.equal(store.transcriptSegmentHistoryStartLine("nobody"), null);
+    const db = (store as unknown as { db: { prepare: (sql: string) => { all: (...args: Array<string | number>) => Array<{ detail: string }> } } }).db;
+    const plan = db.prepare("EXPLAIN QUERY PLAN SELECT * FROM transcript_segment_objects WHERE bee_id = ? AND ordinal < ? ORDER BY ordinal DESC LIMIT ?").all(bee.id, 4, 3).map((row) => row.detail).join("\n");
+    assert.match(plan, /SEARCH transcript_segment_objects USING INDEX/);
+    assert.doesNotMatch(plan, /TEMP B-TREE/);
+    store.close();
+  } finally {
+    h.cleanup();
+  }
+});

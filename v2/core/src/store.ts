@@ -10109,10 +10109,20 @@ export class CoreStore {
   }
 
   /** All segments (ordinal order within a bee); `beeId` narrows to one bee. */
-  listTranscriptSegmentObjects(beeId: string, opts: { afterOrdinal?: number; limit?: number } = {}): TranscriptSegmentObjectRow[] {
+  listTranscriptSegmentObjects(beeId: string, opts: { afterOrdinal?: number; limit?: number; last?: number; beforeOrdinal?: number } = {}): TranscriptSegmentObjectRow[] {
+    if (opts.last !== undefined) {
+      const newest = this.stmt("SELECT * FROM transcript_segment_objects WHERE bee_id = ? AND ordinal < ? ORDER BY ordinal DESC LIMIT ?")
+        .all(beeId, opts.beforeOrdinal ?? Number.MAX_SAFE_INTEGER, opts.last) as Row[];
+      return newest.reverse().map(mapTranscriptSegmentObject);
+    }
     const rows = this.stmt("SELECT * FROM transcript_segment_objects WHERE bee_id = ? AND ordinal > ? ORDER BY ordinal LIMIT ?")
       .all(beeId, opts.afterOrdinal ?? -1, opts.limit ?? 1000) as Row[];
     return rows.map(mapTranscriptSegmentObject);
+  }
+
+  transcriptSegmentHistoryStartLine(beeId: string): number | null {
+    const row = this.stmt("SELECT first_line FROM transcript_segment_objects WHERE bee_id = ? ORDER BY ordinal LIMIT 1").get(beeId) as Row | undefined;
+    return row ? Number(row.first_line) : null;
   }
 
   lastTranscriptSegmentObject(beeId: string): TranscriptSegmentObjectRow | null {

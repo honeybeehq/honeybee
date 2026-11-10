@@ -1,6 +1,6 @@
 # Transcript segment objects — Honeybee contract (H4, 2026-10-30; v2 2026-11-05)
 
-Capabilities `transcript.segments.v1` and `transcript.segments.v2`. Schema **v52** (additive: `transcript_segment_objects`, `transcript_segment_cursors`). Protocol stays `v2/2`. Segments are always on (2026-11-05, migration step M-H4): there is no flag; the rollback is `git revert`.
+Capabilities `transcript.segments.v1`, `transcript.segments.v2` and `transcript.segments.v3`. Schema **v52** (additive: `transcript_segment_objects`, `transcript_segment_cursors`). Protocol stays `v2/2`. Segments are always on (2026-11-05, migration step M-H4): there is no flag; the rollback is `git revert`.
 
 Honeybee cuts each bee's session log into **segments** at the source, projects each segment once, and pushes raw plus projected objects to the local object store, content-addressed. Home keeps pointers; clients never parse. This is the producer half of Apiary's S4 (`services/apiaryd/src/domains/hive/transcriptSegments.ts`); a node advertising the capability reports `deployInfo.transcriptSegments.enabled = true` (always, kept for the current Apiary build and deleted with the v1 tag at cutover C4), so Apiary stops cutting that node's logs itself and mirrors Honeybee's pointer rows.
 
@@ -46,13 +46,15 @@ Projection version: Honeybee writes `TRANSCRIPT_PROJECTION_VERSION` **8**. Versi
 `transcript_segment_objects` rows (one per segment, `UNIQUE (bee_id, ordinal)`, dense ordinals enforced by `putTranscriptSegmentObject`), written in one transaction with the advanced cursor and the cut's `transcript.segment.ready` row; every non-boot row is also an informational `transcript_segment_object.put { segment }` audit row (v1), so the watch stream carries both as deltas. The rows are **not** in the snapshot (a bee accrues thousands); read them with:
 
 ```
-transcript.segments { beeId, afterOrdinal?, limit? } → { beeId, segments: TranscriptSegmentObjectRow[], store: { kind: "directory", root } | null, cursor }
+transcript.segments { beeId, afterOrdinal?, limit? } | { beeId, last, beforeOrdinal? } → { beeId, segments: TranscriptSegmentObjectRow[], store: { kind: "directory", root } | null, cursor, historyStartLine }
 deployInfo.transcriptSegments → { enabled: true, store, projectionVersion, maxLines, maxRawBytes, backlog, objects }
 ```
 
 CLI: `hive transcript <bee> --segments` lists the pointers; `hive transcript <bee> --from-objects [--raw]` renders the transcript from the object store alone (daemon down → the read-only store plus the configured store directory, labeled STALE). That is the gate: a killed executor's bees read to their last segment from the objects alone. A final line without a trailing newline is not cut until the newline lands, so `--from-objects` lags the session log by that one torn line while a turn is being written.
 
 `transcript.segments` returns at most 1000 rows by default and refuses `limit` above 10000; page with `afterOrdinal`.
+
+**v3 (`transcript.segments.v3`).** `last` (1 to 10000) returns the newest rows in ascending ordinal order without listing the rest; `beforeOrdinal` (requires `last`) limits them to ordinals below it, so a reader pages backwards by passing the lowest ordinal it holds. `last` does not combine with `afterOrdinal` or `limit`. Every reply carries `historyStartLine`: the `firstLine` of the bee's oldest segment row, whatever rows the reply holds, or `null` when the bee has none. A reader holding only the newest rows compares it with its own first row to know whether older history exists. A daemon without the tag ignores `last` and answers the first rows.
 
 ## Config
 

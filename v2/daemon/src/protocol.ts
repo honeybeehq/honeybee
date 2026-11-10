@@ -335,6 +335,7 @@ export const DAEMON_CAPABILITIES = [
   "health.process_cpu.v1",
   "roster.read.v1",
   "health.delivery_held.v1",
+  "transcript.segments.v3",
 ] as const;
 export type DaemonCapability = (typeof DAEMON_CAPABILITIES)[number];
 
@@ -2281,11 +2282,22 @@ export interface ChampionExportResult {
   homeBytes: string | null;
 }
 
+export const TRANSCRIPT_SEGMENTS_MAX_ROWS = 10_000;
+
+export interface TranscriptSegmentsParams {
+  beeId: string;
+  afterOrdinal?: number;
+  limit?: number;
+  last?: number;
+  beforeOrdinal?: number;
+}
+
 export interface TranscriptSegmentsResult {
   beeId: string;
   segments: TranscriptSegmentObjectRow[];
   store: { kind: "directory"; root: string } | null;
   cursor: TranscriptSegmentCursorRow | null;
+  historyStartLine: number | null;
 }
 
 export interface DeployInfoResult {
