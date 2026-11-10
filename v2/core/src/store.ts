@@ -5858,8 +5858,8 @@ export class CoreStore {
            )`
         : "";
       for (;;) {
-        const row = this.db
-          .prepare(
+        const row = this
+          .stmt(
             `SELECT * FROM commands WHERE status = 'queued' AND next_attempt_at <= ?
              ${blockedRuntimeStartClause}
              AND NOT (bee_id IN (SELECT value FROM json_each(?)) AND verb IN ('stop','archive','delete','spawn','send_wake','revive','reconnect_tools'))

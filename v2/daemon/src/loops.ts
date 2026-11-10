@@ -436,10 +436,10 @@ export class DaemonCore {
 
   private noteChange(change: StoreChange): void {
     if (change.beeId !== null) {
-      this.commandsDue = true;
       this.dirtyBees.add(change.beeId);
       const kind = change.kind;
-      if (kind.startsWith("flag.")) this.flagsDue = true;
+      if (kind.startsWith("command.")) this.commandsDue = true;
+      else if (kind.startsWith("flag.")) this.flagsDue = true;
       else if (kind.startsWith("bee.move") || kind === "bee.placement") this.movingBees.add(change.beeId);
       else if (kind.startsWith("bee.handoff")) this.handingOffBees.add(change.beeId);
       else if (kind.startsWith("action")) this.actionBees.add(change.beeId);
@@ -464,10 +464,6 @@ export class DaemonCore {
 
   wakeBee(beeId: string): void {
     this.dirtyBees.add(beeId);
-    this.commandsDue = true;
-  }
-
-  wakeCommands(): void {
     this.commandsDue = true;
   }
 

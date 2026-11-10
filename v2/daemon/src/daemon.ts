@@ -1355,7 +1355,6 @@ export class HiveDaemon {
   }
 
   private requestTick(): void {
-    this.core?.wakeCommands();
     if (this.stopping || !this.tickTimer || this.tickRequested) return;
     this.tickRequested = true;
     clearTimeout(this.tickTimer);
