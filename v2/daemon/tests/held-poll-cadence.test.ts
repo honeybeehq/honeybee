@@ -13,6 +13,8 @@ const TICK_MS = 200;
 const STATUS_ROUND_TRIP_MS = 2;
 const MINUTE_MS = 60_000;
 const HELD_POLL_MS = 30_000;
+const SETTLE_STEPS = 5;
+const IDLE_BASELINE_STEPS = 25;
 
 class StatusHostDriver extends FakeDriver {
   hostAnswer: DeliveryConfirmationResult = "unknown";
@@ -90,7 +92,15 @@ function rig(beeCount: number) {
   const store = openCoreStore(join(root, "core.sqlite"), { now, ephemeral: true });
   const driver = new StatusHostDriver(now);
   const logs: string[] = [];
-  const core = new DaemonCore({ store, driver, now, log: (line: string) => logs.push(line), onI1Violation: () => {}, policy: { idleWindowSteps: null, commandsPerStep: 8, i1DeadlineSteps: 1_000_000, bootHangTimeoutSteps: 100_000 } });
+  let storeCalls = 0;
+  const countedStore = new Proxy(store, {
+    get(target, property) {
+      const member: unknown = Reflect.get(target, property, target);
+      if (typeof member !== "function") return member;
+      return (...args: unknown[]): unknown => { storeCalls += 1; return member.apply(target, args); };
+    },
+  });
+  const core = new DaemonCore({ store: countedStore, driver, now, log: (line: string) => logs.push(line), onI1Violation: () => {}, policy: { idleWindowSteps: null, commandsPerStep: 8, i1DeadlineSteps: 1_000_000, bootHangTimeoutSteps: 100_000 } });
   core.boot();
   const bees = Array.from({ length: beeCount }, (_, index) => store.createBee({ name: `fixture-${index}`, agent: "stub", substrate: "hsr", cwd: root }).bee.id);
   for (const beeId of bees) store.enqueueCommand("spawn", beeId);
@@ -103,7 +113,16 @@ function rig(beeCount: number) {
   let holdWrites = 0;
   const holdInStore = store.holdDeliveryConfirmation.bind(store);
   store.holdDeliveryConfirmation = (messageId, reason) => { holdWrites += 1; return holdInStore(messageId, reason); };
-  const step = (untilStep: number): void => { time += untilStep; core.step(); steps += 1; };
+  const storeCallsByStep: number[] = [];
+  const step = (untilStep: number): void => {
+    time += untilStep;
+    const before = storeCalls;
+    core.step();
+    steps += 1;
+    storeCallsByStep.push(storeCalls - before);
+  };
+  for (let i = 0; i < SETTLE_STEPS + IDLE_BASELINE_STEPS; i++) step(TICK_MS);
+  const idleStepStoreCalls = Math.max(...storeCallsByStep.slice(-IDLE_BASELINE_STEPS));
   return {
     store, driver, core, bees, logs, now, step,
     close(): void { store.close(); rmSync(root, { recursive: true, force: true }); },
@@ -124,10 +143,13 @@ function rig(beeCount: number) {
       holdInStore(head.id, "unknown");
       return head.id;
     },
-    measure<T>(work: () => T): { steps: number; queries: number; reconciles: number; holdWrites: number; auditRows: number; logLines: number; result: T } {
+    measure<T>(work: () => T): { steps: number; stepsReadingTheStoreForAHead: number; storeCalls: number; idleStoreCalls: number; queries: number; reconciles: number; holdWrites: number; auditRows: number; logLines: number; result: T } {
       const before = { steps, queries: driver.queries(), reconciles: driver.reconciles, holdWrites, auditRows: store.auditRows().length, logLines: logs.length };
       const result = work();
+      const measured = storeCallsByStep.slice(before.steps);
       return { steps: steps - before.steps, queries: driver.queries() - before.queries, reconciles: driver.reconciles - before.reconciles,
+        stepsReadingTheStoreForAHead: measured.filter(calls => calls > idleStepStoreCalls).length,
+        storeCalls: measured.reduce((total, calls) => total + calls, 0), idleStoreCalls: measured.length * idleStepStoreCalls,
         holdWrites: holdWrites - before.holdWrites, auditRows: store.auditRows().length - before.auditRows, logLines: logs.length - before.logLines, result };
     },
   };
@@ -142,6 +164,9 @@ test("two held heads with an unknown outcome on live idle runtimes are each aske
     r.run(5_000);
     const minute = r.measure(() => r.run(MINUTE_MS));
     console.log(`steps/min=${minute.steps} status-queries/min=${minute.queries} reconciles/min=${minute.reconciles} hold-writes/min=${minute.holdWrites} audit-rows/min=${minute.auditRows} log-lines/min=${minute.logLines}`);
+    console.log(`store-calls/min=${minute.storeCalls} idle-daemon-store-calls/min=${minute.idleStoreCalls} steps-reading-the-store-for-a-head/min=${minute.stepsReadingTheStoreForAHead}`);
+    assert.ok(minute.idleStoreCalls > 0, "an idle daemon step is expected to call the store, or the idle baseline measures nothing");
+    assert.ok(minute.stepsReadingTheStoreForAHead <= minute.reconciles, `steps that read the store for a held head in a minute: ${minute.stepsReadingTheStoreForAHead}, polls: ${minute.reconciles}`);
     const ticks = MINUTE_MS / TICK_MS;
     const exchangesPerHead = MINUTE_MS / HELD_POLL_MS;
     assert.ok(minute.queries <= 2 * exchangesPerHead, `status queries in a minute: ${minute.queries}`);
@@ -166,7 +191,8 @@ test("one held head with an unknown outcome is asked twice a minute", () => {
     r.holdHeadWithUnknownOutcome(r.bees[0]!);
     r.run(5_000);
     const minute = r.measure(() => r.run(MINUTE_MS));
-    console.log(`steps/min=${minute.steps} status-queries/min=${minute.queries} reconciles/min=${minute.reconciles}`);
+    console.log(`steps/min=${minute.steps} status-queries/min=${minute.queries} reconciles/min=${minute.reconciles} store-calls/min=${minute.storeCalls} idle-daemon-store-calls/min=${minute.idleStoreCalls} steps-reading-the-store-for-a-head/min=${minute.stepsReadingTheStoreForAHead}`);
+    assert.ok(minute.stepsReadingTheStoreForAHead <= minute.reconciles, `steps that read the store for a held head in a minute: ${minute.stepsReadingTheStoreForAHead}, polls: ${minute.reconciles}`);
     assert.ok(minute.queries >= 1 && minute.queries <= MINUTE_MS / HELD_POLL_MS, `status queries in a minute: ${minute.queries}`);
     assert.ok(minute.steps <= MINUTE_MS / TICK_MS + minute.queries, `steps in a minute: ${minute.steps}`);
     assert.equal(minute.holdWrites, 0);
@@ -202,5 +228,25 @@ test("a held head settles on the next step when the runtime's readiness changes 
     r.run(TICK_MS);
     assert.equal(r.store.getMessage(head)?.deliveredAt, acknowledgedAt + TICK_MS);
     assert.equal(r.driver.queriesFor(head).length, 1);
+  } finally { r.close(); }
+});
+
+test("a held head between polls costs no store call, and a store change for its bee is acted on at the next step", () => {
+  const r = rig(1);
+  try {
+    const bee = r.bees[0]!;
+    const head = r.holdHeadWithUnknownOutcome(bee);
+    r.run(5_000);
+    const betweenPolls = r.measure(() => r.run(HELD_POLL_MS / 2));
+    assert.equal(betweenPolls.reconciles, 0);
+    assert.equal(betweenPolls.stepsReadingTheStoreForAHead, 0);
+    assert.equal(betweenPolls.storeCalls, betweenPolls.idleStoreCalls);
+
+    r.store.resolveDeliveryConfirmation({ beeId: bee, messageId: head, generation: 1, action: "drop", idempotencyKey: "drop-between-polls" });
+    const queuedBehind = r.store.undeliveredMessages(bee).map(row => row.id);
+    assert.equal(queuedBehind.length, 1);
+    r.run(TICK_MS);
+    assert.deepEqual(r.driver.writes, queuedBehind);
+    assert.equal(r.store.getDeliveryConfirmationIntent(queuedBehind[0]!)?.state, "awaiting_confirmation");
   } finally { r.close(); }
 });

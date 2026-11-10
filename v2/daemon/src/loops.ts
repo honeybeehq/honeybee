@@ -571,6 +571,7 @@ export class DaemonCore {
     this.performance.measureSync("core.step.observe", () => this.observe());
     const now = this.now();
     const dueBees = this.takeDueDeadlines(now);
+    this.wakeParkedHoldsWithNews();
     const all = this.dirtyAll;
     const scope = all ? null : new Set([...this.dirtyBees, ...this.hot, ...dueBees]);
     this.dirtyAll = false;
@@ -1852,7 +1853,7 @@ export class DaemonCore {
   private readonly refusedHeadRecycles = new Map<number, { beeId: string; generation: number }>();
   private readonly deliveryRetries = new Map<string, { key: string; attempts: number; nextAt: number }>();
   private readonly confirmationReady = new Map<number, string>();
-  private readonly confirmationPolls = new Map<number, { beeId: string; key: string; attempts: number; nextAt: number; answerConsumed: boolean }>();
+  private readonly confirmationPolls = new Map<number, { beeId: string; generation: number; key: string; attempts: number; nextAt: number; answerConsumed: boolean; parked: boolean }>();
 
   private acceptPoint(beeId: string, generation: number): AcceptPoint {
     return this.interruptingGeneration.get(beeId) === generation ? "interrupting" : "open";
@@ -1866,6 +1867,15 @@ export class DaemonCore {
 
   interruptAccepted(beeId: string, generation: number): void {
     this.moveAcceptPoint(beeId, generation, "interrupt_accepted");
+  }
+
+  private wakeParkedHoldsWithNews(): void {
+    for (const [messageId, poll] of this.confirmationPolls) {
+      if (!poll.parked) continue;
+      const readinessChanged = poll.key !== `held:${this.driver.deliveryReadiness?.(poll.beeId, poll.generation, messageId, false) ?? ""}`;
+      const answerArrived = !poll.answerConsumed && this.driver.deliveryStatusAnswered?.(poll.beeId, poll.generation, messageId) === true;
+      if (readinessChanged || answerArrived) this.hot.add(poll.beeId);
+    }
   }
 
   private holdConfirmation(intent: DeliveryConfirmationIntent, reason: DeliveryConfirmationReason): void {
@@ -1959,7 +1969,11 @@ export class DaemonCore {
     }
     const ids = new Set(intents.map(row => row.messageId));
     const evaluated = (beeId: string): boolean => scope === null || scope.has(beeId);
-    for (const [id, poll] of this.confirmationPolls) if (evaluated(poll.beeId) && !ids.has(id)) this.confirmationPolls.delete(id);
+    for (const [id, poll] of this.confirmationPolls) {
+      if (!evaluated(poll.beeId)) continue;
+      if (ids.has(id)) poll.parked = false;
+      else this.confirmationPolls.delete(id);
+    }
     for (const [id, beeId] of this.confirmationReady) if (evaluated(beeId) && !ids.has(id)) this.confirmationReady.delete(id);
     for (const [id, examined] of this.journalExamined) if (evaluated(examined.beeId) && !ids.has(id)) this.journalExamined.delete(id);
     for (const [id, recycle] of this.refusedHeadRecycles) if (evaluated(recycle.beeId) && !ids.has(id)) this.refusedHeadRecycles.delete(id);
@@ -1968,6 +1982,7 @@ export class DaemonCore {
       if (!runtime || runtime.generation !== intent.generation || runtime.state === "stopped") {
         if (!this.releaseRefusedPlainWrite(intent) && !this.settleByJournal(intent, "ended")) this.holdConfirmation(intent, "generation_changed");
         this.confirmationReady.delete(intent.messageId);
+        this.confirmationPolls.delete(intent.messageId);
         continue;
       }
       if (intent.wireLine === null && intent.reason === "host_auth_failed" && this.driver.deliveryLaneReady?.(intent.beeId, intent.generation)) {
@@ -1977,10 +1992,11 @@ export class DaemonCore {
         this.deliveryRetries.delete(intent.beeId);
         continue;
       }
+      const pollsOnDeadline = intent.state === "held" && !refusedHold(intent) && intent.reason !== "lane_unavailable" && !this.confirmationReady.has(intent.messageId);
       // A never-written auth hold is not open work: it waits for the host's
       // lane, which no store change announces. Re-check it on a cadence.
       if (neverWrittenAuthHold(intent, runtime.generation)) this.scheduleBee(intent.beeId, this.now() + HOST_AUTH_RECHECK_MS);
-      else this.hot.add(intent.beeId);
+      else if (!pollsOnDeadline) this.hot.add(intent.beeId);
       if (refusedHold(intent)) continue;
       if (intent.state === "held" && intent.reason === "unknown") {
         if (this.settleByJournal(intent, "live")) {
@@ -2004,14 +2020,19 @@ export class DaemonCore {
       }
       const held = intent.state === "held";
       const key = `${intent.state}:${this.driver.deliveryReadiness?.(intent.beeId, intent.generation, intent.messageId, !held) ?? ""}`;
-      const poll = this.confirmationPolls.get(intent.messageId);
-      if (poll?.key === key && this.now() < poll.nextAt) {
+      const previousPoll = this.confirmationPolls.get(intent.messageId);
+      const waiting = previousPoll !== undefined && previousPoll.key === key && this.now() < previousPoll.nextAt;
+      const attempts = previousPoll?.key === key ? previousPoll.attempts + 1 : 1;
+      const poll = waiting ? previousPoll : { beeId: intent.beeId, generation: intent.generation, key, attempts, answerConsumed: false, parked: false,
+        nextAt: this.now() + (held ? HELD_CONFIRMATION_POLL_MS : Math.min(30_000, 200 * 2 ** Math.min(attempts, 8)) * (0.75 + this.random() * 0.25)) };
+      this.confirmationPolls.set(intent.messageId, poll);
+      if (pollsOnDeadline) {
+        poll.parked = true;
+        this.scheduleBee(intent.beeId, poll.nextAt);
+      }
+      if (waiting) {
         if (!held || poll.answerConsumed || !this.driver.deliveryStatusAnswered?.(intent.beeId, intent.generation, intent.messageId)) continue;
         poll.answerConsumed = true;
-      } else {
-        const attempts = poll?.key === key ? poll.attempts + 1 : 1;
-        this.confirmationPolls.set(intent.messageId, { beeId: intent.beeId, key, attempts, answerConsumed: false,
-          nextAt: this.now() + (held ? HELD_CONFIRMATION_POLL_MS : Math.min(30_000, 200 * 2 ** Math.min(attempts, 8)) * (0.75 + this.random() * 0.25)) });
       }
       const result = intent.wireLine === null
         ? this.driver.consumeDeliveryConfirmation?.(intent.beeId, intent.generation, intent.messageId) ? "accepted" : "pending_ack"
@@ -2303,7 +2324,13 @@ export class DaemonCore {
           const existing = this.store.getDeliveryConfirmationIntent(msg.id);
           if (existing) {
             const refused = refusedHold(existing);
-            if (existing.generation !== rt.generation || existing.wireLine === null || !refused && (existing.state !== "awaiting_confirmation" || !this.confirmationReady.has(msg.id))) continue;
+            if (existing.generation !== rt.generation || existing.wireLine === null || !refused && (existing.state !== "awaiting_confirmation" || !this.confirmationReady.has(msg.id))) {
+              if (existing.state === "held" && !refused && !hotBeforeDelivery) {
+                this.hot.delete(rt.beeId);
+                this.scheduleBee(rt.beeId, this.now() + HELD_CONFIRMATION_POLL_MS);
+              }
+              continue;
+            }
             const plan = this.driver.planDeliveryConfirmation?.(rt.beeId, rt.generation, msg.id, body, { freshTurn });
             if (refused && (!plan || plan === "not_ready" || plan.digest === existing.digest)) { if (!this.store.inTransaction) backOff(); continue; }
             if (!plan || plan === "not_ready") { refusePlan(); continue; }
