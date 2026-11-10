@@ -136,7 +136,7 @@ import { DaemonDownError, HandoverStalledError, RpcClient, type ConnectOptions, 
 import { assertInstanceMatchesDataDir, assertSameInstance, assertSocketMatchesDataDir, callerHelloFor, daemonTargetJson, resolveDaemonTarget, socketConfigured, type ResolvedDaemonTarget } from "./target.ts";
 import type { ReadOnlyStore } from "./readonly.ts";
 import { beeTaskList, isTaskStatus, isTaskTransitionAction, parseTaskListRef } from "../../core/src/tasks.ts";
-import { filterMailbox, INBOX_AGENT, isInboxAgent, TASK_STATUSES, type AuditRow, type CommandRow, type NodeCapacity, type TemplateRow, type ChampionRow } from "../../core/src/types.ts";
+import { filterMailbox, INBOX_AGENT, isInboxAgent, TASK_STATUSES, type AuditRow, type CommandRow, type DeliveryConfirmationResolution, type NodeCapacity, type TemplateRow, type ChampionRow } from "../../core/src/types.ts";
 import { matchAccount } from "../../core/src/accountMatch.ts";
 import { publicAuditRow, publicEnvRecords } from "../../core/src/envRedaction.ts";
 import { hostname } from "node:os";
@@ -325,6 +325,8 @@ const OPTIONAL_VALUE_FLAGS = new Set(["--warm"]);
  */
 const BOOL_FLAGS = new Set([
   "--register",
+  "--resend",
+  "--drop",
   "--active",
   "--segments", "--from-objects",
   "--json",
@@ -3386,6 +3388,46 @@ async function cmdMailBatch(ctx: CliContext, parsed: Parsed): Promise<number> {
   return 0;
 }
 
+const MAIL_RESOLVE_USAGE = "usage: hive mail resolve <bee> <message-id> --resend|--drop --register [--idempotency-key key] [--json]\n" +
+  "  resolves a held delivery from a terminal when the Apiary app is not running.\n" +
+  "  needs local service trust on: rpcLocalTrust.requireObservationCaller: true in the node's config.json.\n" +
+  "  refused inside a bee, and while another live local service (the Apiary app) holds the registration.";
+
+const LOCAL_TRUST_REFUSALS: Record<string, string> = {
+  trust_disabled: "local service trust is off on this node; set rpcLocalTrust.requireObservationCaller: true in the node's config.json",
+  registered_service_still_live: "another live local service (normally the Apiary app) holds the registration; resolve the delivery there",
+  registration_key_unavailable: "the node's registration key is unavailable to this user",
+  local_required: "registration needs the node's local socket",
+};
+
+async function cmdMail(ctx: CliContext, parsed: Parsed): Promise<number> {
+  const [, action, needle, rawId] = parsed.positional;
+  const messageId = Number(rawId);
+  const resend = parsed.flags.get("--resend") === true, drop = parsed.flags.get("--drop") === true;
+  if (action !== "resolve" || !needle || !Number.isSafeInteger(messageId) || messageId < 1 || resend === drop || parsed.flags.get("--register") !== true) throw new Error(MAIL_RESOLVE_USAGE);
+  const verb = resend ? "mail.delivery.resend_anyway" : "mail.delivery.drop";
+  const key = parsed.flags.get("--idempotency-key");
+  const r = await withClient(ctx, async (c) => {
+    if (!c.capabilities.includes("mail.delivery.confirmation.v1")) throw new RpcError("capability_missing", "Update Honeybee: mail.delivery.confirmation.v1 is required.");
+    const beeId = await resolveBee(c, needle);
+    const { view } = await c.request<ViewResult>("view", { beeId });
+    const held = view.deliveryConfirmations?.find((row) => row.messageId === messageId && row.state === "held");
+    if (!held) throw new RpcError("delivery_not_held", `message ${messageId} is not a held delivery for ${needle}`);
+    const generation = held.reason === "generation_changed" ? view.generation : held.generation;
+    if (generation === null) throw new RpcError("stale_generation", `${needle} has no runtime generation to resolve against`);
+    try { await registerLocalTrust(ctx, c); }
+    catch (err) {
+      const reason = err instanceof RpcError ? err.details?.reason : undefined;
+      if (err instanceof RpcError && typeof reason === "string" && LOCAL_TRUST_REFUSALS[reason]) throw new RpcError(err.code, LOCAL_TRUST_REFUSALS[reason], err.details);
+      throw err;
+    }
+    return c.request<DeliveryConfirmationResolution>(verb, { beeId, messageId, generation, idempotencyKey: typeof key === "string" ? key : `cli-mail-resolve:${beeId}:${messageId}:${generation}:${resend ? "resend_anyway" : "drop"}` });
+  });
+  const detail = r.action === "drop" ? `message ${r.messageId} dropped` : `message ${r.messageId} resent as ${r.replacementMessageId}`;
+  emit(ctx, [confirm("ok", r.action === "drop" ? "dropped" : "resent", detail, r.deduped === true)], r, false);
+  return 0;
+}
+
 const MAILBOX_USAGE = "usage: hive mailbox <bee> [--since <message-id>] [--unread]";
 
 async function cmdMailbox(ctx: CliContext, parsed: Parsed): Promise<number> {
@@ -5126,6 +5168,8 @@ export async function runV2Cli(argv: string[], io: CliIo = defaultIo): Promise<n
         return await cmdList(ctx, parsed);
       case "mail-batch":
         return await cmdMailBatch(ctx, parsed);
+      case "mail":
+        return await cmdMail(ctx, parsed);
       case "mailbox":
         return await cmdMailbox(ctx, parsed);
       case "ack":

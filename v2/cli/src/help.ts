@@ -45,6 +45,7 @@ export const GROUPS: Group[] = [
       ["view", "<bee>", "one bee, with env key names only"],
       ["mailbox", "<bee> [--since id] [--unread]", "queued + delivered mail; --since/--unread for pollers"],
       ["ack", "<bee> <id>|--all", "mark a mailbox-only bee's mail read through <id>"],
+      ["mail", "resolve <bee> <id> --resend|--drop --register", "resolve a held delivery without the Apiary app (needs rpcLocalTrust.requireObservationCaller: true in config.json)"],
       ["commands", "<bee>", "command queue for a bee"],
       ["children", "<bee>", "bees this one spawned or forked"],
       ["transcript", "<bee> [-n n] [-f]", "session log as readable turns (alias: tx); -f/--follow streams"],

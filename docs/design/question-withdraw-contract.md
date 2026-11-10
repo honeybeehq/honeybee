@@ -201,32 +201,23 @@ integrity, foreign keys and the original withdrawal receipt must all survive.
 
 ## Approved workstation activation
 
-Workstation deployment provisions registered-service trust only when the approved
-host's deploy explicitly includes `--provision-question-withdrawal`. Both source
-and verified `--artifact` deployments accept this switch. Routine deployment
-without the switch preserves the installed trust configuration. An explicit
-`rpcLocalTrust.requireObservationCaller: false` remains an opt-out even with the
-switch, and does not prevent an ordinary update.
+`hive deploy` and its `--provision-question-withdrawal` switch are gone. Trust is
+switched on per node by setting `rpcLocalTrust.requireObservationCaller: true` in
+the node's `<dataDir>/config.json` (the block shown above; `registrationKeyFile`
+defaults to `<dataDir>/rpc-private/registration.key`). The daemon reads the field
+at start, so it takes effect at the next daemon start, normally the restart that
+`hive runtime activate` issues. Honeybee startup creates and validates the
+private key. An absent field or an explicit `false` leaves trust off. A later
+`hive runtime activate` to an older runtime keeps the config and key; the older
+runtime ignores fields it does not know.
 
-For a reviewed source deployment, run `hive deploy <approved-sha>
---provision-question-withdrawal`. For a coordinated release, the Apiary owner must
-forward the same switch to its staged Honeybee `deploy --artifact` invocation,
-with the existing identity, admission and expected-current arguments. The staged
-CLI must itself contain this deployment change. Reapplying the identical source
-or verified artifact with the switch can repair missing provisioning.
-
-Provisioning merges the trust field before daemon startup and leaves native
-Honeybee startup responsible for creating and validating the private key. The
-activation gate requires the running daemon's hello to offer
-`question.withdraw.v1`; missing native peer credentials or unsupported runtime
-bytes fail activation. If activation restores the previous runtime, it restores
-only the trust field, preserving unrelated configuration changes. If that field
-changed during activation, recovery refuses to overwrite it. A held candidate
-keeps its configuration for recovery. Explicit later `hive deploy --rollback`
-preserves successfully installed node trust configuration and private keys; the
-older runtime ignores unsupported configuration fields.
+With trust on, an operator terminal outside any bee can resolve a held delivery
+when the Apiary app is not running: `hive mail resolve <bee> <message-id>
+--resend|--drop --register`. It registers through the same handshake and is
+refused with `caller_not_trusted` when trust is off, from a bee runtime, or while
+another live service holds the registration.
 
 This mechanism does not approve rollout. Keep the reviewed canary scope of one
 satellite and erebor, the 24-hour observation window, and the observer inventory
 including forage before widening activation. Deploy compatible Apiary readers and
-registered-service clients first. No fleet-wide default is enabled by this switch.
+registered-service clients first. Trust has no fleet-wide default.
