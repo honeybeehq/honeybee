@@ -1333,7 +1333,6 @@ test("lease account ids share core validation: retained @ ids renew, revoke and 
     assert.equal(readFileSync(join(reinstalled.account.homePath, ".credentials.json"), "utf8"), raw);
     for (const invalidId of ["claude-invalid/id", "claude-invalid\\id", "claude invalid", `${retainedId}x`]) {
       await rejects(() => client.request("account.lease.install", { ...renewal, id: invalidId }), "invalid_request");
-      await rejects(() => client.request("account.lease.install", { ...renewal, label: invalidId }), "invalid_request");
       await rejects(() => client.request("account.lease.remove", { id: invalidId }), "invalid_request");
       await rejects(() => client.request("account.credentials.nativeBackup", { id: invalidId }), "invalid_request");
       await rejects(() => client.request("account.credentials.restoreNative", { id: invalidId }), "invalid_request");
@@ -1341,7 +1340,14 @@ test("lease account ids share core validation: retained @ ids renew, revoke and 
       await rejects(() => client.request("account.add", { id: invalidId, harness: "claude", label: "invalid-test" }), "invalid_request");
     }
     await rejects(() => client.request("account.lease.install", { ...input, id: `${id}x` }), "invalid_request");
-    process.stdout.write("retained @ account and @ label: install/epoch renewal/revoke/reinstall PASS; full id cap210; invalid charset/overflow typed invalid_request\n");
+    for (const invalidLabel of ["", "   ", "bad\u0000label", "bad\nlabel", "L".repeat(211)]) {
+      await rejects(() => client.request("account.lease.install", { ...renewal, epoch: 4, label: invalidLabel }), "invalid_request");
+    }
+    const humanLabel = await client.request<any>("account.lease.install", { ...renewal, epoch: 4, label: "Lx personal/2" });
+    assert.equal(humanLabel.account.id, retainedId);
+    assert.equal(humanLabel.account.leasedFrom.epoch, 4);
+    assert.equal(humanLabel.account.label, retainedId);
+    process.stdout.write("retained @ account and @ label: install/epoch renewal/revoke/reinstall PASS; full id cap210; invalid id charset/overflow typed invalid_request; blank, control-character and overlong labels typed invalid_request; a human label renews\n");
   } finally {
     client.close();
     await daemon.stop();
