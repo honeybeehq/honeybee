@@ -1169,10 +1169,10 @@ export class CellRetentionService {
     if (c.bee?.activeHandoffId) return "handoff_in_flight";
     if (c.bee == null || c.bee.lifecycle === "deleted") return null;
     const settled = this.settledReason(c);
-    if (settled != null) return settled;
+    if (settled != null && settled !== "too_young") return settled;
     const policy = this.deps.policy;
     const idleFor = now - (this.idleSinceOf(c) ?? now);
-    if (policy.trimAfterMs != null && idleFor >= policy.trimAfterMs) return null;
+    if (settled == null && policy.trimAfterMs != null && idleFor >= policy.trimAfterMs) return null;
     if (c.cell.state === "retained") {
       if (policy.retainedAfterMs == null) return "policy_disabled";
       return idleFor >= policy.retainedAfterMs ? null : "too_young";

@@ -71,6 +71,7 @@ function rig(policy: Partial<ResolvedCellRetention> = {}, volume: { totalBytes: 
   const item = (result: CellGcResult, shape: Shape) => result.items.find((i) => i.beeId === cells.get(shape)!.beeId)!;
   return {
     service, store, cells, volume, pass, item,
+    advance: (ms: number) => { now += ms; },
     cleanup: async () => { await service.stop(); store.close(); rmSync(root, { recursive: true, force: true }); },
   };
 }
@@ -129,6 +130,27 @@ test("settle: an inspected hold stands until its registry facts change or cell.e
     const parked = await r.pass();
     assert.equal(parked.inspected, 2, "a registry fact change (parked_at) re-inspects the Cell");
     assert.equal(r.item(parked.result, "archived_dirty").reason, "dirty_uncommitted");
+  } finally {
+    await r.cleanup();
+  }
+});
+
+test("settle: a Cell remembered as too young is judged again once it is old enough to evict", { timeout: 120_000 }, async () => {
+  const r = rig({ trimAfterMs: HOUR });
+  try {
+    const first = await r.pass();
+    assert.equal(first.inspected, 3, "the young Cell is idle past the trim age, so it is inspected with the two archived ones");
+    assert.equal(r.item(first.result, "young").reason, "too_young");
+    assert.equal(r.item(first.result, "young").trim.planned, false, "nothing to trim");
+    const second = await r.pass();
+    assert.equal(second.inspected, 1, "the young Cell and the dirty hold are remembered");
+    assert.equal(r.item(second.result, "young").reason, "too_young");
+
+    r.advance(31 * DAY);
+    const aged = await r.pass();
+    assert.equal(aged.inspected, 2, "past the stopped age the remembered judgment no longer stands");
+    assert.equal(r.item(aged.result, "young").reason, "stopped_age");
+    assert.equal(r.item(aged.result, "young").verdict, "evict");
   } finally {
     await r.cleanup();
   }
