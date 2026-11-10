@@ -76,3 +76,42 @@ test("codex: fresh start refusal remains unconsumed and a stale steer plan canno
   assert.equal(driver.consumedGeneration(32), undefined);
   assert.equal(frames.length, 1);
 });
+
+test("a status answer is announced on its own and leaves the readiness a held poll is keyed on unchanged", t => {
+  const dir = mkdtempSync(join(tmpdir(), "status-answer-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const driver = new RuntimeHost({ sessionLogDir: join(dir, "logs"), resolve: () => { throw new Error("no spawn"); } });
+  const frames: string[] = [];
+  const proc = {
+    beeId: "bee", pid: 1, generation: 1, phase: "idle", adapter: codexAdapter({ cwd: dir }), sessionId: "thread", turnId: null,
+    processIdentity: { pid: 1, birth: "fixture", bootId: "fixture" },
+    deliveryProtocol: { authenticated: true, supported: true, legacy: false, replies: new Map<number, DeliveryStatus>(), pending: new Set<number>() },
+    confirmedDeliveries: new Set<number>(), pendingDeliveries: new Set<number>(),
+    socket: { writable: true, destroyed: false, write: (line: string) => frames.push(line) },
+  };
+  (driver as unknown as { procs: Map<string, unknown> }).procs.set("bee", proc);
+  const wireLine = "written a day ago";
+  const plan = { wireLine, digest: createHash("sha256").update(wireLine).digest("hex"), host: proc.processIdentity };
+  const heldReadiness = driver.deliveryReadiness("bee", 1, 40, false);
+  const readiness = driver.deliveryReadiness("bee", 1, 40);
+
+  assert.equal(driver.reconcileDeliveryConfirmation("bee", 1, 40, plan), "pending_ack");
+  assert.deepEqual(frames.map(frame => JSON.parse(frame).op), ["delivery_status"]);
+  assert.equal(driver.deliveryStatusAnswered("bee", 1, 40), false);
+
+  proc.deliveryProtocol.pending.delete(40);
+  proc.deliveryProtocol.replies.set(40, { id: 40, digest: plan.digest, state: "unknown" });
+  assert.equal(driver.deliveryStatusAnswered("bee", 1, 40), true);
+  assert.equal(driver.deliveryStatusAnswered("bee", 2, 40), false);
+  assert.equal(driver.deliveryReadiness("bee", 1, 40, false), heldReadiness);
+  assert.notEqual(driver.deliveryReadiness("bee", 1, 40), readiness);
+
+  assert.equal(driver.reconcileDeliveryConfirmation("bee", 1, 40, plan), "unknown");
+  assert.equal(driver.deliveryStatusAnswered("bee", 1, 40), false);
+  assert.equal(driver.deliveryReadiness("bee", 1, 40, false), heldReadiness);
+  assert.equal(driver.deliveryReadiness("bee", 1, 40), readiness);
+  assert.equal(frames.length, 1);
+
+  proc.confirmedDeliveries.add(40);
+  assert.notEqual(driver.deliveryReadiness("bee", 1, 40, false), heldReadiness);
+});

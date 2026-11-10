@@ -317,6 +317,7 @@ const NAMED_KEY_PREFIX = "k:";
  * so the bee is re-checked on this cadence instead of on every step.
  */
 const HOST_AUTH_RECHECK_MS = 1_000;
+const HELD_CONFIRMATION_POLL_MS = 30_000;
 
 function neverWrittenAuthHold(intent: DeliveryConfirmationIntent | null, generation: number): boolean {
   return intent !== null && intent.wireLine === null && intent.state === "held" && intent.reason === "host_auth_failed" && intent.generation === generation;
@@ -1832,7 +1833,7 @@ export class DaemonCore {
   private readonly interruptingGeneration = new Map<string, number>();
   private readonly deliveryRetries = new Map<string, { key: string; attempts: number; nextAt: number }>();
   private readonly confirmationReady = new Map<number, string>();
-  private readonly confirmationPolls = new Map<number, { beeId: string; key: string; attempts: number; nextAt: number }>();
+  private readonly confirmationPolls = new Map<number, { beeId: string; key: string; attempts: number; nextAt: number; answerConsumed: boolean }>();
 
   private acceptPoint(beeId: string, generation: number): AcceptPoint {
     return this.interruptingGeneration.get(beeId) === generation ? "interrupting" : "open";
@@ -1849,8 +1850,8 @@ export class DaemonCore {
   }
 
   private holdConfirmation(intent: DeliveryConfirmationIntent, reason: DeliveryConfirmationReason): void {
-    const held = this.store.holdDeliveryConfirmation(intent.messageId, reason);
-    if (held && (intent.state !== "held" || intent.reason !== reason)) this.log(`deliver.held bee=${intent.beeId} msg=${intent.messageId} gen=${intent.generation} reason=${reason}`);
+    if (intent.state === "held" && intent.reason === reason) return;
+    if (this.store.holdDeliveryConfirmation(intent.messageId, reason)) this.log(`deliver.held bee=${intent.beeId} msg=${intent.messageId} gen=${intent.generation} reason=${reason}`);
   }
 
   private releaseRefusedPlainWrite(intent: DeliveryConfirmationIntent): boolean {
@@ -1910,15 +1911,20 @@ export class DaemonCore {
         const plan = this.driver.planDeliveryConfirmation?.(intent.beeId, intent.generation, intent.messageId, "");
         if (!plan || plan === "not_ready") continue;
       }
-      const key = this.driver.deliveryReadiness?.(intent.beeId, intent.generation, intent.messageId) ?? "";
+      const held = intent.state === "held";
+      const key = `${intent.state}:${this.driver.deliveryReadiness?.(intent.beeId, intent.generation, intent.messageId, !held) ?? ""}`;
       const poll = this.confirmationPolls.get(intent.messageId);
-      if (poll?.key === key && this.now() < poll.nextAt) continue;
+      if (poll?.key === key && this.now() < poll.nextAt) {
+        if (!held || poll.answerConsumed || !this.driver.deliveryStatusAnswered?.(intent.beeId, intent.generation, intent.messageId)) continue;
+        poll.answerConsumed = true;
+      } else {
+        const attempts = poll?.key === key ? poll.attempts + 1 : 1;
+        this.confirmationPolls.set(intent.messageId, { beeId: intent.beeId, key, attempts, answerConsumed: false,
+          nextAt: this.now() + (held ? HELD_CONFIRMATION_POLL_MS : Math.min(30_000, 200 * 2 ** Math.min(attempts, 8)) * (0.75 + this.random() * 0.25)) });
+      }
       const result = intent.wireLine === null
         ? this.driver.consumeDeliveryConfirmation?.(intent.beeId, intent.generation, intent.messageId) ? "accepted" : "pending_ack"
         : this.driver.reconcileDeliveryConfirmation?.(intent.beeId, intent.generation, intent.messageId, intent) ?? "unknown";
-      const attempts = poll?.key === key ? poll.attempts + 1 : 1;
-      this.confirmationPolls.set(intent.messageId, { beeId: intent.beeId, key, attempts,
-        nextAt: this.now() + Math.min(30_000, 200 * 2 ** Math.min(attempts, 8)) * (0.75 + this.random() * 0.25) });
       if (result === "accepted") {
         const message = this.store.getMessage(intent.messageId);
         if (!message) continue;

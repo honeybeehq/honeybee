@@ -810,14 +810,20 @@ export class RuntimeHost implements RuntimeDriver {
     return matching && (this.consumed.get(messageId) === generation || p?.generation === generation && p.confirmedDeliveries.has(messageId)) ? "accepted" : "unknown";
   }
 
-  deliveryReadiness(beeId: string, generation: number, messageId: number): string {
+  deliveryReadiness(beeId: string, generation: number, messageId: number, includeStatusReply = true): string {
     const p = this.procs.get(beeId);
     if (!p || p.generation !== generation) return "absent";
+    const reply = includeStatusReply ? p.deliveryProtocol?.replies.get(messageId) : undefined;
     return JSON.stringify([p.exited, p.degraded, p.adapter?.harness, p.phase, p.stopCause,
       p.sessionId, p.turnId, this.reconnecting.has(`${beeId}:${generation}`),
       p.pendingDeliveries.has(messageId), p.confirmedDeliveries.has(messageId),
       p.socketBroken, p.socket?.destroyed, p.socket?.writable, p.authFailureSince,
-      p.deliveryProtocol?.replies.get(messageId)?.state === "written" ? null : p.deliveryProtocol?.replies.get(messageId)]);
+      reply?.state === "written" ? null : reply]);
+  }
+
+  deliveryStatusAnswered(beeId: string, generation: number, messageId: number): boolean {
+    const p = this.procs.get(beeId);
+    return p?.generation === generation && p.deliveryProtocol?.replies.has(messageId) === true;
   }
 
   deliveryIssue(beeId: string, generation: number, messageId: number, body?: string): "host_auth_failed" | "message_too_large" | null {

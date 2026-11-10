@@ -130,7 +130,8 @@ export interface RuntimeDriver {
    * mid-turn); never blocks. A refusal is not a failure — the mailbox record
    * is the durable truth and the daemon retries against it.
    */
-  deliveryReadiness?(beeId: string, generation: number, messageId: number): string;
+  deliveryReadiness?(beeId: string, generation: number, messageId: number, includeStatusReply?: boolean): string;
+  deliveryStatusAnswered?(beeId: string, generation: number, messageId: number): boolean;
   adoptedDeliveryUncertain?(beeId: string, generation: number): boolean;
   consumeDeliveryConfirmation?(beeId: string, generation: number, messageId: number): boolean;
   planDeliveryConfirmation?(beeId: string, generation: number, messageId: number, body: string, options?: { freshTurn?: boolean }): DeliveryConfirmationPlan | "not_ready" | null;
