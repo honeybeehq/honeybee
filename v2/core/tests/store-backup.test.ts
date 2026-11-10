@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import { test } from "node:test";
@@ -38,6 +39,35 @@ test("owner backs up WAL rows, refuses other writer and restore preserves curren
   const preserved = new DatabaseSync(restored.preservedPath);
   assert.equal(preserved.prepare("SELECT value FROM proof").get()?.value, "after");
   preserved.close();
+});
+
+test("backup and restore hash the snapshot in pieces, so a file too large to read whole still works", (t) => {
+  const { path } = fixture();
+  const seed = new DatabaseSync(path);
+  seed.exec("CREATE TABLE bulk(id INTEGER PRIMARY KEY, body BLOB)");
+  const insert = seed.prepare("INSERT INTO bulk(body) VALUES(?)");
+  for (let i = 0; i < 5; i++) insert.run(Buffer.alloc(700_000, i + 1));
+  seed.close();
+  const readWhole = fs.readFileSync;
+  t.mock.method(fs, "readFileSync", (target: fs.PathOrFileDescriptor, ...rest: unknown[]) => {
+    if (/\.(sqlite3|partial)$|\.restore-/.test(String(target))) throw Object.assign(new RangeError("File size (4723388416) is greater than 2 GiB"), { code: "ERR_FS_FILE_TOO_LARGE" });
+    return (readWhole as (...args: unknown[]) => unknown)(target, ...rest);
+  });
+  syncBuiltinESMExports();
+  let receipt: StoreBackupReceipt;
+  try {
+    receipt = backupStoreOffline(path, "large");
+    const db = new DatabaseSync(path);
+    db.exec("UPDATE proof SET value='after'");
+    db.close();
+    restoreStoreOffline(path, receipt.receiptPath);
+  } finally { t.mock.restoreAll(); syncBuiltinESMExports(); }
+  assert.ok(statSync(receipt.backupPath).size > 3 * 1024 * 1024, "the snapshot spans several hash chunks");
+  assert.equal(receipt.sha256, createHash("sha256").update(readFileSync(receipt.backupPath)).digest("hex"));
+  const restored = new DatabaseSync(path, { readOnly: true });
+  assert.equal(restored.prepare("SELECT value FROM proof").get()?.value, "before");
+  assert.equal(restored.prepare("SELECT COUNT(*) AS n FROM bulk").get()?.n, 5);
+  restored.close();
 });
 
 test("checksum or schema receipt mismatch refuses restore without replacing store", () => {

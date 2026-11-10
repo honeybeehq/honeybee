@@ -1,6 +1,6 @@
 import { DatabaseSync } from "node:sqlite";
 import { createHash, randomUUID } from "node:crypto";
-import { chmodSync, closeSync, copyFileSync, existsSync, fsyncSync, linkSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, closeSync, copyFileSync, existsSync, fsyncSync, linkSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { CoreError } from "./types.ts";
 
@@ -26,6 +26,16 @@ export interface StoreBackupReceipt {
 }
 
 const digest = (bytes: string | Buffer) => createHash("sha256").update(bytes).digest("hex");
+const FILE_DIGEST_CHUNK_BYTES = 1024 * 1024;
+function fileDigest(path: string): string {
+  const hash = createHash("sha256");
+  const chunk = Buffer.allocUnsafe(FILE_DIGEST_CHUNK_BYTES);
+  const fd = openSync(path, "r");
+  try {
+    for (let read = readSync(fd, chunk, 0, chunk.length, null); read > 0; read = readSync(fd, chunk, 0, chunk.length, null)) hash.update(chunk.subarray(0, read));
+  } finally { closeSync(fd); }
+  return hash.digest("hex");
+}
 const quote = (value: string) => `'${value.replaceAll("'", "''")}'`;
 function sync(path: string): void {
   const fd = openSync(path, "r");
@@ -67,7 +77,7 @@ export function backupStore(db: DatabaseSync, storePath: string, sourceBuild: st
     receiptPath = `${base}.json`;
     receiptTemporary = `${receiptPath}.partial`;
     const receipt: StoreBackupReceipt = { format: 1, sourceBuild, storePath: resolve(storePath), ...verified,
-      createdAt: new Date().toISOString(), sha256: digest(readFileSync(backupPath)), backupPath, receiptPath };
+      createdAt: new Date().toISOString(), sha256: fileDigest(backupPath), backupPath, receiptPath };
     writeFileSync(`${receiptPath}.partial`, `${JSON.stringify(receipt, null, 2)}\n`, { mode: 0o600, flag: "wx" });
     sync(`${receiptPath}.partial`);
     renameSync(`${receiptPath}.partial`, receiptPath);
@@ -137,7 +147,7 @@ function restoreStore(storePath: string, receiptPath: string): { preservedPath: 
   const receipt = raw as StoreBackupReceipt;
   if (receipt.format !== 1 || receipt.storePath !== resolve(storePath) || receipt.receiptPath !== resolve(receiptPath)
     || typeof receipt.backupPath !== "string" || dirname(receipt.backupPath) !== dirname(resolve(receiptPath))
-    || typeof receipt.sha256 !== "string" || receipt.sha256 !== digest(readFileSync(receipt.backupPath))) throw new StoreBackupError("Backup receipt path or checksum mismatch");
+    || typeof receipt.sha256 !== "string" || receipt.sha256 !== fileDigest(receipt.backupPath)) throw new StoreBackupError("Backup receipt path or checksum mismatch");
   const snapshot = new DatabaseSync(receipt.backupPath, { readOnly: true });
   try {
     const checked = facts(snapshot);
@@ -153,7 +163,7 @@ function restoreStore(storePath: string, receiptPath: string): { preservedPath: 
     if (db.prepare("PRAGMA journal_mode=DELETE").get()?.journal_mode !== "delete") throw new StoreRestoreError("Store could not leave WAL mode");
     copyFileSync(receipt.backupPath, temporary);
     chmodSync(temporary, 0o600);
-    if (digest(readFileSync(temporary)) !== receipt.sha256) throw new StoreBackupError("Copied backup differs from receipt");
+    if (fileDigest(temporary) !== receipt.sha256) throw new StoreBackupError("Copied backup differs from receipt");
     sync(temporary);
     replacement = new DatabaseSync(temporary);
     if (replacement.prepare("PRAGMA journal_mode=DELETE").get()?.journal_mode !== "delete") throw new StoreRestoreError("Replacement must use DELETE journal mode");
