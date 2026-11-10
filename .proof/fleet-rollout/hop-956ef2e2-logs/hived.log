@@ -1,0 +1,134 @@
+{"ts":1794311630030,"op":"tmp.policy beeTmpRoot=off"}
+{"ts":1794311630062,"op":"store.migration.rpc_idempotency_env seen=0 redacted=0 skipped_unparseable=0 skipped_unrecognised=0 complete=true ms=0"}
+{"ts":1794311630067,"op":"boot adopted=0 stopped=0 requeued=0 reaped=0 wakes=0"}
+{"ts":1794311630077,"op":"rpc.listen socket=/var/tmp/hb-fleet-lab-hop-956ef2e2-mwamtdv4/v2/hived.sock"}
+{"ts":1794311630078,"op":"daemon.started pid=1444799 store=/var/tmp/hb-fleet-lab-hop-956ef2e2-mwamtdv4/v2/core.sqlite3"}
+hived v2 listening on /var/tmp/hb-fleet-lab-hop-956ef2e2-mwamtdv4/v2/hived.sock (store /var/tmp/hb-fleet-lab-hop-956ef2e2-mwamtdv4/v2/core.sqlite3)
+{"ts":1794311630508,"op":"cmd.spawn id=1 bee=38685ae0-61a0-4c8c-a871-48b8cd3431ce start gen=1"}
+{"ts":1794311630685,"op":"cmd.spawn id=2 bee=dd628ba3-1dd4-4976-8aa2-cdf1aebd43ca start gen=1"}
+{"ts":1794311630693,"op":"spawn.evidence bee=38685ae0-61a0-4c8c-a871-48b8cd3431ce gen=1 kind=booted"}
+{"ts":1794311630694,"op":"obs.booted bee=38685ae0-61a0-4c8c-a871-48b8cd3431ce gen=1 pid=1444842"}
+{"ts":1794311630694,"op":"obs.turn_ended bee=38685ae0-61a0-4c8c-a871-48b8cd3431ce gen=1"}
+{"ts":1794311630695,"op":"session.recorded bee=38685ae0-61a0-4c8c-a871-48b8cd3431ce gen=1 id=stub-1444855"}
+{"ts":1794311630695,"op":"obs.checkpoint bee=38685ae0-61a0-4c8c-a871-48b8cd3431ce gen=1 cursor=45"}
+{"ts":1794311630875,"op":"cmd.spawn id=3 bee=12850c18-516b-475c-81db-fb3e5c654f62 start gen=1"}
+{"ts":1794311630882,"op":"spawn.evidence bee=dd628ba3-1dd4-4976-8aa2-cdf1aebd43ca gen=1 kind=booted"}
+{"ts":1794311630883,"op":"obs.booted bee=dd628ba3-1dd4-4976-8aa2-cdf1aebd43ca gen=1 pid=1444870"}
+{"ts":1794311630883,"op":"obs.turn_ended bee=dd628ba3-1dd4-4976-8aa2-cdf1aebd43ca gen=1"}
+{"ts":1794311630883,"op":"session.recorded bee=dd628ba3-1dd4-4976-8aa2-cdf1aebd43ca gen=1 id=stub-1444884"}
+{"ts":1794311630883,"op":"obs.checkpoint bee=dd628ba3-1dd4-4976-8aa2-cdf1aebd43ca gen=1 cursor=45"}
+{"ts":1794311630939,"op":"spawn.evidence bee=12850c18-516b-475c-81db-fb3e5c654f62 gen=1 kind=booted"}
+{"ts":1794311630939,"op":"obs.booted bee=12850c18-516b-475c-81db-fb3e5c654f62 gen=1 pid=1444898"}
+{"ts":1794311630939,"op":"obs.turn_ended bee=12850c18-516b-475c-81db-fb3e5c654f62 gen=1"}
+{"ts":1794311630940,"op":"session.recorded bee=12850c18-516b-475c-81db-fb3e5c654f62 gen=1 id=stub-1444905"}
+{"ts":1794311630940,"op":"obs.checkpoint bee=12850c18-516b-475c-81db-fb3e5c654f62 gen=1 cursor=45"}
+{"ts":1794311685264,"op":"daemon.stopping pid=1444799"}
+{"ts":1794311685276,"op":"daemon.stopped"}
+{"ts":1794311685277,"op":"daemon.stop_complete pid=1444799"}
+hived scheduling: foreground (nice 0, io none)
+{"ts":1794311685608,"op":"tmp.policy beeTmpRoot=/var/tmp/hb-fleet-lab-hop-956ef2e2-mwamtdv4/v2/tmp source=data_dir_default daemonTmp=/var/tmp/hb-fleet-lab-hop-956ef2e2-mwamtdv4/v2/tmp/daemon nodeCompileCache=/var/tmp/hb-fleet-lab-hop-956ef2e2-mwamtdv4/v2/node-compile-cache"}
+{"ts":1794311685651,"op":"security.confinement strict=false bwrap={\"path\":\"/usr/bin/bwrap\",\"setuid\":false}"}
+{"ts":1794311685653,"op":"champions homes=/var/tmp/hb-fleet-lab-hop-956ef2e2-mwamtdv4/v2/champions store=/var/tmp/hb-fleet-lab-hop-956ef2e2-mwamtdv4/v2/transcript-objects"}
+{"ts":1794311685653,"op":"transcripts.segments store=/var/tmp/hb-fleet-lab-hop-956ef2e2-mwamtdv4/v2/transcript-objects max_lines=1024 max_raw_bytes=1048576 projection=8"}
+{"ts":1794311685662,"op":"boot.adopt bee=12850c18-516b-475c-81db-fb3e5c654f62 gen=1 pid=1444898 ok=true identityReason=resolved"}
+{"ts":1794311685664,"op":"boot.adopt bee=38685ae0-61a0-4c8c-a871-48b8cd3431ce gen=1 pid=1444842 ok=true identityReason=resolved"}
+{"ts":1794311685665,"op":"boot.adopt bee=dd628ba3-1dd4-4976-8aa2-cdf1aebd43ca gen=1 pid=1444870 ok=true identityReason=resolved"}
+{"ts":1794311685667,"op":"boot adopted=3 stopped=0 requeued=0 reaped=0 wakes=0"}
+{"ts":1794311685680,"op":"rpc.listen socket=/var/tmp/hb-fleet-lab-hop-956ef2e2-mwamtdv4/v2/hived.sock"}
+{"ts":1794311685683,"op":"transcripts.segment.catch_up scheduled=0"}
+{"ts":1794311685686,"op":"boot.handover_marker_removed root=/var/tmp/hb-fleet-lab-hop-956ef2e2-mwamtdv4/runtime"}
+{"ts":1794311685692,"op":"daemon.started pid=1445719 store=/var/tmp/hb-fleet-lab-hop-956ef2e2-mwamtdv4/v2/core.sqlite3"}
+hived v2 listening on /var/tmp/hb-fleet-lab-hop-956ef2e2-mwamtdv4/v2/hived.sock (store /var/tmp/hb-fleet-lab-hop-956ef2e2-mwamtdv4/v2/core.sqlite3)
+{"ts":1794311688280,"op":"cell.reserve bee=d41fe9e1-b3fb-49c6-97c0-0a7a52d311ba origin=/var/tmp/hb-fleet-lab-hop-956ef2e2-mwamtdv4/v2/probe/origin sha=11bab64f784807415c395afb8242cef589b650c8 base=head space=/var/tmp/hb-fleet-lab-hop-956ef2e2-mwamtdv4/cells/probe-mwamunfv-f3a0513be67b/origin-space-f3a0513be67b"}
+{"ts":1794311688286,"op":"cmd.spawn id=4 bee=d41fe9e1-b3fb-49c6-97c0-0a7a52d311ba start gen=1"}
+{"ts":1794311688686,"op":"spawn.evidence bee=d41fe9e1-b3fb-49c6-97c0-0a7a52d311ba gen=1 kind=booted"}
+{"ts":1794311688690,"op":"obs.booted bee=d41fe9e1-b3fb-49c6-97c0-0a7a52d311ba gen=1 pid=1445986"}
+{"ts":1794311688690,"op":"obs.turn_ended bee=d41fe9e1-b3fb-49c6-97c0-0a7a52d311ba gen=1"}
+{"ts":1794311688692,"op":"session.recorded bee=d41fe9e1-b3fb-49c6-97c0-0a7a52d311ba gen=1 id=probe-1445993"}
+{"ts":1794311688695,"op":"obs.checkpoint bee=d41fe9e1-b3fb-49c6-97c0-0a7a52d311ba gen=1 cursor=46"}
+{"ts":1794311688736,"op":"tmp.bee_removed bee=d41fe9e1-b3fb-49c6-97c0-0a7a52d311ba ok=true"}
+{"ts":1794311688737,"op":"cmd.delete id=5 bee=d41fe9e1-b3fb-49c6-97c0-0a7a52d311ba"}
+{"ts":1794311688741,"op":"transcripts.segment.cut_failed bee=d41fe9e1-b3fb-49c6-97c0-0a7a52d311ba reason=turn_ended err=\"FOREIGN KEY constraint failed\""}
+{"ts":1794311688746,"op":"obs.skip bee=d41fe9e1-b3fb-49c6-97c0-0a7a52d311ba gen=1 kind=exited reason=no_bee"}
+{"ts":1794311688783,"op":"runtime.probe handover=none canary=d41fe9e1-b3fb-49c6-97c0-0a7a52d311ba idle_ms=496 deleted_ms=51 degraded=0"}
+{"ts":1794311690418,"op":"deliver bee=12850c18-516b-475c-81db-fb3e5c654f62 msg=1 gen=1 urgency=next"}
+{"ts":1794311690420,"op":"obs.turn_started bee=12850c18-516b-475c-81db-fb3e5c654f62 gen=1 synthetic"}
+{"ts":1794311690420,"op":"obs.skip bee=12850c18-516b-475c-81db-fb3e5c654f62 gen=1 kind=booted reason=already_running"}
+{"ts":1794311690420,"op":"obs.checkpoint bee=12850c18-516b-475c-81db-fb3e5c654f62 gen=1 cursor=84"}
+{"ts":1794311690427,"op":"obs.turn_ended bee=12850c18-516b-475c-81db-fb3e5c654f62 gen=1"}
+{"ts":1794311690427,"op":"obs.checkpoint bee=12850c18-516b-475c-81db-fb3e5c654f62 gen=1 cursor=191"}
+{"ts":1794311690432,"op":"transcripts.segment.cut bee=12850c18-516b-475c-81db-fb3e5c654f62 reason=turn_ended segments=1 lines=5 through=5"}
+{"ts":1794311721638,"op":"runtime.activate from=b3c17a40c2dd013aa6575a3ca2491f25a07a3191 to=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb runtimes=3 degraded=0 unit=hb.fleet.lab"}
+{"ts":1794311721893,"op":"runtime.activate.restart_issued unit=hb.fleet.lab platform=systemd"}
+{"ts":1794311721919,"op":"daemon.stopping pid=1445719"}
+{"ts":1794311721923,"op":"rpc.close conns=0 drained=true"}
+{"ts":1794311721930,"op":"daemon.stopped"}
+{"ts":1794311721930,"op":"daemon.stop_complete pid=1445719"}
+hived scheduling: foreground (nice 0, io none)
+{"ts":1794311722276,"op":"tmp.policy beeTmpRoot=/var/tmp/hb-fleet-lab-hop-956ef2e2-mwamtdv4/v2/tmp source=data_dir_default daemonTmp=/var/tmp/hb-fleet-lab-hop-956ef2e2-mwamtdv4/v2/tmp/daemon nodeCompileCache=/var/tmp/hb-fleet-lab-hop-956ef2e2-mwamtdv4/v2/node-compile-cache"}
+{"ts":1794311722288,"op":"security.confinement strict=false bwrap={\"path\":\"/usr/bin/bwrap\",\"setuid\":false}"}
+{"ts":1794311722289,"op":"champions homes=/var/tmp/hb-fleet-lab-hop-956ef2e2-mwamtdv4/v2/champions store=/var/tmp/hb-fleet-lab-hop-956ef2e2-mwamtdv4/v2/transcript-objects"}
+{"ts":1794311722289,"op":"transcripts.segments store=/var/tmp/hb-fleet-lab-hop-956ef2e2-mwamtdv4/v2/transcript-objects max_lines=1024 max_raw_bytes=1048576 projection=8"}
+{"ts":1794311722297,"op":"boot.adopt bee=12850c18-516b-475c-81db-fb3e5c654f62 gen=1 pid=1444898 ok=true identityReason=resolved"}
+{"ts":1794311722298,"op":"boot.adopt bee=38685ae0-61a0-4c8c-a871-48b8cd3431ce gen=1 pid=1444842 ok=true identityReason=resolved"}
+{"ts":1794311722299,"op":"boot.adopt bee=dd628ba3-1dd4-4976-8aa2-cdf1aebd43ca gen=1 pid=1444870 ok=true identityReason=resolved"}
+{"ts":1794311722301,"op":"boot adopted=3 stopped=0 requeued=0 reaped=0 wakes=0"}
+{"ts":1794311722302,"op":"boot.handover adopted=3 expected=3 degraded=0 missing=0 from=b3c17a40c2dd013aa6575a3ca2491f25a07a3191 to=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb running=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb reverted=false"}
+{"ts":1794311722318,"op":"rpc.listen socket=/var/tmp/hb-fleet-lab-hop-956ef2e2-mwamtdv4/v2/hived.sock"}
+{"ts":1794311722321,"op":"transcripts.segment.catch_up scheduled=0"}
+{"ts":1794311722325,"op":"boot.handover_marker_removed root=/var/tmp/hb-fleet-lab-hop-956ef2e2-mwamtdv4/runtime"}
+{"ts":1794311722334,"op":"daemon.started pid=1446933 store=/var/tmp/hb-fleet-lab-hop-956ef2e2-mwamtdv4/v2/core.sqlite3"}
+hived v2 listening on /var/tmp/hb-fleet-lab-hop-956ef2e2-mwamtdv4/v2/hived.sock (store /var/tmp/hb-fleet-lab-hop-956ef2e2-mwamtdv4/v2/core.sqlite3)
+{"ts":1794311724403,"op":"cell.reserve bee=a823e436-3228-4466-80ab-bf2b32869473 origin=/var/tmp/hb-fleet-lab-hop-956ef2e2-mwamtdv4/v2/probe/origin sha=11bab64f784807415c395afb8242cef589b650c8 base=head space=/var/tmp/hb-fleet-lab-hop-956ef2e2-mwamtdv4/cells/probe-mwamvfbs-911f4b93992d/origin-space-911f4b93992d"}
+{"ts":1794311724409,"op":"cmd.spawn id=6 bee=a823e436-3228-4466-80ab-bf2b32869473 start gen=1"}
+{"ts":1794311724782,"op":"spawn.evidence bee=a823e436-3228-4466-80ab-bf2b32869473 gen=1 kind=booted"}
+{"ts":1794311724783,"op":"obs.booted bee=a823e436-3228-4466-80ab-bf2b32869473 gen=1 pid=1447174"}
+{"ts":1794311724784,"op":"obs.turn_ended bee=a823e436-3228-4466-80ab-bf2b32869473 gen=1"}
+{"ts":1794311724786,"op":"session.recorded bee=a823e436-3228-4466-80ab-bf2b32869473 gen=1 id=probe-1447181"}
+{"ts":1794311724787,"op":"obs.checkpoint bee=a823e436-3228-4466-80ab-bf2b32869473 gen=1 cursor=46"}
+{"ts":1794311724827,"op":"tmp.bee_removed bee=a823e436-3228-4466-80ab-bf2b32869473 ok=true"}
+{"ts":1794311724827,"op":"cmd.delete id=7 bee=a823e436-3228-4466-80ab-bf2b32869473"}
+{"ts":1794311724836,"op":"obs.skip bee=a823e436-3228-4466-80ab-bf2b32869473 gen=1 kind=exited reason=no_bee"}
+{"ts":1794311724874,"op":"runtime.probe handover=3/3 canary=a823e436-3228-4466-80ab-bf2b32869473 idle_ms=446 deleted_ms=51 degraded=0"}
+{"ts":1794311726042,"op":"deliver bee=dd628ba3-1dd4-4976-8aa2-cdf1aebd43ca msg=2 gen=1 urgency=next"}
+{"ts":1794311726044,"op":"obs.turn_started bee=dd628ba3-1dd4-4976-8aa2-cdf1aebd43ca gen=1 synthetic"}
+{"ts":1794311726044,"op":"obs.skip bee=dd628ba3-1dd4-4976-8aa2-cdf1aebd43ca gen=1 kind=booted reason=already_running"}
+{"ts":1794311726044,"op":"obs.checkpoint bee=dd628ba3-1dd4-4976-8aa2-cdf1aebd43ca gen=1 cursor=84"}
+{"ts":1794311726051,"op":"obs.turn_ended bee=dd628ba3-1dd4-4976-8aa2-cdf1aebd43ca gen=1"}
+{"ts":1794311726051,"op":"obs.checkpoint bee=dd628ba3-1dd4-4976-8aa2-cdf1aebd43ca gen=1 cursor=191"}
+{"ts":1794311726062,"op":"transcripts.segment.cut bee=dd628ba3-1dd4-4976-8aa2-cdf1aebd43ca reason=turn_ended segments=1 lines=5 through=5"}
+{"ts":1794311775277,"op":"runtime.activate from=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb to=cccccccccccccccccccccccccccccccccccccccc runtimes=3 degraded=0 unit=hb.fleet.lab"}
+{"ts":1794311775534,"op":"runtime.activate.restart_issued unit=hb.fleet.lab platform=systemd"}
+{"ts":1794311775560,"op":"daemon.stopping pid=1446933"}
+{"ts":1794311775563,"op":"rpc.close conns=0 drained=true"}
+{"ts":1794311775574,"op":"daemon.stopped"}
+{"ts":1794311775574,"op":"daemon.stop_complete pid=1446933"}
+lab: this build exits at boot
+lab: this build exits at boot
+lab: this build exits at boot
+hived scheduling: foreground (nice 0, io none)
+{"ts":1794311776898,"op":"tmp.policy beeTmpRoot=/var/tmp/hb-fleet-lab-hop-956ef2e2-mwamtdv4/v2/tmp source=data_dir_default daemonTmp=/var/tmp/hb-fleet-lab-hop-956ef2e2-mwamtdv4/v2/tmp/daemon nodeCompileCache=/var/tmp/hb-fleet-lab-hop-956ef2e2-mwamtdv4/v2/node-compile-cache"}
+{"ts":1794311776908,"op":"security.confinement strict=false bwrap={\"path\":\"/usr/bin/bwrap\",\"setuid\":false}"}
+{"ts":1794311776909,"op":"champions homes=/var/tmp/hb-fleet-lab-hop-956ef2e2-mwamtdv4/v2/champions store=/var/tmp/hb-fleet-lab-hop-956ef2e2-mwamtdv4/v2/transcript-objects"}
+{"ts":1794311776910,"op":"transcripts.segments store=/var/tmp/hb-fleet-lab-hop-956ef2e2-mwamtdv4/v2/transcript-objects max_lines=1024 max_raw_bytes=1048576 projection=8"}
+{"ts":1794311776916,"op":"boot.adopt bee=12850c18-516b-475c-81db-fb3e5c654f62 gen=1 pid=1444898 ok=true identityReason=resolved"}
+{"ts":1794311776917,"op":"boot.adopt bee=38685ae0-61a0-4c8c-a871-48b8cd3431ce gen=1 pid=1444842 ok=true identityReason=resolved"}
+{"ts":1794311776918,"op":"boot.adopt bee=dd628ba3-1dd4-4976-8aa2-cdf1aebd43ca gen=1 pid=1444870 ok=true identityReason=resolved"}
+{"ts":1794311776920,"op":"boot adopted=3 stopped=0 requeued=0 reaped=0 wakes=0"}
+{"ts":1794311776921,"op":"boot.handover adopted=3 expected=3 degraded=0 missing=0 from=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb to=cccccccccccccccccccccccccccccccccccccccc running=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb reverted=true"}
+{"ts":1794311776935,"op":"rpc.listen socket=/var/tmp/hb-fleet-lab-hop-956ef2e2-mwamtdv4/v2/hived.sock"}
+{"ts":1794311776937,"op":"transcripts.segment.catch_up scheduled=0"}
+{"ts":1794311776944,"op":"daemon.started pid=1447832 store=/var/tmp/hb-fleet-lab-hop-956ef2e2-mwamtdv4/v2/core.sqlite3"}
+hived v2 listening on /var/tmp/hb-fleet-lab-hop-956ef2e2-mwamtdv4/v2/hived.sock (store /var/tmp/hb-fleet-lab-hop-956ef2e2-mwamtdv4/v2/core.sqlite3)
+{"ts":1794311776948,"op":"boot.rollback reason=crash_loop candidate=cccccccccccccccccccccccccccccccccccccccc previous=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb attempts=3"}
+{"ts":1794311779366,"op":"deliver bee=12850c18-516b-475c-81db-fb3e5c654f62 msg=3 gen=1 urgency=next"}
+{"ts":1794311779369,"op":"obs.turn_started bee=12850c18-516b-475c-81db-fb3e5c654f62 gen=1 synthetic"}
+{"ts":1794311779369,"op":"obs.skip bee=12850c18-516b-475c-81db-fb3e5c654f62 gen=1 kind=booted reason=already_running"}
+{"ts":1794311779369,"op":"obs.checkpoint bee=12850c18-516b-475c-81db-fb3e5c654f62 gen=1 cursor=230"}
+{"ts":1794311779372,"op":"obs.turn_ended bee=12850c18-516b-475c-81db-fb3e5c654f62 gen=1"}
+{"ts":1794311779374,"op":"obs.checkpoint bee=12850c18-516b-475c-81db-fb3e5c654f62 gen=1 cursor=342"}
+{"ts":1794311779414,"op":"transcripts.segment.cut bee=12850c18-516b-475c-81db-fb3e5c654f62 reason=turn_ended segments=1 lines=4 through=9"}
+{"ts":1794311779738,"op":"daemon.stopping pid=1447832"}
+{"ts":1794311779741,"op":"rpc.close conns=0 drained=true"}
+{"ts":1794311779752,"op":"daemon.stopped"}
+{"ts":1794311779752,"op":"daemon.stop_complete pid=1447832"}

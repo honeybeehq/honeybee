@@ -1,0 +1,193 @@
+hived scheduling: foreground (nice 0, io none)
+{"ts":1794311429003,"op":"tmp.policy beeTmpRoot=/var/tmp/hb-fleet-lab-hop-9d95df22-mwamp270/v2/tmp source=data_dir_default daemonTmp=/var/tmp/hb-fleet-lab-hop-9d95df22-mwamp270/v2/tmp/daemon nodeCompileCache=/var/tmp/hb-fleet-lab-hop-9d95df22-mwamp270/v2/node-compile-cache"}
+{"ts":1794311429044,"op":"store.migration.rpc_idempotency_env seen=0 redacted=0 skipped_unparseable=0 skipped_unrecognised=0 complete=true ms=0"}
+{"ts":1794311429047,"op":"security.confinement strict=false bwrap={\"path\":\"/usr/bin/bwrap\",\"setuid\":false}"}
+{"ts":1794311429049,"op":"champions homes=/var/tmp/hb-fleet-lab-hop-9d95df22-mwamp270/v2/champions store=/var/tmp/hb-fleet-lab-hop-9d95df22-mwamp270/v2/transcript-objects"}
+{"ts":1794311429049,"op":"transcripts.segments store=/var/tmp/hb-fleet-lab-hop-9d95df22-mwamp270/v2/transcript-objects max_lines=1024 max_raw_bytes=1048576 projection=8"}
+{"ts":1794311429050,"op":"boot adopted=0 stopped=0 requeued=0 reaped=0 wakes=0"}
+{"ts":1794311429069,"op":"rpc.listen socket=/var/tmp/hb-fleet-lab-hop-9d95df22-mwamp270/v2/hived.sock"}
+{"ts":1794311429081,"op":"daemon.started pid=1440334 store=/var/tmp/hb-fleet-lab-hop-9d95df22-mwamp270/v2/core.sqlite3"}
+hived v2 listening on /var/tmp/hb-fleet-lab-hop-9d95df22-mwamp270/v2/hived.sock (store /var/tmp/hb-fleet-lab-hop-9d95df22-mwamp270/v2/core.sqlite3)
+{"ts":1794311429082,"op":"transcripts.segment.catch_up scheduled=0"}
+{"ts":1794311429608,"op":"cmd.spawn id=1 bee=dd1d39bf-b38f-47ef-aade-7907a318fd07 start gen=1"}
+{"ts":1794311429856,"op":"cmd.spawn id=2 bee=7de8f75f-58d4-44fb-9200-ab3b2620573f start gen=1"}
+{"ts":1794311429861,"op":"spawn.evidence bee=dd1d39bf-b38f-47ef-aade-7907a318fd07 gen=1 kind=booted"}
+{"ts":1794311429862,"op":"obs.booted bee=dd1d39bf-b38f-47ef-aade-7907a318fd07 gen=1 pid=1440379"}
+{"ts":1794311429862,"op":"obs.turn_ended bee=dd1d39bf-b38f-47ef-aade-7907a318fd07 gen=1"}
+{"ts":1794311429866,"op":"session.recorded bee=dd1d39bf-b38f-47ef-aade-7907a318fd07 gen=1 id=stub-1440392"}
+{"ts":1794311429867,"op":"obs.checkpoint bee=dd1d39bf-b38f-47ef-aade-7907a318fd07 gen=1 cursor=45"}
+{"ts":1794311430089,"op":"cmd.spawn id=3 bee=6b5286b6-6816-4351-9b9c-05aed38e6b04 start gen=1"}
+{"ts":1794311430091,"op":"transcripts.segment.cut bee=dd1d39bf-b38f-47ef-aade-7907a318fd07 reason=turn_ended segments=1 lines=1 through=1"}
+{"ts":1794311430094,"op":"spawn.evidence bee=7de8f75f-58d4-44fb-9200-ab3b2620573f gen=1 kind=booted"}
+{"ts":1794311430094,"op":"obs.booted bee=7de8f75f-58d4-44fb-9200-ab3b2620573f gen=1 pid=1440407"}
+{"ts":1794311430095,"op":"obs.turn_ended bee=7de8f75f-58d4-44fb-9200-ab3b2620573f gen=1"}
+{"ts":1794311430095,"op":"session.recorded bee=7de8f75f-58d4-44fb-9200-ab3b2620573f gen=1 id=stub-1440421"}
+{"ts":1794311430095,"op":"obs.checkpoint bee=7de8f75f-58d4-44fb-9200-ab3b2620573f gen=1 cursor=45"}
+{"ts":1794311430103,"op":"transcripts.segment.cut bee=7de8f75f-58d4-44fb-9200-ab3b2620573f reason=turn_ended segments=1 lines=1 through=1"}
+{"ts":1794311430158,"op":"spawn.evidence bee=6b5286b6-6816-4351-9b9c-05aed38e6b04 gen=1 kind=booted"}
+{"ts":1794311430159,"op":"obs.booted bee=6b5286b6-6816-4351-9b9c-05aed38e6b04 gen=1 pid=1440440"}
+{"ts":1794311430159,"op":"obs.turn_ended bee=6b5286b6-6816-4351-9b9c-05aed38e6b04 gen=1"}
+{"ts":1794311430159,"op":"session.recorded bee=6b5286b6-6816-4351-9b9c-05aed38e6b04 gen=1 id=stub-1440447"}
+{"ts":1794311430159,"op":"obs.checkpoint bee=6b5286b6-6816-4351-9b9c-05aed38e6b04 gen=1 cursor=45"}
+{"ts":1794311430167,"op":"transcripts.segment.cut bee=6b5286b6-6816-4351-9b9c-05aed38e6b04 reason=turn_ended segments=1 lines=1 through=1"}
+{"ts":1794311485896,"op":"daemon.stopping pid=1440334"}
+{"ts":1794311485912,"op":"daemon.stopped"}
+{"ts":1794311485913,"op":"daemon.stop_complete pid=1440334"}
+hived scheduling: foreground (nice 0, io none)
+{"ts":1794311486283,"op":"tmp.policy beeTmpRoot=/var/tmp/hb-fleet-lab-hop-9d95df22-mwamp270/v2/tmp source=data_dir_default daemonTmp=/var/tmp/hb-fleet-lab-hop-9d95df22-mwamp270/v2/tmp/daemon nodeCompileCache=/var/tmp/hb-fleet-lab-hop-9d95df22-mwamp270/v2/node-compile-cache"}
+{"ts":1794311486296,"op":"security.confinement strict=false bwrap={\"path\":\"/usr/bin/bwrap\",\"setuid\":false}"}
+{"ts":1794311486297,"op":"champions homes=/var/tmp/hb-fleet-lab-hop-9d95df22-mwamp270/v2/champions store=/var/tmp/hb-fleet-lab-hop-9d95df22-mwamp270/v2/transcript-objects"}
+{"ts":1794311486297,"op":"transcripts.segments store=/var/tmp/hb-fleet-lab-hop-9d95df22-mwamp270/v2/transcript-objects max_lines=1024 max_raw_bytes=1048576 projection=8"}
+{"ts":1794311486304,"op":"boot.adopt bee=6b5286b6-6816-4351-9b9c-05aed38e6b04 gen=1 pid=1440440 ok=true identityReason=resolved"}
+{"ts":1794311486306,"op":"boot.adopt bee=7de8f75f-58d4-44fb-9200-ab3b2620573f gen=1 pid=1440407 ok=true identityReason=resolved"}
+{"ts":1794311486307,"op":"boot.adopt bee=dd1d39bf-b38f-47ef-aade-7907a318fd07 gen=1 pid=1440379 ok=true identityReason=resolved"}
+{"ts":1794311486309,"op":"boot adopted=3 stopped=0 requeued=0 reaped=0 wakes=0"}
+{"ts":1794311486326,"op":"rpc.listen socket=/var/tmp/hb-fleet-lab-hop-9d95df22-mwamp270/v2/hived.sock"}
+{"ts":1794311486329,"op":"transcripts.segment.catch_up scheduled=0"}
+{"ts":1794311486332,"op":"boot.handover_marker_removed root=/var/tmp/hb-fleet-lab-hop-9d95df22-mwamp270/runtime"}
+{"ts":1794311486344,"op":"daemon.started pid=1441281 store=/var/tmp/hb-fleet-lab-hop-9d95df22-mwamp270/v2/core.sqlite3"}
+hived v2 listening on /var/tmp/hb-fleet-lab-hop-9d95df22-mwamp270/v2/hived.sock (store /var/tmp/hb-fleet-lab-hop-9d95df22-mwamp270/v2/core.sqlite3)
+{"ts":1794311488756,"op":"cell.reserve bee=ac964e8e-ca2f-4a94-a302-ff90e71833c1 origin=/var/tmp/hb-fleet-lab-hop-9d95df22-mwamp270/v2/probe/origin sha=120cffd1ff70725201404de0d71a85f887a81211 base=head space=/var/tmp/hb-fleet-lab-hop-9d95df22-mwamp270/cells/probe-mwamqdgz-59ab4848c6f4/origin-space-59ab4848c6f4"}
+{"ts":1794311488763,"op":"cmd.spawn id=4 bee=ac964e8e-ca2f-4a94-a302-ff90e71833c1 start gen=1"}
+{"ts":1794311489319,"op":"spawn.evidence bee=ac964e8e-ca2f-4a94-a302-ff90e71833c1 gen=1 kind=booted"}
+{"ts":1794311489324,"op":"obs.booted bee=ac964e8e-ca2f-4a94-a302-ff90e71833c1 gen=1 pid=1441544"}
+{"ts":1794311489324,"op":"obs.turn_ended bee=ac964e8e-ca2f-4a94-a302-ff90e71833c1 gen=1"}
+{"ts":1794311489328,"op":"session.recorded bee=ac964e8e-ca2f-4a94-a302-ff90e71833c1 gen=1 id=probe-1441551"}
+{"ts":1794311489329,"op":"obs.checkpoint bee=ac964e8e-ca2f-4a94-a302-ff90e71833c1 gen=1 cursor=46"}
+{"ts":1794311489359,"op":"tmp.bee_removed bee=ac964e8e-ca2f-4a94-a302-ff90e71833c1 ok=true"}
+{"ts":1794311489359,"op":"cmd.delete id=5 bee=ac964e8e-ca2f-4a94-a302-ff90e71833c1"}
+{"ts":1794311489369,"op":"obs.skip bee=ac964e8e-ca2f-4a94-a302-ff90e71833c1 gen=1 kind=exited reason=no_bee"}
+{"ts":1794311489405,"op":"runtime.probe handover=none canary=ac964e8e-ca2f-4a94-a302-ff90e71833c1 idle_ms=661 deleted_ms=52 degraded=0"}
+{"ts":1794311490615,"op":"deliver bee=6b5286b6-6816-4351-9b9c-05aed38e6b04 msg=1 gen=1 urgency=next"}
+{"ts":1794311490618,"op":"obs.turn_started bee=6b5286b6-6816-4351-9b9c-05aed38e6b04 gen=1 synthetic"}
+{"ts":1794311490618,"op":"obs.skip bee=6b5286b6-6816-4351-9b9c-05aed38e6b04 gen=1 kind=booted reason=already_running"}
+{"ts":1794311490618,"op":"obs.checkpoint bee=6b5286b6-6816-4351-9b9c-05aed38e6b04 gen=1 cursor=84"}
+{"ts":1794311490623,"op":"obs.turn_ended bee=6b5286b6-6816-4351-9b9c-05aed38e6b04 gen=1"}
+{"ts":1794311490624,"op":"obs.checkpoint bee=6b5286b6-6816-4351-9b9c-05aed38e6b04 gen=1 cursor=191"}
+{"ts":1794311490636,"op":"transcripts.segment.cut bee=6b5286b6-6816-4351-9b9c-05aed38e6b04 reason=turn_ended segments=1 lines=4 through=5"}
+{"ts":1794311493750,"op":"daemon.stopping pid=1441281"}
+{"ts":1794311493754,"op":"rpc.close conns=0 drained=true"}
+{"ts":1794311493767,"op":"daemon.stopped"}
+{"ts":1794311493767,"op":"daemon.stop_complete pid=1441281"}
+hived scheduling: foreground (nice 0, io none)
+{"ts":1794311494106,"op":"tmp.policy beeTmpRoot=/var/tmp/hb-fleet-lab-hop-9d95df22-mwamp270/v2/tmp source=data_dir_default daemonTmp=/var/tmp/hb-fleet-lab-hop-9d95df22-mwamp270/v2/tmp/daemon nodeCompileCache=/var/tmp/hb-fleet-lab-hop-9d95df22-mwamp270/v2/node-compile-cache"}
+{"ts":1794311494118,"op":"security.confinement strict=false bwrap={\"path\":\"/usr/bin/bwrap\",\"setuid\":false}"}
+{"ts":1794311494120,"op":"champions homes=/var/tmp/hb-fleet-lab-hop-9d95df22-mwamp270/v2/champions store=/var/tmp/hb-fleet-lab-hop-9d95df22-mwamp270/v2/transcript-objects"}
+{"ts":1794311494120,"op":"transcripts.segments store=/var/tmp/hb-fleet-lab-hop-9d95df22-mwamp270/v2/transcript-objects max_lines=1024 max_raw_bytes=1048576 projection=8"}
+{"ts":1794311494128,"op":"boot.adopt bee=6b5286b6-6816-4351-9b9c-05aed38e6b04 gen=1 pid=1440440 ok=true"}
+{"ts":1794311494129,"op":"boot.adopt bee=7de8f75f-58d4-44fb-9200-ab3b2620573f gen=1 pid=1440407 ok=true"}
+{"ts":1794311494130,"op":"boot.adopt bee=dd1d39bf-b38f-47ef-aade-7907a318fd07 gen=1 pid=1440379 ok=true"}
+{"ts":1794311494132,"op":"boot adopted=3 stopped=0 requeued=0 reaped=0 wakes=0"}
+{"ts":1794311494148,"op":"rpc.listen socket=/var/tmp/hb-fleet-lab-hop-9d95df22-mwamp270/v2/hived.sock"}
+{"ts":1794311494157,"op":"daemon.started pid=1442108 store=/var/tmp/hb-fleet-lab-hop-9d95df22-mwamp270/v2/core.sqlite3"}
+hived v2 listening on /var/tmp/hb-fleet-lab-hop-9d95df22-mwamp270/v2/hived.sock (store /var/tmp/hb-fleet-lab-hop-9d95df22-mwamp270/v2/core.sqlite3)
+{"ts":1794311494162,"op":"transcripts.segment.catch_up scheduled=0"}
+{"ts":1794311497489,"op":"deliver bee=7de8f75f-58d4-44fb-9200-ab3b2620573f msg=2 gen=1 urgency=next"}
+{"ts":1794311497493,"op":"obs.turn_started bee=7de8f75f-58d4-44fb-9200-ab3b2620573f gen=1 synthetic"}
+{"ts":1794311497493,"op":"obs.skip bee=7de8f75f-58d4-44fb-9200-ab3b2620573f gen=1 kind=booted reason=already_running"}
+{"ts":1794311497494,"op":"obs.checkpoint bee=7de8f75f-58d4-44fb-9200-ab3b2620573f gen=1 cursor=84"}
+{"ts":1794311497499,"op":"obs.turn_ended bee=7de8f75f-58d4-44fb-9200-ab3b2620573f gen=1"}
+{"ts":1794311497503,"op":"obs.checkpoint bee=7de8f75f-58d4-44fb-9200-ab3b2620573f gen=1 cursor=195"}
+{"ts":1794311497551,"op":"transcripts.segment.cut bee=7de8f75f-58d4-44fb-9200-ab3b2620573f reason=turn_ended segments=1 lines=4 through=5"}
+{"ts":1794311517425,"op":"daemon.stopping pid=1442108"}
+{"ts":1794311517440,"op":"daemon.stopped"}
+{"ts":1794311517440,"op":"daemon.stop_complete pid=1442108"}
+hived scheduling: foreground (nice 0, io none)
+{"ts":1794311517787,"op":"tmp.policy beeTmpRoot=/var/tmp/hb-fleet-lab-hop-9d95df22-mwamp270/v2/tmp source=data_dir_default daemonTmp=/var/tmp/hb-fleet-lab-hop-9d95df22-mwamp270/v2/tmp/daemon nodeCompileCache=/var/tmp/hb-fleet-lab-hop-9d95df22-mwamp270/v2/node-compile-cache"}
+{"ts":1794311517797,"op":"security.confinement strict=false bwrap={\"path\":\"/usr/bin/bwrap\",\"setuid\":false}"}
+{"ts":1794311517799,"op":"champions homes=/var/tmp/hb-fleet-lab-hop-9d95df22-mwamp270/v2/champions store=/var/tmp/hb-fleet-lab-hop-9d95df22-mwamp270/v2/transcript-objects"}
+{"ts":1794311517799,"op":"transcripts.segments store=/var/tmp/hb-fleet-lab-hop-9d95df22-mwamp270/v2/transcript-objects max_lines=1024 max_raw_bytes=1048576 projection=8"}
+{"ts":1794311517806,"op":"boot.adopt bee=6b5286b6-6816-4351-9b9c-05aed38e6b04 gen=1 pid=1440440 ok=true identityReason=resolved"}
+{"ts":1794311517807,"op":"boot.adopt bee=7de8f75f-58d4-44fb-9200-ab3b2620573f gen=1 pid=1440407 ok=true identityReason=resolved"}
+{"ts":1794311517809,"op":"boot.adopt bee=dd1d39bf-b38f-47ef-aade-7907a318fd07 gen=1 pid=1440379 ok=true identityReason=resolved"}
+{"ts":1794311517811,"op":"boot adopted=3 stopped=0 requeued=0 reaped=0 wakes=0"}
+{"ts":1794311517828,"op":"rpc.listen socket=/var/tmp/hb-fleet-lab-hop-9d95df22-mwamp270/v2/hived.sock"}
+{"ts":1794311517831,"op":"transcripts.segment.catch_up scheduled=0"}
+{"ts":1794311517833,"op":"boot.handover_marker_removed root=/var/tmp/hb-fleet-lab-hop-9d95df22-mwamp270/runtime"}
+{"ts":1794311517844,"op":"daemon.started pid=1442921 store=/var/tmp/hb-fleet-lab-hop-9d95df22-mwamp270/v2/core.sqlite3"}
+hived v2 listening on /var/tmp/hb-fleet-lab-hop-9d95df22-mwamp270/v2/hived.sock (store /var/tmp/hb-fleet-lab-hop-9d95df22-mwamp270/v2/core.sqlite3)
+{"ts":1794311520373,"op":"cell.reserve bee=7cd77f05-1df0-45d4-a1f7-5bcfb600d623 origin=/var/tmp/hb-fleet-lab-hop-9d95df22-mwamp270/v2/probe/origin sha=120cffd1ff70725201404de0d71a85f887a81211 base=head space=/var/tmp/hb-fleet-lab-hop-9d95df22-mwamp270/cells/probe-mwamr1vz-daac4bf054d5/origin-space-daac4bf054d5"}
+{"ts":1794311520379,"op":"cmd.spawn id=6 bee=7cd77f05-1df0-45d4-a1f7-5bcfb600d623 start gen=1"}
+{"ts":1794311520832,"op":"spawn.evidence bee=7cd77f05-1df0-45d4-a1f7-5bcfb600d623 gen=1 kind=booted"}
+{"ts":1794311520839,"op":"obs.booted bee=7cd77f05-1df0-45d4-a1f7-5bcfb600d623 gen=1 pid=1443168"}
+{"ts":1794311520840,"op":"obs.turn_ended bee=7cd77f05-1df0-45d4-a1f7-5bcfb600d623 gen=1"}
+{"ts":1794311520843,"op":"session.recorded bee=7cd77f05-1df0-45d4-a1f7-5bcfb600d623 gen=1 id=probe-1443175"}
+{"ts":1794311520844,"op":"obs.checkpoint bee=7cd77f05-1df0-45d4-a1f7-5bcfb600d623 gen=1 cursor=46"}
+{"ts":1794311520872,"op":"tmp.bee_removed bee=7cd77f05-1df0-45d4-a1f7-5bcfb600d623 ok=true"}
+{"ts":1794311520872,"op":"cmd.delete id=7 bee=7cd77f05-1df0-45d4-a1f7-5bcfb600d623"}
+{"ts":1794311520882,"op":"obs.skip bee=7cd77f05-1df0-45d4-a1f7-5bcfb600d623 gen=1 kind=exited reason=no_bee"}
+{"ts":1794311520919,"op":"runtime.probe handover=none canary=7cd77f05-1df0-45d4-a1f7-5bcfb600d623 idle_ms=532 deleted_ms=51 degraded=0"}
+{"ts":1794311577047,"op":"runtime.activate from=b3c17a40c2dd013aa6575a3ca2491f25a07a3191 to=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb runtimes=3 degraded=0 unit=hb.fleet.lab"}
+{"ts":1794311577302,"op":"runtime.activate.restart_issued unit=hb.fleet.lab platform=systemd"}
+{"ts":1794311577330,"op":"daemon.stopping pid=1442921"}
+{"ts":1794311577333,"op":"rpc.close conns=0 drained=true"}
+{"ts":1794311577342,"op":"daemon.stopped"}
+{"ts":1794311577342,"op":"daemon.stop_complete pid=1442921"}
+hived scheduling: foreground (nice 0, io none)
+{"ts":1794311577690,"op":"tmp.policy beeTmpRoot=/var/tmp/hb-fleet-lab-hop-9d95df22-mwamp270/v2/tmp source=data_dir_default daemonTmp=/var/tmp/hb-fleet-lab-hop-9d95df22-mwamp270/v2/tmp/daemon nodeCompileCache=/var/tmp/hb-fleet-lab-hop-9d95df22-mwamp270/v2/node-compile-cache"}
+{"ts":1794311577701,"op":"security.confinement strict=false bwrap={\"path\":\"/usr/bin/bwrap\",\"setuid\":false}"}
+{"ts":1794311577703,"op":"champions homes=/var/tmp/hb-fleet-lab-hop-9d95df22-mwamp270/v2/champions store=/var/tmp/hb-fleet-lab-hop-9d95df22-mwamp270/v2/transcript-objects"}
+{"ts":1794311577704,"op":"transcripts.segments store=/var/tmp/hb-fleet-lab-hop-9d95df22-mwamp270/v2/transcript-objects max_lines=1024 max_raw_bytes=1048576 projection=8"}
+{"ts":1794311577712,"op":"boot.adopt bee=6b5286b6-6816-4351-9b9c-05aed38e6b04 gen=1 pid=1440440 ok=true identityReason=resolved"}
+{"ts":1794311577713,"op":"boot.adopt bee=7de8f75f-58d4-44fb-9200-ab3b2620573f gen=1 pid=1440407 ok=true identityReason=resolved"}
+{"ts":1794311577714,"op":"boot.adopt bee=dd1d39bf-b38f-47ef-aade-7907a318fd07 gen=1 pid=1440379 ok=true identityReason=resolved"}
+{"ts":1794311577716,"op":"boot adopted=3 stopped=0 requeued=0 reaped=0 wakes=0"}
+{"ts":1794311577717,"op":"boot.handover adopted=3 expected=3 degraded=0 missing=0 from=b3c17a40c2dd013aa6575a3ca2491f25a07a3191 to=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb running=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb reverted=false"}
+{"ts":1794311577733,"op":"rpc.listen socket=/var/tmp/hb-fleet-lab-hop-9d95df22-mwamp270/v2/hived.sock"}
+{"ts":1794311577736,"op":"transcripts.segment.catch_up scheduled=0"}
+{"ts":1794311577738,"op":"boot.handover_marker_removed root=/var/tmp/hb-fleet-lab-hop-9d95df22-mwamp270/runtime"}
+{"ts":1794311577747,"op":"daemon.started pid=1443628 store=/var/tmp/hb-fleet-lab-hop-9d95df22-mwamp270/v2/core.sqlite3"}
+hived v2 listening on /var/tmp/hb-fleet-lab-hop-9d95df22-mwamp270/v2/hived.sock (store /var/tmp/hb-fleet-lab-hop-9d95df22-mwamp270/v2/core.sqlite3)
+{"ts":1794311580249,"op":"cell.reserve bee=5cbf8237-9ed8-4490-840e-c4afdba703dc origin=/var/tmp/hb-fleet-lab-hop-9d95df22-mwamp270/v2/probe/origin sha=120cffd1ff70725201404de0d71a85f887a81211 base=head space=/var/tmp/hb-fleet-lab-hop-9d95df22-mwamp270/cells/probe-mwamsc3d-94c542a33e61/origin-space-94c542a33e61"}
+{"ts":1794311580255,"op":"cmd.spawn id=8 bee=5cbf8237-9ed8-4490-840e-c4afdba703dc start gen=1"}
+{"ts":1794311580644,"op":"spawn.evidence bee=5cbf8237-9ed8-4490-840e-c4afdba703dc gen=1 kind=booted"}
+{"ts":1794311580651,"op":"obs.booted bee=5cbf8237-9ed8-4490-840e-c4afdba703dc gen=1 pid=1443877"}
+{"ts":1794311580652,"op":"obs.turn_ended bee=5cbf8237-9ed8-4490-840e-c4afdba703dc gen=1"}
+{"ts":1794311580654,"op":"session.recorded bee=5cbf8237-9ed8-4490-840e-c4afdba703dc gen=1 id=probe-1443884"}
+{"ts":1794311580655,"op":"obs.checkpoint bee=5cbf8237-9ed8-4490-840e-c4afdba703dc gen=1 cursor=46"}
+{"ts":1794311580687,"op":"tmp.bee_removed bee=5cbf8237-9ed8-4490-840e-c4afdba703dc ok=true"}
+{"ts":1794311580687,"op":"cmd.delete id=9 bee=5cbf8237-9ed8-4490-840e-c4afdba703dc"}
+{"ts":1794311580697,"op":"obs.skip bee=5cbf8237-9ed8-4490-840e-c4afdba703dc gen=1 kind=exited reason=no_bee"}
+{"ts":1794311580735,"op":"runtime.probe handover=3/3 canary=5cbf8237-9ed8-4490-840e-c4afdba703dc idle_ms=466 deleted_ms=52 degraded=0"}
+{"ts":1794311582477,"op":"deliver bee=dd1d39bf-b38f-47ef-aade-7907a318fd07 msg=3 gen=1 urgency=next"}
+{"ts":1794311582481,"op":"obs.turn_started bee=dd1d39bf-b38f-47ef-aade-7907a318fd07 gen=1 synthetic"}
+{"ts":1794311582481,"op":"obs.skip bee=dd1d39bf-b38f-47ef-aade-7907a318fd07 gen=1 kind=booted reason=already_running"}
+{"ts":1794311582482,"op":"obs.checkpoint bee=dd1d39bf-b38f-47ef-aade-7907a318fd07 gen=1 cursor=84"}
+{"ts":1794311582485,"op":"obs.turn_ended bee=dd1d39bf-b38f-47ef-aade-7907a318fd07 gen=1"}
+{"ts":1794311582486,"op":"obs.checkpoint bee=dd1d39bf-b38f-47ef-aade-7907a318fd07 gen=1 cursor=191"}
+{"ts":1794311582499,"op":"transcripts.segment.cut bee=dd1d39bf-b38f-47ef-aade-7907a318fd07 reason=turn_ended segments=1 lines=4 through=5"}
+{"ts":1794311621840,"op":"runtime.activate from=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb to=cccccccccccccccccccccccccccccccccccccccc runtimes=3 degraded=0 unit=hb.fleet.lab"}
+{"ts":1794311622095,"op":"runtime.activate.restart_issued unit=hb.fleet.lab platform=systemd"}
+{"ts":1794311622121,"op":"daemon.stopping pid=1443628"}
+{"ts":1794311622124,"op":"rpc.close conns=0 drained=true"}
+{"ts":1794311622132,"op":"daemon.stopped"}
+{"ts":1794311622132,"op":"daemon.stop_complete pid=1443628"}
+lab: this build exits at boot
+lab: this build exits at boot
+lab: this build exits at boot
+hived scheduling: foreground (nice 0, io none)
+{"ts":1794311623471,"op":"tmp.policy beeTmpRoot=/var/tmp/hb-fleet-lab-hop-9d95df22-mwamp270/v2/tmp source=data_dir_default daemonTmp=/var/tmp/hb-fleet-lab-hop-9d95df22-mwamp270/v2/tmp/daemon nodeCompileCache=/var/tmp/hb-fleet-lab-hop-9d95df22-mwamp270/v2/node-compile-cache"}
+{"ts":1794311623482,"op":"security.confinement strict=false bwrap={\"path\":\"/usr/bin/bwrap\",\"setuid\":false}"}
+{"ts":1794311623484,"op":"champions homes=/var/tmp/hb-fleet-lab-hop-9d95df22-mwamp270/v2/champions store=/var/tmp/hb-fleet-lab-hop-9d95df22-mwamp270/v2/transcript-objects"}
+{"ts":1794311623484,"op":"transcripts.segments store=/var/tmp/hb-fleet-lab-hop-9d95df22-mwamp270/v2/transcript-objects max_lines=1024 max_raw_bytes=1048576 projection=8"}
+{"ts":1794311623491,"op":"boot.adopt bee=6b5286b6-6816-4351-9b9c-05aed38e6b04 gen=1 pid=1440440 ok=true identityReason=resolved"}
+{"ts":1794311623492,"op":"boot.adopt bee=7de8f75f-58d4-44fb-9200-ab3b2620573f gen=1 pid=1440407 ok=true identityReason=resolved"}
+{"ts":1794311623493,"op":"boot.adopt bee=dd1d39bf-b38f-47ef-aade-7907a318fd07 gen=1 pid=1440379 ok=true identityReason=resolved"}
+{"ts":1794311623495,"op":"boot adopted=3 stopped=0 requeued=0 reaped=0 wakes=0"}
+{"ts":1794311623496,"op":"boot.handover adopted=3 expected=3 degraded=0 missing=0 from=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb to=cccccccccccccccccccccccccccccccccccccccc running=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb reverted=true"}
+{"ts":1794311623510,"op":"rpc.listen socket=/var/tmp/hb-fleet-lab-hop-9d95df22-mwamp270/v2/hived.sock"}
+{"ts":1794311623513,"op":"transcripts.segment.catch_up scheduled=0"}
+{"ts":1794311623520,"op":"daemon.started pid=1444532 store=/var/tmp/hb-fleet-lab-hop-9d95df22-mwamp270/v2/core.sqlite3"}
+hived v2 listening on /var/tmp/hb-fleet-lab-hop-9d95df22-mwamp270/v2/hived.sock (store /var/tmp/hb-fleet-lab-hop-9d95df22-mwamp270/v2/core.sqlite3)
+{"ts":1794311623523,"op":"boot.rollback reason=crash_loop candidate=cccccccccccccccccccccccccccccccccccccccc previous=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb attempts=3"}
+{"ts":1794311625715,"op":"deliver bee=6b5286b6-6816-4351-9b9c-05aed38e6b04 msg=4 gen=1 urgency=next"}
+{"ts":1794311625718,"op":"obs.turn_started bee=6b5286b6-6816-4351-9b9c-05aed38e6b04 gen=1 synthetic"}
+{"ts":1794311625719,"op":"obs.skip bee=6b5286b6-6816-4351-9b9c-05aed38e6b04 gen=1 kind=booted reason=already_running"}
+{"ts":1794311625719,"op":"obs.checkpoint bee=6b5286b6-6816-4351-9b9c-05aed38e6b04 gen=1 cursor=230"}
+{"ts":1794311625723,"op":"obs.turn_ended bee=6b5286b6-6816-4351-9b9c-05aed38e6b04 gen=1"}
+{"ts":1794311625726,"op":"obs.checkpoint bee=6b5286b6-6816-4351-9b9c-05aed38e6b04 gen=1 cursor=342"}
+{"ts":1794311625770,"op":"transcripts.segment.cut bee=6b5286b6-6816-4351-9b9c-05aed38e6b04 reason=turn_ended segments=1 lines=4 through=9"}
+{"ts":1794311626119,"op":"daemon.stopping pid=1444532"}
+{"ts":1794311626122,"op":"rpc.close conns=0 drained=true"}
+{"ts":1794311626133,"op":"daemon.stopped"}
+{"ts":1794311626133,"op":"daemon.stop_complete pid=1444532"}
