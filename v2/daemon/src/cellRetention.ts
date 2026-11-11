@@ -41,10 +41,12 @@ import {
   CellDeleteRefused,
   CellHeadMovedError,
   cellEnvRootForCells,
+  cellFingerprint,
   cellKeepRootForCells,
   evictCellWrapper,
   unparkCellWrapper,
   type EvictResult,
+  landingTargets,
   listPendingKeeps,
   applyParkPlan,
   parkPaths,
@@ -166,11 +168,17 @@ interface Candidate {
   wrapperDir: string;
   receipts: LandingReceipt[];
   skip: CellGcReason | null;
+  /** `cellFingerprint` of the space at gather time; a settled judgment stands only while it is unchanged. */
+  fingerprint: string | null;
+  /** The origin's landing-target tips at gather time: a judgment about landed work stands only while they are unchanged. */
+  originStamp: string | null;
 }
 
 interface Judgment {
   reason: CellGcReason;
   facts: string;
+  /** The landing targets the judgment was made against; only an unlanded hold depends on them. */
+  landing: string | null;
 }
 
 const DEFAULT_INITIAL_DELAY_MS = 5 * 60_000;
@@ -187,7 +195,7 @@ export type WipPushTrigger = "turn_ended" | "exited" | "eviction" | "manual";
 
 const AGE_REASONS: ReadonlySet<CellGcReason> = new Set(["archived_age", "stopped_age", "too_young", "policy_disabled"]);
 
-const SETTLED_REASONS: ReadonlySet<CellGcReason> = new Set(["too_young", "policy_disabled", "dirty_uncommitted", "dirty_stash", "absent", "not_provisioned"]);
+const SETTLED_REASONS: ReadonlySet<CellGcReason> = new Set(["too_young", "policy_disabled", "dirty_uncommitted", "dirty_unlanded", "dirty_stash", "absent", "not_provisioned"]);
 
 function defaultStatfs(path: string): { totalBytes: number; freeBytes: number } {
   const st = statfsSync(path);
@@ -633,7 +641,9 @@ export class CellRetentionService {
       maxPerPass: policy.maxPerPass,
       trimAfterMs: policy.trimAfterMs,
       trimPatterns: [...policy.trimPatterns],
+      leftoverPatterns: [...policy.leftoverPatterns],
       purgeIgnoredOnPark: policy.purgeIgnoredOnPark,
+      evictionRequiresWip: policy.evictionRequiresWip,
     };
   }
 
@@ -758,9 +768,11 @@ export class CellRetentionService {
       ...(census ? { purge: purgeReportOf(items, this.parkMode()) } : {}),
     };
     if (result.totals.presentBytes != null) this.lastPresentBytes = result.totals.presentBytes;
+    const holds = holdBreakdownOf(items);
     this.deps.log(
       `cell.retention.plan dry_run=${opts.dryRun} kind=${opts.kind} census=${census} cells=${result.totals.cells} inspected=${inspected.length} planned=${result.totals.plannedCells}` +
         ` planned_bytes=${result.totals.plannedBytes ?? "?"} held=${result.totals.heldCells} dirty=${result.totals.dirtyCells}` +
+        ` held_modified=${holds.modified} held_untracked_only=${holds.untrackedOnly} held_unlanded_head=${holds.unlandedHead} held_unlanded_branches_only=${holds.unlandedBranchesOnly} unlanded_commits=${holds.unlandedCommits} leftover_only=${holds.leftoverOnly}` +
         ` present_bytes=${result.totals.presentBytes ?? "?"} trim_cells=${result.totals.trimCells} trim_bytes=${result.totals.trimBytes ?? "?"}` +
         ` inspect_ms=${inspectMs} gather_ms=${plannedAt - startedAt - inspectMs}`,
     );
@@ -936,6 +948,19 @@ export class CellRetentionService {
     const root = resolve(this.deps.cellsRoot);
     const out: Candidate[] = [];
     const registeredBees = new Set<string>();
+    const originStamps = new Map<string, string | null>();
+    const originStampOf = (originRepo: string): string | null => {
+      if (!originStamps.has(originRepo)) {
+        let stamp: string | null = null;
+        try {
+          stamp = existsSync(originRepo) ? landingTargets(originRepo, []).sort().join(",") : null;
+        } catch {
+          stamp = null;
+        }
+        originStamps.set(originRepo, stamp);
+      }
+      return originStamps.get(originRepo) ?? null;
+    };
     for (const cell of store.listCells()) {
       if (cell.state === "removed" || cell.state === "removing") continue;
       registeredBees.add(cell.sourceBeeId);
@@ -949,13 +974,15 @@ export class CellRetentionService {
         wrapperDir: dirname(resolve(cell.spaceDir)),
         receipts: store.listLandingReceipts(cell.sourceBeeId),
         skip: null,
+        fingerprint: cell.state === "active" ? cellFingerprint(resolve(cell.spaceDir)) : null,
+        originStamp: cell.state === "active" ? originStampOf(cell.originRepo) : null,
       });
     }
     for (const bee of store.listBees()) {
       if (bee.substrate !== "cell" || bee.lifecycle === "deleted" || bee.cellId || registeredBees.has(bee.id)) continue;
       const wrapperDir = dirname(resolve(bee.cwd));
       if (dirname(wrapperDir) !== root) continue;
-      out.push({ key: `bee:${bee.id}`, cell: null, bee, beeId: bee.id, runtime: store.currentRuntime(bee.id), wrapperDir, receipts: store.listLandingReceipts(bee.id), skip: null });
+      out.push({ key: `bee:${bee.id}`, cell: null, bee, beeId: bee.id, runtime: store.currentRuntime(bee.id), wrapperDir, receipts: store.listLandingReceipts(bee.id), skip: null, fingerprint: null, originStamp: null });
     }
     return out;
   }
@@ -991,11 +1018,13 @@ export class CellRetentionService {
       .map((c) => ({ key: c.key, wrapperDir: c.wrapperDir, receipts: c.receipts, originRepo: c.cell?.originRepo ?? null }));
     if (wrappers.length === 0) return new Map();
     const message = await this.runWorker<RetentionWorkerResult>(
-      { wrappers, measure, trimPatterns: [...this.deps.policy.trimPatterns], upstream: this.upstreamRequest(kind), progress: onProgress != null } satisfies RetentionWorkerRequest,
+      { wrappers, measure, trimPatterns: [...this.deps.policy.trimPatterns], leftoverPatterns: [...this.deps.policy.leftoverPatterns], upstream: this.upstreamRequest(kind), progress: onProgress != null } satisfies RetentionWorkerRequest,
       onProgress,
     );
     this.noteUpstreams(message.upstreams ?? []);
     for (const entry of message.inspections) {
+      const inspected = candidates.find((x) => x.key === entry.key);
+      if (inspected && entry.inspection?.fingerprint != null) inspected.fingerprint = entry.inspection.fingerprint;
       const paths = entry.inspection?.dirtySubmodules ?? [];
       if (paths.length === 0) continue;
       const c = candidates.find((x) => x.key === entry.key);
@@ -1053,14 +1082,17 @@ export class CellRetentionService {
       bytes: inspection?.bytes ?? null,
       idleSince: this.idleSinceOf(c),
       report: inspection?.report ?? null,
+      workingTree: inspection?.workingTree ?? null,
+      headUnlanded: inspection?.headUnlanded ?? false,
       envFiles: inspection?.envFiles ?? [],
       trim: { entries: inspection?.trim ?? [], bytes: sumBytes(inspection?.trim ?? []), planned: false },
       install: { entries: inspection?.install ?? [], bytes: sumBytes(inspection?.install ?? []) },
       keep: { entries: inspection?.keep ?? [], bytes: sumBytes(inspection?.keep ?? []) },
+      disposable: { entries: inspection?.disposable ?? [], bytes: sumBytes(inspection?.disposable ?? []) },
     };
   }
 
-  private parkPathsOf(item: Pick<CellGcItem, "trim" | "install" | "keep" | "envFiles">): string[] {
+  private parkPathsOf(item: Pick<CellGcItem, "trim" | "install" | "keep" | "disposable" | "envFiles">): string[] {
     return parkPathsFor(item, this.parkMode());
   }
 
@@ -1167,13 +1199,19 @@ export class CellRetentionService {
 
   private factsOf(c: Candidate): string {
     const last = c.receipts[c.receipts.length - 1] ?? null;
+    return JSON.stringify([c.cell?.state ?? null, c.cell?.parkedAt ?? null, c.cell?.wipConfirmedAt ?? null, c.bee?.lifecycle ?? null, this.idleSinceOf(c), c.receipts.length, last?.cellHead ?? null, last?.resultSha ?? null, c.fingerprint]);
+  }
+
+  private landingOf(c: Candidate): string {
     const upstream = c.cell?.originRepo ? this.upstreamRefs.get(c.cell.originRepo)?.sha ?? null : null;
-    return JSON.stringify([c.cell?.state ?? null, c.cell?.parkedAt ?? null, c.cell?.wipConfirmedAt ?? null, c.bee?.lifecycle ?? null, this.idleSinceOf(c), c.receipts.length, last?.cellHead ?? null, last?.resultSha ?? null, upstream]);
+    return JSON.stringify([upstream, c.originStamp]);
   }
 
   private settledReason(c: Candidate): CellGcReason | null {
     const judgment = this.judged.get(c.key);
-    return judgment != null && judgment.facts === this.factsOf(c) ? judgment.reason : null;
+    if (judgment == null || judgment.facts !== this.factsOf(c)) return null;
+    if (judgment.reason === "dirty_unlanded" && judgment.landing !== this.landingOf(c)) return null;
+    return judgment.reason;
   }
 
   private skipReason(c: Candidate, now: number): CellGcReason | null {
@@ -1203,7 +1241,7 @@ export class CellRetentionService {
     for (const [index, item] of items.entries()) {
       const c = candidates[index]!;
       if (c.skip != null || c.cell == null) continue;
-      if (SETTLED_REASONS.has(item.reason) && item.verdict !== "evict" && !item.trim.planned) this.judged.set(c.key, { reason: item.reason, facts: this.factsOf(c) });
+      if (SETTLED_REASONS.has(item.reason) && item.verdict !== "evict" && !item.trim.planned) this.judged.set(c.key, { reason: item.reason, facts: this.factsOf(c), landing: this.landingOf(c) });
       else this.judged.delete(c.key);
     }
   }
@@ -1224,8 +1262,8 @@ export class CellRetentionService {
       if (saved.policy !== this.judgmentPolicy() || !Array.isArray(saved.cells)) return;
       for (const row of saved.cells) {
         if (!Array.isArray(row)) continue;
-        const [key, reason, facts] = row as unknown[];
-        if (typeof key === "string" && typeof facts === "string" && SETTLED_REASONS.has(reason as CellGcReason)) this.judged.set(key, { reason: reason as CellGcReason, facts });
+        const [key, reason, facts, landing] = row as unknown[];
+        if (typeof key === "string" && typeof facts === "string" && SETTLED_REASONS.has(reason as CellGcReason)) this.judged.set(key, { reason: reason as CellGcReason, facts, landing: typeof landing === "string" ? landing : null });
       }
       this.savedJudgments = encoded;
     } catch (err) {
@@ -1236,7 +1274,7 @@ export class CellRetentionService {
 
   private saveJudgments(): void {
     if (this.deps.saveJudgments == null) return;
-    const cells = [...this.judged].map(([key, judgment]) => [key, judgment.reason, judgment.facts]).sort((a, b) => (a[0]! < b[0]! ? -1 : 1));
+    const cells = [...this.judged].map(([key, judgment]) => [key, judgment.reason, judgment.facts, judgment.landing]).sort((a, b) => ((a[0] as string) < (b[0] as string) ? -1 : 1));
     const encoded = JSON.stringify({ policy: this.judgmentPolicy(), cells });
     if (encoded === this.savedJudgments) return;
     try {
@@ -1384,6 +1422,7 @@ export class CellRetentionService {
       result = await this.runWorker<WipPushWorkerResult>({
         kind: "pushWip", spaceDir, boxDir: this.deps.wipBoxDir?.(cell) ?? join(dirname(spaceDir), "box"), originRepo: cell.originRepo, node: this.wipNodeScope(), cellId,
         maxFileBytes: this.deps.policy.wipMaxFileBytes,
+        leftoverPatterns: [...this.deps.policy.leftoverPatterns],
         previous: cell.wipSha && cell.wipTree && cell.wipConfirmedAt != null ? { sha: cell.wipSha, tree: cell.wipTree } : null,
       } satisfies WipPushWorkerRequest);
     } catch (err) {
@@ -1470,6 +1509,7 @@ export class CellRetentionService {
         expectedHead: item.head,
         now: this.deps.now,
         trimPatterns: this.deps.policy.trimPatterns,
+        leftoverPatterns: this.deps.policy.leftoverPatterns,
         receipts: store.listLandingReceipts(item.beeId),
         upstream: item.originRepo ? this.upstreamRefs.get(item.originRepo) ?? null : null,
       });
@@ -1525,6 +1565,7 @@ export class CellRetentionService {
       kind: "verifyTrim",
       cells: planned.map((i, index) => ({ key: String(index), wrapperDir: i.wrapperDir, paths: this.parkPathsOf(i), modifiedSinceMs: this.deps.now() - after })),
       trimPatterns: [...this.deps.policy.trimPatterns],
+      leftoverPatterns: [...this.deps.policy.leftoverPatterns],
       mode: this.parkMode(),
     } satisfies TrimVerifyWorkerRequest);
     this.assertRunning();
@@ -1598,7 +1639,7 @@ export class CellRetentionService {
   async planPark(cell: CellRow): Promise<ParkPlan | null> {
     const wrapperDir = dirname(resolve(cell.spaceDir));
     if (!existsSync(wrapperDir)) return null;
-    const result = await this.runWorker<ParkPlanWorkerResult>({ kind: "planPark", wrapperDir, mode: this.parkMode(), trimPatterns: [...this.deps.policy.trimPatterns] } satisfies ParkPlanWorkerRequest);
+    const result = await this.runWorker<ParkPlanWorkerResult>({ kind: "planPark", wrapperDir, mode: this.parkMode(), trimPatterns: [...this.deps.policy.trimPatterns], leftoverPatterns: [...this.deps.policy.leftoverPatterns] } satisfies ParkPlanWorkerRequest);
     if (result.error != null) throw new Error(result.error);
     return result.plan;
   }
@@ -1637,10 +1678,10 @@ export class CellRetentionService {
   }
 }
 
-export function parkPathsFor(item: Pick<CellGcItem, "trim" | "install" | "keep" | "envFiles">, mode: ParkMode): string[] {
+export function parkPathsFor(item: Pick<CellGcItem, "trim" | "install" | "keep" | "disposable" | "envFiles">, mode: ParkMode): string[] {
   const trim = item.trim.entries.map((e) => e.path);
   if (mode === "trim") return trim;
-  return [...trim, ...(item.install?.entries ?? []).map((e) => e.path), ...item.keep.entries.map((e) => e.path), ...item.envFiles].sort();
+  return [...trim, ...(item.install?.entries ?? []).map((e) => e.path), ...item.keep.entries.map((e) => e.path), ...(item.disposable?.entries ?? []).map((e) => e.path), ...item.envFiles].sort();
 }
 
 export function purgeReportOf(items: CellGcItem[], mode: ParkMode): CellGcPurgeReport {
@@ -1669,6 +1710,41 @@ export function purgeReportOf(items: CellGcItem[], mode: ParkMode): CellGcPurgeR
       .map((g) => ({ name: g.name, cells: g.cells.size, paths: g.paths, bytes: measured ? g.bytes : null }))
       .sort((a, b) => (b.bytes ?? 0) - (a.bytes ?? 0) || b.cells - a.cells || (a.name < b.name ? -1 : 1)),
   };
+}
+
+export interface HoldBreakdown {
+  /** Held `dirty_uncommitted` with at least one tracked file modified (or a dirty submodule). */
+  modified: number;
+  /** Held `dirty_uncommitted` by untracked files alone. */
+  untrackedOnly: number;
+  /** Held `dirty_unlanded` with HEAD itself unlanded, and the commits behind every unlanded hold. */
+  unlandedHead: number;
+  /** Held `dirty_unlanded` by side branches alone (HEAD is landed). */
+  unlandedBranchesOnly: number;
+  unlandedCommits: number;
+  /** Inspected Cells whose only working-tree content is agent leftovers; they count as clean. */
+  leftoverOnly: number;
+}
+
+/** Why Cells are held, from the inspected facts, so a human or an agent can see what a hold is made of. */
+export function holdBreakdownOf(items: readonly CellGcItem[]): HoldBreakdown {
+  const out: HoldBreakdown = { modified: 0, untrackedOnly: 0, unlandedHead: 0, unlandedBranchesOnly: 0, unlandedCommits: 0, leftoverOnly: 0 };
+  for (const item of items) {
+    const report = item.report;
+    if (report == null) continue;
+    const tree = item.workingTree ?? null;
+    if (item.reason === "dirty_uncommitted") {
+      if (tree == null || tree.modifiedFiles > 0 || tree.untrackedFiles === 0) out.modified += 1;
+      else out.untrackedOnly += 1;
+    }
+    if (item.reason === "dirty_unlanded") {
+      if (item.headUnlanded ?? true) out.unlandedHead += 1;
+      else out.unlandedBranchesOnly += 1;
+      out.unlandedCommits += report.unlandedCommitCount;
+    }
+    if (!report.uncommitted && (tree?.leftoverPaths.length ?? 0) > 0) out.leftoverOnly += 1;
+  }
+  return out;
 }
 
 export function totalsOf(items: CellGcItem[]): CellGcResult["totals"] {

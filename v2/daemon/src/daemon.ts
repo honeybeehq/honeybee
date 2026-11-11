@@ -1925,7 +1925,7 @@ export class HiveDaemon {
     const sha = cell.state === "evicted" && cell.evictedHead && hasCommit(cell.originRepo, cell.evictedHead)
       ? cell.evictedHead
       : cell.sha;
-    const restoreWip = (cell.state === "evicted" || !existsSync(cell.spaceDir)) && this.cfg.cellRetention.wipPushOnTurnEnd && cell.wipSha && cell.wipConfirmedAt != null && cell.wipSha !== sha
+    const restoreWip = (cell.state === "evicted" || !existsSync(cell.spaceDir)) && (this.cfg.cellRetention.wipPushOnTurnEnd || this.cfg.cellRetention.evictionRequiresWip) && cell.wipSha && cell.wipConfirmedAt != null
       ? { sha: cell.wipSha, node: this.wipNode(), cellId: cell.id }
       : null;
     return {
@@ -4175,7 +4175,7 @@ export class HiveDaemon {
     }
     let result: CellRemoveResult;
     try {
-      const res = cell.removeCell(beeId, { force, receipts: store.listLandingReceipts(beeId) });
+      const res = cell.removeCell(beeId, { force, receipts: store.listLandingReceipts(beeId), leftoverPatterns: this.cfg.cellRetention.leftoverPatterns });
       result = res.deleted
         ? { status: "deleted", forced: res.forced, report: res.report, commandId: null }
         : { status: "absent", forced: false, report: null, commandId: null };
@@ -4345,6 +4345,7 @@ export class HiveDaemon {
       const parked = evictCellWrapper(this.cfg.cellsRoot, wrapperDir, {
         force,
         trimPatterns: this.cfg.cellRetention.trimPatterns,
+        leftoverPatterns: this.cfg.cellRetention.leftoverPatterns,
         receipts: store.listLandingReceipts(beeId),
         upstream: this.cfg.cellRetention.fetchUpstream ? readUpstreamMirror(row.originRepo, upstreamRootFor(this.cfg.dataDir)) : null,
       });

@@ -301,7 +301,7 @@ test("retention env paths retain leading whitespace and repeated preservation is
 });
 
 function ignoringOrigin(rig: ReturnType<typeof makeRig>): void {
-  writeFileSync(join(rig.origin.repo, ".gitignore"), [".env", ".next/", "build/", "dist/", "node_modules/", ".venv/", ".proof/", "tmp/", "out", "*.tsbuildinfo", ".DS_Store", ""].join("\n"));
+  writeFileSync(join(rig.origin.repo, ".gitignore"), [".env", ".next/", "build/", "dist/", "node_modules/", ".venv/", ".data/", "tmp/", "out", "*.tsbuildinfo", ".DS_Store", ""].join("\n"));
   g(rig.origin.repo, ["add", ".gitignore"]);
   g(rig.origin.repo, ["commit", "-q", "-m", "ignores"]);
   rig.origin.sha = g(rig.origin.repo, ["rev-parse", "HEAD"]);
@@ -321,7 +321,7 @@ function populateIgnored(spaceDir: string): void {
   put(spaceDir, "apps/app/node_modules/dep/index.js");
   put(spaceDir, "tools/.venv/bin/python");
   put(spaceDir, ".DS_Store");
-  put(spaceDir, ".proof/shot.png", "png\n");
+  put(spaceDir, ".data/shot.png", "png\n");
   put(spaceDir, "tmp/promo/final.mp4", "video\n");
   put(spaceDir, "out", "a file named like a build directory\n");
 }
@@ -336,15 +336,16 @@ test("retention.classify: ignored entries split into env files, build output and
       env: [".env"],
       trim: ["apps/app/.next", "apps/ios/build", "tsconfig.tsbuildinfo"],
       install: ["apps/app/node_modules", "node_modules", "tools/.venv"],
-      keep: [".proof", "out", "tmp"],
+      keep: [".data", "out", "tmp"],
+      disposable: [],
     });
     assert.deepEqual(parkCandidates(classifyIgnored(paths.spaceDir), "trim"), ["apps/app/.next", "apps/ios/build", "tsconfig.tsbuildinfo"]);
-    assert.deepEqual(parkCandidates(classifyIgnored(paths.spaceDir), "purge"), [".env", ".proof", "apps/app/.next", "apps/app/node_modules", "apps/ios/build", "node_modules", "out", "tmp", "tools/.venv", "tsconfig.tsbuildinfo"]);
+    assert.deepEqual(parkCandidates(classifyIgnored(paths.spaceDir), "purge"), [".data", ".env", "apps/app/.next", "apps/app/node_modules", "apps/ios/build", "node_modules", "out", "tmp", "tools/.venv", "tsconfig.tsbuildinfo"]);
     assert.deepEqual(classifyIgnored(paths.spaceDir, ["*.tsbuildinfo"]).trim, ["tsconfig.tsbuildinfo"]);
     const inspection = inspectCellWrapper(paths.wrapperDir);
     assert.deepEqual(inspection.trim.map((e) => e.path), ["apps/app/.next", "apps/ios/build", "tsconfig.tsbuildinfo"]);
     assert.ok(inspection.trim.every((e) => (e.bytes ?? 0) > 0));
-    assert.deepEqual(inspection.keep.map((e) => e.path), [".proof", "out", "tmp"]);
+    assert.deepEqual(inspection.keep.map((e) => e.path), [".data", "out", "tmp"]);
     assert.deepEqual(inspection.install.map((e) => e.path), ["apps/app/node_modules", "node_modules", "tools/.venv"]);
     assert.ok(inspection.install.every((e) => (e.bytes ?? 0) > 0));
     assert.equal(inspection.report?.dirty, false, "ignored files never make a Cell dirty");
@@ -352,7 +353,7 @@ test("retention.classify: ignored entries split into env files, build output and
     renameSync(join(paths.spaceDir, "README.md"), join(paths.spaceDir, "Rmoved.md"));
     g(paths.spaceDir, ["add", "-N", "Rmoved.md"]);
     assert.match(g(paths.spaceDir, ["status", "--porcelain"]), /^R README\.md -> Rmoved\.md$/m, "worktree rename (status ' R')");
-    assert.deepEqual(classifyIgnored(paths.spaceDir).keep, [".proof", "out", "tmp"], "a worktree rename record never swallows the next entry");
+    assert.deepEqual(classifyIgnored(paths.spaceDir).keep, [".data", "out", "tmp"], "a worktree rename record never swallows the next entry");
   } finally {
     rig.cleanup();
   }
@@ -370,7 +371,7 @@ test("retention.trim: parks build output and leaves source, kept files, installs
     assert.deepEqual(res.skipped, []);
     assert.ok(res.parkedDir?.startsWith(join(rig.cellsRoot, EVICTING_DIR)));
     for (const gone of ["apps/app/.next", "apps/ios/build", "tsconfig.tsbuildinfo"]) assert.equal(existsSync(join(paths.spaceDir, gone)), false, gone);
-    for (const kept of ["README.md", "src/app.ts", ".env", ".proof/shot.png", "tmp/promo/final.mp4", "out", "node_modules/pkg/index.js", "apps/app/node_modules/dep/index.js"]) {
+    for (const kept of ["README.md", "src/app.ts", ".env", ".data/shot.png", "tmp/promo/final.mp4", "out", "node_modules/pkg/index.js", "apps/app/node_modules/dep/index.js"]) {
       assert.equal(existsSync(join(paths.spaceDir, kept)), true, kept);
     }
     assert.equal(g(paths.spaceDir, ["status", "--porcelain"]), "");
@@ -442,21 +443,21 @@ test("retention.evict: ignored files outside the trim patterns move to cell-keep
     populateIgnored(paths.spaceDir);
     const res = evictCellWrapper(rig.cellsRoot, paths.wrapperDir, { expectedHead: rig.origin.sha });
     assert.ok(res);
-    assert.deepEqual(res.keptPaths, [".proof", "out", "tmp"]);
+    assert.deepEqual(res.keptPaths, [".data", "out", "tmp"]);
     assert.deepEqual(res.envFiles, [".env"]);
     const stash = join(cellKeepRootForCells(rig.cellsRoot), paths.spaceName);
     assert.equal(readFileSync(join(stash, "tmp/promo/final.mp4"), "utf8"), "video\n");
-    assert.equal(existsSync(join(res.parkedDir, paths.spaceName, ".proof")), false, "kept files left the parked wrapper");
+    assert.equal(existsSync(join(res.parkedDir, paths.spaceName, ".data")), false, "kept files left the parked wrapper");
     assert.equal(existsSync(join(res.parkedDir, paths.spaceName, "apps/app/.next")), true, "build output goes with the wrapper");
     assert.deepEqual(listPendingKeeps(rig.cellsRoot), [paths.spaceName]);
-    assert.deepEqual(listKeptPaths(rig.cellsRoot, paths.spaceName), [".proof", "out", "tmp"]);
+    assert.deepEqual(listKeptPaths(rig.cellsRoot, paths.spaceName), [".data", "out", "tmp"]);
     sweepEvictingSync(rig.cellsRoot);
 
     provisionCell(rig.cellsRoot, req, "op-keep-again", OPTS);
     const { restored, conflicts } = restoreKeptPaths(rig.cellsRoot, paths.spaceDir);
-    assert.deepEqual(restored, [".proof", "out", "tmp"]);
+    assert.deepEqual(restored, [".data", "out", "tmp"]);
     assert.deepEqual(conflicts, []);
-    assert.equal(readFileSync(join(paths.spaceDir, ".proof/shot.png"), "utf8"), "png\n");
+    assert.equal(readFileSync(join(paths.spaceDir, ".data/shot.png"), "utf8"), "png\n");
     assert.equal(readFileSync(join(paths.spaceDir, "out"), "utf8"), "a file named like a build directory\n");
     assert.equal(existsSync(stash), false);
     assert.deepEqual(listPendingKeeps(rig.cellsRoot), []);
@@ -475,7 +476,7 @@ test("retention.evict: a failed park moves kept files back, and an unrestored ke
     writeFileSync(join(rig.cellsRoot, EVICTING_DIR), "not a directory\n");
     assert.throws(() => evictCellWrapper(rig.cellsRoot, paths.wrapperDir));
     assert.equal(readFileSync(join(paths.spaceDir, "tmp/promo/final.mp4"), "utf8"), "video\n");
-    assert.equal(existsSync(join(paths.spaceDir, ".proof/shot.png")), true);
+    assert.equal(existsSync(join(paths.spaceDir, ".data/shot.png")), true);
     assert.deepEqual(listPendingKeeps(rig.cellsRoot), []);
     assert.equal(existsSync(join(cellKeepRootForCells(rig.cellsRoot), paths.spaceName)), false);
     rmSync(join(rig.cellsRoot, EVICTING_DIR));
@@ -502,7 +503,7 @@ test("retention.restoreKept: a path that already exists in the new space stays i
     put(paths.spaceDir, "tmp/new.txt", "new\n");
     writeFileSync(join(cellKeepRootForCells(rig.cellsRoot), paths.spaceName, ".DS_Store"), "finder\n");
     const first = restoreKeptPaths(rig.cellsRoot, paths.spaceDir);
-    assert.deepEqual(first, { restored: [".proof", "out"], conflicts: ["tmp"] });
+    assert.deepEqual(first, { restored: [".data", "out"], conflicts: ["tmp"] });
     assert.equal(readFileSync(join(paths.spaceDir, "tmp/new.txt"), "utf8"), "new\n");
     assert.deepEqual(listKeptPaths(rig.cellsRoot, paths.spaceName), ["tmp"]);
     assert.equal(readFileSync(join(cellKeepRootForCells(rig.cellsRoot), paths.spaceName, "tmp/promo/final.mp4"), "utf8"), "video\n");
@@ -520,17 +521,17 @@ test("retention.restoreKept: a path whose parent is now unsafe becomes a conflic
   try {
     ignoringOrigin(rig);
     const { req, paths } = provisioned(rig, "keepparent");
-    put(paths.spaceDir, "a/.proof/shot.png", "a\n");
+    put(paths.spaceDir, "a/.data/shot.png", "a\n");
     put(paths.spaceDir, "tmp/z.txt", "z\n");
-    assert.deepEqual(evictCellWrapper(rig.cellsRoot, paths.wrapperDir)?.keptPaths, ["a/.proof", "tmp"]);
+    assert.deepEqual(evictCellWrapper(rig.cellsRoot, paths.wrapperDir)?.keptPaths, ["a/.data", "tmp"]);
     provisionCell(rig.cellsRoot, req, "op-keepparent-again", OPTS);
     const outside = join(rig.root, "outside-keep");
     mkdirSync(outside);
     symlinkSync(outside, join(paths.spaceDir, "a"));
-    assert.deepEqual(restoreKeptPaths(rig.cellsRoot, paths.spaceDir), { restored: ["tmp"], conflicts: ["a/.proof"] });
-    assert.equal(existsSync(join(outside, ".proof")), false);
-    assert.equal(readFileSync(join(cellKeepRootForCells(rig.cellsRoot), paths.spaceName, "a/.proof/shot.png"), "utf8"), "a\n");
-    assert.deepEqual(listKeptPaths(rig.cellsRoot, paths.spaceName), ["a/.proof"]);
+    assert.deepEqual(restoreKeptPaths(rig.cellsRoot, paths.spaceDir), { restored: ["tmp"], conflicts: ["a/.data"] });
+    assert.equal(existsSync(join(outside, ".data")), false);
+    assert.equal(readFileSync(join(cellKeepRootForCells(rig.cellsRoot), paths.spaceName, "a/.data/shot.png"), "utf8"), "a\n");
+    assert.deepEqual(listKeptPaths(rig.cellsRoot, paths.spaceName), ["a/.data"]);
   } finally {
     rig.cleanup();
   }
@@ -589,7 +590,7 @@ test("retention.park (trim mode): only build output goes; installs, kept files, 
     assert.deepEqual(res.envFiles, []);
     assert.ok((res.bytes ?? 0) > 0, "parked bytes are measured before the rename");
     assert.ok(res.parkedDir?.startsWith(join(rig.cellsRoot, EVICTING_DIR, "w-parktrim.trim.1000.")));
-    for (const kept of [".env", "node_modules/pkg/index.js", "apps/app/node_modules/dep/index.js", "tools/.venv/bin/python", ".proof/shot.png", "tmp/promo/final.mp4", "out", "README.md", ".git/HEAD"]) {
+    for (const kept of [".env", "node_modules/pkg/index.js", "apps/app/node_modules/dep/index.js", "tools/.venv/bin/python", ".data/shot.png", "tmp/promo/final.mp4", "out", "README.md", ".git/HEAD"]) {
       assert.ok(existsSync(join(paths.spaceDir, kept)), `${kept} stays`);
     }
     assert.equal(existsSync(join(paths.spaceDir, "apps/app/.next")), false);
@@ -609,12 +610,12 @@ test("retention.park (purge mode): every ignored path goes, env files are copied
     for (let i = 0; i < 1100; i += 1) put(paths.spaceDir, `node_modules/wide/f${i}.js`);
     const res = parkCellWrapper(rig.cellsRoot, paths.wrapperDir, "purge", { now: () => 2_000 });
     assert.equal(res.mode, "purge");
-    assert.deepEqual(res.parked, [".env", ".proof", "apps/app/.next", "apps/app/node_modules", "apps/ios/build", "node_modules", "out", "tmp", "tools/.venv", "tsconfig.tsbuildinfo"]);
+    assert.deepEqual(res.parked, [".data", ".env", "apps/app/.next", "apps/app/node_modules", "apps/ios/build", "node_modules", "out", "tmp", "tools/.venv", "tsconfig.tsbuildinfo"]);
     assert.deepEqual(res.skipped, []);
     assert.deepEqual(res.envFiles, [".env"]);
     assert.deepEqual(listPreservedEnvFiles(rig.cellsRoot, paths.spaceName), [".env"], "the env file waits under cell-env/ for the next start");
     assert.ok(res.parkedDir?.startsWith(join(rig.cellsRoot, EVICTING_DIR, "w-parkpurge.park.2000.")));
-    for (const gone of [".env", "node_modules", "apps/app/node_modules", "tools/.venv", ".proof", "tmp", "out", "apps/app/.next"]) {
+    for (const gone of [".env", "node_modules", "apps/app/node_modules", "tools/.venv", ".data", "tmp", "out", "apps/app/.next"]) {
       assert.equal(existsSync(join(paths.spaceDir, gone)), false, `${gone} is parked`);
     }
     assert.ok(existsSync(join(paths.spaceDir, "README.md")));
@@ -639,14 +640,14 @@ test("retention.park verification: a path that left the mode's class, a symlink,
     symlinkSync("/", join(paths.spaceDir, "link.tsbuildinfo"));
     const old = new Date(Date.now() - 48 * 3_600_000);
     for (const rel of ["apps/app/.next", "apps/app/.next/server", "apps/app/.next/server/page.js", "node_modules", "node_modules/pkg", "node_modules/pkg/index.js", "tmp", "tmp/nested", "tmp/promo"]) utimesSync(join(paths.spaceDir, rel), old, old);
-    const verified = verifyParkPaths(paths.wrapperDir, ["apps/app/.next", "node_modules", "tmp", "link.tsbuildinfo", ".proof", "README.md"], "purge", { modifiedSinceMs: Date.now() - 3_600_000 });
+    const verified = verifyParkPaths(paths.wrapperDir, ["apps/app/.next", "node_modules", "tmp", "link.tsbuildinfo", ".data", "README.md"], "purge", { modifiedSinceMs: Date.now() - 3_600_000 });
     assert.deepEqual(verified.confirmed, ["apps/app/.next", "node_modules"]);
     assert.deepEqual(verified.shallow, ["node_modules"], "install directories skip the deep inspection");
     assert.deepEqual(
       verified.skipped.map((s) => [s.path, s.why]),
-      [["tmp", "nested_repository"], ["link.tsbuildinfo", "symlink"], [".proof", "recently_modified"], ["README.md", "not_ignored"]],
+      [["tmp", "nested_repository"], ["link.tsbuildinfo", "symlink"], [".data", "recently_modified"], ["README.md", "not_ignored"]],
     );
-    const trimOnly = verifyParkPaths(paths.wrapperDir, ["node_modules", ".proof"], "trim");
+    const trimOnly = verifyParkPaths(paths.wrapperDir, ["node_modules", ".data"], "trim");
     assert.deepEqual(trimOnly.skipped.map((s) => s.why), ["not_ignored_build_output", "not_ignored_build_output"]);
   } finally {
     rig.cleanup();

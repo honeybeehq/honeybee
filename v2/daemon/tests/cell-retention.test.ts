@@ -338,7 +338,7 @@ test("cell-retention.6: idle Cells lose build output and keep everything else; e
   const rig = makeRig({ enabled: false, archivedAfterDays: 0, trimAfterHours: 0 });
   let daemon: DaemonHandle | null = null;
   try {
-    writeFileSync(join(rig.origin.repo, ".gitignore"), ".next/\n.proof/\ntmp/\n");
+    writeFileSync(join(rig.origin.repo, ".gitignore"), ".next/\n.data/\ntmp/\n");
     g(rig.origin.repo, ["add", ".gitignore"]);
     g(rig.origin.repo, ["commit", "-q", "-m", "ignores"]);
     daemon = await startDaemon(rig.dir);
@@ -349,8 +349,8 @@ test("cell-retention.6: idle Cells lose build output and keep everything else; e
     const populate = (space: string) => {
       mkdirSync(join(space, "apps", "web", ".next"), { recursive: true });
       writeFileSync(join(space, "apps", "web", ".next", "page.js"), "built\n");
-      mkdirSync(join(space, ".proof"), { recursive: true });
-      writeFileSync(join(space, ".proof", "shot.png"), "evidence\n");
+      mkdirSync(join(space, ".data"), { recursive: true });
+      writeFileSync(join(space, ".data", "seed.db"), "seed\n");
     };
     for (const b of [stoppedBee, live, archivedBee]) populate(b.view.bee!.cwd);
     writeFileSync(join(stoppedBee.view.bee!.cwd, "wip.txt"), "uncommitted\n");
@@ -364,7 +364,7 @@ test("cell-retention.6: idle Cells lose build output and keep everything else; e
     assert.equal(stoppedItem.trim.planned, true, "dirty Cells still lose build output");
     assert.deepEqual(stoppedItem.trim.entries.map((e) => e.path), ["apps/web/.next"]);
     assert.ok((stoppedItem.trim.bytes ?? 0) > 0);
-    assert.deepEqual(stoppedItem.keep.entries.map((e) => e.path), [".proof"]);
+    assert.deepEqual(stoppedItem.keep.entries.map((e) => e.path), [".data"]);
     assert.equal(itemFor(plan, live.beeId).trim.planned, false, "never while the runtime is live");
     assert.equal(itemFor(plan, archivedBee.beeId).verdict, "evict");
     assert.equal(itemFor(plan, archivedBee.beeId).trim.planned, false, "an evicted Cell is not trimmed first");
@@ -378,16 +378,16 @@ test("cell-retention.6: idle Cells lose build output and keep everything else; e
     assert.deepEqual(trimmed.paths, ["apps/web/.next"]);
     assert.equal(existsSync(join(stoppedBee.view.bee!.cwd, "apps", "web", ".next")), false);
     assert.equal(readFileSync(join(stoppedBee.view.bee!.cwd, "wip.txt"), "utf8"), "uncommitted\n");
-    assert.equal(readFileSync(join(stoppedBee.view.bee!.cwd, ".proof", "shot.png"), "utf8"), "evidence\n");
+    assert.equal(readFileSync(join(stoppedBee.view.bee!.cwd, ".data", "seed.db"), "utf8"), "seed\n");
     assert.equal(existsSync(join(live.view.bee!.cwd, "apps", "web", ".next", "page.js")), true);
 
     const evicted = applied.outcomes!.find((o) => o.beeId === archivedBee.beeId)!;
     assert.equal(evicted.status, "evicted");
-    assert.deepEqual(evicted.keptPaths, [".proof"]);
+    assert.deepEqual(evicted.keptPaths, [".data"]);
     const archivedSpace = archivedBee.view.bee!.cwd;
     assert.equal(existsSync(archivedSpace), false);
     const keepRoot = join(dirname(rig.cellsRoot), "cell-keep", archivedBee.view.cell!.spaceName);
-    assert.equal(readFileSync(join(keepRoot, ".proof", "shot.png"), "utf8"), "evidence\n");
+    assert.equal(readFileSync(join(keepRoot, ".data", "seed.db"), "utf8"), "seed\n");
     const log = readFileSync(join(rig.dir, "hived.log"), "utf8");
     assert.match(log, /cell\.retention\.parked mode=trim cell=.* paths=1 skipped=0/);
     assert.match(log, /cell\.retention\.evicted cell=.* kept=1/);
@@ -397,7 +397,7 @@ test("cell-retention.6: idle Cells lose build output and keep everything else; e
       const { messages } = await client.request<MailboxResult>("mailbox", { beeId: archivedBee.beeId });
       return messages.find((m) => m.id === sent.messageId)?.deliveredAt != null;
     }, "delivered after re-provision", 60_000);
-    assert.equal(readFileSync(join(archivedSpace, ".proof", "shot.png"), "utf8"), "evidence\n");
+    assert.equal(readFileSync(join(archivedSpace, ".data", "seed.db"), "utf8"), "seed\n");
     assert.equal(existsSync(keepRoot), false, "restored paths leave cell-keep");
     assert.match(readFileSync(join(rig.dir, "hived.log"), "utf8"), /cell\.keep\.restored bee=.* paths=1 conflicts=0/);
   } finally {

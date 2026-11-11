@@ -36,10 +36,11 @@ import { rm } from "node:fs/promises";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { GitError, revParse, tryGit } from "./git.ts";
 import { DEFAULT_TRIM_PATTERNS } from "./trimPatterns.ts";
+import { DEFAULT_LEFTOVER_PATTERNS, isLeftoverPath } from "./leftovers.ts";
 import { CELL_SPACE_DIRECTORY, looksLikeCellWrapper } from "./layout.ts";
 import type { LandingReceipt } from "./landed.ts";
 import type { UpstreamRef } from "./upstream.ts";
-import { CellDeleteRefused, CellShapeError, dirtyReportDetailed, type DirtyReport } from "./remove.ts";
+import { CellDeleteRefused, CellShapeError, dirtyReportDetailed, type DirtyReport, type WorkingTreeFacts } from "./remove.ts";
 
 /** Reserved wrapper under the cells root where evicted wrappers wait for deletion. */
 export const EVICTING_DIR = "_evicting";
@@ -65,11 +66,19 @@ export interface CellWrapperInspection {
   report: DirtyReport | null;
   /** Populated submodules holding local state (reported as `uncommitted` in `report`). */
   dirtySubmodules: string[];
+  /** The facts behind `report.uncommitted`; null when there is no checkout. */
+  workingTree: WorkingTreeFacts | null;
+  /** HEAD itself holds unlanded commits; false when only side branches do. */
+  headUnlanded: boolean;
   /** Allocated bytes (du -sk semantics); null when absent. */
   bytes: number | null;
   trim: PathBytes[];
   install: PathBytes[];
   keep: PathBytes[];
+  /** Ignored agent leftovers: deleted with the Cell on eviction, parked only in purge mode. */
+  disposable: PathBytes[];
+  /** `cellFingerprint` taken after the inspection; a judgment stands while it is unchanged. */
+  fingerprint: string | null;
   /** Fastest wall-clock cost of this inspection, for pass telemetry. */
   elapsedMs: number;
 }
@@ -157,18 +166,20 @@ export interface IgnoredEntries {
   trim: string[];
   install: string[];
   keep: string[];
+  /** Ignored agent leftovers (leftover patterns): deleted with the Cell, never kept. */
+  disposable: string[];
 }
 
 export function parkCandidates(ignored: IgnoredEntries, mode: ParkMode): string[] {
-  return mode === "purge" ? [...ignored.trim, ...ignored.install, ...ignored.keep, ...ignored.env].sort() : [...ignored.trim];
+  return mode === "purge" ? [...ignored.trim, ...ignored.install, ...ignored.keep, ...ignored.disposable, ...ignored.env].sort() : [...ignored.trim];
 }
 
 export function matchesTrimPattern(name: string, isDirectory: boolean, patterns: readonly string[]): boolean {
   return patterns.some((pattern) => (pattern.startsWith("*.") ? !isDirectory && name.endsWith(pattern.slice(1)) : isDirectory && name === pattern));
 }
 
-export function classifyIgnored(spaceDir: string, trimPatterns: readonly string[] = DEFAULT_TRIM_PATTERNS): IgnoredEntries {
-  const out: IgnoredEntries = { env: [], trim: [], install: [], keep: [] };
+export function classifyIgnored(spaceDir: string, trimPatterns: readonly string[] = DEFAULT_TRIM_PATTERNS, leftoverPatterns: readonly string[] = DEFAULT_LEFTOVER_PATTERNS): IgnoredEntries {
+  const out: IgnoredEntries = { env: [], trim: [], install: [], keep: [], disposable: [] };
   if (!existsSync(join(spaceDir, ".git"))) return out;
   const args = ["--no-optional-locks", "status", "--porcelain=v1", "-z", "--ignored=matching", "--untracked-files=normal", "--ignore-submodules=all"];
   const result = tryGit(spaceDir, args);
@@ -189,12 +200,14 @@ export function classifyIgnored(spaceDir: string, trimPatterns: readonly string[
     if (!isDirectory && DISPOSABLE_FILE_NAMES.has(name)) continue;
     if (!isDirectory && (name === ".env" || name.startsWith(".env."))) out.env.push(path);
     else if (matchesTrimPattern(name, isDirectory, trimPatterns)) out.trim.push(path);
+    else if (isLeftoverPath(path, leftoverPatterns)) out.disposable.push(path);
     else out.keep.push(path);
   }
   out.env.sort();
   out.trim.sort();
   out.install.sort();
   out.keep.sort();
+  out.disposable.sort();
   return out;
 }
 
@@ -559,11 +572,11 @@ export function verifyParkPaths(
   wrapperDir: string,
   planned: string[],
   mode: ParkMode,
-  opts: { trimPatterns?: readonly string[]; modifiedSinceMs?: number } = {},
+  opts: { trimPatterns?: readonly string[]; leftoverPatterns?: readonly string[]; modifiedSinceMs?: number } = {},
 ): ParkVerification {
   const spaceDir = spaceDirIn(resolve(wrapperDir));
   if (spaceDir == null) return { confirmed: [], skipped: planned.map((path) => ({ path, why: "absent" })), shallow: [] };
-  const ignored = classifyIgnored(spaceDir, opts.trimPatterns ?? DEFAULT_TRIM_PATTERNS);
+  const ignored = classifyIgnored(spaceDir, opts.trimPatterns ?? DEFAULT_TRIM_PATTERNS, opts.leftoverPatterns ?? DEFAULT_LEFTOVER_PATTERNS);
   const current = new Set(parkCandidates(ignored, mode));
   const install = new Set(ignored.install);
   const confirmed: string[] = [];
@@ -594,12 +607,12 @@ export interface ParkPlan {
 export function planParkPaths(
   wrapperDir: string,
   mode: ParkMode,
-  opts: { trimPatterns?: readonly string[]; modifiedSinceMs?: number; measure?: boolean } = {},
+  opts: { trimPatterns?: readonly string[]; leftoverPatterns?: readonly string[]; modifiedSinceMs?: number; measure?: boolean } = {},
 ): ParkPlan {
   const spaceDir = spaceDirIn(resolve(wrapperDir));
   if (spaceDir == null) return { mode, planned: [], shallow: [], skipped: [], envFiles: [], bytes: null, sharedBytes: null };
-  const ignored = classifyIgnored(spaceDir, opts.trimPatterns ?? DEFAULT_TRIM_PATTERNS);
-  const verified = verifyParkPaths(wrapperDir, parkCandidates(ignored, mode), mode, { trimPatterns: opts.trimPatterns, ...(opts.modifiedSinceMs == null ? {} : { modifiedSinceMs: opts.modifiedSinceMs }) });
+  const ignored = classifyIgnored(spaceDir, opts.trimPatterns ?? DEFAULT_TRIM_PATTERNS, opts.leftoverPatterns ?? DEFAULT_LEFTOVER_PATTERNS);
+  const verified = verifyParkPaths(wrapperDir, parkCandidates(ignored, mode), mode, { trimPatterns: opts.trimPatterns, leftoverPatterns: opts.leftoverPatterns, ...(opts.modifiedSinceMs == null ? {} : { modifiedSinceMs: opts.modifiedSinceMs }) });
   const env = new Set(ignored.env);
   let bytes: number | null = null;
   let sharedBytes: number | null = null;
@@ -674,7 +687,7 @@ export function parkCellWrapper(
   cellsRoot: string,
   wrapperDir: string,
   mode: ParkMode,
-  opts: { trimPatterns?: readonly string[]; modifiedSinceMs?: number; now?: () => number; measure?: boolean } = {},
+  opts: { trimPatterns?: readonly string[]; leftoverPatterns?: readonly string[]; modifiedSinceMs?: number; now?: () => number; measure?: boolean } = {},
 ): ParkResult {
   trimTarget(cellsRoot, wrapperDir);
   return applyParkPlan(cellsRoot, wrapperDir, planParkPaths(wrapperDir, mode, opts), { now: opts.now });
@@ -705,18 +718,18 @@ function spaceDirIn(wrapperDir: string): string | null {
 
 export function inspectCellWrapper(
   wrapperDir: string,
-  opts: { measure?: boolean; trimPatterns?: readonly string[]; receipts?: readonly LandingReceipt[]; upstream?: UpstreamRef | null } = {},
+  opts: { measure?: boolean; trimPatterns?: readonly string[]; leftoverPatterns?: readonly string[]; receipts?: readonly LandingReceipt[]; upstream?: UpstreamRef | null } = {},
 ): CellWrapperInspection {
   const started = Date.now();
   const target = resolve(wrapperDir);
   const spaceDir = spaceDirIn(target);
   if (spaceDir == null) {
-    return { wrapperDir: target, envFiles: [], present: false, provisioned: false, head: null, report: null, dirtySubmodules: [], bytes: null, trim: [], install: [], keep: [], elapsedMs: Date.now() - started };
+    return { wrapperDir: target, envFiles: [], present: false, provisioned: false, head: null, report: null, dirtySubmodules: [], workingTree: null, headUnlanded: false, bytes: null, trim: [], install: [], keep: [], disposable: [], fingerprint: null, elapsedMs: Date.now() - started };
   }
   const provisioned = existsSync(join(spaceDir, ".git"));
   const head = provisioned ? revParse(spaceDir, "HEAD") : null;
-  const { report, dirtySubmodules } = dirtyReportDetailed(target, { receipts: opts.receipts, upstream: opts.upstream ?? null });
-  const ignored = classifyIgnored(spaceDir, opts.trimPatterns ?? DEFAULT_TRIM_PATTERNS);
+  const { report, dirtySubmodules, workingTree, headUnlanded } = dirtyReportDetailed(target, { receipts: opts.receipts, upstream: opts.upstream ?? null, leftoverPatterns: opts.leftoverPatterns });
+  const ignored = classifyIgnored(spaceDir, opts.trimPatterns ?? DEFAULT_TRIM_PATTERNS, opts.leftoverPatterns ?? DEFAULT_LEFTOVER_PATTERNS);
   const measure = opts.measure !== false;
   const sized = (paths: string[]): PathBytes[] => paths.map((path) => {
     if (!measure) return { path, bytes: null, sharedBytes: null };
@@ -724,7 +737,36 @@ export function inspectCellWrapper(
     return { path, bytes: measured.bytes, sharedBytes: measured.sharedBytes };
   });
   const bytes = measure ? measureDirectoryBytes(target) : null;
-  return { wrapperDir: target, envFiles: ignored.env, present: true, provisioned, head, report, dirtySubmodules, bytes, trim: sized(ignored.trim), install: sized(ignored.install), keep: sized(ignored.keep), elapsedMs: Date.now() - started };
+  return { wrapperDir: target, envFiles: ignored.env, present: true, provisioned, head, report, dirtySubmodules, workingTree: provisioned ? workingTree : null, headUnlanded, bytes, trim: sized(ignored.trim), install: sized(ignored.install), keep: sized(ignored.keep), disposable: sized(ignored.disposable), fingerprint: cellFingerprint(spaceDir), elapsedMs: Date.now() - started };
+}
+
+/**
+ * A cheap fingerprint of what could change a Cell's dirty verdict: the mtimes
+ * of the space directory (top-level entries added or removed), the index
+ * (adds, commits, checkouts), the HEAD reflog (every HEAD move) and the
+ * branch refs (a branch created or deleted). A few stats, no git process.
+ * Null when the space has no checkout.
+ */
+export function cellFingerprint(spaceDir: string): string | null {
+  const gitDir = join(spaceDir, ".git");
+  if (!existsSync(gitDir)) return null;
+  const stamp = (path: string): string => {
+    try {
+      const st = lstatSync(path);
+      return `${Math.floor(st.mtimeMs)}:${st.size}`;
+    } catch {
+      return "-";
+    }
+  };
+  const common = (() => {
+    try {
+      return lstatSync(gitDir).isDirectory() ? gitDir : (readFileSync(gitDir, "utf8").match(/^gitdir:\s*(.+)$/m)?.[1] ?? gitDir);
+    } catch {
+      return gitDir;
+    }
+  })();
+  const resolvedCommon = resolve(spaceDir, common.trim());
+  return [stamp(spaceDir), stamp(join(resolvedCommon, "index")), stamp(join(resolvedCommon, "logs", "HEAD")), stamp(join(resolvedCommon, "HEAD")), stamp(join(resolvedCommon, "refs", "heads")), stamp(join(resolvedCommon, "packed-refs"))].join("|");
 }
 
 export interface EvictResult {
@@ -754,7 +796,7 @@ export class CellHeadMovedError extends Error {
 export function evictCellWrapper(
   cellsRoot: string,
   wrapperDir: string,
-  opts: { force?: boolean; expectedHead?: string | null; now?: () => number; trimPatterns?: readonly string[]; receipts?: readonly LandingReceipt[]; upstream?: UpstreamRef | null } = {},
+  opts: { force?: boolean; expectedHead?: string | null; now?: () => number; trimPatterns?: readonly string[]; leftoverPatterns?: readonly string[]; receipts?: readonly LandingReceipt[]; upstream?: UpstreamRef | null } = {},
 ): EvictResult | null {
   const target = resolve(wrapperDir);
   if (!existsSync(target)) return null;
@@ -764,14 +806,14 @@ export function evictCellWrapper(
   }
   const spaceDir = spaceDirIn(target);
   if (spaceDir == null) throw new CellShapeError(target, "no -space- checkout inside");
-  const { report, dirtySubmodules } = dirtyReportDetailed(target, { receipts: opts.receipts, upstream: opts.upstream ?? null });
+  const { report, dirtySubmodules, workingTree } = dirtyReportDetailed(target, { receipts: opts.receipts, upstream: opts.upstream ?? null, leftoverPatterns: opts.leftoverPatterns });
   const force = opts.force ?? false;
-  if (report.dirty && !force) throw new CellDeleteRefused(target, report, dirtySubmodules);
+  if (report.dirty && !force) throw new CellDeleteRefused(target, report, dirtySubmodules, workingTree);
   const head = existsSync(join(spaceDir, ".git")) ? revParse(spaceDir, "HEAD") : null;
   if (opts.expectedHead !== undefined && head !== opts.expectedHead) {
     throw new CellHeadMovedError(target, opts.expectedHead, head);
   }
-  const ignored = classifyIgnored(spaceDir, opts.trimPatterns ?? DEFAULT_TRIM_PATTERNS);
+  const ignored = classifyIgnored(spaceDir, opts.trimPatterns ?? DEFAULT_TRIM_PATTERNS, opts.leftoverPatterns ?? DEFAULT_LEFTOVER_PATTERNS);
   const envFiles = preserveEnvFiles(root, spaceDir, ignored.env);
   const keptPaths = preserveKeptPaths(root, spaceDir, ignored.keep);
   const parkedDir = join(root, EVICTING_DIR, `${basename(target)}.${(opts.now ?? Date.now)()}.${process.pid}`);

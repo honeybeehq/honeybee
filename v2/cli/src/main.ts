@@ -3136,6 +3136,31 @@ export function capacityLine(c: NodeCapacity): string {
   return `capacity: new Cells ${c.admission.newCells} (enforce ${c.admission.enforce ? "on" : "off, warn only"}) · ${block} · ${c.cells.cellCount} Cells, ${c.cells.liveCells} live${c.cells.cellBytes == null ? "" : `, ${gib(c.cells.cellBytes)} on disk`}${objects}`;
 }
 
+/** Why the dirty holds hold: tracked edits, untracked files, commits on no branch of the origin; and how many Cells the leftover rule released. */
+export function cellGcHoldLines(r: Pick<CellGcResult, "items" | "policy">): string[] {
+  const reports = r.items.filter((i) => i.report != null);
+  if (reports.length === 0) return [];
+  const uncommitted = reports.filter((i) => i.reason === "dirty_uncommitted");
+  const modified = uncommitted.filter((i) => i.workingTree == null || i.workingTree.modifiedFiles > 0 || i.workingTree.untrackedFiles === 0).length;
+  const unlanded = reports.filter((i) => i.reason === "dirty_unlanded");
+  const headUnlanded = unlanded.filter((i) => i.headUnlanded ?? true).length;
+  const commits = unlanded.reduce((sum, i) => sum + i.report!.unlandedCommitCount, 0);
+  const leftoverOnly = reports.filter((i) => !i.report!.uncommitted && (i.workingTree?.leftoverPaths.length ?? 0) > 0).length;
+  const leftoverNames = new Map<string, number>();
+  for (const i of reports) for (const path of i.workingTree?.leftoverPaths ?? []) leftoverNames.set(path, (leftoverNames.get(path) ?? 0) + 1);
+  const topLeftovers = [...leftoverNames.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6).map(([name, n]) => `${name}×${n}`).join(" ");
+  const wip = r.policy.evictionRequiresWip === true;
+  const lines = [
+    `why held: uncommitted ${uncommitted.length} Cells (tracked files modified in ${modified}, untracked files only in ${uncommitted.length - modified})` +
+      ` · unlanded ${unlanded.length} Cells (HEAD unlanded in ${headUnlanded}, only side branches in ${unlanded.length - headUnlanded}; ${commits} commits on no branch of the origin)` +
+      (wip ? " · evictionRequiresWip is on: both become evictable by age once their WIP and branches are pushed" : " · set cellRetention.evictionRequiresWip to evict these after their WIP and branches are pushed"),
+  ];
+  if (leftoverOnly > 0 || leftoverNames.size > 0) {
+    lines.push(`leftovers ignored: ${leftoverOnly} Cells hold only agent leftovers and count as clean${topLeftovers ? ` (${topLeftovers})` : ""}`);
+  }
+  return lines;
+}
+
 /** `hive cell gc` — the plan (and outcomes after --apply), planned Cells first, then holds grouped by reason. */
 function renderCellGc(r: CellGcResult): string[] {
   const lines: string[] = [];
@@ -3159,6 +3184,7 @@ function renderCellGc(r: CellGcResult): string[] {
   const planned = r.items.filter((i) => i.verdict === "evict" || i.verdict === "remove_retained").sort((a, b) => (b.bytes ?? 0) - (a.bytes ?? 0));
   const envCells = planned.filter((i) => i.envFiles.length > 0).length;
   lines.push(`planned: ${planned.length} Cells, ${gib(t.plannedBytes)} · held: ${t.heldCells} Cells, ${gib(t.heldBytes)} (${t.dirtyCells} dirty)${envCells > 0 ? ` · ${envCells} planned Cells carry ignored env files (preserved under cell-env/, restored on revive)` : ""}`);
+  lines.push(...cellGcHoldLines(r));
   for (const i of planned) {
     lines.push(`  ${i.verdict === "evict" ? "evict " : "remove"} ${gib(i.bytes).padStart(10)}  ${i.reason.padEnd(13)} ${ageDays(i.idleSince, r.plannedAt).padStart(5)}  ${i.beeLifecycle.padEnd(8)} ${i.beeName || i.beeId}  ${basename(i.wrapperDir)}${i.envFiles.length > 0 ? `  env×${i.envFiles.length}` : ""}${i.keep.entries.length > 0 ? `  keep×${i.keep.entries.length} ${gib(i.keep.bytes)}` : ""}`);
   }

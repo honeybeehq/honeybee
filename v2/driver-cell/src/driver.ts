@@ -107,7 +107,7 @@ interface PendingProvision {
 interface ProvisionWorkerResult {
   ok: boolean;
   error?: string;
-  wipRestore?: { restored: boolean; reason: string | null };
+  wipRestore?: { restored: boolean; reason: string | null; branches?: string[] };
 }
 
 /** `removeCell` refusal: the bee still has a live runtime — stop it first. */
@@ -254,9 +254,10 @@ export class CellService {
     return cell;
   }
 
-  private logWipRestore(beeId: string, outcome: { restored: boolean; reason: string | null }): void {
-    if (outcome.restored) this.cfg.log?.(`cell.wip.restored bee=${beeId}`);
-    else if (outcome.reason !== "nothing_to_restore") this.cfg.log?.(`cell.wip.restore_skipped bee=${beeId} reason=${outcome.reason ?? "-"}`);
+  private logWipRestore(beeId: string, outcome: { restored: boolean; reason: string | null; branches?: string[] }): void {
+    const branches = (outcome.branches?.length ?? 0) > 0 ? ` branches=${JSON.stringify(outcome.branches)}` : "";
+    if (outcome.restored) this.cfg.log?.(`cell.wip.restored bee=${beeId}${branches}`);
+    else if (outcome.reason !== "nothing_to_restore" || branches) this.cfg.log?.(`cell.wip.restore_skipped bee=${beeId} reason=${outcome.reason ?? "-"}${branches}`);
   }
 
   /**

@@ -13,6 +13,7 @@ import { join, resolve } from "node:path";
 import { git, hasCommit, revParse, tryGit } from "./git.ts";
 import { describeCommits, unlandedCommitsByTip, type LandingReceipt, type UnlandedCommit } from "./landed.ts";
 import { CELL_SPACE_DIRECTORY, looksLikeCellWrapper } from "./layout.ts";
+import { DEFAULT_LEFTOVER_PATTERNS, partitionLeftovers } from "./leftovers.ts";
 import { readLedger } from "./ledger.ts";
 import type { UpstreamRef } from "./upstream.ts";
 
@@ -36,9 +37,27 @@ export interface DirtyReport {
   originUnknown: boolean;
 }
 
-export function dirtyCauses(report: DirtyReport): string[] {
+/** What the working tree holds, beside the wire report: the facts behind `uncommitted`. */
+export interface WorkingTreeFacts {
+  /** Tracked files modified, deleted or staged in the space. */
+  modifiedFiles: number;
+  /** Untracked entries that count as work (`git status` entries, a collapsed directory counts once). */
+  untrackedFiles: number;
+  /** Untracked top-level entries matched by the leftover patterns: they never make the Cell dirty. */
+  leftoverPaths: string[];
+}
+
+export function uncommittedCause(facts: WorkingTreeFacts | null | undefined): string {
+  const parts = [
+    (facts?.modifiedFiles ?? 0) > 0 ? `${facts!.modifiedFiles} modified` : null,
+    (facts?.untrackedFiles ?? 0) > 0 ? `${facts!.untrackedFiles} untracked` : null,
+  ].filter((c): c is string => c != null);
+  return parts.length > 0 ? `uncommitted changes (${parts.join(", ")})` : "uncommitted changes";
+}
+
+export function dirtyCauses(report: DirtyReport, facts?: WorkingTreeFacts | null): string[] {
   return [
-    report.uncommitted ? "uncommitted changes" : null,
+    report.uncommitted ? uncommittedCause(facts) : null,
     report.unpushed ? unlandedCommitsCause(report) : null,
     report.stashed ? "stashed changes" : null,
     report.unlandedBranches.length > 0 ? `unlanded branches (${report.unlandedBranches.join(", ")})` : null,
@@ -58,9 +77,9 @@ export class CellDeleteRefused extends Error {
 
   readonly dirtySubmodules: string[];
 
-  constructor(wrapperDir: string, report: DirtyReport, dirtySubmodules: string[] = []) {
+  constructor(wrapperDir: string, report: DirtyReport, dirtySubmodules: string[] = [], facts?: WorkingTreeFacts | null) {
     const submodules = dirtySubmodules.length > 0 ? `; submodules with local state: ${dirtySubmodules.join(", ")}` : "";
-    super(`cell ${wrapperDir} is dirty (${dirtyCauses(report).join(", ")}${submodules}); pass force to delete anyway`);
+    super(`cell ${wrapperDir} is dirty (${dirtyCauses(report, facts).join(", ")}${submodules}); pass force to delete anyway`);
     this.dirtySubmodules = dirtySubmodules;
     this.name = "CellDeleteRefused";
     this.report = report;
@@ -94,10 +113,44 @@ export interface DirtyReportOptions {
   receipts?: readonly LandingReceipt[];
   /** Honeybee upstream mirror ref for the origin: ancestry of it counts as landed. */
   upstream?: UpstreamRef | null;
+  /** Untracked top-level entries matching these never make the Cell dirty (default DEFAULT_LEFTOVER_PATTERNS). */
+  leftoverPatterns?: readonly string[];
+}
+
+export interface WorkingTreeStatus {
+  modified: string[];
+  untracked: string[];
+  leftovers: string[];
+}
+
+/** `git status` of the space, untracked entries split into leftovers and work. Never touches the index. */
+export function workingTreeStatus(spaceDir: string, leftoverPatterns: readonly string[] = DEFAULT_LEFTOVER_PATTERNS): WorkingTreeStatus {
+  const out = git(spaceDir, ["--no-optional-locks", "status", "--porcelain=v1", "-z", "--untracked-files=normal", "--ignore-submodules=all"]);
+  const records = out.split("\0");
+  const modified: string[] = [];
+  const untracked: string[] = [];
+  for (let i = 0; i < records.length; i += 1) {
+    const record = records[i]!;
+    if (record.length < 4) continue;
+    const code = record.slice(0, 2);
+    if (code[0] === "R" || code[0] === "C") i += 1;
+    (code === "??" ? untracked : modified).push(record.slice(3));
+  }
+  const split = partitionLeftovers(untracked, leftoverPatterns);
+  return { modified, untracked: split.kept, leftovers: split.leftovers };
 }
 
 export function dirtyReport(wrapperDir: string, opts: DirtyReportOptions = {}): DirtyReport {
   return dirtyReportDetailed(wrapperDir, opts).report;
+}
+
+export interface DirtyReportDetails {
+  report: DirtyReport;
+  /** Populated submodules holding local state (reported as `uncommitted`). */
+  dirtySubmodules: string[];
+  workingTree: WorkingTreeFacts;
+  /** HEAD itself holds unlanded commits (as opposed to a side branch only). */
+  headUnlanded: boolean;
 }
 
 /**
@@ -105,7 +158,7 @@ export function dirtyReport(wrapperDir: string, opts: DirtyReportOptions = {}): 
  * dirt is reported as `uncommitted` (the report shape is a wire contract);
  * the paths are for refusal messages, logs and audit rows.
  */
-export function dirtyReportDetailed(wrapperDir: string, opts: DirtyReportOptions = {}): { report: DirtyReport; dirtySubmodules: string[] } {
+export function dirtyReportDetailed(wrapperDir: string, opts: DirtyReportOptions = {}): DirtyReportDetails {
   const spaceDir = spaceDirOf(wrapperDir);
   const clean: DirtyReport = {
     dirty: false,
@@ -117,13 +170,16 @@ export function dirtyReportDetailed(wrapperDir: string, opts: DirtyReportOptions
     unlandedCommitCount: 0,
     originUnknown: false,
   };
-  if (!existsSync(join(spaceDir, ".git"))) return { report: clean, dirtySubmodules: [] }; // half-provisioned: nothing to lose
+  const emptyTree: WorkingTreeFacts = { modifiedFiles: 0, untrackedFiles: 0, leftoverPaths: [] };
+  if (!existsSync(join(spaceDir, ".git"))) return { report: clean, dirtySubmodules: [], workingTree: emptyTree, headUnlanded: false }; // half-provisioned: nothing to lose
 
   const dirtySubmodules = submodulesWithLocalState(spaceDir);
-  const uncommitted = git(spaceDir, ["status", "--porcelain", "--ignore-submodules=all"]).length > 0 || dirtySubmodules.length > 0;
+  const tree = workingTreeStatus(spaceDir, opts.leftoverPatterns ?? DEFAULT_LEFTOVER_PATTERNS);
+  const uncommitted = tree.modified.length > 0 || tree.untracked.length > 0 || dirtySubmodules.length > 0;
   const stashed = git(spaceDir, ["stash", "list"]).length > 0;
 
   let unpushed = false;
+  let headUnlanded = false;
   let originUnknown = false;
   const unlandedBranches: string[] = [];
   let unlanded: string[] = [];
@@ -149,7 +205,10 @@ export function dirtyReportDetailed(wrapperDir: string, opts: DirtyReportOptions
     if (tips.length > 0) {
       const byTip = unlandedCommitsByTip({ spaceDir, originRepo: origin, tips, base: ledger.sha, receipts: opts.receipts ?? [], upstream: opts.upstream ?? null });
       const at = (sha: string) => byTip.get(sha) ?? [sha];
-      if (headTip) unpushed = at(headTip).length > 0;
+      if (headTip) {
+        headUnlanded = at(headTip).length > 0;
+        unpushed = headUnlanded;
+      }
       for (const b of branches) if (at(b.sha).length > 0) unlandedBranches.push(b.name);
       unlanded = [...new Set(tips.flatMap(at))];
     }
@@ -165,7 +224,7 @@ export function dirtyReportDetailed(wrapperDir: string, opts: DirtyReportOptions
     unlandedCommitCount: unlanded.length,
     originUnknown,
   };
-  return { report, dirtySubmodules };
+  return { report, dirtySubmodules, workingTree: { modifiedFiles: tree.modified.length, untrackedFiles: tree.untracked.length, leftoverPaths: tree.leftovers }, headUnlanded };
 }
 
 const GITLINK_MODE = "160000";
@@ -242,7 +301,7 @@ export function deleteCell(wrapperDir: string, opts: DirtyReportOptions & { forc
   if (detailed == null) return { deleted: false, forced: false, report: null };
   const report = detailed.report;
   if (report.dirty && !(opts.force ?? false)) {
-    throw new CellDeleteRefused(target, report, detailed.dirtySubmodules);
+    throw new CellDeleteRefused(target, report, detailed.dirtySubmodules, detailed.workingTree);
   }
   try {
     rmSync(target, { recursive: true, force: true });

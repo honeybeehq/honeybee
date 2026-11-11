@@ -11,6 +11,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join } from "node:path";
 import { DEFAULT_TRIM_PATTERNS } from "../../driver-cell/src/trimPatterns.ts";
+import { DEFAULT_LEFTOVER_PATTERNS, validLeftoverPattern } from "../../driver-cell/src/leftovers.ts";
 import { contextPolicyConfigOf, ContextPolicyError, type ContextPolicyConfig } from "./contextPolicy.ts";
 import { NAMING_HEM_SECRET_PREFIX, parseNamingHemSecretRef } from "./hemSecret.ts";
 
@@ -219,6 +220,8 @@ export interface CellRetentionConfig {
   trimAfterHours?: number | null;
   /** Ignored directory names (or `*.ext` file suffixes) treated as rebuildable build output. */
   trimPatterns?: string[];
+  /** Top-level entry names (`*` globs allowed) that are agent leftovers: untracked ones never make a Cell dirty, ignored ones are deleted on eviction, none enter a WIP snapshot. */
+  leftoverPatterns?: string[];
   /** Disk-pressure floor: percent of the Cells volume kept free (satellites 10; other nodes null). null drops this term. */
   minFreePercent?: number | null;
   /** Disk-pressure floor: bytes kept free (satellites 50 GiB; other nodes null). null drops this term; both null = no pressure trigger. */
@@ -249,6 +252,7 @@ export interface ResolvedCellRetention {
   maxPerPass: number;
   trimAfterMs: number | null;
   trimPatterns: string[];
+  leftoverPatterns: string[];
   minFreePercent: number | null;
   minFreeBytes: number | null;
   pressureIdleAfterMs: number | null;
@@ -673,6 +677,7 @@ export const DEFAULT_CELL_RETENTION: ResolvedCellRetention = {
   maxPerPass: 100,
   trimAfterMs: 24 * HOUR_MS,
   trimPatterns: [...DEFAULT_TRIM_PATTERNS],
+  leftoverPatterns: [...DEFAULT_LEFTOVER_PATTERNS],
   minFreePercent: WORKSTATION_MIN_FREE_PERCENT,
   minFreeBytes: WORKSTATION_MIN_FREE_BYTES,
   pressureIdleAfterMs: 3 * DAY_MS,
@@ -688,7 +693,7 @@ export const DEFAULT_CELL_RETENTION: ResolvedCellRetention = {
 };
 
 export function defaultCellRetention(nodeKind: NodeKind = "workstation"): ResolvedCellRetention {
-  const base: ResolvedCellRetention = { ...DEFAULT_CELL_RETENTION, trimPatterns: [...DEFAULT_CELL_RETENTION.trimPatterns], warnings: [] };
+  const base: ResolvedCellRetention = { ...DEFAULT_CELL_RETENTION, trimPatterns: [...DEFAULT_CELL_RETENTION.trimPatterns], leftoverPatterns: [...DEFAULT_CELL_RETENTION.leftoverPatterns], warnings: [] };
   if (nodeKind !== "satellite") return base;
   return {
     ...base,
@@ -748,6 +753,13 @@ export function cellRetentionOf(raw: unknown, nodeKind: NodeKind = "workstation"
     (v) => Array.isArray(v) && v.every(validTrimPattern),
     (v) => [...(v as string[])],
     out.trimPatterns,
+  );
+  out.leftoverPatterns = read(
+    "leftoverPatterns",
+    "an array of top-level entry names (`*` globs allowed)",
+    (v) => Array.isArray(v) && v.every(validLeftoverPattern),
+    (v) => [...(v as string[])],
+    out.leftoverPatterns,
   );
   out.minFreePercent = read("minFreePercent", "a number from 0 to 100 or null", (v) => v === null || (isNonNegative(v) && v <= 100), (v) => v as number | null, out.minFreePercent);
   out.minFreeBytes = read("minFreeBytes", "a non-negative number or null", nullableNonNegative, (v) => v as number | null, out.minFreeBytes);

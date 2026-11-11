@@ -2,7 +2,8 @@
  * The retention pass touches only what a verdict can act on, in-process with
  * real Cell wrappers and the real inspection worker: live and young Cells are
  * settled from registry facts without an inspection, an inspected hold is
- * remembered until its facts change or `cell.exec` touches the Cell, bytes are
+ * remembered until its facts change, the space itself moves (HEAD, index or
+ * top-level entries) or `cell.exec` touches the Cell, bytes are
  * walked only for a census or when `statfs` says the byte budget can bind, and
  * the verdicts match a census throughout. Deterministic clock; no daemon.
  */
@@ -134,20 +135,22 @@ test("settle: an inspected hold stands until its registry facts change or cell.e
     assert.equal(r.item(second.result, "archived_dirty").verdict, "hold");
 
     const dirty = r.cells.get("archived_dirty")!;
+    await new Promise((done) => setTimeout(done, 20));
     unlinkSync(join(dirty.spaceDir, "wip.txt"));
-    const stale = await r.pass();
-    assert.equal(stale.inspected, 1, "a change no Honeybee event reported leaves the judgment standing");
-    assert.equal(r.item(stale.result, "archived_dirty").reason, "dirty_uncommitted", "held, never evicted, until the Cell is re-judged");
+    const cleaned = await r.pass();
+    assert.equal(cleaned.inspected, 2, "the space changed under the judgment (its fingerprint moved), so the Cell is re-judged");
+    assert.equal(r.item(cleaned.result, "archived_dirty").verdict, "evict");
+    assert.equal(r.item(cleaned.result, "archived_dirty").reason, "archived_age");
 
-    r.service.noteCellTouched(dirty.cellId);
-    const touched = await r.pass();
-    assert.equal(touched.inspected, 2, "cell.exec on the Cell forces a fresh inspection");
-    assert.equal(r.item(touched.result, "archived_dirty").verdict, "evict");
-    assert.equal(r.item(touched.result, "archived_dirty").reason, "archived_age");
-
+    await new Promise((done) => setTimeout(done, 20));
     writeFileSync(join(dirty.spaceDir, "wip.txt"), "again\n");
     assert.equal(r.item((await r.pass()).result, "archived_dirty").reason, "dirty_uncommitted", "an evictable Cell is always inspected");
     assert.equal((await r.pass()).inspected, 1, "and the new hold settles");
+    r.service.noteCellTouched(dirty.cellId);
+    const touched = await r.pass();
+    assert.equal(touched.inspected, 2, "cell.exec on the Cell forces a fresh inspection even when nothing moved");
+    assert.equal(r.item(touched.result, "archived_dirty").reason, "dirty_uncommitted");
+    assert.equal((await r.pass()).inspected, 1);
     r.store.markCellParked(dirty.cellId);
     const parked = await r.pass();
     assert.equal(parked.inspected, 2, "a registry fact change (parked_at) re-inspects the Cell");

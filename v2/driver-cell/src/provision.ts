@@ -27,7 +27,7 @@
  * unrecorded step.
  */
 import { existsSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
-import { restoreWip } from "./wip.ts";
+import { restoreWip, restoreWipBranches } from "./wip.ts";
 import { availableParallelism } from "node:os";
 import { performance } from "node:perf_hooks";
 import { join } from "node:path";
@@ -76,14 +76,15 @@ export interface ProvisionedCell {
   originRepo: string;
   /** True when this call found a completed provisioning and did nothing. */
   replayed: boolean;
-  wipRestore?: { restored: boolean; reason: string | null };
+  wipRestore?: { restored: boolean; reason: string | null; branches?: string[] };
 }
 
 export function restoreWipAfterProvision(cell: ProvisionedCell, req: ProvisionRequest): ProvisionedCell {
   if (!req.restoreWip || cell.replayed) return cell;
   try {
     const res = restoreWip(cell.paths.spaceDir, req.originRepo, req.restoreWip.node, req.restoreWip.cellId, req.restoreWip.sha);
-    return { ...cell, wipRestore: { restored: res.restored, reason: res.reason } };
+    const branches = restoreWipBranches(cell.paths.spaceDir, req.originRepo, req.restoreWip.node, req.restoreWip.cellId);
+    return { ...cell, wipRestore: { restored: res.restored, reason: res.reason, branches } };
   } catch (err) {
     return { ...cell, wipRestore: { restored: false, reason: err instanceof Error ? err.message : String(err) } };
   }

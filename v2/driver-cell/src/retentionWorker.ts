@@ -15,6 +15,7 @@ export interface RetentionWorkerRequest {
   wrappers: Array<{ key: string; wrapperDir: string; receipts?: LandingReceipt[]; originRepo?: string | null }>;
   measure: boolean;
   trimPatterns: string[];
+  leftoverPatterns?: string[];
   /** Refresh each origin's upstream mirror before inspecting; its ref counts as landed by ancestry. */
   upstream?: { root: string; maxAgeMs: number; timeoutMs: number } | null;
   /** Post a `RetentionWorkerProgress` message after each wrapper. */
@@ -50,6 +51,7 @@ export interface TrimVerifyWorkerRequest {
   kind: "verifyTrim";
   cells: Array<{ key: string; wrapperDir: string; paths: string[]; modifiedSinceMs: number }>;
   trimPatterns: string[];
+  leftoverPatterns?: string[];
   mode?: ParkMode;
 }
 
@@ -62,6 +64,7 @@ export interface ParkPlanWorkerRequest {
   wrapperDir: string;
   mode: ParkMode;
   trimPatterns: string[];
+  leftoverPatterns?: string[];
 }
 
 export interface ParkPlanWorkerResult {
@@ -77,6 +80,7 @@ export interface WipPushWorkerRequest {
   node: string;
   cellId: string;
   maxFileBytes: number;
+  leftoverPatterns?: string[];
   previous: { sha: string; tree: string } | null;
 }
 
@@ -102,7 +106,7 @@ const request = workerData as RetentionWorkerRequest | TrimVerifyWorkerRequest |
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
 if (request.kind === "pushWip") {
   try {
-    const snapshot = snapshotWip(request.spaceDir, request.boxDir, request.cellId, Date.now, request.maxFileBytes);
+    const snapshot = snapshotWip(request.spaceDir, request.boxDir, request.cellId, Date.now, request.maxFileBytes, request.leftoverPatterns);
     if (request.previous && snapshot.tree === request.previous.tree && confirmWip(request.originRepo, request.node, request.cellId, request.previous.sha)) {
       parentPort?.postMessage({ snapshot: { ...snapshot, sha: request.previous.sha }, confirmed: true, unchanged: true, error: null } satisfies WipPushWorkerResult);
     } else {
@@ -121,7 +125,7 @@ if (request.kind === "pushWip") {
   }
 } else if (request.kind === "planPark") {
   try {
-    parentPort?.postMessage({ plan: planParkPaths(request.wrapperDir, request.mode, { trimPatterns: request.trimPatterns, measure: true }), error: null } satisfies ParkPlanWorkerResult);
+    parentPort?.postMessage({ plan: planParkPaths(request.wrapperDir, request.mode, { trimPatterns: request.trimPatterns, leftoverPatterns: request.leftoverPatterns, measure: true }), error: null } satisfies ParkPlanWorkerResult);
   } catch (err) {
     parentPort?.postMessage({ plan: null, error: errorText(err) } satisfies ParkPlanWorkerResult);
   }
@@ -129,7 +133,7 @@ if (request.kind === "pushWip") {
   const verified: TrimVerifyWorkerResult["verified"] = [];
   for (const { key, wrapperDir, paths, modifiedSinceMs } of request.cells) {
     try {
-      verified.push({ key, ...verifyParkPaths(wrapperDir, paths, request.mode ?? "trim", { trimPatterns: request.trimPatterns, modifiedSinceMs }), error: null });
+      verified.push({ key, ...verifyParkPaths(wrapperDir, paths, request.mode ?? "trim", { trimPatterns: request.trimPatterns, leftoverPatterns: request.leftoverPatterns, modifiedSinceMs }), error: null });
     } catch (err) {
       verified.push({ key, confirmed: [], skipped: [], shallow: [], error: errorText(err) });
     }
@@ -152,7 +156,7 @@ if (request.kind === "pushWip") {
     let entry: RetentionWorkerInspection;
     try {
       const upstream = originRepo ? upstreams.get(originRepo)?.ref ?? null : null;
-      entry = { key, inspection: inspectCellWrapper(wrapperDir, { measure: request.measure, trimPatterns: request.trimPatterns, receipts, upstream }), error: null };
+      entry = { key, inspection: inspectCellWrapper(wrapperDir, { measure: request.measure, trimPatterns: request.trimPatterns, leftoverPatterns: request.leftoverPatterns, receipts, upstream }), error: null };
     } catch (err) {
       entry = { key, inspection: null, error: errorText(err) };
     }

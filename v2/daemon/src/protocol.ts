@@ -2680,11 +2680,17 @@ export interface CellGcItem {
   verdict: CellGcVerdict;
   reason: CellGcReason;
   report: CellDirtyReport | null;
+  /** The facts behind `report.uncommitted`; absent when the Cell was settled without an inspection or on older daemons. */
+  workingTree?: { modifiedFiles: number; untrackedFiles: number; leftoverPaths: string[] } | null;
+  /** HEAD itself holds unlanded commits (false when only side branches do); absent as above. */
+  headUnlanded?: boolean;
   /** Git-ignored `.env` / `.env.*` files eviction preserves under `<data-dir>/cell-env/` and revive restores. */
   envFiles: string[];
   trim: { entries: CellGcPathBytes[]; bytes: number | null; planned: boolean };
   install?: { entries: CellGcPathBytes[]; bytes: number | null };
   keep: { entries: CellGcPathBytes[]; bytes: number | null };
+  /** Ignored agent leftovers (`leftoverPatterns`): deleted on eviction, parked in purge mode. Absent on older daemons. */
+  disposable?: { entries: CellGcPathBytes[]; bytes: number | null };
 }
 
 export interface CellGcPathBytes {
@@ -2728,7 +2734,9 @@ export interface CellGcResult {
     maxPerPass: number;
     trimAfterMs: number | null;
     trimPatterns: string[];
+    leftoverPatterns?: string[];
     purgeIgnoredOnPark?: boolean;
+    evictionRequiresWip?: boolean;
   };
   items: CellGcItem[];
   purge?: CellGcPurgeReport;

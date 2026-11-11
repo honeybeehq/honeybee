@@ -23,16 +23,23 @@ export {
   dirtyReport,
   dirtyReportDetailed,
   submodulesWithLocalState,
+  uncommittedCause,
+  workingTreeStatus,
   type DeleteResult,
   type DirtyReport,
+  type DirtyReportDetails,
   type DirtyReportOptions,
+  type WorkingTreeFacts,
+  type WorkingTreeStatus,
 } from "./remove.ts";
 export { landingTargets, unlandedCommitsByTip, type LandingReceipt, type UnlandedCommit } from "./landed.ts";
+export { DEFAULT_LEFTOVER_PATTERNS, isLeftoverPath, leftoverTopLevels, matchesLeftoverPattern, partitionLeftovers, validLeftoverPattern } from "./leftovers.ts";
 export {
   CellHeadMovedError,
   DEFAULT_TRIM_PATTERNS,
   EVICTING_DIR,
   cellEnvRootForCells,
+  cellFingerprint,
   cellKeepRootForCells,
   classifyIgnored,
   evictCellWrapper,
@@ -145,7 +152,7 @@ export {
   type WarmRecord,
 } from "./ledger.ts";
 export { cowCopy, cowPlatform, probeCow, probeCowWritable, type CowPlatform } from "./cow.ts";
-export { WIP_MAX_FILE_BYTES, WipError, adoptWipRef, confirmWip, dropWipRef, operationInProgress, pushWip, restoreWip, snapshotWip, sweepWipRefs, wipNodeScope, wipRefFor, type WipRefSweep, type WipRestoreSkip, type WipSnapshot, type WipStage } from "./wip.ts";
+export { WIP_MAX_FILE_BYTES, WipError, adoptWipRef, confirmWip, dropWipRef, listWipBranches, operationInProgress, pushWip, restoreWip, restoreWipBranches, snapshotWip, sweepWipRefs, wipBranchRefPrefix, wipNodeScope, wipRefFor, type WipRefSweep, type WipRestoreSkip, type WipSnapshot, type WipStage } from "./wip.ts";
 export {
   claimFromPool,
   buildPoolMember,

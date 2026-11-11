@@ -94,26 +94,26 @@ test("submodule.dirty: edits, untracked or ignored files, a stash, unpushed comm
 test("unpark: a park whose registry write failed goes back in place with its kept paths, and its env copies are dropped", () => {
   const rig = makeRig();
   try {
-    writeFileSync(join(rig.origin.repo, ".gitignore"), ".proof/\n.env\n");
+    writeFileSync(join(rig.origin.repo, ".gitignore"), ".data/\n.env\n");
     g(rig.origin.repo, ["add", ".gitignore"]);
-    const sha = commitOn(rig.origin.repo, ".gitignore", ".proof/\n.env\n", "ignores");
+    const sha = commitOn(rig.origin.repo, ".gitignore", ".data/\n.env\n", "ignores");
     const cell = provisionCell(
       rig.cellsRoot,
       { beeId: "bee-1", originRepo: rig.origin.repo, sha, wrapper: "bee-1", repoName: "fixture", cellId: "c1" },
       "cmd-1",
       { disableCow: true },
     );
-    mkdirSync(join(cell.paths.spaceDir, ".proof"), { recursive: true });
-    writeFileSync(join(cell.paths.spaceDir, ".proof", "shot.png"), "evidence\n");
+    mkdirSync(join(cell.paths.spaceDir, ".data"), { recursive: true });
+    writeFileSync(join(cell.paths.spaceDir, ".data", "shot.png"), "evidence\n");
     writeFileSync(join(cell.paths.spaceDir, ".env"), "SECRET=1\n");
     const parked = evictCellWrapper(rig.cellsRoot, cell.paths.wrapperDir)!;
     assert.equal(existsSync(cell.paths.wrapperDir), false);
-    assert.deepEqual(parked.keptPaths, [".proof"]);
+    assert.deepEqual(parked.keptPaths, [".data"]);
     assert.deepEqual(parked.envFiles, [".env"]);
 
     const undone = unparkCellWrapper(rig.cellsRoot, cell.paths.wrapperDir, parked);
     assert.deepEqual(undone.keptConflicts, []);
-    assert.equal(readFileSync(join(cell.paths.spaceDir, ".proof", "shot.png"), "utf8"), "evidence\n");
+    assert.equal(readFileSync(join(cell.paths.spaceDir, ".data", "shot.png"), "utf8"), "evidence\n");
     assert.equal(readFileSync(join(cell.paths.spaceDir, ".env"), "utf8"), "SECRET=1\n");
     assert.equal(existsSync(parked.parkedDir), false);
     assert.equal(existsSync(join(cellKeepRootForCells(rig.cellsRoot), cell.paths.spaceName)), false, "kept paths left the stash");
