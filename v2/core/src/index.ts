@@ -94,5 +94,6 @@ export * from "./multilineDelivery.ts";
 export { publicDeliveryConfirmation, readDeliveryConfirmations, DELIVERY_CONFIRMATION_SQL } from "./deliveryConfirmation.ts";
 
 export * from "./humanOutput.ts";
+export * from "./lastMessage.ts";
 export { ChampionNotFoundError, championSlug, type PutChampionInput } from "./store.ts";
 export { STORE_RETENTION, auditRetention, type AuditRetention, type StoreRetentionSlice } from "./storeRetention.ts";

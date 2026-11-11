@@ -92,6 +92,7 @@ function mapBee(r: Row): BeeRow {
     activeHandoffId: (r.active_handoff_id as string | null | undefined) ?? null,
     lastTurnTrigger: r.last_turn_trigger == null ? null : JSON.parse(String(r.last_turn_trigger)) as BeeRow["lastTurnTrigger"],
     lastHumanOutputAt: r.last_human_output_at == null ? null : Number(r.last_human_output_at),
+    lastMessage: (r.last_message as string | null | undefined) ?? null,
   };
 }
 

@@ -857,7 +857,7 @@ export class DaemonCore {
         // persist idle without its corresponding last-output fact. A SYNTHETIC
         // turn_ended (the readyAtSpawn boot-to-ready edge) is a phase fact
         // only: the agent produced nothing, so lastOutputAt must not move.
-        obs.kind === "turn_ended" && obs.synthetic !== true ? { recordOutput: true, endedQuiet: obs.endedQuiet } : this.turnOpenerOf(obs),
+        obs.kind === "turn_ended" && obs.synthetic !== true ? { recordOutput: true, endedQuiet: obs.endedQuiet, lastMessage: obs.lastMessage } : this.turnOpenerOf(obs),
       );
       this.log(`obs.${obs.kind} bee=${obs.beeId} gen=${obs.generation}${obs.synthetic ? " synthetic" : ""}`);
       if ((obs.kind === "turn_ended" && obs.synthetic !== true) || obs.kind === "exited") this.onTranscriptQuiet(obs.beeId, obs.generation, obs.kind);

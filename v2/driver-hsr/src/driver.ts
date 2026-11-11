@@ -11,6 +11,7 @@ import { exactProcessBirth } from "../../harness/src/processIdentity.ts";
 import { stateDirectory, stateFile } from "../../harness/src/statePath.ts";
 import { canonicalDigest, type JsonValue } from "../../core/src/canonical.ts";
 import { TurnQuiet } from "./turn-quiet.ts";
+import { lastMessageExcerpt } from "../../core/src/lastMessage.ts";
 import { childNodePath, nativeNodeEnv } from "../../core/src/nodeRuntime.ts";
 import type { ReconnectToolsReceipt } from "../../core/src/reconnectTools.ts";
 import { spawn, type ChildProcess } from "node:child_process";
@@ -1766,12 +1767,19 @@ export class RuntimeHost implements RuntimeDriver {
         return;
       }
       case "turn_ended": {
-        const endedQuiet = p.quiet?.end();
+        const outcome = p.quiet?.end() ?? {};
+        const lastMessage = outcome.said === undefined ? null : lastMessageExcerpt(outcome.said);
         p.turnId = null;
         p.turn = freshTurn();
         if (p.phase !== "running") return;
         p.phase = "idle";
-        this.events.push({ beeId: p.beeId, generation: p.generation, kind: "turn_ended", ...(endedQuiet !== undefined ? { endedQuiet } : {}) });
+        this.events.push({
+          beeId: p.beeId,
+          generation: p.generation,
+          kind: "turn_ended",
+          ...(outcome.quiet !== undefined ? { endedQuiet: outcome.quiet } : {}),
+          ...(lastMessage === null ? {} : { lastMessage }),
+        });
         return;
       }
       case "delivery_confirmed": {

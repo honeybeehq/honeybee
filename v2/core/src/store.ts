@@ -226,6 +226,7 @@ import {
   TASK_TRANSITIONS,
 } from "./tasks.ts";
 import { deliveredSenderKind } from "./automation.ts";
+import { lastMessageExcerpt } from "./lastMessage.ts";
 import { ACCOUNT_CREDENTIAL_ATTENTION_TABLE_SQL, QUESTIONS_TABLE_SQL, ACTIONS_TABLE_SQL, AUTH_INTERRUPTIONS_TABLE_SQL, ACCOUNT_ADMISSIONS_TABLE_SQL, ACCOUNT_CREDENTIAL_AUTHORITIES_TABLE_SQL, ACCOUNT_CREDENTIAL_AUTHORITIES_V27_COLUMNS, ACCOUNT_LIMITS_TABLE_SQL, ACCOUNTS_NATIVE_INDEX_SQL, BEES_ADDITIVE_COLUMNS, BEES_ACTIVE_MOVE_INDEX_SQL, BEES_ACTIVE_HANDOFF_INDEX_SQL, BEE_HANDOFFS_TABLE_SQL, TRANSCRIPT_SEGMENTS_TABLE_SQL, TRANSCRIPT_SEGMENT_OBJECTS_SQL, CHAMPIONS_SQL, GATEWAYS_SQL, BEE_RESUME_BUNDLES_SQL, MAILBOX_PENDING_METADATA_INDEX_SQL, BEE_MOVES_TABLE_SQL, CELLS_TABLE_SQL, CELLS_V22_COLUMNS, CELLS_ADDITIVE_COLUMNS, CELL_OPS_TABLE_SQL, FLAGS_ADDITIVE_COLUMNS, FLAGS_EXPIRY_INDEX_SQL, HANDLE_INDEX_SQL, IDEMPOTENCY_INDEX_SQL, MAILBOX_ADDITIVE_COLUMNS, MAIL_HISTORY_BEE_INDEX_SQL, MAIL_HISTORY_INDEX_SQL, MAIL_HISTORY_PROJECTION_SQL, RUNTIMES_ADDITIVE_COLUMNS, SCHEMA_SQL, SCHEMA_VERSION, MIN_READER_SCHEMA } from "./schema.ts";
 import { beeMoveReviveKey, beeMoveStopKey, beeMoveTransitionLegal, toBeeMoveView } from "./cellMove.ts";
 import {
@@ -784,6 +785,7 @@ function mapBee(r: Row): BeeRow {
     activeHandoffId: (r.active_handoff_id as string | null) ?? null,
     lastTurnTrigger: r.last_turn_trigger == null ? null : (JSON.parse(r.last_turn_trigger as string) as TurnTrigger),
     lastHumanOutputAt: r.last_human_output_at == null ? null : Number(r.last_human_output_at),
+    lastMessage: (r.last_message as string | null) ?? null,
   };
 }
 
@@ -3551,6 +3553,7 @@ export class CoreStore {
       /** Turn-end projection: phase + last-output fact commit together. */
       recordOutput?: boolean;
       endedQuiet?: boolean;
+      lastMessage?: string;
       turnOpener?: TurnTriggerSource & { messageId: number };
     } = {},
   ): { applied: boolean } {
@@ -3589,6 +3592,9 @@ export class CoreStore {
       if (opts.recordOutput === true && state !== "idle") {
         throw new IllegalTransitionError("recordOutput is only valid on a transition to idle");
       }
+      if (opts.lastMessage !== undefined && opts.recordOutput !== true) {
+        throw new IllegalTransitionError("lastMessage is only valid with recordOutput");
+      }
       if (opts.pid !== undefined && opts.pidStartedAt === undefined) {
         throw new CoreError("pid updates require pidStartedAt (boot re-adoption needs both)");
       }
@@ -3614,7 +3620,7 @@ export class CoreStore {
         : current.state === "running" && state === "idle" ? this.applyTurnEndTrigger(beeId, generation, at, opts.endedQuiet) : null;
       const runtime = this.currentRuntime(beeId);
       this.audit("runtime.updated", beeId, { runtime, ...(turnTrigger ? { turnTrigger } : {}) });
-      if (opts.recordOutput === true) this.applyRecordOutput(beeId, at, generation);
+      if (opts.recordOutput === true) this.applyRecordOutput(beeId, at, generation, opts.lastMessage);
       // Spawn-failure budget (contract §4.2 spawn_failed, B5 bounded): an
       // unproven runtime either died on its own or exhausted the daemon's boot
       // deadline. The durable, generation-fenced stop command distinguishes a
@@ -5694,15 +5700,21 @@ export class CoreStore {
     });
   }
 
-  private applyRecordOutput(beeId: string, at: number, generation: number | null): void {
+  private applyRecordOutput(beeId: string, at: number, generation: number | null, lastMessage?: string): void {
+    const excerpt = lastMessage === undefined ? null : lastMessageExcerpt(lastMessage);
     const row = this.stmt(
-      `UPDATE bees SET last_output_at = ?, last_human_output_at = CASE
+      `UPDATE bees SET last_output_at = ?, last_message = COALESCE(?, last_message), last_human_output_at = CASE
          WHEN COALESCE((SELECT mode FROM bee_human_output_state WHERE bee_id = bees.id), 'legacy') = 'legacy' AND json_extract(last_turn_trigger, '$.humanAt') IS NOT NULL AND json_extract(last_turn_trigger, '$.generation') = ?
            AND COALESCE(json_extract(last_turn_trigger, '$.endedQuiet'), 0) = 0 THEN ?
          ELSE last_human_output_at END
-       WHERE id = ? RETURNING last_human_output_at`,
-    ).get(at, generation, at, beeId) as Row;
-    this.audit("output.recorded", beeId, { beeId, at, lastHumanOutputAt: row.last_human_output_at == null ? null : Number(row.last_human_output_at) });
+       WHERE id = ? RETURNING last_human_output_at, last_message`,
+    ).get(at, excerpt, generation, at, beeId) as Row;
+    this.audit("output.recorded", beeId, {
+      beeId,
+      at,
+      lastHumanOutputAt: row.last_human_output_at == null ? null : Number(row.last_human_output_at),
+      ...(excerpt === null ? {} : { lastMessage: row.last_message as string }),
+    });
   }
 
   answeredQuestionId(messageId: number): string | null {

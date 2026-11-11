@@ -24,38 +24,38 @@ test("final assistant text wins; child threads and tool output cannot silence th
   turn.pushLine(codex("item/completed", { item: { type: "agentMessage", id: "b", text: "Please review" } }), "root");
   turn.pushLine(codex("item/completed", { item: { type: "agentMessage", id: "c", text: "<quiet/>" } }, "child"), "root");
   turn.pushLine(codex("turn/completed", { turn: { id: "one", status: "completed" } }), "root");
-  assert.equal(turn.end(), false);
-  assert.equal(turn.end(), undefined);
+  assert.equal(turn.end().quiet, false);
+  assert.equal(turn.end().quiet, undefined);
   turn.pushLine(codex("turn/started", { turn: { id: "two" } }), "root");
   turn.pushLine(codex("item/completed", { item: { type: "commandExecution", id: "tool", aggregatedOutput: "<quiet/>" } }), "root");
-  assert.equal(turn.end(), undefined);
+  assert.equal(turn.end().quiet, undefined);
 });
 
 test("Claude assistant final text is classified and reset between turns", () => {
   const turn = new TurnQuiet("claude");
   turn.pushLine(JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: "<quiet/>\u{E0100}" }] } }), null);
   turn.pushLine(JSON.stringify({ type: "result", result: "<quiet/>\u{E0100}" }), null);
-  assert.equal(turn.end(), true);
-  assert.equal(turn.end(), undefined);
+  assert.equal(turn.end().quiet, true);
+  assert.equal(turn.end().quiet, undefined);
   turn.pushLine(JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: "done <quiet/>" }] } }), null);
   turn.pushLine(JSON.stringify({ type: "result", result: "done <quiet/>" }), null);
-  assert.equal(turn.end(), false);
+  assert.equal(turn.end().quiet, false);
 });
 
 test("tmux hook or quiescence cannot classify intermediate transcript text", () => {
   const turn = new TurnQuiet("claude");
   const assistant = (text: string) => JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text }] } });
   turn.pushLine(assistant("<quiet/>"), null);
-  assert.equal(turn.end({ requireTerminal: true }), undefined);
+  assert.equal(turn.end({ requireTerminal: true }).quiet, undefined);
   turn.pushLine(assistant("<quiet/>"), null);
   turn.reset();
-  assert.equal(turn.end({ requireTerminal: true }), undefined);
+  assert.equal(turn.end({ requireTerminal: true }).quiet, undefined);
   turn.pushLine(assistant("Please review"), null);
   turn.pushLine(JSON.stringify({ type: "result", result: "Please review" }), null);
-  assert.equal(turn.end({ requireTerminal: true }), false);
+  assert.equal(turn.end({ requireTerminal: true }).quiet, false);
   turn.pushLine(assistant("intermediate"), null);
-  assert.equal(turn.end({ requireTerminal: true, finalText: "<quiet/>\u{E0100}" }), true);
-  assert.equal(turn.end({ requireTerminal: true, finalText: "" }), false);
+  assert.equal(turn.end({ requireTerminal: true, finalText: "<quiet/>\u{E0100}" }).quiet, true);
+  assert.equal(turn.end({ requireTerminal: true, finalText: "" }).quiet, false);
 });
 
 test("Claude native sidechain rows cannot replace root final text", () => {
@@ -64,7 +64,7 @@ test("Claude native sidechain rows cannot replace root final text", () => {
     turn.pushLine(JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: "Please review" }] } }), null);
     turn.pushLine(JSON.stringify({ type: "assistant", ...scope, message: { content: [{ type: "text", text: "<quiet/>" }] } }), null);
     turn.pushLine(JSON.stringify({ type: "result", result: "Please review" }), null);
-    assert.equal(turn.end({ requireTerminal: true }), false);
+    assert.equal(turn.end({ requireTerminal: true }).quiet, false);
   }
 });
 
@@ -77,19 +77,19 @@ test("quiet text followed by failure or interruption stays unclassified", () => 
     const turn = new TurnQuiet("claude");
     turn.pushLine(assistant, null);
     turn.pushLine(JSON.stringify(terminal), null);
-    assert.equal(turn.end({ finalText: "<quiet/>" }), undefined);
+    assert.equal(turn.end({ finalText: "<quiet/>" }).quiet, undefined);
   }
   for (const status of ["failed", "interrupted"]) {
     const turn = new TurnQuiet("codex");
     turn.pushLine(codex("turn/started", { turn: { id: "failed-turn" } }), "root");
     turn.pushLine(codex("item/completed", { item: { type: "agentMessage", id: "quiet", text: "<quiet/>" } }), "root");
     turn.pushLine(codex("turn/completed", { turn: { id: "failed-turn", status } }), "root");
-    assert.equal(turn.end(), undefined);
+    assert.equal(turn.end().quiet, undefined);
   }
   const turn = new TurnQuiet("claude");
   turn.pushLine(assistant, null);
   turn.invalidate();
-  assert.equal(turn.end({ finalText: "<quiet/>" }), undefined);
+  assert.equal(turn.end({ finalText: "<quiet/>" }).quiet, undefined);
 });
 
 test("ACP errors and cancelled prompt results cannot classify prior quiet chunks", () => {
@@ -103,7 +103,7 @@ test("ACP errors and cancelled prompt results cannot classify prior quiet chunks
       const turn = new TurnQuiet(harness);
       turn.pushLine(JSON.stringify({ method: "session/update", params: { sessionId: "root", update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "<quiet/>" } } } }), "root");
       turn.pushLine(JSON.stringify(completion), "root");
-      assert.equal(turn.end(), undefined, harness + " " + JSON.stringify(completion));
+      assert.equal(turn.end().quiet, undefined, harness + " " + JSON.stringify(completion));
     }
   }
 });
@@ -116,6 +116,21 @@ test("ACP successful completion stays quiet and foreign sessions cannot replace 
     turn.pushLine(chunk("root", "<quiet/>"), "root");
     turn.pushLine(chunk("child", "Please review"), "root");
     turn.pushLine(JSON.stringify({ id: 1001, result: { stopReason: "end_turn" } }), "root");
-    assert.equal(turn.end(), true);
+    assert.equal(turn.end().quiet, true);
   }
+});
+
+test("the turn outcome carries the final root text with the quiet token stripped", () => {
+  const turn = new TurnQuiet("codex");
+  turn.pushLine(codex("turn/started", { turn: { id: "one" } }), "root");
+  turn.pushLine(codex("item/completed", { item: { type: "agentMessage", id: "a", text: "first draft" } }), "root");
+  turn.pushLine(codex("item/completed", { item: { type: "agentMessage", id: "b", text: "Landed as abc123 <quiet/>" } }), "root");
+  turn.pushLine(codex("item/completed", { item: { type: "agentMessage", id: "c", text: "child noise" } }, "child"), "root");
+  turn.pushLine(codex("turn/completed", { turn: { id: "one", status: "completed" } }), "root");
+  assert.deepEqual(turn.end(), { quiet: false, said: "Landed as abc123" });
+  assert.deepEqual(turn.end(), {});
+  const claude = new TurnQuiet("claude");
+  claude.pushLine(JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: "<quiet/>" }] } }), null);
+  claude.pushLine(JSON.stringify({ type: "result", result: "<quiet/>" }), null);
+  assert.deepEqual(claude.end(), { quiet: true, said: "" });
 });

@@ -226,6 +226,8 @@ export type MirrorDelta = AuditRow;
  *   mail.delivered  → may carry { turnTrigger: TurnTrigger }             (bee row: lastTurnTrigger)
  *   runtime.updated → may carry { turnTrigger: TurnTrigger }             (bee row: lastTurnTrigger)
  *   output.recorded → carries { lastHumanOutputAt: number | null }       (bee row: lastHumanOutputAt)
+ *   output.recorded → may carry { lastMessage: string }                  (bee row: lastMessage; capability `bee.last_message.v1`;
+ *                                                                         absent = the turn said nothing, the row keeps its value)
  *   mail.enqueued   → message may carry senderKind ('human'|'automation'); absent = not given (mailbox only)
  * Delivery markers (additive inside an existing payload, capabilities `mail.answer_marker.v1`, `mail.automation_marker.v1`):
  *   mail.delivered  → may carry { questionId: string }                   (the delivered message answers that question)
@@ -341,6 +343,7 @@ export const MIRROR_BEE_RECORD_KEYS = [
   "activeHandoffId",
   "lastTurnTrigger",
   "lastHumanOutputAt",
+  "lastMessage",
 ] as const;
 export const MIRROR_RUNTIME_KEYS = [
   "beeId",

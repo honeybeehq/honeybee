@@ -32,10 +32,12 @@ test("quiet facts through a throwaway daemon: root/child isolation, failure, int
     const spoken = await ended((await send("@root-sub")).messageId, 60_000);
     assert.equal(spoken.bee!.lastTurnTrigger!.endedQuiet, false);
     assert.equal(spoken.bee!.lastHumanOutputAt, spoken.bee!.lastOutputAt);
+    assert.equal(spoken.bee!.lastMessage, "Please review the root reply");
     console.log("LAB root reply + quiet sidechains: endedQuiet=false, human cursor advances");
     const content = await ended((await send("@content-quiet")).messageId);
     assert.equal(content.bee!.lastTurnTrigger!.endedQuiet, false);
     assert.equal(content.bee!.lastHumanOutputAt, content.bee!.lastOutputAt);
+    assert.equal(content.bee!.lastMessage, "done");
     assert.ok(content.bee!.lastHumanOutputAt! > spoken.bee!.lastHumanOutputAt!);
     console.log("LAB visible text + trailing token: endedQuiet=false, human cursor advances");
     const failed = await ended((await send("@quiet-error")).messageId);

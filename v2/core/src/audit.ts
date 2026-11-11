@@ -181,6 +181,7 @@ export function replayAudit(rows: AuditRow[]): StateDump {
           activeHandoffId: bee.activeHandoffId ?? null,
           lastTurnTrigger: bee.lastTurnTrigger ?? null,
           lastHumanOutputAt: bee.lastHumanOutputAt ?? null,
+          lastMessage: bee.lastMessage ?? null,
           humanOutputMode: bee.humanOutputMode ?? "legacy",
           humanAcknowledgementTrackingSince: bee.humanAcknowledgementTrackingSince ?? null,
           lastHumanAcknowledgementAt: bee.lastHumanAcknowledgementAt ?? null,
@@ -514,6 +515,7 @@ export function replayAudit(rows: AuditRow[]): StateDump {
         const bee = mustBee(p.beeId as string);
         bee.lastOutputAt = p.at as number;
         if (p.lastHumanOutputAt !== undefined) bee.lastHumanOutputAt = p.lastHumanOutputAt as number | null;
+        if (typeof p.lastMessage === "string") bee.lastMessage = p.lastMessage;
         break;
       }
       case "template.put": {

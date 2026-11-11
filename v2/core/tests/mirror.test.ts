@@ -228,6 +228,7 @@ test("mirror.2: value-level snapshot — a deterministic store serializes to the
         "activeHandoffId": null,
         "lastTurnTrigger": null,
         "lastHumanOutputAt": null,
+        "lastMessage": null,
         "humanOutputMode": "legacy",
         "humanAcknowledgementTrackingSince": null,
         "lastHumanAcknowledgementAt": null,

@@ -201,6 +201,7 @@ export interface BeeRow extends Partial<HumanOutputFacts> {
   activeHandoffId: string | null;
   lastTurnTrigger: TurnTrigger | null;
   lastHumanOutputAt: number | null;
+  lastMessage: string | null;
 }
 
 export const TURN_TRIGGER_KINDS = ["human", "answer", "mail", "other"] as const;

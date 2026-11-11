@@ -175,8 +175,10 @@
  * v58 — H5 Champion bee kind: `bees.kind` (`agent` | `champion`; a Champion incarnation is born
  * `champion` by champion.start); additive; migration = ALTER TABLE ADD COLUMN.
  * v59 — D1 reader gate: meta('min_reader_schema'); no table changes; contract, since no earlier
- * build reads the key. */
-export const SCHEMA_VERSION = 59;
+ * build reads the key.
+ * v60 — `bees.last_message`: bounded plain-text excerpt of the last assistant message, written in
+ * the turn-end transaction; additive; migration = ALTER TABLE ADD COLUMN. */
+export const SCHEMA_VERSION = 60;
 export const MIN_READER_SCHEMA = 59;
 
 export const QUESTIONS_TABLE_SQL = `
@@ -429,6 +431,7 @@ CREATE TABLE IF NOT EXISTS bees (
   active_handoff_id TEXT,
   last_turn_trigger TEXT,
   last_human_output_at INTEGER,
+  last_message     TEXT,
   -- v58: the bee kind. agent is an ordinary bee; champion is the incarnation of a
   -- Champion identity (champions.current_bee_id), spawned only by champion.start.
   kind             TEXT NOT NULL DEFAULT 'agent' CHECK (kind IN ('agent','champion'))
@@ -921,6 +924,7 @@ export const BEES_ADDITIVE_COLUMNS: ReadonlyArray<readonly [name: string, ddl: s
   ["active_handoff_id", "active_handoff_id TEXT"],
   ["last_turn_trigger", "last_turn_trigger TEXT"],
   ["last_human_output_at", "last_human_output_at INTEGER"],
+  ["last_message", "last_message TEXT"],
   ["kind", "kind TEXT NOT NULL DEFAULT 'agent' CHECK (kind IN ('agent','champion'))"],
 ];
 

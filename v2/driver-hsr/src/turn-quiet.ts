@@ -3,6 +3,11 @@ import { quietReply } from "../../core/src/quiet.ts";
 import { createTranscriptProjector } from "../../adapters/src/transcripts.ts";
 import type { TranscriptProjector } from "../../adapters/src/transcript.ts";
 
+export interface TurnOutcome {
+  quiet?: boolean;
+  said?: string;
+}
+
 export class TurnQuiet {
   private readonly harness: string;
   private projector: TranscriptProjector | null = null;
@@ -78,7 +83,7 @@ export class TurnQuiet {
     this.failed = true;
   }
 
-  end(opts: { requireTerminal?: boolean; finalText?: string } = {}): boolean | undefined {
+  end(opts: { requireTerminal?: boolean; finalText?: string } = {}): TurnOutcome {
     try {
       this.accept(this.projector?.flush() ?? []);
     } catch {
@@ -87,10 +92,10 @@ export class TurnQuiet {
       this.terminal = false;
     }
     const text = this.failed ? undefined : opts.finalText ?? (opts.requireTerminal && !this.terminal ? undefined : this.finalText);
-    const quiet = text === undefined ? undefined : quietReply(text).quiet;
+    const reply = text === undefined ? undefined : quietReply(text);
     this.finalText = undefined;
     this.terminal = false;
     this.failed = false;
-    return quiet;
+    return reply === undefined ? {} : { quiet: reply.quiet, said: reply.said };
   }
 }

@@ -118,6 +118,7 @@ export const DAEMON_CAPABILITIES = [
   "bee.turn_trigger.v1",
   "turn-trigger.answer.v1",
   "bee.turn_quiet.v1",
+  "bee.last_message.v1",
   "mail.answer_marker.v1",
   "mail.automation_marker.v1",
   "bee.reconnectTools.v1",
