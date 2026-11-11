@@ -92,9 +92,31 @@ jobs:
           node-version: 24.15.0
           cache: npm
       - name: Install Linux test prerequisites
+        # The runner image ships tmux; the rest must come from apt. The image's
+        # mirror list prefers azure.archive.ubuntu.com, which at times does not
+        # resolve from the runner: retry with backoff and, when it does not
+        # resolve or an attempt fails, fetch from archive.ubuntu.com instead.
         run: |
-          sudo apt-get update
-          sudo apt-get install -y tmux bubblewrap ripgrep socat apparmor-profiles
+          set -u
+          missing=""
+          for p in tmux bubblewrap ripgrep socat apparmor-profiles; do
+            if ! dpkg-query -W -f='${Status}' "$p" 2>/dev/null | grep -q 'install ok installed'; then missing="$missing $p"; fi
+          done
+          if [ -z "$missing" ]; then echo "all prerequisites already installed"; exit 0; fi
+          echo "installing:$missing"
+          use_archive() {
+            echo "using archive.ubuntu.com instead of the Azure mirror"
+            printf 'http://archive.ubuntu.com/ubuntu\tpriority:1\nhttp://security.ubuntu.com/ubuntu\tpriority:2\n' | sudo tee /etc/apt/apt-mirrors.txt >/dev/null
+            sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|http://archive.ubuntu.com/ubuntu|g' /etc/apt/sources.list /etc/apt/sources.list.d/*.sources /etc/apt/sources.list.d/*.list 2>/dev/null || true
+          }
+          if ! getent hosts azure.archive.ubuntu.com >/dev/null 2>&1; then use_archive; fi
+          for attempt in 1 2 3 4 5; do
+            if sudo apt-get update -o Acquire::Retries=3 && sudo apt-get install -y -o Acquire::Retries=3 $missing; then exit 0; fi
+            echo "apt attempt $attempt failed"
+            if [ "$attempt" -eq 5 ]; then exit 1; fi
+            use_archive
+            sleep $((attempt * 15))
+          done
       - name: Allow bubblewrap namespace setup under AppArmor
         # Ubuntu restricts unprivileged user namespaces. Its packaged profile
         # permits bwrap setup while denying capabilities to sandboxed children.
