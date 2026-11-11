@@ -10,7 +10,7 @@ import type { LandingReceipt } from "./landed.ts";
 import { cellFingerprint, inspectCellWrapper, measurePathBytes, planParkPaths, verifyParkPaths, type CellWrapperInspection, type ParkMode, type ParkPlan, type TrimSkip } from "./retention.ts";
 import { refreshUpstreamMirror, type UpstreamRef } from "./upstream.ts";
 import { confirmWip, pushWip, snapshotWip, sweepWipRefs, type WipSnapshot } from "./wip.ts";
-import { bundleWork, WorkError, type WorkBundleRecord } from "./work.ts";
+import { bundleWork, verifyWorkBundle, WorkError, type WorkBundleRecord, type WorkVerifyReport } from "./work.ts";
 
 export interface RetentionWorkerRequest {
   kind?: "inspect";
@@ -132,6 +132,18 @@ export interface WorkBundleWorkerResult {
   error: string | null;
 }
 
+export interface WorkVerifyWorkerRequest {
+  kind: "verifyWork";
+  originRepo: string;
+  workRoot: string;
+  cellId: string;
+}
+
+export interface WorkVerifyWorkerResult {
+  report: (WorkVerifyReport & { record: WorkBundleRecord | null }) | null;
+  error: string | null;
+}
+
 export interface WipRefSweepWorkerRequest {
   kind: "sweepWipRefs";
   scopes: string[];
@@ -143,7 +155,7 @@ export interface WipRefSweepWorkerResult {
   error: string | null;
 }
 
-const request = workerData as RetentionWorkerRequest | TrimVerifyWorkerRequest | ParkPlanWorkerRequest | WipPushWorkerRequest | WipRefSweepWorkerRequest | WorkBundleWorkerRequest;
+const request = workerData as RetentionWorkerRequest | TrimVerifyWorkerRequest | ParkPlanWorkerRequest | WipPushWorkerRequest | WipRefSweepWorkerRequest | WorkBundleWorkerRequest | WorkVerifyWorkerRequest;
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
 if (request.kind === "bundleWork") {
   try {
@@ -151,6 +163,12 @@ if (request.kind === "bundleWork") {
     parentPort?.postMessage({ record, fingerprint: cellFingerprint(request.spaceDir), reason: null, error: null } satisfies WorkBundleWorkerResult);
   } catch (err) {
     parentPort?.postMessage({ record: null, fingerprint: null, reason: err instanceof WorkError ? err.reason : null, error: errorText(err) } satisfies WorkBundleWorkerResult);
+  }
+} else if (request.kind === "verifyWork") {
+  try {
+    parentPort?.postMessage({ report: verifyWorkBundle(request.originRepo, request.workRoot, request.cellId), error: null } satisfies WorkVerifyWorkerResult);
+  } catch (err) {
+    parentPort?.postMessage({ report: null, error: errorText(err) } satisfies WorkVerifyWorkerResult);
   }
 } else if (request.kind === "pushWip") {
   try {

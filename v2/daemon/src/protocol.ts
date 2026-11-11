@@ -657,6 +657,7 @@ export const RPC_VERBS = [
   "cell.evict",
   "cell.park",
   "cell.keep.remove",
+  "cell.work.verify",
   // v23: durable session handoff (same-family reset / cross-family change).
   "bee.handoff",
   "bee.handoff.get",
@@ -2936,6 +2937,28 @@ export interface CellEvictResult {
 }
 
 /** `cell.keep.remove` — delete kept ignored files (`cell-keep/`) of one evicted bee, or of every Cell that is not active. */
+/** `cell.work.verify` — check one bee's work bundle against its origin in a throwaway directory. Read-only: nothing in the origin, the bundle or any Cell is written. */
+export interface CellWorkVerifyParams {
+  beeId: string;
+}
+
+export interface CellWorkVerifyResult {
+  cell: CellRow;
+  status: "ok" | "failed" | "no_bundle";
+  bundlePath: string;
+  bundleBytes: number;
+  createdAt: number | null;
+  commits: number;
+  paths: number;
+  stashes: number;
+  prerequisites: { count: number; missing: string[] };
+  refs: Array<{ ref: string; expected: string; got: string | null; source: "bundle" | "origin"; ok: boolean }>;
+  workTree: { expected: string | null; got: string | null; ok: boolean };
+  indexTree: { expected: string; got: string | null; ok: boolean };
+  connectivity: boolean;
+  problems: string[];
+}
+
 export interface CellKeepRemoveParams {
   beeId?: string;
   all?: boolean;

@@ -1,4 +1,4 @@
-import { closeSync, copyFileSync, existsSync, fsyncSync, lstatSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync, readSync, renameSync, rmSync, statSync, unlinkSync, utimesSync, writeFileSync } from "node:fs";
+import { closeSync, copyFileSync, existsSync, fsyncSync, lstatSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync, readSync, renameSync, rmSync, rmdirSync, statSync, unlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join, resolve } from "node:path";
 import { revParse, tryGit } from "./git.ts";
@@ -64,6 +64,8 @@ export interface WorkBundleRecord {
   work: { sha: string; tree: string } | null;
   index: { sha: string | null; tree: string };
   prerequisites: string[];
+  /** The refs the bundle itself carries; a recorded branch missing here is reachable from the origin and recreated from its objects. */
+  bundledRefs: string[];
   excluded: string[];
   infoExclude: string | null;
   commits: number;
@@ -340,7 +342,7 @@ export function readWorkRecord(workRoot: string, cellId: string): WorkBundleReco
   if (!existsSync(record) || !existsSync(bundle)) return null;
   const parsed = JSON.parse(readFileSync(record, "utf8")) as Partial<WorkBundleRecord>;
   if (parsed.version !== WORK_RECORD_VERSION || parsed.cellId !== cellId || parsed.head == null || !Array.isArray(parsed.branches)) throw new WorkError("restore", "unreadable_record", record);
-  return { ...parsed, stashes: Array.isArray(parsed.stashes) ? parsed.stashes : [] } as WorkBundleRecord;
+  return { ...parsed, stashes: Array.isArray(parsed.stashes) ? parsed.stashes : [], bundledRefs: Array.isArray(parsed.bundledRefs) ? parsed.bundledRefs : [] } as WorkBundleRecord;
 }
 
 export function dropWorkBundle(workRoot: string, cellId: string): boolean {
@@ -369,6 +371,117 @@ export function listWorkBundles(workRoot: string): Array<{ cellId: string; creat
     }
   }
   return out.sort((a, b) => a.createdAt - b.createdAt);
+}
+
+function bundleHeads(cwd: string, gitDir: string, bundle: string, timeoutMs: number): string[] {
+  const res = tryGit(cwd, ["--git-dir", gitDir, "bundle", "list-heads", bundle], { timeoutMs });
+  if (res.status !== 0) return [];
+  return res.stdout.split("\n").map((l) => l.trim().split(" ")[1] ?? "").filter((r) => r.length > 0).sort();
+}
+
+export interface WorkVerifyRef {
+  ref: string;
+  expected: string;
+  got: string | null;
+  /** `bundle`: the bundle carries it; `origin`: the origin already reaches it, the restore recreates it from the origin's objects. */
+  source: "bundle" | "origin";
+  ok: boolean;
+}
+
+export interface WorkVerifyReport {
+  ok: boolean;
+  bundleBytes: number;
+  prerequisites: { count: number; missing: string[] };
+  refs: WorkVerifyRef[];
+  workTree: { expected: string | null; got: string | null; ok: boolean };
+  indexTree: { expected: string; got: string | null; ok: boolean };
+  connectivity: boolean;
+  problems: string[];
+}
+
+/**
+ * Fetch the bundle into a throwaway bare repository whose only other objects
+ * are the origin's (an alternate, read-only) and compare every recorded ref,
+ * the working-tree and staged trees, and object connectivity against the
+ * record. Nothing in the origin, the bundle or any Cell is written.
+ */
+export function verifyBundleAgainstOrigin(bundle: string, record: WorkBundleRecord, originObjects: string, verifyGitDir: string, timeoutMs = 10 * 60_000): WorkVerifyReport {
+  const problems: string[] = [];
+  const cwd = dirname(verifyGitDir);
+  const run = (args: string[], input?: string) => tryGit(cwd, ["--git-dir", verifyGitDir, ...args], { input, timeoutMs });
+  const must = (args: string[], input?: string) => {
+    const res = run(args, input);
+    if (res.status !== 0) throw new WorkError("verify", "git_failed", `git ${args.join(" ")} exited ${res.status}: ${res.stderr.trim()}`);
+    return res.stdout.trim();
+  };
+  const report: WorkVerifyReport = {
+    ok: false,
+    bundleBytes: existsSync(bundle) ? statSync(bundle).size : 0,
+    prerequisites: { count: record.prerequisites.length, missing: [] },
+    refs: [],
+    workTree: { expected: record.work?.tree ?? null, got: null, ok: record.work == null },
+    indexTree: { expected: record.index.tree, got: null, ok: false },
+    connectivity: false,
+    problems,
+  };
+  try {
+    must(["init", "--quiet", "--bare", verifyGitDir]);
+    mkdirSync(join(verifyGitDir, "objects", "info"), { recursive: true });
+    writeFileSync(join(verifyGitDir, "objects", "info", "alternates"), `${originObjects}\n`);
+    for (const sha of record.prerequisites) if (run(["cat-file", "-e", `${sha}^{commit}`]).status !== 0) report.prerequisites.missing.push(sha);
+    if (report.prerequisites.missing.length > 0) problems.push(`prerequisites_missing_in_origin: ${report.prerequisites.missing.length} of ${record.prerequisites.length}`);
+    const verify = run(["bundle", "verify", "--quiet", bundle]);
+    if (verify.status !== 0) problems.push(`bundle_unverifiable: ${verify.stderr.trim()}`);
+    const fetched = run(["fetch", "--quiet", "--no-tags", "--no-write-fetch-head", bundle, "+refs/*:refs/*"]);
+    if (fetched.status !== 0) problems.push(`fetch_failed: ${fetched.stderr.trim()}`);
+    const bundled = new Set(bundleHeads(cwd, verifyGitDir, bundle, timeoutMs));
+    if (record.bundledRefs.length > 0 && JSON.stringify([...bundled].sort()) !== JSON.stringify([...record.bundledRefs].sort())) problems.push(`bundled_refs_differ: bundle has ${[...bundled].sort().join(",")}, record says ${[...record.bundledRefs].sort().join(",")}`);
+    const check = (ref: string, expected: string) => {
+      const res = run(["rev-parse", "--verify", "--quiet", `${ref}^{commit}`]);
+      const inBundle = bundled.has(ref);
+      const got = inBundle ? (res.status === 0 ? res.stdout.trim() : null) : run(["cat-file", "-e", `${expected}^{commit}`]).status === 0 ? expected : null;
+      const ok = got === expected;
+      report.refs.push({ ref, expected, got, source: inBundle ? "bundle" : "origin", ok });
+      if (!ok) problems.push(`ref_mismatch: ${ref} is ${got ?? "absent"}, expected ${expected}`);
+    };
+    for (const b of record.branches) check(`refs/heads/${b.name}`, b.sha);
+    for (const [index, s] of record.stashes.entries()) check(`${STASH_NS}/${index}`, s.sha);
+    check(HEAD_REF, record.head.sha);
+    if (record.work) {
+      check(WORK_REF, record.work.sha);
+      const tree = run(["rev-parse", "--verify", "--quiet", `${WORK_REF}^{tree}`]);
+      report.workTree.got = tree.status === 0 ? tree.stdout.trim() : null;
+      report.workTree.ok = report.workTree.got === record.work.tree;
+      if (!report.workTree.ok) problems.push(`tree_mismatch: work ${report.workTree.got ?? "absent"} != ${record.work.tree}`);
+    }
+    if (record.index.sha) check(INDEX_REF, record.index.sha);
+    const indexTree = run(["cat-file", "-e", `${record.index.tree}^{tree}`]);
+    report.indexTree.got = indexTree.status === 0 ? record.index.tree : null;
+    report.indexTree.ok = report.indexTree.got != null;
+    if (!report.indexTree.ok) problems.push(`tree_mismatch: index ${record.index.tree} absent`);
+    const connected = run(["rev-list", "--objects", "--missing=error", "--quiet", "--all", "--stdin"], record.prerequisites.map((sha) => `^${sha}\n`).join(""));
+    report.connectivity = connected.status === 0;
+    if (!report.connectivity) problems.push(`connectivity: ${connected.stderr.trim().split("\n")[0] ?? "rev-list failed"}`);
+  } catch (err) {
+    problems.push(err instanceof Error ? err.message : String(err));
+  }
+  report.ok = problems.length === 0;
+  return report;
+}
+
+/** `hive cell work verify`: the bundle of one Cell, checked against its origin in a throwaway directory; nothing is written anywhere else. */
+export function verifyWorkBundle(originRepo: string, workRoot: string, cellId: string): WorkVerifyReport & { record: WorkBundleRecord | null } {
+  const record = readWorkRecord(workRoot, cellId);
+  const empty = (problem: string): WorkVerifyReport & { record: WorkBundleRecord | null } => ({ ok: false, bundleBytes: 0, prerequisites: { count: 0, missing: [] }, refs: [], workTree: { expected: null, got: null, ok: false }, indexTree: { expected: "", got: null, ok: false }, connectivity: false, problems: [problem], record });
+  if (record == null) return empty("no_bundle");
+  const originObjects = existsSync(originRepo) ? gitPath(originRepo, "objects") : null;
+  if (originObjects == null) return empty(`origin_unreadable: ${originRepo}`);
+  const scratch = mkdtempSync(join(tmpdir(), "hive-work-verify-"));
+  try {
+    return { ...verifyBundleAgainstOrigin(workBundlePaths(workRoot, cellId).bundle, record, originObjects, join(scratch, "verify.git")), record };
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
+  }
 }
 
 /**
@@ -446,50 +559,34 @@ export function bundleWork(
     opts.beforeVerify?.(tmpBundle);
     inShadow(["bundle", "verify", "--quiet", tmpBundle]);
     const prerequisites = bundlePrerequisites(tmpBundle);
-
-    const verify = join(scratch, "verify.git");
-    must(scratch, ["init", "--quiet", "--bare", verify], "verify");
-    mkdirSync(join(verify, "objects", "info"), { recursive: true });
-    writeFileSync(join(verify, "objects", "info", "alternates"), `${originObjects}\n`);
-    const inVerify = (args: string[], input?: string) => {
-      const res = tryGit(scratch, ["--git-dir", verify, ...args], { input, timeoutMs });
-      if (res.status !== 0) throw new WorkError("verify", "git_failed", `git ${args.join(" ")} exited ${res.status}: ${res.stderr.trim()}`);
-      return res.stdout.trim();
-    };
-    inVerify(["bundle", "verify", "--quiet", tmpBundle]);
-    inVerify(["fetch", "--quiet", "--no-tags", "--no-write-fetch-head", tmpBundle, "+refs/*:refs/*"]);
-    const expectRef = (ref: string, sha: string) => {
-      const got = inVerify(["rev-parse", "--verify", "--quiet", `${ref}^{commit}`]);
-      if (got !== sha) throw new WorkError("verify", "ref_mismatch", `${ref} is ${got || "absent"}, expected ${sha}`);
-    };
-    for (const b of branches) if (!boundarySet.has(b.sha)) expectRef(`refs/heads/${b.name}`, b.sha);
-    for (const [index, s] of stashes.entries()) expectRef(`${STASH_NS}/${index}`, s.sha);
-    if (!boundarySet.has(head.sha)) expectRef(HEAD_REF, head.sha);
-    if (work) {
-      expectRef(WORK_REF, work.sha);
-      const restoredTree = inVerify(["rev-parse", `${WORK_REF}^{tree}`]);
-      if (restoredTree !== work.tree) throw new WorkError("verify", "tree_mismatch", `${restoredTree} != ${work.tree}`);
-    }
-    if (indexSha) {
-      expectRef(INDEX_REF, indexSha);
-      if (inVerify(["rev-parse", `${INDEX_REF}^{tree}`]) !== indexTree) throw new WorkError("verify", "tree_mismatch", "index");
-    }
-    inVerify(["rev-list", "--objects", "--missing=error", "--quiet", "--all", "--stdin"], prerequisites.map((sha) => `^${sha}\n`).join(""));
-
-    const bundleBytes = statSync(tmpBundle).size;
-    fsyncPath(tmpBundle);
-    mkdirSync(workRoot, { recursive: true });
-    const record: WorkBundleRecord = {
+    const expected: WorkBundleRecord = {
       version: WORK_RECORD_VERSION,
       cellId,
-      createdAt: now(),
+      createdAt: 0,
       head,
       branches,
       stashes,
       work,
       index: { sha: indexSha, tree: indexTree },
       prerequisites,
+      bundledRefs: bundleHeads(scratch, shadow, tmpBundle, timeoutMs),
       excluded,
+      infoExclude: null,
+      commits: measure.commits,
+      paths: measure.paths,
+      capturedBytes: measure.capturedBytes,
+      bundleBytes: 0,
+      elapsedMs: 0,
+    };
+    const verified = verifyBundleAgainstOrigin(tmpBundle, expected, originObjects, join(scratch, "verify.git"), timeoutMs);
+    if (!verified.ok) throw new WorkError("verify", verified.problems[0]?.split(":")[0] ?? "verify_failed", verified.problems.join("; "));
+
+    const bundleBytes = statSync(tmpBundle).size;
+    fsyncPath(tmpBundle);
+    mkdirSync(workRoot, { recursive: true });
+    const record: WorkBundleRecord = {
+      ...expected,
+      createdAt: now(),
       infoExclude: (() => {
         const path = gitPath(spaceDir, "info/exclude");
         try {
@@ -498,11 +595,7 @@ export function bundleWork(
           return null;
         }
       })(),
-      commits: measure.commits,
-      paths: measure.paths,
-      capturedBytes: measure.capturedBytes,
       bundleBytes,
-      elapsedMs: 0,
     };
     rmSync(paths.record, { force: true });
     renameSync(tmpBundle, paths.bundle);
@@ -523,6 +616,15 @@ export function bundleWork(
     return record;
   } finally {
     rmSync(scratch, { recursive: true, force: true });
+    removeIfEmpty(join(workRoot, "tmp"));
+  }
+}
+
+function removeIfEmpty(dir: string): void {
+  try {
+    rmdirSync(dir);
+  } catch {
+    return;
   }
 }
 

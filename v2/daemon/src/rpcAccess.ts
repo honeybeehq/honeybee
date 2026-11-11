@@ -78,6 +78,7 @@ export const RPC_ACCESS = {
   "cell.evict": "mutate",
   "cell.park": "mutate",
   "cell.keep.remove": "mutate",
+  "cell.work.verify": "read",
   "bee.handoff": "mutate",
   "bee.handoff.get": "read",
   "bee.rename": "mutate",

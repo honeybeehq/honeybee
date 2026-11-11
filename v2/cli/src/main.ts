@@ -85,6 +85,7 @@ import {
   type CellRemoveResult,
   type CellRetainedRemoveResult,
   type CellKeepRemoveResult,
+  type CellWorkVerifyResult,
   type CellEvictResult,
   type CellParkResult,
   type TranscriptSegmentsResult,
@@ -2838,7 +2839,7 @@ async function cmdArchive(ctx: CliContext, parsed: Parsed): Promise<number> {
 async function cmdCell(ctx: CliContext, parsed: Parsed): Promise<number> {
   const sub = parsed.positional[1];
   const needle = parsed.positional[2];
-  const usage = "usage: hive cell move <bee> --cwd <dir> | cell move-get <moveId> | cell capture <bee> --onto <branch> [--rebase] [--idempotency-key k] | cell remove <bee> [--force] [--idempotency-key k] | cell exec <cellId> -- <argv…> | cell retained-remove <cellId> [--force] | cell gc [--apply] [--measure|--no-measure] | cell evict <bee> [--force] | cell park <bee> | cell keep-remove <bee>|--all";
+  const usage = "usage: hive cell move <bee> --cwd <dir> | cell move-get <moveId> | cell capture <bee> --onto <branch> [--rebase] [--idempotency-key k] | cell remove <bee> [--force] [--idempotency-key k] | cell exec <cellId> -- <argv…> | cell retained-remove <cellId> [--force] | cell gc [--apply] [--measure|--no-measure] | cell evict <bee> [--force] | cell park <bee> | cell keep-remove <bee>|--all | cell work verify <bee>";
   switch (sub) {
     case "gc": {
       const apply = parsed.flags.get("--apply") === true;
@@ -2985,6 +2986,28 @@ async function cmdCell(ctx: CliContext, parsed: Parsed): Promise<number> {
         if (r.stderr) lines.push(r.stderr);
         emit(ctx, lines, r, false);
         return ctx.json || r.status === "done" ? 0 : 2;
+      });
+    }
+    case "work": {
+      const action = needle;
+      const target = parsed.positional[3];
+      if (action !== "verify" || !target) throw new Error(usage);
+      return withClient(ctx, async (c) => {
+        const beeId = await resolveBee(c, target);
+        const r = await c.request<CellWorkVerifyResult>("cell.work.verify", { beeId }, CELL_GC_TIMEOUT_MS);
+        const lines: string[] = [];
+        if (r.status === "no_bundle") lines.push(confirm("ok", "no bundle", `${beeId} (cell ${r.cell.id}, ${r.cell.state}) has no work bundle at ${r.bundlePath}`));
+        else {
+          lines.push(confirm(r.status === "ok" ? "ok" : "err", r.status === "ok" ? "bundle verified" : "bundle FAILED verification", `${r.bundlePath} (${gib(r.bundleBytes)}, written ${r.createdAt ? new Date(r.createdAt).toISOString() : "?"}): ${r.commits} commits, ${r.paths} paths, ${r.stashes} stashes; restored into a throwaway repository over the origin's objects, nothing written`));
+          lines.push(`  prerequisites in origin: ${r.prerequisites.count - r.prerequisites.missing.length}/${r.prerequisites.count}${r.prerequisites.missing.length > 0 ? `  MISSING ${r.prerequisites.missing.map((s) => s.slice(0, 12)).join(" ")}` : ""}`);
+          for (const ref of r.refs) lines.push(`  ${ref.ok ? "ok  " : "FAIL"} ${ref.ref.padEnd(44)} ${ref.expected.slice(0, 12)} ${ref.got ? (ref.got === ref.expected ? "=" : `got ${ref.got.slice(0, 12)}`) : "absent"}  (${ref.source})`);
+          lines.push(`  ${r.workTree.ok ? "ok  " : "FAIL"} working tree ${r.workTree.expected ? `${r.workTree.expected.slice(0, 12)} ${r.workTree.got === r.workTree.expected ? "=" : `got ${r.workTree.got?.slice(0, 12) ?? "absent"}`}` : "(none captured: the tree equalled HEAD)"}`);
+          lines.push(`  ${r.indexTree.ok ? "ok  " : "FAIL"} index tree ${r.indexTree.expected.slice(0, 12)} ${r.indexTree.got ? "=" : "absent"}`);
+          lines.push(`  ${r.connectivity ? "ok  " : "FAIL"} every object reachable from the bundled refs is present (rev-list --missing=error)`);
+          for (const p of r.problems) lines.push(`  problem: ${p}`);
+        }
+        emit(ctx, lines, r, false);
+        return r.status === "failed" ? 2 : 0;
       });
     }
     case "keep-remove": {
@@ -3247,7 +3270,7 @@ function renderCellGc(r: CellGcResult): string[] {
         const detail = i.holdDetail ?? null;
         const captured = w?.capturedBytes ?? detail?.capturedBytes ?? null;
         const refusal = w?.refusal ? `${w.refusal}${w.refusalDetail ? ` (${w.refusalDetail})` : ""}` : detail?.message ?? null;
-        const why = reason === "work_over_cap" ? `${gib(captured)} of changed paths exceeds the ${gib(r.policy.workBundleMaxBytes ?? null)} cap` : reason === "work_unbundleable" ? refusal ?? "the work cannot be bundled" : `the bundle could not be written${refusal ? `: ${refusal}` : ""}`;
+        const why = reason === "work_over_cap" ? `${gib(captured)} of changed paths exceeds the ${gib(r.policy.workBundleMaxBytes ?? null)} cap` : reason === "work_unbundleable" ? refusal ?? "the work cannot be bundled" : `the bundle could not be written${refusal ? `: ${refusal}` : " (reason in hived.log: cell.retention.held)"}`;
         lines.push(`  ${gib(i.bytes).padStart(10)}  ${i.beeLifecycle.padEnd(8)} ${i.beeName || i.beeId}  ${basename(i.wrapperDir)}  ${why}${w == null && detail != null ? " (settled from an earlier inspection)" : ""}`);
         for (const p of w?.largest ?? detail?.largest ?? []) lines.push(`             ${gib(p.bytes).padStart(10)}  ${p.path}`);
       }

@@ -12,8 +12,8 @@ import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, 
 import { join } from "node:path";
 import { cellPaths } from "../src/layout.ts";
 import { provisionCell } from "../src/provision.ts";
-import { WorkError, bundleWork, dropWorkBundle, listStashes, listWorkBundles, measureWork, readWorkRecord, restoreWork, verifyRestoredWork, workBundlePaths, workNeeded } from "../src/work.ts";
-import { commitInCell, g, makeRig } from "./helpers.ts";
+import { WorkError, bundleWork, dropWorkBundle, listStashes, listWorkBundles, measureWork, readWorkRecord, restoreWork, verifyRestoredWork, verifyWorkBundle, workBundlePaths, workNeeded } from "../src/work.ts";
+import { commitInCell, commitOn, g, makeRig } from "./helpers.ts";
 
 const OPTS = { disableCow: true, useGitImages: false } as const;
 const GIB = 1024 ** 3;
@@ -159,6 +159,39 @@ test("work.stash+branches: stashes and every side branch the origin lacks are bu
   }
 });
 
+test("work.landed-branch: a local branch the origin already reaches is not in the bundle but is recreated from the origin; verifyWorkBundle reports it, and a corrupted bundle", { timeout: 120_000 }, () => {
+  const rig = makeRig();
+  try {
+    const { req, paths, space, workRoot } = provisioned(rig, "lb");
+    g(space, ["branch", "lab/followup", rig.origin.sha]);
+    commitOn(rig.origin.repo, "later.txt", "origin moved on\n", "origin advance");
+    g(space, ["checkout", "-q", "-b", "feat"]);
+    commitInCell(space, "feat.txt", "feat\n", "unlanded");
+    const before = snapshot(space);
+    const record = bundleWork(space, rig.origin.repo, "lb", workRoot);
+    assert.deepEqual(record.branches.map((b) => b.name), ["feat", "lab/followup", "main"]);
+    assert.deepEqual(record.bundledRefs, ["refs/heads/feat", "refs/hive/head"], "git drops a ref the --not boundary already reaches; the record says which refs the bundle carries");
+    const report = verifyWorkBundle(rig.origin.repo, workRoot, "lb");
+    assert.equal(report.ok, true, report.problems.join("; "));
+    assert.deepEqual(report.refs.map((r) => [r.ref, r.source, r.ok]), [["refs/heads/feat", "bundle", true], ["refs/heads/lab/followup", "origin", true], ["refs/heads/main", "origin", true], ["refs/hive/head", "bundle", true]]);
+    assert.equal(report.connectivity, true);
+    assert.equal(report.prerequisites.missing.length, 0);
+    rmSync(paths.wrapperDir, { recursive: true });
+    provisionCell(rig.cellsRoot, req, "op-lb2", OPTS);
+    assert.equal(restoreWork(space, workRoot, "lb", { expectedHead: rig.origin.sha }).verified, true);
+    const after = snapshot(space);
+    for (const key of ["status", "refs", "head", "branch", "diff", "cached"] as const) assert.equal(after[key], before[key], key);
+    const { bundle } = workBundlePaths(workRoot, "lb");
+    truncateSync(bundle, Math.floor(statSync(bundle).size / 2));
+    const broken = verifyWorkBundle(rig.origin.repo, workRoot, "lb");
+    assert.equal(broken.ok, false);
+    assert.ok(broken.problems.some((p) => /fetch_failed|bundle_unverifiable/.test(p)), broken.problems.join("; "));
+    assert.equal(verifyWorkBundle(rig.origin.repo, workRoot, "nope").problems[0], "no_bundle");
+  } finally {
+    rig.cleanup();
+  }
+});
+
 test("work.detached: unlanded commits on no branch restore as a detached HEAD at the same sha", () => {
   const rig = makeRig();
   try {
@@ -212,7 +245,7 @@ test("work.corrupt: a bundle that fails verification is never written and the Ce
     assert.equal(existsSync(join(workRoot, "c.bundle")), false, "nothing durable was written");
     assert.equal(existsSync(join(workRoot, "c.json")), false);
     assert.deepEqual(snapshot(space), before);
-    assert.deepEqual(readdirSync(join(workRoot, "tmp")), [], "scratch is cleaned up");
+    assert.equal(existsSync(join(workRoot, "tmp")), false, "scratch is cleaned up, the empty tmp root with it");
 
     const record = bundleWork(space, rig.origin.repo, "c", workRoot);
     const { bundle } = workBundlePaths(workRoot, "c");

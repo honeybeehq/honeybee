@@ -77,6 +77,8 @@ import {
   type WorkBundleRecord,
   type WorkBundleWorkerRequest,
   type WorkBundleWorkerResult,
+  type WorkVerifyWorkerRequest,
+  type WorkVerifyWorkerResult,
   wipNodeScope,
   type RetentionWorkerResult,
   type UpstreamRef,
@@ -1094,7 +1096,7 @@ export class CellRetentionService {
     return new Map(message.inspections.map((i) => [i.key, { inspection: i.inspection, error: i.error, ...(i.budgetCut ? { budgetCut: true } : {}) }] as const));
   }
 
-  private runWorker<T>(request: RetentionWorkerRequest | TrimVerifyWorkerRequest | ParkPlanWorkerRequest | WipPushWorkerRequest | WipRefSweepWorkerRequest | WorkBundleWorkerRequest, onProgress?: (entry: RetentionWorkerInspection) => void): Promise<T> {
+  private runWorker<T>(request: RetentionWorkerRequest | TrimVerifyWorkerRequest | ParkPlanWorkerRequest | WipPushWorkerRequest | WipRefSweepWorkerRequest | WorkBundleWorkerRequest | WorkVerifyWorkerRequest, onProgress?: (entry: RetentionWorkerInspection) => void): Promise<T> {
     this.assertRunning();
     return new Promise((resolvePromise, reject) => {
       const worker = new Worker(this.deps.workerUrl ?? retentionWorkerUrl(), { execArgv: [], workerData: request });
@@ -1462,6 +1464,7 @@ export class CellRetentionService {
     item.verdict = "hold";
     item.reason = result.reason === "over_cap" ? "work_over_cap" : "work_bundle_failed";
     const message = result.error ?? result.reason ?? "bundle_failed";
+    item.holdDetail = this.holdDetailOf(item, message);
     this.deps.log(`cell.retention.held cell=${item.cellId} bee=${item.beeId} reason=${item.reason} err=${JSON.stringify(message)} ms=${Date.now() - started}`);
     try {
       store.recordCellHold(item.cellId, { reason: item.reason, detail: this.holdDetailOf(item, message) });
@@ -1472,6 +1475,11 @@ export class CellRetentionService {
   }
 
   /** Drop a Cell's work bundle and the row's reference to it (a verified restore, a removed Cell, a deleted bee). */
+  /** `cell.work.verify`: the Cell's bundle checked against its origin in a throwaway directory, in the worker; nothing is written. */
+  async verifyWork(cell: CellRow): Promise<WorkVerifyWorkerResult> {
+    return this.runWorker<WorkVerifyWorkerResult>({ kind: "verifyWork", originRepo: cell.originRepo, workRoot: this.workRoot(), cellId: cell.id } satisfies WorkVerifyWorkerRequest);
+  }
+
   dropWork(cellId: string, why: string): boolean {
     let dropped = false;
     try {

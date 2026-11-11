@@ -376,6 +376,7 @@ import { BEE_IMPORT_BUNDLE_BYTES_MAX,
   type CellEvictResult,
   type CellParkResult,
   type CellKeepRemoveResult,
+  type CellWorkVerifyResult,
   type TranscriptSegmentsResult,
   type ChampionListResult,
   type ChampionGetResult,
@@ -2672,6 +2673,8 @@ export class HiveDaemon {
         return this.rpcCellPark(verb, params);
       case "cell.keep.remove":
         return this.rpcCellKeepRemove(params);
+      case "cell.work.verify":
+        return this.rpcCellWorkVerify(params);
       case "bee.rename":
         return this.withIdempotency(verb, params, () => this.rpcRename(params));
       case "bee.tag":
@@ -4367,6 +4370,29 @@ export class HiveDaemon {
       throw new RpcError("runtime_refused", `bee ${beeId} has a live runtime (${rt.state}); a Cell is never parked mid-turn`);
     }
     return row;
+  }
+
+  /** `cell.work.verify` — one bee's work bundle restored into a throwaway directory from its origin and compared; nothing is written. */
+  private async rpcCellWorkVerify(params: Record<string, unknown>): Promise<CellWorkVerifyResult> {
+    const beeId = this.requireBee(params);
+    const store = this.mustStore();
+    const bee = store.getBee(beeId);
+    const cell = bee?.cellId ? store.getCell(bee.cellId) : null;
+    if (!bee || bee.substrate !== "cell" || !cell) throw new RpcError("invalid_request", `cell.work.verify: bee ${beeId} has no Cell allocation`);
+    const retention = this.retention;
+    if (!retention) throw new RpcError("node_stopped", "daemon is shutting down");
+    const bundlePath = join(cellWorkRootForCells(this.cfg.cellsRoot), `${cell.id}.bundle`);
+    const result = await retention.verifyWork(cell);
+    if (result.error != null) throw new RpcError("runtime_refused", `cell.work.verify: ${result.error}`);
+    const report = result.report!;
+    const record = report.record;
+    const status: CellWorkVerifyResult["status"] = record == null ? "no_bundle" : report.ok ? "ok" : "failed";
+    this.log(`cell.work.verify bee=${beeId} cell=${cell.id} status=${status} refs=${report.refs.length} problems=${report.problems.length}${report.problems.length > 0 ? ` first=${JSON.stringify(report.problems[0])}` : ""}`);
+    return {
+      cell, status, bundlePath, bundleBytes: report.bundleBytes, createdAt: record?.createdAt ?? null,
+      commits: record?.commits ?? 0, paths: record?.paths ?? 0, stashes: record?.stashes.length ?? 0,
+      prerequisites: report.prerequisites, refs: report.refs, workTree: report.workTree, indexTree: report.indexTree, connectivity: report.connectivity, problems: report.problems,
+    };
   }
 
   /** `cell.keep.remove` — delete kept ignored files of one bee's evicted Cell, or of every Cell that is not active. */

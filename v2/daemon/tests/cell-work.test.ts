@@ -17,7 +17,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { g, makeOrigin } from "../../driver-cell/tests/helpers.ts";
-import { DAEMON_CAPABILITIES, RPC_VERBS, type CellGcResult, type CellKeepRemoveResult, type MailboxResult, type SendRpcResult, type SpawnResult, type ViewResult } from "../src/protocol.ts";
+import { DAEMON_CAPABILITIES, RPC_VERBS, type CellGcResult, type CellKeepRemoveResult, type CellWorkVerifyResult, type MailboxResult, type SendRpcResult, type SpawnResult, type ViewResult } from "../src/protocol.ts";
 import type { RpcClient } from "../../cli/src/client.ts";
 import { makeDaemonDir, startDaemon, waitFor, type DaemonHandle } from "./helpers.ts";
 
@@ -111,6 +111,7 @@ const itemFor = (r: CellGcResult, beeId: string) => r.items.find((i) => i.beeId 
 
 test("cell-work.0: the verb and capability are published", () => {
   assert.ok(RPC_VERBS.includes("cell.keep.remove"));
+  assert.ok(RPC_VERBS.includes("cell.work.verify"));
   assert.ok((DAEMON_CAPABILITIES as readonly string[]).includes("cell.work.v1"));
 });
 
@@ -159,6 +160,14 @@ test("cell-work.1: a dirty stopped Cell is evicted with its work bundled and rev
     assert.match(log(), /cell\.work\.bundled cell=.* commits=1 paths=3/);
     assert.match(log(), /cell\.retention\.evicted .*work_bundle=\d+ work_commits=1 work_paths=3/);
 
+    const verified = await client.request<CellWorkVerifyResult>("cell.work.verify", { beeId: bee.beeId }, 120_000);
+    assert.equal(verified.status, "ok", verified.problems.join("; "));
+    assert.deepEqual({ commits: verified.commits, paths: verified.paths, stashes: verified.stashes, connectivity: verified.connectivity, missing: verified.prerequisites.missing }, { commits: 1, paths: 3, stashes: 1, connectivity: true, missing: [] });
+    assert.ok(verified.refs.every((r) => r.ok) && verified.refs.some((r) => r.ref === "refs/heads/feat" && r.source === "bundle") && verified.refs.some((r) => r.ref === "refs/hive/stash/0"), JSON.stringify(verified.refs));
+    assert.equal(verified.workTree.ok, true);
+    assert.equal(existsSync(dirname(space)), false, "verifying restores into a throwaway directory, never the Cell");
+    assert.equal((await client.request<ViewResult>("view", { beeId: bee.beeId })).cell?.state, "evicted");
+
     const revived = await revive(client, bee.beeId);
     assert.equal(revived.cell?.state, "active");
     const after = snapshot(space);
@@ -169,6 +178,7 @@ test("cell-work.1: a dirty stopped Cell is evicted with its work bundled and rev
     assert.equal(existsSync(join(rig.workRoot, `${cellId}.bundle`)), false, "a verified restore drops the bundle");
     assert.match(log(), /cell\.work\.restored bee=.* commits=1 paths=3/);
     assert.match(log(), /cell\.work\.dropped cell=.* why=restored/);
+    assert.equal((await client.request<CellWorkVerifyResult>("cell.work.verify", { beeId: bee.beeId }, 120_000)).status, "no_bundle");
     assert.equal((await gc(client)).stale?.bundles.length, 0);
   } finally {
     await daemon?.stop();
