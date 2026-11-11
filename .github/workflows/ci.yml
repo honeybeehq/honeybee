@@ -80,7 +80,13 @@ jobs:
   verify:
     # Source tests need tmux >= 3.3 (allow-passthrough); Ubuntu 24.04 ships 3.4.
     # Release archive packaging remains controlled by release.yml.
-    runs-on: ubuntu-24.04
+    # A push to main also runs on the organisation's own runner: a fresh VM
+    # per job, labelled ci-vm. Pull requests run on the hosted runner only.
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: ${{ github.event_name == 'push' && fromJSON('["ubuntu-24.04","ci-vm"]') || fromJSON('["ubuntu-24.04"]') }}
+    runs-on: ${{ matrix.runner == 'ci-vm' && fromJSON('["self-hosted","linux","x64","ci-vm"]') || matrix.runner }}
     timeout-minutes: 60
     env:
       HIVE_TEST_TIME_SCALE: "4"
