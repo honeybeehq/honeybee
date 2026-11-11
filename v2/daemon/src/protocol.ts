@@ -2692,6 +2692,8 @@ export interface CellGcItem {
   keep: { entries: CellGcPathBytes[]; bytes: number | null };
   /** Ignored agent leftovers (`leftoverPatterns`): deleted on eviction, parked in purge mode. Absent on older daemons. */
   disposable?: { entries: CellGcPathBytes[]; bytes: number | null };
+  /** The bee's scratch dir (HIVE_SCRATCH, its TMPDIR) outside the Cell: removed with the Cell on eviction, never captured or kept. Null when absent or the node has no bee tmp; bytes null unless measured. Absent on older daemons. */
+  scratch?: { path: string; bytes: number | null } | null;
 }
 
 export interface CellGcPathBytes {

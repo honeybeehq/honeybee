@@ -301,7 +301,7 @@ import {
   type PerformanceSpan,
 } from "./performance.ts";
 import { RpcServer, assertAutomationSend, assertLocalHandoffRpc, toRpcError, type RpcConn } from "./rpc.ts";
-import { applyDaemonTmpPolicy, beeTmpPaths, describeBeeTmpPolicy, ensureBeeTmpEnv, removeBeeTmpDir, resolveBeeTmpPolicy, sweepBeeTmpDirs, type BeeTmpPolicy } from "./beeTmp.ts";
+import { applyDaemonTmpPolicy, beeTmpDir, beeTmpPaths, cellScratchEnv, describeBeeTmpPolicy, describeScratchSocketHeadroom, ensureBeeTmpEnv, removeBeeTmpDir, resolveBeeTmpPolicy, sweepBeeTmpDirs, type BeeTmpPolicy } from "./beeTmp.ts";
 import { BEE_IMPORT_BUNDLE_BYTES_MAX,
   DAEMON_VERSION,
   BUILD_IDENTITY,
@@ -904,6 +904,7 @@ export class HiveDaemon {
     mkdirSync(dirname(this.cfg.logPath), { recursive: true });
     if (this.beeTmp) applyDaemonTmpPolicy(this.beeTmp, process.env, (path, was) => this.log(`tmp.replaced path=${path} was=${was}`));
     this.log(describeBeeTmpPolicy(this.beeTmp));
+    if (this.beeTmp) this.log(describeScratchSocketHeadroom(this.beeTmp));
     if (this.cfg.beeTmpRootInvalid) this.log(`tmp.policy_invalid reason=${JSON.stringify(this.cfg.beeTmpRootInvalid)}`);
     if (process.platform === "darwin") {
       const userTemp = darwinUserTempDir();
@@ -1088,6 +1089,7 @@ export class HiveDaemon {
       dataDir: this.cfg.dataDir,
       audit: (kind, payload) => this.mustStore().recordCellRetentionEvent(kind, payload),
       clearBeeTmp: (beeId) => this.removeBeeTmp(beeId),
+      scratchDirOf: (beeId) => (this.beeTmp ? beeTmpDir(this.beeTmp, beeId) : null),
       transcriptObjects: () => this.segmenter?.objects() ?? null,
       wipNode: () => this.wipNode(),
       wipNodeScopes: () => this.mustStore().wipNodeScopes(this.wipNode()),
@@ -1977,7 +1979,7 @@ export class HiveDaemon {
       this.beeTmpOverrideLogged.add(bee.id);
       this.log(`tmp.env_overridden bee=${bee.id} keys=${overridden.join(",")} by=bees.tmpRoot`);
     }
-    return env;
+    return bee.substrate === "cell" ? { ...env, ...cellScratchEnv(env) } : env;
   }
 
   private removeBeeTmp(beeId: string): boolean {
@@ -4352,6 +4354,7 @@ export class HiveDaemon {
       this.cells?.forgetCell(beeId);
       if (parked == null) {
         const evicted = store.evictCell(row.id, { head: null, bytes: null, reason: "operator" });
+        this.removeBeeTmp(beeId);
         return { cell: evicted, status: "absent", forced: false, report: null, bytes: null, envFiles: [], keptPaths: [] };
       }
       let evicted: CellRow;
@@ -4367,6 +4370,7 @@ export class HiveDaemon {
         throw err;
       }
       this.log(`cell.evict bee=${beeId} cell=${row.id} forced=${parked.forced} head=${parked.head ?? "-"} parked=${parked.parkedDir} env_files=${parked.envFiles.length} kept=${parked.keptPaths.length}`);
+      this.removeBeeTmp(beeId);
       void this.retention?.sweep();
       return { cell: evicted, status: "evicted", forced: parked.forced, report: parked.report, bytes: null, envFiles: parked.envFiles, keptPaths: parked.keptPaths };
     } catch (err) {

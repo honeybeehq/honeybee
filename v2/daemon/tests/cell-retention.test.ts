@@ -9,7 +9,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -95,6 +95,9 @@ test("cell-retention.1: plan holds young and dirty Cells, keeps live ones; apply
     const cleanSpace = clean.view.bee!.cwd;
     const cleanWrapper = dirname(cleanSpace);
     writeFileSync(join(dirty.view.bee!.cwd, "wip.txt"), "uncommitted\n");
+    const liveScratch = join(realpathSync(rig.dir), "tmp", live.beeId);
+    assert.equal(existsSync(join(realpathSync(rig.dir), "tmp", clean.beeId)), true, "a Cell bee has a scratch dir outside its Cell");
+    writeFileSync(join(liveScratch, "pgdata"), Buffer.alloc(64 * 1024));
 
     // Live (idle runtime) is kept; stopped-but-active is too young under the 30d default; archived-0d is planned.
     await stopped(client, clean.beeId);
@@ -115,9 +118,14 @@ test("cell-retention.1: plan holds young and dirty Cells, keeps live ones; apply
     assert.equal(itemFor(plan, clean.beeId).bytes, null, "a default pass walks no bytes");
     assert.equal(itemFor(plan, live.beeId).head, null, "a live Cell is settled from registry facts, never inspected");
     assert.equal(plan.purge, undefined, "the purge report belongs to a census");
+    assert.equal(itemFor(plan, clean.beeId).scratch ?? null, null, "an archived bee's scratch went with the archive");
+    assert.equal(itemFor(plan, live.beeId).scratch ?? null, null, "a default pass never inspects a live Cell, scratch included");
     const census = await gc(client, { measure: true });
     assert.equal(itemFor(census, clean.beeId).verdict, "evict");
     assert.ok((itemFor(census, clean.beeId).bytes ?? 0) > 0, "a census walks bytes");
+    assert.ok(itemFor(census, live.beeId).scratch?.path, "a census names the scratch beside the Cell");
+    assert.equal(realpathSync(itemFor(census, live.beeId).scratch!.path), liveScratch);
+    assert.ok((itemFor(census, live.beeId).scratch?.bytes ?? 0) >= 64 * 1024, "a census measures the scratch beside the Cell");
     assert.equal(itemFor(census, live.beeId).head, rig.origin.sha, "a census inspects live Cells too");
     assert.ok(census.purge, "a census carries the purge report");
     assert.equal(plan.totals.plannedCells, 1);
@@ -129,6 +137,7 @@ test("cell-retention.1: plan holds young and dirty Cells, keeps live ones; apply
     const outcome = applied.outcomes.find((o) => o.beeId === clean.beeId)!;
     assert.equal(outcome.status, "evicted");
     assert.equal(existsSync(cleanWrapper), false, "the wrapper is gone from the bee's path");
+    assert.equal(existsSync(join(liveScratch, "pgdata")), true, "a live bee's scratch is never touched");
     await waitFor(() => !existsSync(join(rig.cellsRoot, EVICTING_DIR)) || readdirSync(join(rig.cellsRoot, EVICTING_DIR)).length === 0, "parked wrapper swept", 20_000);
     assert.equal(existsSync(dirty.view.bee!.cwd), true, "the dirty Cell was not touched");
 
@@ -184,11 +193,14 @@ test("cell-retention.2: cell.evict on one bee — refused dirty, forced parks, l
     assert.equal(refused.status, "refused");
     assert.equal(refused.report?.uncommitted, true);
     assert.equal(existsSync(space), true);
+    const scratch = join(realpathSync(rig.dir), "tmp", bee.beeId);
+    writeFileSync(join(scratch, "leftover"), "x");
     const forced = await client.request<CellEvictResult>("cell.evict", { beeId: bee.beeId, idempotencyKey: "k2", force: true });
     assert.equal(forced.status, "evicted");
     assert.equal(forced.forced, true);
     assert.equal(forced.cell?.state, "evicted");
     assert.equal(existsSync(dirname(space)), false);
+    assert.equal(existsSync(scratch), false, "cell.evict removes the scratch with the Cell");
     const replay = await client.request<CellEvictResult>("cell.evict", { beeId: bee.beeId, idempotencyKey: "k2", force: true });
     assert.equal(replay.deduped, true);
     assert.equal(replay.status, "evicted");
@@ -213,9 +225,13 @@ test("cell-retention.3: the automatic pass runs on its interval and evicts a cle
     const client = await daemon.client();
     const bee = await spawnIdle(client, "auto", rig.origin.repo);
     const space = bee.view.bee!.cwd;
+    const scratch = join(realpathSync(rig.dir), "tmp", bee.beeId);
+    writeFileSync(join(scratch, "pgdata"), Buffer.alloc(64 * 1024));
     await stopped(client, bee.beeId);
+    assert.equal(existsSync(join(scratch, "pgdata")), true, "a stopped active bee keeps its scratch until its Cell goes");
     await waitFor(async () => (await client.request<ViewResult>("view", { beeId: bee.beeId })).cell?.state === "evicted", "auto-evicted", 60_000);
     assert.equal(existsSync(dirname(space)), false);
+    assert.equal(existsSync(scratch), false, "the scratch dir dies with the evicted Cell");
     assert.match(readFileSync(join(rig.dir, "hived.log"), "utf8"), /cell\.retention\.evicted .*reason=stopped_age/);
   } finally {
     await daemon?.stop();

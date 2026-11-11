@@ -34,6 +34,7 @@ try {
 } catch {}
 writeFileSync(join(process.env.PROBE_OUT_DIR ?? process.cwd(), `${process.env.HIVE_BEE_ID}.${process.pid}.json`), JSON.stringify({
   TMPDIR: process.env.TMPDIR ?? null,
+  HIVE_SCRATCH: process.env.HIVE_SCRATCH ?? null,
   tmpdir: tmpdir(),
   NODE_COMPILE_CACHE: process.env.NODE_COMPILE_CACHE ?? null,
   cacheStatus: cache.status,

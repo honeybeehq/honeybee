@@ -3161,6 +3161,10 @@ export function cellGcHoldLines(r: Pick<CellGcResult, "items" | "policy">): stri
   return lines;
 }
 
+function scratchSuffix(i: CellGcItem): string {
+  return (i.scratch?.bytes ?? 0) > 0 ? `  scratch ${gib(i.scratch!.bytes)}` : "";
+}
+
 /** `hive cell gc` — the plan (and outcomes after --apply), planned Cells first, then holds grouped by reason. */
 function renderCellGc(r: CellGcResult): string[] {
   const lines: string[] = [];
@@ -3184,9 +3188,11 @@ function renderCellGc(r: CellGcResult): string[] {
   const planned = r.items.filter((i) => i.verdict === "evict" || i.verdict === "remove_retained").sort((a, b) => (b.bytes ?? 0) - (a.bytes ?? 0));
   const envCells = planned.filter((i) => i.envFiles.length > 0).length;
   lines.push(`planned: ${planned.length} Cells, ${gib(t.plannedBytes)} · held: ${t.heldCells} Cells, ${gib(t.heldBytes)} (${t.dirtyCells} dirty)${envCells > 0 ? ` · ${envCells} planned Cells carry ignored env files (preserved under cell-env/, restored on revive)` : ""}`);
+  const scratched = r.items.filter((i) => (i.scratch?.bytes ?? 0) > 0);
+  if (scratched.length > 0) lines.push(`scratch: ${scratched.length} bees hold ${gib(scratched.reduce((s, i) => s + (i.scratch?.bytes ?? 0), 0))} outside their Cells (HIVE_SCRATCH; removed with the Cell on eviction, never captured or kept)`);
   lines.push(...cellGcHoldLines(r));
   for (const i of planned) {
-    lines.push(`  ${i.verdict === "evict" ? "evict " : "remove"} ${gib(i.bytes).padStart(10)}  ${i.reason.padEnd(13)} ${ageDays(i.idleSince, r.plannedAt).padStart(5)}  ${i.beeLifecycle.padEnd(8)} ${i.beeName || i.beeId}  ${basename(i.wrapperDir)}${i.envFiles.length > 0 ? `  env×${i.envFiles.length}` : ""}${i.keep.entries.length > 0 ? `  keep×${i.keep.entries.length} ${gib(i.keep.bytes)}` : ""}`);
+    lines.push(`  ${i.verdict === "evict" ? "evict " : "remove"} ${gib(i.bytes).padStart(10)}  ${i.reason.padEnd(13)} ${ageDays(i.idleSince, r.plannedAt).padStart(5)}  ${i.beeLifecycle.padEnd(8)} ${i.beeName || i.beeId}  ${basename(i.wrapperDir)}${i.envFiles.length > 0 ? `  env×${i.envFiles.length}` : ""}${i.keep.entries.length > 0 ? `  keep×${i.keep.entries.length} ${gib(i.keep.bytes)}` : ""}${scratchSuffix(i)}`);
   }
   const trims = r.items.filter((i) => i.trim.planned).sort((a, b) => (b.trim.bytes ?? 0) - (a.trim.bytes ?? 0));
   if (trims.length > 0) {
@@ -3205,7 +3211,7 @@ function renderCellGc(r: CellGcResult): string[] {
     lines.push(`held ${reason}: ${items.length} Cells, ${gib(bytes)}`);
     if (reason.startsWith("dirty_") || reason === "unregistered" || reason === "inspect_failed") {
       for (const i of items.sort((a, b) => (b.bytes ?? 0) - (a.bytes ?? 0)).slice(0, 25)) {
-        lines.push(`  ${gib(i.bytes).padStart(10)}  ${i.beeLifecycle.padEnd(8)} ${i.beeName || i.beeId}  ${basename(i.wrapperDir)}`);
+        lines.push(`  ${gib(i.bytes).padStart(10)}  ${i.beeLifecycle.padEnd(8)} ${i.beeName || i.beeId}  ${basename(i.wrapperDir)}${scratchSuffix(i)}`);
       }
       if (items.length > 25) lines.push(`  … ${items.length - 25} more (use --json)`);
     }

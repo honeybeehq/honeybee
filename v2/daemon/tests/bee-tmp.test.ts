@@ -8,12 +8,16 @@ import { realpathSync } from "node:fs";
 import {
   beeTmpDir,
   beeTmpName,
+  cellScratchEnv,
   describeBeeTmpPolicy,
   ensureBeeTmpEnv,
   removeBeeTmpDir,
   resolveBeeTmpPolicy,
+  scratchSocketHeadroom,
   sweepBeeTmpDirs,
+  unixSocketPathLimit,
 } from "../src/beeTmp.ts";
+import { createConnection, createServer } from "node:net";
 import { DatabaseSync } from "node:sqlite";
 import { loadNodeConfig } from "../src/config.ts";
 import type { HealthResult, MailboxResult, MutationResult, SendRpcResult, SpawnResult, ViewResult } from "../src/protocol.ts";
@@ -25,6 +29,7 @@ const PROBE = join(dirname(fileURLToPath(import.meta.url)), "fixtures", "tmp-pro
 
 interface ProbeReport {
   TMPDIR: string | null;
+  HIVE_SCRATCH: string | null;
   tmpdir: string;
   NODE_COMPILE_CACHE: string | null;
   cacheStatus: number;
@@ -265,6 +270,7 @@ test("workstation daemon: bees get a Honeybee-owned tmp beside the Cells and a s
   try {
     const dataDir = realpathSync(run.daemon.dir);
     assert.equal(run.report.TMPDIR, join(dataDir, "tmp", run.beeId));
+    assert.equal(run.report.HIVE_SCRATCH, null, "a non-Cell bee is announced no scratch");
     assert.equal(run.report.NODE_COMPILE_CACHE, join(dataDir, "node-compile-cache"));
     assert.equal(run.report.tmpWritable, true, "the per-bee tmp is writable");
     assert.equal(existsSync(join(run.cache, "honeybee")), false, "nothing under XDG cache on a workstation");
@@ -394,6 +400,8 @@ test("satellite sandboxed Cell: the per-bee TMPDIR and compile cache are writabl
     const report = await waitForProbeReport(rig.dir, spawned.beeId, early.bee?.cwd as string, "sandboxed probe report");
     const beeTmp = join(cache, "honeybee", "tmp", spawned.beeId);
     assert.equal(report.TMPDIR, beeTmp);
+    assert.equal(report.HIVE_SCRATCH, beeTmp, "a Cell bee is told its scratch dir, and TMPDIR points inside it");
+    assert.equal(early.bee?.envKeys.includes("HIVE_SCRATCH"), false, "the scratch env never lands in the stored bee env");
     assert.equal(report.tmpWritable, true, "the per-bee TMPDIR is writable inside the sandbox");
     assert.equal(readFileSync(join(beeTmp, "probe-write"), "utf8"), "ok");
     assert.ok(report.cacheEntries > 0, "the shared compile cache is writable inside the sandbox");
@@ -660,4 +668,44 @@ test("a bad bees.sandboxTmpBytes boots, logs why and spawns with the 1 GiB defau
   assert.match(run.log, new RegExp(`sandbox\\.tmpfs bee=${run.beeId} gen=1 cap=1073741824 \\(1 GiB\\)`));
   assert.equal(run.report.fillError, null);
   assert.deepEqual(run.flags, []);
+});
+
+test("scratch: the env names the per-bee dir, and a unix socket under a production-length scratch path listens on this platform", async () => {
+  assert.deepEqual(cellScratchEnv({ TMPDIR: "/d/v2/tmp/bee" }), { HIVE_SCRATCH: "/d/v2/tmp/bee" });
+  const home = homedir();
+  const beeId = "86ace474-9a12-46ee-abcb-89e34b003a9e";
+  const longestSocketName = "tmux-501/default";
+  for (const policy of [resolveBeeTmpPolicy("workstation", undefined, {}, home, join(home, ".hive", "v2"))!, resolveBeeTmpPolicy("satellite", undefined, {}, home)!]) {
+    const socketPath = join(beeTmpDir(policy, beeId), longestSocketName);
+    assert.ok(socketPath.length <= unixSocketPathLimit(), `${socketPath} (${socketPath.length}) exceeds the ${unixSocketPathLimit()}-char unix socket path limit on ${process.platform}`);
+    assert.ok(scratchSocketHeadroom(policy) >= 0, `${policy.root}: headroom ${scratchSocketHeadroom(policy)}`);
+  }
+  assert.equal(unixSocketPathLimit("darwin"), 103);
+  assert.equal(unixSocketPathLimit("linux"), 107);
+  const rig = makeDaemonDir();
+  try {
+    const production = join(home, ".hive", "v2", "tmp", beeId);
+    const base = realpathSync(rig.dir);
+    const pad = Math.max(1, production.length - base.length - 1);
+    const scratch = join(base, "x".repeat(pad));
+    assert.ok(scratch.length >= production.length, "the probe path is at least as long as the production layout");
+    mkdirSync(join(scratch, "tmux-501"), { recursive: true });
+    const socketPath = join(scratch, longestSocketName);
+    const server = createServer((socket) => socket.end("pong"));
+    await new Promise<void>((resolve, reject) => server.once("error", reject).listen(socketPath, resolve));
+    try {
+      const reply = await new Promise<string>((resolve, reject) => {
+        const client = createConnection(socketPath);
+        let data = "";
+        client.on("data", (chunk) => { data += chunk; });
+        client.on("end", () => resolve(data));
+        client.on("error", reject);
+      });
+      assert.equal(reply, "pong");
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  } finally {
+    rig.cleanup();
+  }
 });

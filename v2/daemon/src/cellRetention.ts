@@ -124,6 +124,8 @@ export interface CellRetentionDeps {
   /** Append an informational retention audit row. */
   audit?: (kind: "cell.retention.pass" | "cell.pressure.floor_unmet" | "cell.retention.daily_cap" | "cell.parked" | "node.capacity", payload: Record<string, unknown>) => void;
   clearBeeTmp?: (beeId: string) => boolean;
+  /** The bee's scratch dir (HIVE_SCRATCH) outside its Cell, measured beside the Cell in a census and removed with it on eviction. */
+  scratchDirOf?: (beeId: string) => string | null;
   transcriptObjects?: () => NodeCapacity["transcriptObjects"];
   wipBoxDir?: (cell: CellRow) => string;
   wipNode?: () => string;
@@ -172,6 +174,7 @@ interface Candidate {
   fingerprint: string | null;
   /** The origin's landing-target tips at gather time: a judgment about landed work stands only while they are unchanged. */
   originStamp: string | null;
+  scratch?: CellGcItem["scratch"];
 }
 
 interface Judgment {
@@ -745,6 +748,7 @@ export class CellRetentionService {
     const inspections = await this.inspect(inspected, census, opts.kind, (entry) => {
       const c = byKey.get(entry.key);
       if (!c) return;
+      c.scratch = entry.scratch ?? null;
       const base = this.baseOf(c, entry.inspection);
       this.countProgress(progress, this.reasonFor(c, entry.inspection, entry.error, this.deps.now(), base), entry.inspection?.bytes ?? null);
     });
@@ -1015,7 +1019,7 @@ export class CellRetentionService {
   ): Promise<Map<string, { inspection: CellWrapperInspection | null; error: string | null }>> {
     const wrappers = candidates
       .filter((c) => c.cell?.state !== "evicted")
-      .map((c) => ({ key: c.key, wrapperDir: c.wrapperDir, receipts: c.receipts, originRepo: c.cell?.originRepo ?? null }));
+      .map((c) => ({ key: c.key, wrapperDir: c.wrapperDir, receipts: c.receipts, originRepo: c.cell?.originRepo ?? null, scratchDir: this.deps.scratchDirOf?.(c.beeId) ?? null }));
     if (wrappers.length === 0) return new Map();
     const message = await this.runWorker<RetentionWorkerResult>(
       { wrappers, measure, trimPatterns: [...this.deps.policy.trimPatterns], leftoverPatterns: [...this.deps.policy.leftoverPatterns], upstream: this.upstreamRequest(kind), progress: onProgress != null } satisfies RetentionWorkerRequest,
@@ -1024,6 +1028,7 @@ export class CellRetentionService {
     this.noteUpstreams(message.upstreams ?? []);
     for (const entry of message.inspections) {
       const inspected = candidates.find((x) => x.key === entry.key);
+      if (inspected) inspected.scratch = entry.scratch ?? null;
       if (inspected && entry.inspection?.fingerprint != null) inspected.fingerprint = entry.inspection.fingerprint;
       const paths = entry.inspection?.dirtySubmodules ?? [];
       if (paths.length === 0) continue;
@@ -1089,6 +1094,7 @@ export class CellRetentionService {
       install: { entries: inspection?.install ?? [], bytes: sumBytes(inspection?.install ?? []) },
       keep: { entries: inspection?.keep ?? [], bytes: sumBytes(inspection?.keep ?? []) },
       disposable: { entries: inspection?.disposable ?? [], bytes: sumBytes(inspection?.disposable ?? []) },
+      scratch: c.scratch ?? null,
     };
   }
 
@@ -1525,6 +1531,7 @@ export class CellRetentionService {
         else store.evictCell(cell.id, { head: parked.head, bytes: item.bytes, reason: item.reason, envFiles: parked.envFiles, keptPaths: parked.keptPaths });
       });
       if (recorded != null) return outcome("failed", recorded);
+      if (item.verdict === "evict") this.deps.clearBeeTmp?.(item.beeId);
       if (item.verdict === "remove_retained") {
         this.deps.log(`cell.retention.removed cell=${cell.id} bee=${item.beeId} reason=${item.reason} head=${parked.head ?? "-"} bytes=${item.bytes ?? "?"} parked=${parked.parkedDir}${env}${kept}`);
         return outcome("removed", item.reason, parked.envFiles, parked.keptPaths);

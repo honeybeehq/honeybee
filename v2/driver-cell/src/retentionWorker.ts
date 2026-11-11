@@ -4,15 +4,16 @@
  * blocking work on a large cells root, so the daemon runs it here, off the
  * RPC lane, and applies the resulting plan on the main thread.
  */
+import { lstatSync } from "node:fs";
 import { parentPort, workerData } from "node:worker_threads";
 import type { LandingReceipt } from "./landed.ts";
-import { inspectCellWrapper, planParkPaths, verifyParkPaths, type CellWrapperInspection, type ParkMode, type ParkPlan, type TrimSkip } from "./retention.ts";
+import { inspectCellWrapper, measurePathBytes, planParkPaths, verifyParkPaths, type CellWrapperInspection, type ParkMode, type ParkPlan, type TrimSkip } from "./retention.ts";
 import { refreshUpstreamMirror, type UpstreamRef } from "./upstream.ts";
 import { confirmWip, pushWip, snapshotWip, sweepWipRefs, type WipSnapshot } from "./wip.ts";
 
 export interface RetentionWorkerRequest {
   kind?: "inspect";
-  wrappers: Array<{ key: string; wrapperDir: string; receipts?: LandingReceipt[]; originRepo?: string | null }>;
+  wrappers: Array<{ key: string; wrapperDir: string; receipts?: LandingReceipt[]; originRepo?: string | null; scratchDir?: string | null }>;
   measure: boolean;
   trimPatterns: string[];
   leftoverPatterns?: string[];
@@ -26,6 +27,23 @@ export interface RetentionWorkerInspection {
   key: string;
   inspection: CellWrapperInspection | null;
   error: string | null;
+  /** The bee's scratch dir outside the wrapper; null when the node has none or it is absent, bytes null when not measured. */
+  scratch?: ScratchInspection | null;
+}
+
+export interface ScratchInspection {
+  path: string;
+  bytes: number | null;
+}
+
+function inspectScratch(scratchDir: string | null | undefined, measure: boolean): ScratchInspection | null {
+  if (!scratchDir) return null;
+  try {
+    if (!lstatSync(scratchDir).isDirectory()) return null;
+    return { path: scratchDir, bytes: measure ? measurePathBytes(scratchDir) : null };
+  } catch {
+    return null;
+  }
 }
 
 export interface RetentionUpstreamStatus {
@@ -152,13 +170,14 @@ if (request.kind === "pushWip") {
     }
   }
   const inspections: RetentionWorkerInspection[] = [];
-  for (const { key, wrapperDir, receipts, originRepo } of request.wrappers) {
+  for (const { key, wrapperDir, receipts, originRepo, scratchDir } of request.wrappers) {
     let entry: RetentionWorkerInspection;
+    const scratch = inspectScratch(scratchDir, request.measure);
     try {
       const upstream = originRepo ? upstreams.get(originRepo)?.ref ?? null : null;
-      entry = { key, inspection: inspectCellWrapper(wrapperDir, { measure: request.measure, trimPatterns: request.trimPatterns, leftoverPatterns: request.leftoverPatterns, receipts, upstream }), error: null };
+      entry = { key, inspection: inspectCellWrapper(wrapperDir, { measure: request.measure, trimPatterns: request.trimPatterns, leftoverPatterns: request.leftoverPatterns, receipts, upstream }), error: null, scratch };
     } catch (err) {
-      entry = { key, inspection: null, error: errorText(err) };
+      entry = { key, inspection: null, error: errorText(err), scratch };
     }
     inspections.push(entry);
     if (request.progress) parentPort?.postMessage({ kind: "progress", inspection: entry } satisfies RetentionWorkerProgress);

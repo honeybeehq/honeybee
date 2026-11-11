@@ -164,3 +164,25 @@ export function describeBeeTmpPolicy(policy: BeeTmpPolicy | null): string {
     ? `tmp.policy beeTmpRoot=${policy.root} source=${policy.source} daemonTmp=${policy.daemonDir} nodeCompileCache=${policy.compileCache}`
     : "tmp.policy beeTmpRoot=off";
 }
+
+export const SCRATCH_ENV_NAME = "HIVE_SCRATCH";
+
+export function cellScratchEnv(tmp: { TMPDIR: string }): Record<string, string> {
+  return { [SCRATCH_ENV_NAME]: tmp.TMPDIR };
+}
+
+const BEE_ID_SEGMENT_LENGTH = 36;
+const SOCKET_NAME_RESERVE = 24;
+
+export function unixSocketPathLimit(osPlatform: string = process.platform): number {
+  return osPlatform === "darwin" ? 103 : 107;
+}
+
+export function scratchSocketHeadroom(policy: BeeTmpPolicy, osPlatform: string = process.platform): number {
+  return unixSocketPathLimit(osPlatform) - (policy.root.length + 1 + BEE_ID_SEGMENT_LENGTH + SOCKET_NAME_RESERVE);
+}
+
+export function describeScratchSocketHeadroom(policy: BeeTmpPolicy, osPlatform: string = process.platform): string {
+  const headroom = scratchSocketHeadroom(policy, osPlatform);
+  return `tmp.socket_headroom root=${policy.root} limit=${unixSocketPathLimit(osPlatform)} reserve=${SOCKET_NAME_RESERVE} headroom=${headroom}${headroom < 0 ? " tight=true" : ""}`;
+}
