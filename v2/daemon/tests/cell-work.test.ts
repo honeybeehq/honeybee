@@ -11,6 +11,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, rmSync, writeFileSync, writeSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -22,6 +23,7 @@ import { makeDaemonDir, startDaemon, waitFor, type DaemonHandle } from "./helper
 
 const here = dirname(fileURLToPath(import.meta.url));
 const CELL_AGENT_PATH = join(here, "..", "..", "driver-cell", "test-agent", "agent.mjs");
+const PARK_THEN_CRASH = join(here, "fixtures", "park-then-crash.ts");
 const GIB = 1024 ** 3;
 
 function makeRig(retention: Record<string, unknown>) {
@@ -266,6 +268,84 @@ test("cell-work.3: the pass deletes kept files and unrestored bundles past their
     const log = readFileSync(join(rig.dir, "hived.log"), "utf8");
     assert.match(log, /cell\.keep\.removed space=/);
     assert.match(log, /cell\.work\.dropped cell=.* why=window_elapsed/);
+  } finally {
+    await daemon?.stop();
+    rig.cleanup();
+  }
+});
+
+test("cell-work.4: a crash between the park and the registry flip loses nothing: the row still names its bundle, the next runtime start restores the work", { timeout: 300_000 }, async () => {
+  const rig = makeRig({ enabled: false, stoppedAfterDays: 0, archivedAfterDays: 0 });
+  let daemon: DaemonHandle | null = null;
+  try {
+    daemon = await startDaemon(rig.dir);
+    let client = await daemon.client();
+    const bee = await spawnIdle(client, "crash", rig.origin.repo);
+    const space = bee.view.bee!.cwd;
+    const cellId = bee.view.cell!.id;
+    makeWork(space);
+    await stopped(client, bee.beeId);
+    const before = snapshot(space);
+    await daemon.stop();
+    daemon = null;
+
+    const crashed = spawnSync(process.execPath, [PARK_THEN_CRASH, join(rig.dir, "core.sqlite3"), rig.cellsRoot, cellId], { encoding: "utf8", env: { ...process.env, HIVE_NO_KEYCHAIN: "1" } });
+    assert.equal(crashed.signal, "SIGKILL", `the pass died inside the registry write:\n${crashed.stdout}\n${crashed.stderr}`);
+    assert.match(crashed.stdout, /cell\.work\.bundled cell=.* commits=1 paths=3/);
+    assert.match(crashed.stdout, /parked .*; dying before the registry flips the row/);
+    assert.equal(existsSync(dirname(space)), false, "the wrapper was parked");
+    assert.ok(readdirSync(join(rig.cellsRoot, "_evicting")).length > 0, "…and waits under _evicting/");
+    assert.equal(existsSync(join(rig.workRoot, `${cellId}.bundle`)), true, "the bundle is on disk");
+
+    daemon = await startDaemon(rig.dir);
+    client = await daemon.client();
+    const row = (await client.request<ViewResult>("view", { beeId: bee.beeId })).cell!;
+    assert.equal(row.state, "active", "the crash left the row un-flipped");
+    assert.ok(row.workBundleAt != null && row.workBundleSha != null, "but it names its bundle, recorded before the park");
+    await waitFor(() => !existsSync(join(rig.cellsRoot, "_evicting")) || readdirSync(join(rig.cellsRoot, "_evicting")).length === 0, "boot swept the parked wrapper", 30_000);
+
+    const revived = await revive(client, bee.beeId);
+    assert.equal(revived.cell?.state, "active");
+    const after = snapshot(space);
+    for (const key of ["status", "refs", "head", "branch", "diff", "cached"] as const) assert.equal(after[key], before[key], key);
+    assert.equal(readFileSync(join(space, "artifacts", "out.js"), "utf8"), "ignored output\n", "kept ignored output came back too");
+    await waitFor(async () => (await client.request<ViewResult>("view", { beeId: bee.beeId })).cell?.workBundleAt == null, "bundle reference cleared", 30_000);
+    assert.equal(existsSync(join(rig.workRoot, `${cellId}.bundle`)), false);
+    assert.match(readFileSync(join(rig.dir, "hived.log"), "utf8"), /cell\.work\.restored bee=.* commits=1 paths=3/);
+  } finally {
+    await daemon?.stop();
+    rig.cleanup();
+  }
+});
+
+test("cell-work.5: mode=plan makes the scheduled pass a dry run that still logs and audits its plan; a tiny inspection budget holds the rest as pass_limit; hive cell gc is never cut", { timeout: 300_000 }, async () => {
+  const rig = makeRig({ enabled: true, stoppedAfterDays: 0, archivedAfterDays: 0, intervalHours: 200 / 3_600_000, mode: "plan", inspectBudgetSeconds: 0.001 });
+  let daemon: DaemonHandle | null = null;
+  try {
+    daemon = await startDaemon(rig.dir, { env: { HIVE_TEST_RETENTION_INITIAL_DELAY_MS: "1500" } });
+    const client = await daemon.client();
+    const bee = await spawnIdle(client, "planned", rig.origin.repo);
+    const space = bee.view.bee!.cwd;
+    makeWork(space);
+    await stopped(client, bee.beeId);
+    const log = () => readFileSync(join(rig.dir, "hived.log"), "utf8");
+    await waitFor(() => /cell\.retention\.plan dry_run=true kind=scheduled .*mode=plan/.test(log()), "a scheduled dry run", 60_000);
+    await waitFor(() => /cell\.retention\.pass kind=scheduled outcome=dry_run/.test(log()), "…recorded as dry_run", 30_000);
+    assert.equal(existsSync(join(space, ".git")), true, "nothing was evicted");
+    assert.equal(existsSync(rig.workRoot), false, "no bundle was written");
+    assert.doesNotMatch(log(), /cell\.retention\.evicted/);
+    const scheduled = /cell\.retention\.plan dry_run=true kind=scheduled [^\n]*budget_cut=(\d+)/.exec(log());
+    assert.ok(scheduled && Number(scheduled[1]) >= 1, `the 1 ms budget cut the candidate: ${scheduled?.[0]}`);
+
+    const manual = await gc(client);
+    assert.equal(manual.policy.mode, "plan");
+    assert.equal(itemFor(manual, bee.beeId).verdict, "evict", "a manual plan is never cut by the budget");
+    assert.equal(manual.totals.budgetCut, 0);
+    assert.equal(manual.totals.workCells, 1);
+    assert.equal(manual.totals.workCommits, 1);
+    assert.ok((manual.totals.workCapturedBytes ?? 0) > 0);
+    const applied = await gc(client, { dryRun: false });
+    assert.equal(applied.outcomes!.find((o) => o.beeId === bee.beeId)?.status, "evicted", "hive cell gc --apply is the operator's explicit act and still applies");
   } finally {
     await daemon?.stop();
     rig.cleanup();

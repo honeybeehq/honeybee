@@ -795,12 +795,14 @@ export class CellHeadMovedError extends Error {
  * Park a Cell wrapper for deletion. Throws CellDeleteRefused for a dirty Cell
  * without `force`, CellHeadMovedError when `expectedHead` is given and no
  * longer matches, CellShapeError for anything not Cell-shaped. Returns null
- * when the wrapper is already absent.
+ * when the wrapper is already absent. `covered` is the inspection's report
+ * for a Cell whose work a verified bundle already holds: the dirty guard is
+ * not re-run (the caller checked the fingerprint) and the park is forced.
  */
 export function evictCellWrapper(
   cellsRoot: string,
   wrapperDir: string,
-  opts: { force?: boolean; expectedHead?: string | null; now?: () => number; trimPatterns?: readonly string[]; leftoverPatterns?: readonly string[]; receipts?: readonly LandingReceipt[]; upstream?: UpstreamRef | null } = {},
+  opts: { force?: boolean; expectedHead?: string | null; now?: () => number; trimPatterns?: readonly string[]; leftoverPatterns?: readonly string[]; receipts?: readonly LandingReceipt[]; upstream?: UpstreamRef | null; covered?: DirtyReport | null } = {},
 ): EvictResult | null {
   const target = resolve(wrapperDir);
   if (!existsSync(target)) return null;
@@ -810,8 +812,10 @@ export function evictCellWrapper(
   }
   const spaceDir = spaceDirIn(target);
   if (spaceDir == null) throw new CellShapeError(target, "no -space- checkout inside");
-  const { report, dirtySubmodules, workingTree } = dirtyReportDetailed(target, { receipts: opts.receipts, upstream: opts.upstream ?? null, leftoverPatterns: opts.leftoverPatterns });
-  const force = opts.force ?? false;
+  const { report, dirtySubmodules, workingTree } = opts.covered
+    ? { report: opts.covered, dirtySubmodules: [], workingTree: null }
+    : dirtyReportDetailed(target, { receipts: opts.receipts, upstream: opts.upstream ?? null, leftoverPatterns: opts.leftoverPatterns });
+  const force = (opts.force ?? false) || opts.covered != null;
   if (report.dirty && !force) throw new CellDeleteRefused(target, report, dirtySubmodules, workingTree);
   const head = existsSync(join(spaceDir, ".git")) ? revParse(spaceDir, "HEAD") : null;
   if (opts.expectedHead !== undefined && head !== opts.expectedHead) {

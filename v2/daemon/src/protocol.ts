@@ -2789,6 +2789,8 @@ export interface CellGcResult {
     workBundleMaxBytes?: number;
     workBundleKeepMs?: number | null;
     keepMs?: number | null;
+    mode?: "apply" | "plan";
+    inspectBudgetMs?: number | null;
   };
   items: CellGcItem[];
   /** Kept files and work bundles past their windows (dry run: `planned`; apply: the outcome). Absent on older daemons. */
@@ -2804,6 +2806,12 @@ export interface CellGcResult {
     dirtyCells: number;
     trimCells: number;
     trimBytes: number | null;
+    /** Planned evictions that save a bundle, the changed bytes they capture and the commits they carry. Absent on older daemons. */
+    workCells?: number;
+    workCapturedBytes?: number;
+    workCommits?: number;
+    /** Candidates the automatic pass's inspection budget left for the next pass (held `pass_limit`). Absent on older daemons. */
+    budgetCut?: number;
   };
   /** Present only after apply. */
   outcomes: CellGcOutcome[] | null;

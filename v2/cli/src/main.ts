@@ -3200,7 +3200,9 @@ function renderCellGc(r: CellGcResult): string[] {
   if (r.policy.workBundle !== undefined) {
     lines.push(
       `work: ${r.policy.workBundle ? `bundled at eviction (cap ${gib(r.policy.workBundleMaxBytes ?? null)}, unrestored bundles kept ${days(r.policy.workBundleKeepMs ?? null)})` : "OFF — dirty Cells hold"}` +
-        ` · kept ignored files of evicted Cells deleted after ${days(r.policy.keepMs ?? null)}`,
+        ` · kept ignored files of evicted Cells deleted after ${days(r.policy.keepMs ?? null)}` +
+        `${r.policy.mode !== undefined ? ` · automatic passes ${r.policy.mode === "plan" ? "PLAN ONLY (cells.retention.mode=plan; only hive cell gc --apply evicts)" : "apply"}` : ""}` +
+        `${r.policy.inspectBudgetMs !== undefined ? ` · automatic inspection budget ${r.policy.inspectBudgetMs == null ? "none" : `${Math.round(r.policy.inspectBudgetMs / 1000)}s`}` : ""}`,
     );
   }
   if (r.purge) {
@@ -3214,6 +3216,7 @@ function renderCellGc(r: CellGcResult): string[] {
   const planned = r.items.filter((i) => i.verdict === "evict" || i.verdict === "remove_retained").sort((a, b) => (b.bytes ?? 0) - (a.bytes ?? 0));
   const envCells = planned.filter((i) => i.envFiles.length > 0).length;
   lines.push(`planned: ${planned.length} Cells, ${gib(t.plannedBytes)} · held: ${t.heldCells} Cells, ${gib(t.heldBytes)} (${t.dirtyCells} dirty)${envCells > 0 ? ` · ${envCells} planned Cells carry ignored env files (preserved under cell-env/, restored on revive)` : ""}`);
+  if (t.workCells !== undefined) lines.push(`bundles to write: ${t.workCells} Cells, ${gib(t.workCapturedBytes ?? 0)} of changed paths (${t.workCommits ?? 0} commits; bundles are smaller: packed and delta-compressed) · freed: ${t.plannedBytes == null ? "not measured (use --measure)" : `${gib(t.plannedBytes)} by du; the volume's free space is the truthful measure`}${(t.budgetCut ?? 0) > 0 ? ` · ${t.budgetCut} candidates left for the next pass by the inspection budget` : ""}`);
   const scratched = r.items.filter((i) => (i.scratch?.bytes ?? 0) > 0);
   if (scratched.length > 0) lines.push(`scratch: ${scratched.length} bees hold ${gib(scratched.reduce((s, i) => s + (i.scratch?.bytes ?? 0), 0))} outside their Cells (HIVE_SCRATCH; removed with the Cell on eviction, never captured or kept)`);
   lines.push(...cellGcHoldLines(r));

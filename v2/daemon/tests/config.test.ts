@@ -535,6 +535,17 @@ test("config.9b: satellites default to a 3-day archive floor, half the Cells vol
     assert.equal(overridden.stoppedAfterMs, 9 * day, "an explicit per-class floor wins over idleDays");
     assert.equal(overridden.workBundleMaxBytes, 1024 ** 3, "an invalid cap falls back");
     assert.ok(overridden.warnings.some((w) => w.includes("workBundleMaxBytes")));
+    assert.equal(overridden.mode, "apply");
+    assert.equal(overridden.inspectBudgetMs, 600_000);
+    writeFileSync(join(dir, "config.json"), JSON.stringify({ cells: { retention: { mode: "plan", inspectBudgetSeconds: 30 } } }));
+    const planning = loadNodeConfig(dir).cellRetention;
+    assert.equal(planning.mode, "plan");
+    assert.equal(planning.inspectBudgetMs, 30_000);
+    writeFileSync(join(dir, "config.json"), JSON.stringify({ cells: { retention: { mode: "dry", inspectBudgetSeconds: null } } }));
+    const invalidMode = loadNodeConfig(dir).cellRetention;
+    assert.equal(invalidMode.mode, "apply", "an unknown mode falls back to apply");
+    assert.equal(invalidMode.inspectBudgetMs, null);
+    assert.ok(invalidMode.warnings.some((w) => w.includes("mode")));
     assert.equal(explicit.maxBytes, null);
     assert.equal(explicit.maxBytesVolumeShare, null);
     writeFileSync(join(dir, "config.json"), JSON.stringify({ nodeKind: "satellite", cells: { retention: { archivedAfterDays: "soon" } } }));

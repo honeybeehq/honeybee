@@ -248,6 +248,10 @@ export interface CellRetentionConfig {
   workBundleKeepDays?: number | null;
   /** Delete kept ignored files (`cell-keep/`) of evicted or removed Cells this long after the eviction (default 14). null = keep forever. */
   keepDays?: number | null;
+  /** `apply` (default): automatic passes evict. `plan`: automatic passes are dry runs that log and audit their plan; `hive cell gc --apply` still applies. */
+  mode?: "apply" | "plan";
+  /** Wall-clock budget for the inspection of one automatic pass (default 600). Candidates are inspected oldest-idle first; the rest are held `pass_limit` until the next pass. `hive cell gc` is never cut. null = no budget. */
+  inspectBudgetSeconds?: number | null;
 }
 
 export interface ResolvedCellRetention {
@@ -279,6 +283,8 @@ export interface ResolvedCellRetention {
   workBundleMaxBytes: number;
   workBundleKeepMs: number | null;
   keepMs: number | null;
+  mode: "apply" | "plan";
+  inspectBudgetMs: number | null;
   /** Invalid keys that fell back to their default, for the boot log. */
   warnings: string[];
 }
@@ -709,6 +715,8 @@ export const DEFAULT_CELL_RETENTION: ResolvedCellRetention = {
   workBundleMaxBytes: 1024 ** 3,
   workBundleKeepMs: 365 * DAY_MS,
   keepMs: 14 * DAY_MS,
+  mode: "apply",
+  inspectBudgetMs: 600_000,
   warnings: [],
 };
 
@@ -807,6 +815,8 @@ export function cellRetentionOf(raw: unknown, nodeKind: NodeKind = "workstation"
   out.workBundleMaxBytes = read("workBundleMaxBytes", "a non-negative integer", (v) => typeof v === "number" && Number.isInteger(v) && v >= 0, (v) => v as number, out.workBundleMaxBytes);
   out.workBundleKeepMs = read("workBundleKeepDays", "a non-negative number or null", nullableNonNegative, scaled(DAY_MS), out.workBundleKeepMs);
   out.keepMs = read("keepDays", "a non-negative number or null", nullableNonNegative, scaled(DAY_MS), out.keepMs);
+  out.mode = read("mode", "\"apply\" or \"plan\"", (v) => v === "apply" || v === "plan", (v) => v as "apply" | "plan", out.mode);
+  out.inspectBudgetMs = read("inspectBudgetSeconds", "a positive number or null", (v) => v === null || (isNonNegative(v) && v > 0), scaled(1000), out.inspectBudgetMs);
   return out;
 }
 

@@ -22,6 +22,8 @@ export interface RetentionWorkerRequest {
   upstream?: { root: string; maxAgeMs: number; timeoutMs: number } | null;
   /** Post a `RetentionWorkerProgress` message after each wrapper. */
   progress?: boolean;
+  /** Stop inspecting once `Date.now()` passes this; the rest are returned with `budgetCut: true`. */
+  deadlineMs?: number | null;
 }
 
 export interface RetentionWorkerInspection {
@@ -30,6 +32,8 @@ export interface RetentionWorkerInspection {
   error: string | null;
   /** The bee's scratch dir outside the wrapper; null when the node has none or it is absent, bytes null when not measured. */
   scratch?: ScratchInspection | null;
+  /** Not inspected: the pass's inspection budget ran out first. */
+  budgetCut?: boolean;
 }
 
 export interface ScratchInspection {
@@ -198,6 +202,12 @@ if (request.kind === "bundleWork") {
   const inspections: RetentionWorkerInspection[] = [];
   for (const { key, wrapperDir, receipts, originRepo, scratchDir } of request.wrappers) {
     let entry: RetentionWorkerInspection;
+    if (request.deadlineMs != null && Date.now() > request.deadlineMs) {
+      entry = { key, inspection: null, error: null, scratch: null, budgetCut: true };
+      inspections.push(entry);
+      if (request.progress) parentPort?.postMessage({ kind: "progress", inspection: entry } satisfies RetentionWorkerProgress);
+      continue;
+    }
     const scratch = inspectScratch(scratchDir, request.measure);
     try {
       const upstream = originRepo ? upstreams.get(originRepo)?.ref ?? null : null;

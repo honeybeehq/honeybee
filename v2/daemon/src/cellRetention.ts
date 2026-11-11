@@ -331,6 +331,7 @@ export class CellRetentionService {
   private blockedSince: number | null = null;
   private announcedAdmission: { blocked: boolean; newCells: NodeCapacity["admission"]["newCells"] } | null = null;
   private warnedBelowFloorAt: number | null = null;
+  private warnedPlanModeAt: number | null = null;
   private lastPresentBytes: number | null = null;
   private readonly judged = new Map<string, Judgment>();
   private savedJudgments: string | null = null;
@@ -406,7 +407,7 @@ export class CellRetentionService {
     if (now - this.bootedAt < (this.deps.initialDelayMs ?? DEFAULT_INITIAL_DELAY_MS)) return;
     if (this.lastPassAt != null && now - this.lastPassAt < policy.intervalMs) return;
     this.lastPassAt = now;
-    void withoutRpcCaller(() => this.run({ dryRun: false, kind: "scheduled" })).catch((err) => {
+    void withoutRpcCaller(() => this.run({ dryRun: policy.mode === "plan", kind: "scheduled" })).catch((err) => {
       if (!this.stopping) this.deps.log(`cell.retention.error ${err instanceof Error ? err.stack ?? err.message : String(err)}`);
     });
   }
@@ -484,6 +485,13 @@ export class CellRetentionService {
       return;
     }
     if (!this.deps.policy.enabled || this.passInFlight) return;
+    if (this.deps.policy.mode === "plan") {
+      if (this.warnedPlanModeAt == null) {
+        this.warnedPlanModeAt = now;
+        this.deps.log(`cell.pressure.plan_mode free=${disk.freeBytes} floor=${disk.floorBytes} (cells.retention.mode=plan: no pressure pass evicts; run hive cell gc --apply)`);
+      }
+      return;
+    }
     if (this.unmetAt != null && now - this.unmetAt < (this.deps.pressureRetryMs ?? DEFAULT_PRESSURE_RETRY_MS)) {
       const droppedFurther = this.unmetFree != null && disk.bandBytes != null && this.unmetFree - disk.freeBytes >= disk.bandBytes;
       if (!droppedFurther) return;
@@ -672,6 +680,8 @@ export class CellRetentionService {
       workBundleMaxBytes: policy.workBundleMaxBytes,
       workBundleKeepMs: policy.workBundleKeepMs,
       keepMs: policy.keepMs,
+      mode: policy.mode,
+      inspectBudgetMs: policy.inspectBudgetMs,
     };
   }
 
@@ -774,17 +784,19 @@ export class CellRetentionService {
       c.skip = this.skipReason(c, startedAt);
       if (c.skip != null) this.countProgress(progress, c.skip, null);
     }
-    const inspected = candidates.filter((c) => c.skip == null);
+    const inspected = candidates.filter((c) => c.skip == null).sort((a, b) => (this.idleSinceOf(a) ?? startedAt) - (this.idleSinceOf(b) ?? startedAt));
     const inspectStarted = Date.now();
+    const budget = opts.kind === "manual" ? null : this.deps.policy.inspectBudgetMs;
     const inspections = await this.inspect(inspected, census, opts.kind, (entry) => {
       const c = byKey.get(entry.key);
       if (!c) return;
       c.scratch = entry.scratch ?? null;
       const base = this.baseOf(c, entry.inspection);
       this.countProgress(progress, this.reasonFor(c, entry.inspection, entry.error, this.deps.now(), base), entry.inspection?.bytes ?? null);
-    });
+    }, budget == null ? null : inspectStarted + budget);
     this.assertRunning();
     const inspectMs = Date.now() - inspectStarted;
+    const budgetCut = [...inspections.values()].filter((i) => i.budgetCut).length;
     const plannedAt = this.deps.now();
     this.cappedInPlan = false;
     const items = this.decide(candidates, inspections, plannedAt, this.effectiveMaxBytes(disk));
@@ -797,7 +809,7 @@ export class CellRetentionService {
       plannedAt,
       policy: this.policySnapshot(disk),
       items,
-      totals: totalsOf(items),
+      totals: { ...totalsOf(items), budgetCut },
       outcomes: null,
       trimOutcomes: null,
       inspectMs,
@@ -810,16 +822,19 @@ export class CellRetentionService {
         ` planned_bytes=${result.totals.plannedBytes ?? "?"} held=${result.totals.heldCells} dirty=${result.totals.dirtyCells}` +
         ` held_modified=${holds.modified} held_untracked_only=${holds.untrackedOnly} held_unlanded_head=${holds.unlandedHead} held_unlanded_branches_only=${holds.unlandedBranchesOnly} unlanded_commits=${holds.unlandedCommits} leftover_only=${holds.leftoverOnly}` +
         ` present_bytes=${result.totals.presentBytes ?? "?"} trim_cells=${result.totals.trimCells} trim_bytes=${result.totals.trimBytes ?? "?"}` +
-        ` inspect_ms=${inspectMs} gather_ms=${plannedAt - startedAt - inspectMs}`,
+        ` work_cells=${result.totals.workCells ?? 0} work_captured_bytes=${result.totals.workCapturedBytes ?? 0} work_commits=${result.totals.workCommits ?? 0} budget_cut=${budgetCut}` +
+        ` inspect_ms=${inspectMs} gather_ms=${plannedAt - startedAt - inspectMs} mode=${this.deps.policy.mode}`,
     );
-    const inspectionErrors = [...inspections.values()].filter(i => i.error != null || i.inspection == null).length;
+    const inspectionErrors = [...inspections.values()].filter(i => i.error != null || (i.inspection == null && !i.budgetCut)).length;
     result.diagnostics = passDiagnostics(items, [], [], inspectionErrors);
     if (opts.dryRun) {
       result.stale = await this.sweepStale(true);
       result.pass = {
         kind: opts.kind, startedAt, endedAt: this.deps.now(), outcome: "dry_run", evicted: 0, freedBytes: null,
         freeBefore: disk?.freeBytes ?? null, freeAfter: disk?.freeBytes ?? null, floorBytes: disk?.floorBytes ?? null, targetBytes: disk?.targetBytes ?? null, error: null,
+        diagnostics: result.diagnostics,
       };
+      if (opts.kind !== "manual") this.recordPass(result.pass);
       return result;
     }
     result.outcomes = await this.apply(items);
@@ -1050,13 +1065,14 @@ export class CellRetentionService {
     measure: boolean,
     kind: CellGcPassKind,
     onProgress?: (entry: RetentionWorkerInspection) => void,
-  ): Promise<Map<string, { inspection: CellWrapperInspection | null; error: string | null }>> {
+    deadlineMs: number | null = null,
+  ): Promise<Map<string, { inspection: CellWrapperInspection | null; error: string | null; budgetCut?: boolean }>> {
     const wrappers = candidates
       .filter((c) => c.cell?.state !== "evicted")
       .map((c) => ({ key: c.key, wrapperDir: c.wrapperDir, receipts: c.receipts, originRepo: c.cell?.originRepo ?? null, scratchDir: this.deps.scratchDirOf?.(c.beeId) ?? null }));
     if (wrappers.length === 0) return new Map();
     const message = await this.runWorker<RetentionWorkerResult>(
-      { wrappers, measure, trimPatterns: [...this.deps.policy.trimPatterns], leftoverPatterns: [...this.deps.policy.leftoverPatterns], upstream: this.upstreamRequest(kind), progress: onProgress != null } satisfies RetentionWorkerRequest,
+      { wrappers, measure, trimPatterns: [...this.deps.policy.trimPatterns], leftoverPatterns: [...this.deps.policy.leftoverPatterns], upstream: this.upstreamRequest(kind), progress: onProgress != null, deadlineMs } satisfies RetentionWorkerRequest,
       onProgress,
     );
     this.noteUpstreams(message.upstreams ?? []);
@@ -1070,7 +1086,7 @@ export class CellRetentionService {
       this.submoduleHolds.push({ cellId: c?.cell?.id ?? null, beeId: c?.beeId ?? "", paths });
       this.deps.log(`cell.retention.submodule_hold cell=${c?.cell?.id ?? "-"} bee=${c?.beeId ?? "-"} paths=${JSON.stringify(paths)}`);
     }
-    return new Map(message.inspections.map((i) => [i.key, { inspection: i.inspection, error: i.error }] as const));
+    return new Map(message.inspections.map((i) => [i.key, { inspection: i.inspection, error: i.error, ...(i.budgetCut ? { budgetCut: true } : {}) }] as const));
   }
 
   private runWorker<T>(request: RetentionWorkerRequest | TrimVerifyWorkerRequest | ParkPlanWorkerRequest | WipPushWorkerRequest | WipRefSweepWorkerRequest | WorkBundleWorkerRequest, onProgress?: (entry: RetentionWorkerInspection) => void): Promise<T> {
@@ -1140,7 +1156,7 @@ export class CellRetentionService {
 
   private decide(
     candidates: Candidate[],
-    inspections: Map<string, { inspection: CellWrapperInspection | null; error: string | null }>,
+    inspections: Map<string, { inspection: CellWrapperInspection | null; error: string | null; budgetCut?: boolean }>,
     now: number,
     maxBytes: number | null,
   ): CellGcItem[] {
@@ -1150,7 +1166,7 @@ export class CellRetentionService {
       const found = inspections.get(c.key);
       const inspection = found?.inspection ?? null;
       const base = this.baseOf(c, inspection);
-      const reason = this.reasonFor(c, inspection, found?.error ?? null, now, base);
+      const reason: CellGcReason = found?.budgetCut ? "pass_limit" : this.reasonFor(c, inspection, found?.error ?? null, now, base);
       items.push({ ...base, verdict: verdictOf(reason), reason });
     }
     this.applyByteBudget(items, maxBytes);
@@ -1782,7 +1798,8 @@ export class CellRetentionService {
     const workBundle = bundled == null ? null : { sha: bundled.record.work?.sha ?? null, bytes: bundled.record.bundleBytes, commits: bundled.record.commits, paths: bundled.record.paths };
     try {
       const parked = evictCellWrapper(this.deps.cellsRoot, item.wrapperDir, {
-        force: wipConfirmed || bundled != null,
+        force: wipConfirmed,
+        covered: bundled != null ? item.report : null,
         expectedHead: item.head,
         now: this.deps.now,
         trimPatterns: this.deps.policy.trimPatterns,
@@ -2044,5 +2061,8 @@ export function totalsOf(items: CellGcItem[]): CellGcResult["totals"] {
     dirtyCells: items.filter((i) => i.reason.startsWith("dirty_")).length,
     trimCells: items.filter((i) => i.trim.planned).length,
     trimBytes: measured ? items.filter((i) => i.trim.planned).reduce((acc, i) => acc + (i.trim.bytes ?? 0), 0) : null,
+    workCells: planned.filter((i) => i.work?.bundled).length,
+    workCapturedBytes: planned.reduce((acc, i) => acc + (i.work?.bundled ? i.work.capturedBytes : 0), 0),
+    workCommits: planned.reduce((acc, i) => acc + (i.work?.bundled ? i.work.commits : 0), 0),
   };
 }
