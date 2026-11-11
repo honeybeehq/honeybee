@@ -84,7 +84,7 @@ test("cell-retention.0: verbs and capability are published", () => {
 });
 
 test("cell-retention.1: plan holds young and dirty Cells, keeps live ones; apply evicts a clean archived Cell; a message revives it in place", { timeout: 180_000 }, async () => {
-  const rig = makeRig({ enabled: false, archivedAfterDays: 0 });
+  const rig = makeRig({ enabled: false, archivedAfterDays: 0, workBundle: false });
   let daemon: DaemonHandle | null = null;
   try {
     daemon = await startDaemon(rig.dir);
@@ -290,7 +290,7 @@ test("cell-retention.4: a clean retained Cell (its bee moved away) is removed by
 });
 
 test("cell-retention.5: ignored env files survive eviction and come back on revive; stashes and side branches hold the Cell", { timeout: 180_000 }, async () => {
-  const rig = makeRig({ enabled: false, archivedAfterDays: 0 });
+  const rig = makeRig({ enabled: false, archivedAfterDays: 0, workBundle: false });
   let daemon: DaemonHandle | null = null;
   try {
     writeFileSync(join(rig.origin.repo, ".gitignore"), ".env\n.env.*\n");
@@ -351,7 +351,7 @@ test("cell-retention.5: ignored env files survive eviction and come back on revi
 });
 
 test("cell-retention.6: idle Cells lose build output and keep everything else; eviction moves kept files aside and revive brings them back", { timeout: 180_000 }, async () => {
-  const rig = makeRig({ enabled: false, archivedAfterDays: 0, trimAfterHours: 0 });
+  const rig = makeRig({ enabled: false, archivedAfterDays: 0, trimAfterHours: 0, workBundle: false });
   let daemon: DaemonHandle | null = null;
   try {
     writeFileSync(join(rig.origin.repo, ".gitignore"), ".next/\n.data/\ntmp/\n");
@@ -423,7 +423,7 @@ test("cell-retention.6: idle Cells lose build output and keep everything else; e
 });
 
 test("cell-retention.7: a restart inside the interval runs no boot pass and still knows the last pass's holds", { timeout: 180_000 }, async () => {
-  const rig = makeRig({ enabled: true, stoppedAfterDays: 0, archivedAfterDays: 0, intervalHours: 1 });
+  const rig = makeRig({ enabled: true, stoppedAfterDays: 0, archivedAfterDays: 0, intervalHours: 1, workBundle: false });
   const env = { HIVE_TEST_RETENTION_INITIAL_DELAY_MS: "1500" };
   const logged = (needle: string) => readFileSync(join(rig.dir, "hived.log"), "utf8").split("\n").filter((line) => line.includes(needle));
   let daemon: DaemonHandle | null = null;

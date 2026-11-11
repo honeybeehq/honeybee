@@ -33,7 +33,8 @@ import { withoutRpcCaller } from "../../core/src/rpcAuditContext.ts";
  * back on revive.
  */
 import { Worker } from "node:worker_threads";
-import { existsSync, realpathSync, statfsSync } from "node:fs";
+import { existsSync, realpathSync, statfsSync, statSync } from "node:fs";
+import { rm } from "node:fs/promises";
 import { hostname } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import type { BeeRow, CellRow, CoreStore, NodeCapacity, RuntimeRow } from "../../core/src/index.ts";
@@ -43,7 +44,11 @@ import {
   cellEnvRootForCells,
   cellFingerprint,
   cellKeepRootForCells,
+  cellWorkRootForCells,
+  dropWorkBundle,
   evictCellWrapper,
+  listWorkBundles,
+  measurePathBytesDetailed,
   unparkCellWrapper,
   type EvictResult,
   landingTargets,
@@ -69,6 +74,9 @@ import {
   type WipPushWorkerResult,
   type WipRefSweepWorkerRequest,
   type WipRefSweepWorkerResult,
+  type WorkBundleRecord,
+  type WorkBundleWorkerRequest,
+  type WorkBundleWorkerResult,
   wipNodeScope,
   type RetentionWorkerResult,
   type UpstreamRef,
@@ -90,10 +98,14 @@ import {
   type CellGcPurgeReport,
   type CellGcReason,
   type CellGcResult,
+  type CellGcStale,
   type CellGcTrimOutcome,
   type CellGcVerdict,
+  type CellGcWork,
+  type CellKeepRemoveResult,
   type CellParkResult,
 } from "./protocol.ts";
+import type { CellHoldDetail } from "../../core/src/index.ts";
 
 export interface CellRetentionDeps {
   cellsRoot: string;
@@ -119,6 +131,8 @@ export interface CellRetentionDeps {
   initialDelayMs?: number;
   /** Data dir: upstream mirrors live under `<dataDir>/upstream/`. Absent = no mirrors. */
   dataDir?: string;
+  /** Where work bundles live (default `<cells-root>/../cell-work`). */
+  workRoot?: string;
   /** Size and free bytes of the volume holding `path` (default: statfs). */
   statfs?: (path: string) => { totalBytes: number; freeBytes: number };
   /** Append an informational retention audit row. */
@@ -198,7 +212,9 @@ export type WipPushTrigger = "turn_ended" | "exited" | "eviction" | "manual";
 
 const AGE_REASONS: ReadonlySet<CellGcReason> = new Set(["archived_age", "stopped_age", "too_young", "policy_disabled"]);
 
-const SETTLED_REASONS: ReadonlySet<CellGcReason> = new Set(["too_young", "policy_disabled", "dirty_uncommitted", "dirty_unlanded", "dirty_stash", "absent", "not_provisioned"]);
+const SETTLED_REASONS: ReadonlySet<CellGcReason> = new Set(["too_young", "policy_disabled", "dirty_uncommitted", "dirty_unlanded", "dirty_stash", "absent", "not_provisioned", "work_over_cap", "work_unbundleable"]);
+
+const WORK_HOLD_REASONS: ReadonlySet<CellGcReason> = new Set(["work_over_cap", "work_unbundleable", "work_bundle_failed"]);
 
 function defaultStatfs(path: string): { totalBytes: number; freeBytes: number } {
   const st = statfsSync(path);
@@ -267,6 +283,9 @@ function verdictOf(reason: CellGcReason): CellGcVerdict {
     case "pass_limit":
     case "wip_unconfirmed":
     case "wip_incomplete":
+    case "work_over_cap":
+    case "work_unbundleable":
+    case "work_bundle_failed":
     case "dirty_uncommitted":
     case "dirty_unlanded":
     case "dirty_stash":
@@ -319,6 +338,7 @@ export class CellRetentionService {
   private readonly wipInFlight = new Map<string, Promise<WipPushWorkerResult>>();
   private readonly wipBlocked = new Map<string, number>();
   private readonly wipConfirmedForEviction = new Map<string, string>();
+  private readonly workBundledForEviction = new Map<string, { record: WorkBundleRecord; fingerprint: string | null }>();
   private readonly wipLastPushAt = new Map<string, number>();
   private readonly wipTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly wipRerun = new Set<string>();
@@ -647,7 +667,16 @@ export class CellRetentionService {
       leftoverPatterns: [...policy.leftoverPatterns],
       purgeIgnoredOnPark: policy.purgeIgnoredOnPark,
       evictionRequiresWip: policy.evictionRequiresWip,
+      idleMs: policy.idleMs,
+      workBundle: policy.workBundle,
+      workBundleMaxBytes: policy.workBundleMaxBytes,
+      workBundleKeepMs: policy.workBundleKeepMs,
+      keepMs: policy.keepMs,
     };
+  }
+
+  private workRoot(): string {
+    return this.deps.workRoot ?? cellWorkRootForCells(this.deps.cellsRoot);
   }
 
   private startProgress(kind: CellGcPassKind, dryRun: boolean, total: number): CellGcProgress {
@@ -696,6 +725,8 @@ export class CellRetentionService {
     try {
       const result = await this.planAndApply(opts, startedAt, before);
       if (opts.dryRun) return result;
+      result.stale = await this.sweepStale(false);
+      this.assertRunning();
       await this.sweepAfterParks();
       const after = this.readDisk();
       const evicted = (result.outcomes ?? []).filter((o) => o.status === "evicted" || o.status === "removed").length;
@@ -759,6 +790,7 @@ export class CellRetentionService {
     const items = this.decide(candidates, inspections, plannedAt, this.effectiveMaxBytes(disk));
     this.judge(candidates, items);
     this.saveJudgments();
+    this.recordHolds(candidates, items);
     if (this.cappedInPlan && !opts.dryRun) this.auditDailyCap(plannedAt);
     const result: CellGcResult = {
       dryRun: opts.dryRun,
@@ -783,6 +815,7 @@ export class CellRetentionService {
     const inspectionErrors = [...inspections.values()].filter(i => i.error != null || i.inspection == null).length;
     result.diagnostics = passDiagnostics(items, [], [], inspectionErrors);
     if (opts.dryRun) {
+      result.stale = await this.sweepStale(true);
       result.pass = {
         kind: opts.kind, startedAt, endedAt: this.deps.now(), outcome: "dry_run", evicted: 0, freedBytes: null,
         freeBefore: disk?.freeBytes ?? null, freeAfter: disk?.freeBytes ?? null, floorBytes: disk?.floorBytes ?? null, targetBytes: disk?.targetBytes ?? null, error: null,
@@ -867,6 +900,7 @@ export class CellRetentionService {
         this.countProgress(progress, item.reason, item.bytes);
         if (item.verdict !== "evict") continue;
         if (!(await this.wipGate(item))) continue;
+        if (!(await this.workGate(item))) continue;
         const outcome = this.applyCapped(item);
         if (outcome == null) {
           capped = true;
@@ -1039,7 +1073,7 @@ export class CellRetentionService {
     return new Map(message.inspections.map((i) => [i.key, { inspection: i.inspection, error: i.error }] as const));
   }
 
-  private runWorker<T>(request: RetentionWorkerRequest | TrimVerifyWorkerRequest | ParkPlanWorkerRequest | WipPushWorkerRequest | WipRefSweepWorkerRequest, onProgress?: (entry: RetentionWorkerInspection) => void): Promise<T> {
+  private runWorker<T>(request: RetentionWorkerRequest | TrimVerifyWorkerRequest | ParkPlanWorkerRequest | WipPushWorkerRequest | WipRefSweepWorkerRequest | WorkBundleWorkerRequest, onProgress?: (entry: RetentionWorkerInspection) => void): Promise<T> {
     this.assertRunning();
     return new Promise((resolvePromise, reject) => {
       const worker = new Worker(this.deps.workerUrl ?? retentionWorkerUrl(), { execArgv: [], workerData: request });
@@ -1090,6 +1124,8 @@ export class CellRetentionService {
       workingTree: inspection?.workingTree ?? null,
       headUnlanded: inspection?.headUnlanded ?? false,
       envFiles: inspection?.envFiles ?? [],
+      work: this.workOf(c, inspection),
+      holdDetail: c.cell?.holdDetail ?? null,
       trim: { entries: inspection?.trim ?? [], bytes: sumBytes(inspection?.trim ?? []), planned: false },
       install: { entries: inspection?.install ?? [], bytes: sumBytes(inspection?.install ?? []) },
       keep: { entries: inspection?.keep ?? [], bytes: sumBytes(inspection?.keep ?? []) },
@@ -1179,8 +1215,14 @@ export class CellRetentionService {
     if (c.bee?.activeHandoffId) return "handoff_in_flight";
     const report = inspection.report;
     const wipCovers = policy.evictionRequiresWip && c.cell.state === "active" && inspection.dirtySubmodules.length === 0;
-    if (report?.uncommitted && !wipCovers) return "dirty_uncommitted";
-    if (report?.unpushed && !wipCovers) return "dirty_unlanded";
+    const work = inspection.work;
+    if (policy.workBundle && !wipCovers && c.cell.state === "active" && work != null && (work.commits > 0 || work.paths > 0)) {
+      if (work.refusal != null) return "work_unbundleable";
+      if (work.capturedBytes > policy.workBundleMaxBytes) return "work_over_cap";
+    }
+    const bundleCovers = this.workBundleable(c, inspection);
+    if (report?.uncommitted && !wipCovers && !bundleCovers) return "dirty_uncommitted";
+    if (report?.unpushed && !wipCovers && !bundleCovers) return "dirty_unlanded";
     if (report?.stashed) return "dirty_stash";
     if (report?.originUnknown) return "dirty_origin_unknown";
     if (c.bee == null || c.bee.lifecycle === "deleted") return "bee_deleted";
@@ -1317,11 +1359,223 @@ export class CellRetentionService {
       this.assertRunning();
       if (item.verdict !== "evict" && item.verdict !== "remove_retained") continue;
       if (!(await this.wipGate(item))) continue;
+      if (!(await this.workGate(item))) continue;
       const outcome = this.applyCapped(item);
       if (outcome) outcomes.push(outcome);
       await new Promise<void>((r) => setImmediate(r));
     }
     return outcomes;
+  }
+
+  /** The eviction will save a work bundle: policy on, an active Cell, work present, nothing a bundle cannot carry (populated dirty submodules, a stash, an unknown origin, a refusal). */
+  private workBundleable(c: Candidate, inspection: CellWrapperInspection | null): boolean {
+    const policy = this.deps.policy;
+    const work = inspection?.work ?? null;
+    if (!policy.workBundle || c.cell?.state !== "active" || inspection == null || work == null) return false;
+    if (work.commits === 0 && work.paths === 0) return false;
+    if (work.refusal != null || work.capturedBytes > policy.workBundleMaxBytes) return false;
+    const report = inspection.report;
+    if (inspection.dirtySubmodules.length > 0 || report?.stashed || report?.originUnknown) return false;
+    return true;
+  }
+
+  private workOf(c: Candidate, inspection: CellWrapperInspection | null): CellGcWork | null {
+    const work = inspection?.work ?? null;
+    if (work == null) return null;
+    return { commits: work.commits, paths: work.paths, modified: work.modified, untracked: work.untracked, capturedBytes: work.capturedBytes, largest: work.largest, refusal: work.refusal, refusalDetail: work.refusalDetail, bundled: this.workBundleable(c, inspection) };
+  }
+
+  /** Why a Cell is held, written to its row so every client reads the same reason and the largest paths. */
+  private recordHolds(candidates: Candidate[], items: CellGcItem[]): void {
+    const store = this.deps.store();
+    for (const [index, item] of items.entries()) {
+      const c = candidates[index]!;
+      if (c.cell == null || item.cellId == null || c.skip != null) continue;
+      try {
+        if (WORK_HOLD_REASONS.has(item.reason)) store.recordCellHold(item.cellId, { reason: item.reason, detail: this.holdDetailOf(item) });
+        else if (c.cell.holdReason != null) store.recordCellHold(item.cellId, null);
+      } catch (err) {
+        this.deps.log(`cell.retention.hold_record_failed cell=${item.cellId} ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+  }
+
+  private holdDetailOf(item: CellGcItem, message: string | null = null): CellHoldDetail {
+    const work = item.work ?? null;
+    return {
+      capturedBytes: work?.capturedBytes ?? null,
+      maxBytes: this.deps.policy.workBundleMaxBytes,
+      largest: work?.largest ?? [],
+      message: message ?? (work?.refusal ? `${work.refusal}${work.refusalDetail ? `:${work.refusalDetail}` : ""}` : null),
+      at: this.deps.now(),
+    };
+  }
+
+  /** Before a dirty Cell is evicted its work is bundled and verified in the worker; a failure holds the Cell with the reason and nothing is removed. */
+  private async workGate(item: CellGcItem): Promise<boolean> {
+    if (item.verdict !== "evict" || item.cellId == null || !item.work?.bundled) return true;
+    const store = this.deps.store();
+    const cell = store.getCell(item.cellId);
+    if (!cell || cell.state !== "active") return true;
+    const started = Date.now();
+    let result: WorkBundleWorkerResult;
+    try {
+      result = await this.runWorker<WorkBundleWorkerResult>({
+        kind: "bundleWork",
+        spaceDir: resolve(cell.spaceDir),
+        originRepo: cell.originRepo,
+        cellId: cell.id,
+        workRoot: this.workRoot(),
+        maxBytes: this.deps.policy.workBundleMaxBytes,
+        leftoverPatterns: [...this.deps.policy.leftoverPatterns],
+      } satisfies WorkBundleWorkerRequest);
+    } catch (err) {
+      result = { record: null, fingerprint: null, reason: null, error: err instanceof Error ? err.message : String(err) };
+    }
+    this.assertRunning();
+    if (result.record) {
+      this.workBundledForEviction.set(item.cellId, { record: result.record, fingerprint: result.fingerprint });
+      this.deps.log(`cell.work.bundled cell=${item.cellId} bee=${item.beeId} commits=${result.record.commits} paths=${result.record.paths} captured_bytes=${result.record.capturedBytes} bundle_bytes=${result.record.bundleBytes} ms=${Date.now() - started}`);
+      return true;
+    }
+    item.verdict = "hold";
+    item.reason = result.reason === "over_cap" ? "work_over_cap" : "work_bundle_failed";
+    const message = result.error ?? result.reason ?? "bundle_failed";
+    this.deps.log(`cell.retention.held cell=${item.cellId} bee=${item.beeId} reason=${item.reason} err=${JSON.stringify(message)} ms=${Date.now() - started}`);
+    try {
+      store.recordCellHold(item.cellId, { reason: item.reason, detail: this.holdDetailOf(item, message) });
+    } catch (err) {
+      this.deps.log(`cell.retention.hold_record_failed cell=${item.cellId} ${err instanceof Error ? err.message : String(err)}`);
+    }
+    return false;
+  }
+
+  /** Drop a Cell's work bundle and the row's reference to it (a verified restore, a removed Cell, a deleted bee). */
+  dropWork(cellId: string, why: string): boolean {
+    let dropped = false;
+    try {
+      dropped = dropWorkBundle(this.workRoot(), cellId);
+    } catch (err) {
+      this.deps.log(`cell.work.drop_failed cell=${cellId} ${err instanceof Error ? err.message : String(err)}`);
+    }
+    try {
+      const store = this.deps.store();
+      if (store.getCell(cellId)) store.clearCellWork(cellId);
+    } catch (err) {
+      this.deps.log(`cell.work.clear_failed cell=${cellId} ${err instanceof Error ? err.message : String(err)}`);
+    }
+    if (dropped) this.deps.log(`cell.work.dropped cell=${cellId} why=${why}`);
+    return dropped;
+  }
+
+  /**
+   * Kept ignored files and work bundles past their windows. A keep whose Cell
+   * is active (a restore conflict still pending) stays; a bundle of an active
+   * Cell whose checkout exists stays (a crash between the capture and the
+   * park, superseded by the next eviction). One readdir per root per pass.
+   */
+  private async sweepStale(dryRun: boolean): Promise<CellGcStale> {
+    const out: CellGcStale = { keeps: [], bundles: [] };
+    const policy = this.deps.policy;
+    const now = this.deps.now();
+    const store = this.deps.store();
+    const bySpace = new Map(store.listCells().map((c) => [basename(resolve(c.spaceDir)), c] as const));
+    const keepRoot = cellKeepRootForCells(this.deps.cellsRoot);
+    let pending: string[] = [];
+    try {
+      pending = listPendingKeeps(this.deps.cellsRoot);
+    } catch (err) {
+      this.deps.log(`cell.keep.list_failed ${err instanceof Error ? err.message : String(err)}`);
+    }
+    for (const spaceName of pending) {
+      this.assertRunning();
+      const cell = bySpace.get(spaceName) ?? null;
+      const manifest = join(keepRoot, `${spaceName}.json`);
+      let ageMs = 0;
+      try {
+        ageMs = Math.max(0, now - statSync(manifest).mtimeMs);
+      } catch {
+        continue;
+      }
+      const entry = { spaceName, cellId: cell?.id ?? null, beeId: cell?.sourceBeeId ?? null, ageMs, status: "kept" as CellGcStale["keeps"][number]["status"], reason: null as string | null };
+      if (cell?.state === "active" && existsSync(cell.spaceDir)) entry.reason = "cell_active";
+      else if (policy.keepMs == null) entry.reason = "window_disabled";
+      else if (ageMs < policy.keepMs) entry.reason = "within_window";
+      else if (dryRun) entry.status = "planned";
+      else {
+        const removed = await this.removeKeep(spaceName);
+        entry.status = removed.error == null ? "removed" : "failed";
+        entry.reason = removed.error;
+      }
+      out.keeps.push(entry);
+    }
+    for (const bundle of listWorkBundles(this.workRoot())) {
+      this.assertRunning();
+      const cell = store.getCell(bundle.cellId);
+      const bee = cell ? store.getBee(cell.sourceBeeId) : null;
+      const ageMs = Math.max(0, now - bundle.createdAt);
+      const entry = { cellId: bundle.cellId, beeId: cell?.sourceBeeId ?? null, ageMs, bytes: bundle.bytes, status: "kept" as CellGcStale["bundles"][number]["status"], reason: null as string | null };
+      const orphaned = cell == null || cell.state === "removed" || bee == null || bee.lifecycle === "deleted";
+      if (!orphaned && cell.state === "active" && existsSync(cell.spaceDir)) entry.reason = "cell_active";
+      else if (!orphaned && policy.workBundleKeepMs == null) entry.reason = "window_disabled";
+      else if (!orphaned && policy.workBundleKeepMs != null && ageMs < policy.workBundleKeepMs) entry.reason = "within_window";
+      else if (dryRun) entry.status = "planned";
+      else {
+        entry.status = this.dropWork(bundle.cellId, orphaned ? "orphaned" : "window_elapsed") ? "removed" : "failed";
+      }
+      out.bundles.push(entry);
+    }
+    const removedKeeps = out.keeps.filter((k) => k.status === "removed").length;
+    const removedBundles = out.bundles.filter((b) => b.status === "removed").length;
+    if (removedKeeps + removedBundles > 0 || out.keeps.some((k) => k.status === "failed") || out.bundles.some((b) => b.status === "failed")) {
+      this.deps.log(`cell.retention.stale dry_run=${dryRun} keeps_removed=${removedKeeps} keeps_failed=${out.keeps.filter((k) => k.status === "failed").length} bundles_removed=${removedBundles} bundles_failed=${out.bundles.filter((b) => b.status === "failed").length}`);
+    }
+    return out;
+  }
+
+  private async removeKeep(spaceName: string): Promise<{ bytes: number | null; error: string | null }> {
+    const keepRoot = cellKeepRootForCells(this.deps.cellsRoot);
+    const stash = join(keepRoot, spaceName);
+    const manifest = `${stash}.json`;
+    let bytes: number | null = null;
+    try {
+      bytes = existsSync(stash) ? measurePathBytesDetailed(stash).bytes : 0;
+      await rm(stash, { recursive: true, force: true, maxRetries: 2 });
+      await rm(manifest, { force: true });
+      this.deps.log(`cell.keep.removed space=${spaceName} bytes=${bytes}`);
+      return { bytes, error: null };
+    } catch (err) {
+      const error = err instanceof Error ? err.message : String(err);
+      this.deps.log(`cell.keep.remove_failed space=${spaceName} err=${JSON.stringify(error)}`);
+      return { bytes, error };
+    }
+  }
+
+  /** `cell.keep.remove`: kept ignored files of one bee's Cell, or of every Cell that is not active. */
+  async removeKept(target: { beeId: string } | { all: true }): Promise<CellKeepRemoveResult> {
+    const store = this.deps.store();
+    const result: CellKeepRemoveResult = { removed: [], skipped: [] };
+    const bySpace = new Map(store.listCells().map((c) => [basename(resolve(c.spaceDir)), c] as const));
+    const pending = listPendingKeeps(this.deps.cellsRoot);
+    const wanted = "all" in target ? pending : pending.filter((spaceName) => bySpace.get(spaceName)?.sourceBeeId === target.beeId);
+    if (!("all" in target) && wanted.length === 0) {
+      const bee = store.getBee(target.beeId);
+      const cell = bee?.cellId ? store.getCell(bee.cellId) : null;
+      result.skipped.push({ spaceName: cell?.spaceName ?? target.beeId, reason: "nothing_kept" });
+      return result;
+    }
+    for (const spaceName of wanted) {
+      this.assertRunning();
+      const cell = bySpace.get(spaceName) ?? null;
+      if (cell?.state === "active" && existsSync(cell.spaceDir)) {
+        result.skipped.push({ spaceName, reason: "cell_active" });
+        continue;
+      }
+      const removed = await this.removeKeep(spaceName);
+      if (removed.error != null) result.skipped.push({ spaceName, reason: removed.error });
+      else result.removed.push({ spaceName, cellId: cell?.id ?? null, beeId: cell?.sourceBeeId ?? null, bytes: removed.bytes });
+    }
+    return result;
   }
 
   private async wipGate(item: CellGcItem): Promise<boolean> {
@@ -1509,9 +1763,26 @@ export class CellRetentionService {
     if (item.cellId) this.wipConfirmedForEviction.delete(item.cellId);
     const wipConfirmed = wipSha != null && cell.wipSha === wipSha && cell.wipConfirmedAt != null;
     if (this.deps.policy.evictionRequiresWip && item.verdict === "evict" && !wipConfirmed) return outcome("refused", "wip_unconfirmed");
+    const bundled = item.cellId ? this.workBundledForEviction.get(item.cellId) ?? null : null;
+    if (item.cellId) this.workBundledForEviction.delete(item.cellId);
+    if (item.verdict === "evict" && item.work?.bundled && bundled == null) return outcome("refused", "work_unbundled");
+    if (bundled != null) {
+      const fingerprint = cellFingerprint(resolve(cell.spaceDir));
+      if (fingerprint !== bundled.fingerprint) {
+        this.dropWork(cell.id, "changed_since_bundle");
+        return outcome("refused", "changed_since_bundle");
+      }
+      try {
+        store.recordCellWork(cell.id, { at: bundled.record.createdAt, sha: bundled.record.work?.sha ?? null, bytes: bundled.record.bundleBytes });
+      } catch (err) {
+        this.dropWork(cell.id, "record_failed");
+        return outcome("failed", `work record failed: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+    const workBundle = bundled == null ? null : { sha: bundled.record.work?.sha ?? null, bytes: bundled.record.bundleBytes, commits: bundled.record.commits, paths: bundled.record.paths };
     try {
       const parked = evictCellWrapper(this.deps.cellsRoot, item.wrapperDir, {
-        force: wipConfirmed,
+        force: wipConfirmed || bundled != null,
         expectedHead: item.head,
         now: this.deps.now,
         trimPatterns: this.deps.policy.trimPatterns,
@@ -1528,17 +1799,21 @@ export class CellRetentionService {
       const kept = parked.keptPaths.length > 0 ? ` kept=${parked.keptPaths.length} keep_stash=${cellKeepRootForCells(this.deps.cellsRoot)}` : "";
       const recorded = this.recordOrUnpark(cell.id, item, parked, () => {
         if (item.verdict === "remove_retained") store.markCellRemoved(cell.id);
-        else store.evictCell(cell.id, { head: parked.head, bytes: item.bytes, reason: item.reason, envFiles: parked.envFiles, keptPaths: parked.keptPaths });
+        else store.evictCell(cell.id, { head: parked.head, bytes: item.bytes, reason: item.reason, envFiles: parked.envFiles, keptPaths: parked.keptPaths, ...(workBundle ? { workBundle } : {}) });
       });
-      if (recorded != null) return outcome("failed", recorded);
+      if (recorded != null) {
+        if (bundled != null) this.dropWork(cell.id, "unparked");
+        return outcome("failed", recorded);
+      }
       if (item.verdict === "evict") this.deps.clearBeeTmp?.(item.beeId);
       if (item.verdict === "remove_retained") {
         this.deps.log(`cell.retention.removed cell=${cell.id} bee=${item.beeId} reason=${item.reason} head=${parked.head ?? "-"} bytes=${item.bytes ?? "?"} parked=${parked.parkedDir}${env}${kept}`);
         return outcome("removed", item.reason, parked.envFiles, parked.keptPaths);
       }
-      this.deps.log(`cell.retention.evicted cell=${cell.id} bee=${item.beeId} reason=${item.reason} head=${parked.head ?? "-"} bytes=${item.bytes ?? "?"} parked=${parked.parkedDir}${env}${kept}${wipSha ? ` wip=${wipSha}${parked.forced ? " dirty" : ""}` : ""}`);
-      return outcome("evicted", item.reason, parked.envFiles, parked.keptPaths);
+      this.deps.log(`cell.retention.evicted cell=${cell.id} bee=${item.beeId} reason=${item.reason} head=${parked.head ?? "-"} bytes=${item.bytes ?? "?"} parked=${parked.parkedDir}${env}${kept}${wipSha ? ` wip=${wipSha}${parked.forced ? " dirty" : ""}` : ""}${workBundle ? ` work_bundle=${workBundle.bytes} work_commits=${workBundle.commits} work_paths=${workBundle.paths}` : ""}`);
+      return { ...outcome("evicted", item.reason, parked.envFiles, parked.keptPaths), workBundle };
     } catch (err) {
+      if (bundled != null) this.dropWork(cell.id, "park_failed");
       if (err instanceof CellDeleteRefused) return outcome("refused", "dirty");
       if (err instanceof CellHeadMovedError) return outcome("refused", "head_moved");
       const detail = err instanceof Error ? err.message : String(err);

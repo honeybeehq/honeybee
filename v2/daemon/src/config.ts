@@ -238,6 +238,16 @@ export interface CellRetentionConfig {
   evictionRequiresWip?: boolean;
   wipMaxFileBytes?: number;
   wipMinIntervalSeconds?: number;
+  /** Evict a Cell once its bee has been idle this long, archived or not (default 7). `archivedAfterDays` / `stoppedAfterDays` override per class when given. */
+  idleDays?: number;
+  /** Save a Cell's work (unlanded commits, tracked modifications, untracked files git does not ignore) as a local bundle at eviction and restore it on revive (default true). false = dirty Cells hold as before. */
+  workBundle?: boolean;
+  /** A Cell whose captured working state would exceed this many bytes is held, not evicted (default 1 GiB). */
+  workBundleMaxBytes?: number;
+  /** Keep an unrestored work bundle this long after its eviction before the pass deletes it (default 365). null = keep forever. */
+  workBundleKeepDays?: number | null;
+  /** Delete kept ignored files (`cell-keep/`) of evicted or removed Cells this long after the eviction (default 14). null = keep forever. */
+  keepDays?: number | null;
 }
 
 export interface ResolvedCellRetention {
@@ -264,6 +274,11 @@ export interface ResolvedCellRetention {
   evictionRequiresWip: boolean;
   wipMaxFileBytes: number;
   wipMinIntervalMs: number;
+  idleMs: number;
+  workBundle: boolean;
+  workBundleMaxBytes: number;
+  workBundleKeepMs: number | null;
+  keepMs: number | null;
   /** Invalid keys that fell back to their default, for the boot log. */
   warnings: string[];
 }
@@ -669,7 +684,7 @@ const VOLUME_SHARE_DEFAULT = 0.5;
 export const DEFAULT_CELL_RETENTION: ResolvedCellRetention = {
   enabled: true,
   archivedAfterMs: 7 * DAY_MS,
-  stoppedAfterMs: 30 * DAY_MS,
+  stoppedAfterMs: 7 * DAY_MS,
   retainedAfterMs: 14 * DAY_MS,
   maxBytes: null,
   maxBytesVolumeShare: null,
@@ -689,6 +704,11 @@ export const DEFAULT_CELL_RETENTION: ResolvedCellRetention = {
   evictionRequiresWip: false,
   wipMaxFileBytes: 64 * 1024 * 1024,
   wipMinIntervalMs: 60_000,
+  idleMs: 7 * DAY_MS,
+  workBundle: true,
+  workBundleMaxBytes: 1024 ** 3,
+  workBundleKeepMs: 365 * DAY_MS,
+  keepMs: 14 * DAY_MS,
   warnings: [],
 };
 
@@ -731,6 +751,11 @@ export function cellRetentionOf(raw: unknown, nodeKind: NodeKind = "workstation"
   const nullableNonNegative = (v: unknown) => v === null || isNonNegative(v);
 
   out.enabled = read("enabled", "a boolean", (v) => typeof v === "boolean", (v) => v as boolean, out.enabled);
+  out.idleMs = read("idleDays", "a non-negative number", isNonNegative, (v) => (v as number) * DAY_MS, out.idleMs);
+  if (c.idleDays !== undefined && isNonNegative(c.idleDays)) {
+    out.archivedAfterMs = out.idleMs;
+    out.stoppedAfterMs = out.idleMs;
+  }
   out.archivedAfterMs = read("archivedAfterDays", "a non-negative number", isNonNegative, (v) => (v as number) * DAY_MS, out.archivedAfterMs);
   out.stoppedAfterMs = read("stoppedAfterDays", "a non-negative number or null", nullableNonNegative, scaled(DAY_MS), out.stoppedAfterMs);
   out.retainedAfterMs = read("retainedAfterDays", "a non-negative number or null", nullableNonNegative, scaled(DAY_MS), out.retainedAfterMs);
@@ -778,6 +803,10 @@ export function cellRetentionOf(raw: unknown, nodeKind: NodeKind = "workstation"
   out.evictionRequiresWip = read("evictionRequiresWip", "a boolean", (v) => typeof v === "boolean", (v) => v as boolean, out.evictionRequiresWip);
   out.wipMaxFileBytes = read("wipMaxFileBytes", "an integer of at least 1024", (v) => typeof v === "number" && Number.isInteger(v) && v >= 1024, (v) => v as number, out.wipMaxFileBytes);
   out.wipMinIntervalMs = read("wipMinIntervalSeconds", "a non-negative number", isNonNegative, (v) => (v as number) * 1000, out.wipMinIntervalMs);
+  out.workBundle = read("workBundle", "a boolean", (v) => typeof v === "boolean", (v) => v as boolean, out.workBundle);
+  out.workBundleMaxBytes = read("workBundleMaxBytes", "a non-negative integer", (v) => typeof v === "number" && Number.isInteger(v) && v >= 0, (v) => v as number, out.workBundleMaxBytes);
+  out.workBundleKeepMs = read("workBundleKeepDays", "a non-negative number or null", nullableNonNegative, scaled(DAY_MS), out.workBundleKeepMs);
+  out.keepMs = read("keepDays", "a non-negative number or null", nullableNonNegative, scaled(DAY_MS), out.keepMs);
   return out;
 }
 

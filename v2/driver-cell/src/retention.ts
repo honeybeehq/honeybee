@@ -41,6 +41,7 @@ import { CELL_SPACE_DIRECTORY, looksLikeCellWrapper } from "./layout.ts";
 import type { LandingReceipt } from "./landed.ts";
 import type { UpstreamRef } from "./upstream.ts";
 import { CellDeleteRefused, CellShapeError, dirtyReportDetailed, type DirtyReport, type WorkingTreeFacts } from "./remove.ts";
+import { measureWork, type WorkMeasure } from "./work.ts";
 
 /** Reserved wrapper under the cells root where evicted wrappers wait for deletion. */
 export const EVICTING_DIR = "_evicting";
@@ -70,6 +71,8 @@ export interface CellWrapperInspection {
   workingTree: WorkingTreeFacts | null;
   /** HEAD itself holds unlanded commits; false when only side branches do. */
   headUnlanded: boolean;
+  /** What git calls work here and what a bundle would hold; null when there is no checkout. */
+  work: WorkMeasure | null;
   /** Allocated bytes (du -sk semantics); null when absent. */
   bytes: number | null;
   trim: PathBytes[];
@@ -718,17 +721,18 @@ function spaceDirIn(wrapperDir: string): string | null {
 
 export function inspectCellWrapper(
   wrapperDir: string,
-  opts: { measure?: boolean; trimPatterns?: readonly string[]; leftoverPatterns?: readonly string[]; receipts?: readonly LandingReceipt[]; upstream?: UpstreamRef | null } = {},
+  opts: { measure?: boolean; measureWork?: boolean; trimPatterns?: readonly string[]; leftoverPatterns?: readonly string[]; receipts?: readonly LandingReceipt[]; upstream?: UpstreamRef | null } = {},
 ): CellWrapperInspection {
   const started = Date.now();
   const target = resolve(wrapperDir);
   const spaceDir = spaceDirIn(target);
   if (spaceDir == null) {
-    return { wrapperDir: target, envFiles: [], present: false, provisioned: false, head: null, report: null, dirtySubmodules: [], workingTree: null, headUnlanded: false, bytes: null, trim: [], install: [], keep: [], disposable: [], fingerprint: null, elapsedMs: Date.now() - started };
+    return { wrapperDir: target, envFiles: [], present: false, provisioned: false, head: null, report: null, dirtySubmodules: [], workingTree: null, headUnlanded: false, work: null, bytes: null, trim: [], install: [], keep: [], disposable: [], fingerprint: null, elapsedMs: Date.now() - started };
   }
   const provisioned = existsSync(join(spaceDir, ".git"));
   const head = provisioned ? revParse(spaceDir, "HEAD") : null;
-  const { report, dirtySubmodules, workingTree, headUnlanded } = dirtyReportDetailed(target, { receipts: opts.receipts, upstream: opts.upstream ?? null, leftoverPatterns: opts.leftoverPatterns });
+  const { report, dirtySubmodules, workingTree, headUnlanded, tree, originRepo } = dirtyReportDetailed(target, { receipts: opts.receipts, upstream: opts.upstream ?? null, leftoverPatterns: opts.leftoverPatterns });
+  const work = provisioned && tree != null && opts.measureWork !== false ? measureWork(spaceDir, originRepo, { tree, leftoverPatterns: opts.leftoverPatterns }) : null;
   const ignored = classifyIgnored(spaceDir, opts.trimPatterns ?? DEFAULT_TRIM_PATTERNS, opts.leftoverPatterns ?? DEFAULT_LEFTOVER_PATTERNS);
   const measure = opts.measure !== false;
   const sized = (paths: string[]): PathBytes[] => paths.map((path) => {
@@ -737,7 +741,7 @@ export function inspectCellWrapper(
     return { path, bytes: measured.bytes, sharedBytes: measured.sharedBytes };
   });
   const bytes = measure ? measureDirectoryBytes(target) : null;
-  return { wrapperDir: target, envFiles: ignored.env, present: true, provisioned, head, report, dirtySubmodules, workingTree: provisioned ? workingTree : null, headUnlanded, bytes, trim: sized(ignored.trim), install: sized(ignored.install), keep: sized(ignored.keep), disposable: sized(ignored.disposable), fingerprint: cellFingerprint(spaceDir), elapsedMs: Date.now() - started };
+  return { wrapperDir: target, envFiles: ignored.env, present: true, provisioned, head, report, dirtySubmodules, workingTree: provisioned ? workingTree : null, headUnlanded, work, bytes, trim: sized(ignored.trim), install: sized(ignored.install), keep: sized(ignored.keep), disposable: sized(ignored.disposable), fingerprint: cellFingerprint(spaceDir), elapsedMs: Date.now() - started };
 }
 
 /**

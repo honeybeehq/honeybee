@@ -195,6 +195,8 @@ import {
   hasCommit,
   restoreEnvFiles,
   dropWipRef,
+  cellWorkRootForCells,
+  type WorkRestoreOutcome,
   adoptWipRef,
   wipNodeScope,
   restoreKeptPaths,
@@ -371,6 +373,7 @@ import { BEE_IMPORT_BUNDLE_BYTES_MAX,
   type CellCaptureResult,
   type CellEvictResult,
   type CellParkResult,
+  type CellKeepRemoveResult,
   type TranscriptSegmentsResult,
   type ChampionListResult,
   type ChampionGetResult,
@@ -1025,6 +1028,7 @@ export class HiveDaemon {
       ...(this.cfg.beeSandboxTmpBytes !== undefined ? { sandboxTmpfsBytes: this.cfg.beeSandboxTmpBytes } : {}),
       log: (op: string) => this.log(op),
       onCellMaterialized: (beeId: string, execution?: ExecutionStart) => this.onCellMaterialized(beeId,execution),
+      onCellWorkRestored: (beeId: string, outcome: WorkRestoreOutcome) => this.onCellWorkRestored(beeId, outcome),
       ...(this.cfg.cellRetention.fetchUpstream ? { upstreamRefresh: { root: upstreamRootFor(this.cfg.dataDir) } } : {}),
       onUpstreamRefreshed: (originRepo, result) => {
         const sync = result.sync;
@@ -1184,6 +1188,7 @@ export class HiveDaemon {
       onI1Violation: (v) => this.recordI1(v),
       removeSessionLog: (path) => rmSync(path, { force: true }),
       ...(this.beeTmp ? { removeBeeTmp: (beeId: string) => this.removeBeeTmp(beeId) } : {}),
+      removeCellWork: (_beeId: string, cellId: string) => this.retention?.dropWork(cellId, "bee_deleted"),
       removeThreadArtifacts: operationId => this.removeThreadArtifacts(operationId),
       onFlagEvidence: (ev) => this.applyAccountPolicy(ev),
       beforeTurn: (beeId, generation) => this.admitProviderTurn(beeId, generation),
@@ -1930,6 +1935,9 @@ export class HiveDaemon {
     const restoreWip = (cell.state === "evicted" || !existsSync(cell.spaceDir)) && (this.cfg.cellRetention.wipPushOnTurnEnd || this.cfg.cellRetention.evictionRequiresWip) && cell.wipSha && cell.wipConfirmedAt != null
       ? { sha: cell.wipSha, node: this.wipNode(), cellId: cell.id }
       : null;
+    const restoreWork = (cell.state === "evicted" || !existsSync(cell.spaceDir)) && cell.workBundleAt != null
+      ? { workRoot: cellWorkRootForCells(this.cfg.cellsRoot), cellId: cell.id }
+      : null;
     return {
       provision: {
         beeId,
@@ -1939,6 +1947,7 @@ export class HiveDaemon {
         repoName: parsed.repoName,
         cellId: parsed.cellId,
         ...(restoreWip ? { restoreWip } : {}),
+        ...(restoreWork ? { restoreWork } : {}),
       },
       sandbox: cell.sandbox ?? this.cfg.cellSandbox,
     };
@@ -2627,6 +2636,8 @@ export class HiveDaemon {
         return this.withIdempotency(verb, params, () => this.rpcCellEvict(params));
       case "cell.park":
         return this.rpcCellPark(verb, params);
+      case "cell.keep.remove":
+        return this.rpcCellKeepRemove(params);
       case "bee.rename":
         return this.withIdempotency(verb, params, () => this.rpcRename(params));
       case "bee.tag":
@@ -4192,6 +4203,7 @@ export class HiveDaemon {
     if (result.status === "deleted") {
       const row = store.getCell(cellId);
       if (row) this.dropCellWip(row);
+      this.retention?.dropWork(cellId, "cell_removed");
     }
     const key = this.idempotencyKeyOf(params);
     const cmd = store.enqueueCommand("delete", beeId, {}, key == null ? {} : { idempotencyKey: key });
@@ -4217,6 +4229,18 @@ export class HiveDaemon {
     } catch (err) {
       this.log(`cell.wip.drop_failed cell=${cell.id} ${err instanceof Error ? err.message : String(err)}`);
     }
+  }
+
+  /** The work bundle was applied to the fresh checkout: a verified restore drops the bundle, anything else keeps it for the operator. */
+  private onCellWorkRestored(beeId: string, outcome: WorkRestoreOutcome): void {
+    const store = this.store;
+    const cellId = store?.getBee(beeId)?.cellId ?? null;
+    if (!store || cellId == null) return;
+    if (outcome.status === "restored" && outcome.verified) {
+      this.retention?.dropWork(cellId, "restored");
+      return;
+    }
+    this.log(`cell.work.kept bee=${beeId} cell=${cellId} status=${outcome.status} reason=${JSON.stringify(outcome.reason)} bundle=${join(cellWorkRootForCells(this.cfg.cellsRoot), `${cellId}.bundle`)}`);
   }
 
   /** v31 — the driver put a checkout back under an evicted allocation: `evicted → active`. */
@@ -4309,6 +4333,18 @@ export class HiveDaemon {
       throw new RpcError("runtime_refused", `bee ${beeId} has a live runtime (${rt.state}); a Cell is never parked mid-turn`);
     }
     return row;
+  }
+
+  /** `cell.keep.remove` — delete kept ignored files of one bee's evicted Cell, or of every Cell that is not active. */
+  private async rpcCellKeepRemove(params: Record<string, unknown>): Promise<CellKeepRemoveResult> {
+    if (params.all !== undefined && typeof params.all !== "boolean") throw new RpcError("invalid_request", "cell.keep.remove: all must be a boolean when given");
+    const retention = this.retention;
+    if (!retention) throw new RpcError("node_stopped", "daemon is shutting down");
+    if (params.all === true) return retention.removeKept({ all: true });
+    const beeId = this.requireBee(params);
+    const bee = this.mustStore().getBee(beeId);
+    if (!bee || bee.substrate !== "cell") throw new RpcError("invalid_request", `cell.keep.remove: bee ${beeId} has no Cell allocation`);
+    return retention.removeKept({ beeId });
   }
 
   /**
@@ -5462,6 +5498,7 @@ export class HiveDaemon {
       const res = deleteCell(paths.wrapperDir, { force, receipts: store.listLandingReceipts(cell.sourceBeeId) });
       const marked = store.markCellRemoved(cellId);
       if (res.deleted) this.dropCellWip(cell);
+      this.retention?.dropWork(cellId, "cell_removed");
       const status = res.deleted ? "deleted" : "absent";
       const saved = store.updateCellOp(op.id, {
         status: "done",

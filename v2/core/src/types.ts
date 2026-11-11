@@ -1317,6 +1317,22 @@ export interface CellRow {
   wipTree: string | null;
   wipPushedAt: number | null;
   wipConfirmedAt: number | null;
+  /** When the Cell's work was saved as a local bundle (eviction); null when none is on disk for it. */
+  workBundleAt: number | null;
+  /** The bundle's working-tree commit; null when the work was commits only. */
+  workBundleSha: string | null;
+  workBundleBytes: number | null;
+  /** Why retention holds this Cell, when it does (`work_over_cap`, `work_unbundleable`, `work_bundle_failed`); null otherwise. */
+  holdReason: string | null;
+  holdDetail: CellHoldDetail | null;
+}
+
+export interface CellHoldDetail {
+  capturedBytes: number | null;
+  maxBytes: number | null;
+  largest: Array<{ path: string; bytes: number }>;
+  message: string | null;
+  at: number;
 }
 
 export interface NodeCapacity {

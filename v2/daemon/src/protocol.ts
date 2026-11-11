@@ -39,6 +39,7 @@ import type {
   BeeHandoffView,
   BeeMoveView,
   BeeRow,
+  CellHoldDetail,
   CellOpStatus,
   CellRow,
   CellState,
@@ -210,6 +211,13 @@ export const DAEMON_CAPABILITIES = [
   "cell.retention.trim.v1",
   "cell.retention.pressure.v1",
   "cell.park.v1",
+  /**
+   * Cell work bundles: a dirty idle Cell is evicted after its work (unlanded
+   * commits, tracked modifications, untracked files git does not ignore) is
+   * saved as a verified local bundle under `<data-dir>/cell-work/` and
+   * restored on revive; `work_*` hold reasons; `cell.keep.remove`.
+   */
+  "cell.work.v1",
   "node.capacity.v1",
   "transcript.segments.v1",
   "transcript.segments.v2",
@@ -648,6 +656,7 @@ export const RPC_VERBS = [
   "cell.gc",
   "cell.evict",
   "cell.park",
+  "cell.keep.remove",
   // v23: durable session handoff (same-family reset / cross-family change).
   "bee.handoff",
   "bee.handoff.get",
@@ -2660,8 +2669,29 @@ export const CELL_GC_REASONS = [
   "disk_pressure",
   "wip_unconfirmed",
   "wip_incomplete",
+  "work_over_cap",
+  "work_unbundleable",
+  "work_bundle_failed",
 ] as const;
 export type CellGcReason = (typeof CELL_GC_REASONS)[number];
+
+/** What git calls work in a Cell, measured at inspection: the bundle an eviction would save. */
+export interface CellGcWork {
+  /** Local commits no origin ref reaches. */
+  commits: number;
+  /** Changed entries as `git status` lists them (a collapsed untracked directory counts once). */
+  paths: number;
+  modified: number;
+  untracked: number;
+  /** Apparent bytes of the changed paths the bundle would store. */
+  capturedBytes: number;
+  largest: Array<{ path: string; bytes: number }>;
+  /** Why the work cannot be bundled, when it cannot. */
+  refusal: string | null;
+  refusalDetail: string | null;
+  /** The eviction will save a bundle before removing the checkout. */
+  bundled: boolean;
+}
 
 export interface CellGcItem {
   cellId: string | null;
@@ -2694,6 +2724,10 @@ export interface CellGcItem {
   disposable?: { entries: CellGcPathBytes[]; bytes: number | null };
   /** The bee's scratch dir (HIVE_SCRATCH, its TMPDIR) outside the Cell: removed with the Cell on eviction, never captured or kept. Null when absent or the node has no bee tmp; bytes null unless measured. Absent on older daemons. */
   scratch?: { path: string; bytes: number | null } | null;
+  /** The Cell's work and what the eviction does with it; null when settled without an inspection. Absent on older daemons. */
+  work?: CellGcWork | null;
+  /** The hold the row records (`cells.hold_detail`), kept for a Cell settled without a new inspection. Absent on older daemons. */
+  holdDetail?: CellHoldDetail | null;
 }
 
 export interface CellGcPathBytes {
@@ -2711,6 +2745,16 @@ export interface CellGcOutcome {
   bytes: number | null;
   envFiles: string[];
   keptPaths: string[];
+  /** The work bundle saved before the checkout was removed; null when the Cell held no work. Absent on older daemons. */
+  workBundle?: { sha: string | null; bytes: number; commits: number; paths: number } | null;
+}
+
+export type CellGcStaleStatus = "planned" | "removed" | "failed" | "kept";
+
+/** Kept ignored files and work bundles past their windows: what the pass deletes, or would. */
+export interface CellGcStale {
+  keeps: Array<{ spaceName: string; cellId: string | null; beeId: string | null; ageMs: number; status: CellGcStaleStatus; reason: string | null }>;
+  bundles: Array<{ cellId: string; beeId: string | null; ageMs: number; bytes: number; status: CellGcStaleStatus; reason: string | null }>;
 }
 
 export interface CellGcTrimOutcome {
@@ -2740,8 +2784,15 @@ export interface CellGcResult {
     leftoverPatterns?: string[];
     purgeIgnoredOnPark?: boolean;
     evictionRequiresWip?: boolean;
+    idleMs?: number;
+    workBundle?: boolean;
+    workBundleMaxBytes?: number;
+    workBundleKeepMs?: number | null;
+    keepMs?: number | null;
   };
   items: CellGcItem[];
+  /** Kept files and work bundles past their windows (dry run: `planned`; apply: the outcome). Absent on older daemons. */
+  stale?: CellGcStale;
   purge?: CellGcPurgeReport;
   totals: {
     cells: number;
@@ -2851,6 +2902,17 @@ export interface CellEvictResult {
   envFiles: string[];
   keptPaths: string[];
   deduped?: boolean;
+}
+
+/** `cell.keep.remove` — delete kept ignored files (`cell-keep/`) of one evicted bee, or of every Cell that is not active. */
+export interface CellKeepRemoveParams {
+  beeId?: string;
+  all?: boolean;
+}
+
+export interface CellKeepRemoveResult {
+  removed: Array<{ spaceName: string; cellId: string | null; beeId: string | null; bytes: number | null }>;
+  skipped: Array<{ spaceName: string; reason: string }>;
 }
 
 export const CELL_PARK_MODES = ["trim", "purge"] as const;

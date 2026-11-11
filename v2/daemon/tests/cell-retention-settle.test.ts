@@ -55,7 +55,7 @@ function rig(policy: Partial<ResolvedCellRetention> = {}, volume: { totalBytes: 
   const boot = (override: Partial<ResolvedCellRetention> = {}) => {
     const service = new CellRetentionService({
       cellsRoot,
-      policy: { ...defaultCellRetention("workstation"), ...policy, ...override },
+      policy: { ...defaultCellRetention("workstation"), workBundle: false, ...policy, ...override },
       store: () => store,
       now: () => now,
       log: (op) => logs.push(op),

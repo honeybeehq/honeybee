@@ -28,6 +28,7 @@
  */
 import { existsSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
 import { restoreWip, restoreWipBranches } from "./wip.ts";
+import { restoreWork, type WorkRestoreOutcome } from "./work.ts";
 import { availableParallelism } from "node:os";
 import { performance } from "node:perf_hooks";
 import { join } from "node:path";
@@ -66,6 +67,8 @@ export interface ProvisionRequest {
   /** Per-repo opt-in warm artifact dirs, relative to the working tree (A5). */
   warmArtifacts?: string[];
   restoreWip?: { sha: string; node: string; cellId: string };
+  /** A work bundle saved at eviction: restore it into the fresh checkout before the runtime starts. */
+  restoreWork?: { workRoot: string; cellId: string };
 }
 
 export interface ProvisionedCell {
@@ -77,9 +80,14 @@ export interface ProvisionedCell {
   /** True when this call found a completed provisioning and did nothing. */
   replayed: boolean;
   wipRestore?: { restored: boolean; reason: string | null; branches?: string[] };
+  workRestore?: WorkRestoreOutcome;
 }
 
 export function restoreWipAfterProvision(cell: ProvisionedCell, req: ProvisionRequest): ProvisionedCell {
+  return restoreWorkAfterProvision(restoreWipRefAfterProvision(cell, req), req);
+}
+
+function restoreWipRefAfterProvision(cell: ProvisionedCell, req: ProvisionRequest): ProvisionedCell {
   if (!req.restoreWip || cell.replayed) return cell;
   try {
     const res = restoreWip(cell.paths.spaceDir, req.originRepo, req.restoreWip.node, req.restoreWip.cellId, req.restoreWip.sha);
@@ -87,6 +95,16 @@ export function restoreWipAfterProvision(cell: ProvisionedCell, req: ProvisionRe
     return { ...cell, wipRestore: { restored: res.restored, reason: res.reason, branches } };
   } catch (err) {
     return { ...cell, wipRestore: { restored: false, reason: err instanceof Error ? err.message : String(err) } };
+  }
+}
+
+/** A replayed provisioning still restores: the bundle stays until a verified restore, and `restoreWork` refuses a checkout that is not fresh. */
+function restoreWorkAfterProvision(cell: ProvisionedCell, req: ProvisionRequest): ProvisionedCell {
+  if (!req.restoreWork) return cell;
+  try {
+    return { ...cell, workRestore: restoreWork(cell.paths.spaceDir, req.restoreWork.workRoot, req.restoreWork.cellId, { expectedHead: req.sha }) };
+  } catch (err) {
+    return { ...cell, workRestore: { status: "failed", verified: false, reason: err instanceof Error ? err.message : String(err), commits: 0, paths: 0 } };
   }
 }
 

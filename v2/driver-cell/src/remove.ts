@@ -151,6 +151,10 @@ export interface DirtyReportDetails {
   workingTree: WorkingTreeFacts;
   /** HEAD itself holds unlanded commits (as opposed to a side branch only). */
   headUnlanded: boolean;
+  /** The `git status` the facts came from; null when there is no checkout. */
+  tree: WorkingTreeStatus | null;
+  /** The ledger's origin, when the ledger could be read. */
+  originRepo: string | null;
 }
 
 /**
@@ -171,7 +175,7 @@ export function dirtyReportDetailed(wrapperDir: string, opts: DirtyReportOptions
     originUnknown: false,
   };
   const emptyTree: WorkingTreeFacts = { modifiedFiles: 0, untrackedFiles: 0, leftoverPaths: [] };
-  if (!existsSync(join(spaceDir, ".git"))) return { report: clean, dirtySubmodules: [], workingTree: emptyTree, headUnlanded: false }; // half-provisioned: nothing to lose
+  if (!existsSync(join(spaceDir, ".git"))) return { report: clean, dirtySubmodules: [], workingTree: emptyTree, headUnlanded: false, tree: null, originRepo: null }; // half-provisioned: nothing to lose
 
   const dirtySubmodules = submodulesWithLocalState(spaceDir);
   const tree = workingTreeStatus(spaceDir, opts.leftoverPatterns ?? DEFAULT_LEFTOVER_PATTERNS);
@@ -224,7 +228,7 @@ export function dirtyReportDetailed(wrapperDir: string, opts: DirtyReportOptions
     unlandedCommitCount: unlanded.length,
     originUnknown,
   };
-  return { report, dirtySubmodules, workingTree: { modifiedFiles: tree.modified.length, untrackedFiles: tree.untracked.length, leftoverPaths: tree.leftovers }, headUnlanded };
+  return { report, dirtySubmodules, workingTree: { modifiedFiles: tree.modified.length, untrackedFiles: tree.untracked.length, leftoverPaths: tree.leftovers }, headUnlanded, tree, originRepo: origin ?? null };
 }
 
 const GITLINK_MODE = "160000";

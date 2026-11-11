@@ -177,8 +177,11 @@
  * v59 — D1 reader gate: meta('min_reader_schema'); no table changes; contract, since no earlier
  * build reads the key.
  * v60 — `bees.last_message`: bounded plain-text excerpt of the last assistant message, written in
- * the turn-end transaction; additive; migration = ALTER TABLE ADD COLUMN. */
-export const SCHEMA_VERSION = 60;
+ * the turn-end transaction; additive; migration = ALTER TABLE ADD COLUMN.
+ * v61 — Cell work bundles: `cells.work_bundle_at` / `work_bundle_sha` / `work_bundle_bytes` (the local
+ * bundle saved at eviction) and `cells.hold_reason` / `hold_detail` (why retention holds the Cell);
+ * additive; migration = ALTER TABLE ADD COLUMN ×5. */
+export const SCHEMA_VERSION = 61;
 export const MIN_READER_SCHEMA = 59;
 
 export const QUESTIONS_TABLE_SQL = `
@@ -956,7 +959,12 @@ CREATE TABLE IF NOT EXISTS cells (
   wip_sha         TEXT,
   wip_tree        TEXT,
   wip_pushed_at   INTEGER,
-  wip_confirmed_at INTEGER
+  wip_confirmed_at INTEGER,
+  work_bundle_at  INTEGER,
+  work_bundle_sha TEXT,
+  work_bundle_bytes INTEGER,
+  hold_reason     TEXT,
+  hold_detail     TEXT
 ) STRICT;
 `;
 
@@ -966,6 +974,11 @@ export const CELLS_ADDITIVE_COLUMNS: ReadonlyArray<readonly [name: string, ddl: 
   ["wip_tree", "wip_tree TEXT"],
   ["wip_pushed_at", "wip_pushed_at INTEGER"],
   ["wip_confirmed_at", "wip_confirmed_at INTEGER"],
+  ["work_bundle_at", "work_bundle_at INTEGER"],
+  ["work_bundle_sha", "work_bundle_sha TEXT"],
+  ["work_bundle_bytes", "work_bundle_bytes INTEGER"],
+  ["hold_reason", "hold_reason TEXT"],
+  ["hold_detail", "hold_detail TEXT"],
 ];
 
 export const BEE_MOVES_TABLE_SQL = `

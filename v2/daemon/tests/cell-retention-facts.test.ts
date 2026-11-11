@@ -68,7 +68,7 @@ function rig(policy: Partial<ResolvedCellRetention> = {}) {
   now = base;
   const service = new CellRetentionService({
     cellsRoot,
-    policy: { ...defaultCellRetention("workstation"), ...policy },
+    policy: { ...defaultCellRetention("workstation"), workBundle: false, ...policy },
     store: () => store,
     now: () => now,
     log: (op) => logs.push(op),

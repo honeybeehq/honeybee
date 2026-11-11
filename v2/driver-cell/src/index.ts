@@ -94,6 +94,8 @@ export type {
   WipPushWorkerResult,
   WipRefSweepWorkerRequest,
   WipRefSweepWorkerResult,
+  WorkBundleWorkerRequest,
+  WorkBundleWorkerResult,
 } from "./retentionWorker.ts";
 export {
   UPSTREAM_REF,
@@ -152,6 +154,7 @@ export {
   type WarmRecord,
 } from "./ledger.ts";
 export { cowCopy, cowPlatform, probeCow, probeCowWritable, type CowPlatform } from "./cow.ts";
+export { WORK_RECORD_VERSION, WORK_REFUSALS, WorkError, bundleWork, cellWorkRootForCells, dropWorkBundle, listWorkBundles, measureWork, originBoundary, readWorkRecord, restoreWork, verifyRestoredWork, workBundlePaths, workNeeded, workRefusal, type WorkBundleRecord, type WorkMeasure, type WorkRefusal, type WorkRestoreOutcome, type WorkStage } from "./work.ts";
 export { WIP_MAX_FILE_BYTES, WipError, adoptWipRef, confirmWip, dropWipRef, listWipBranches, operationInProgress, pushWip, restoreWip, restoreWipBranches, snapshotWip, sweepWipRefs, wipBranchRefPrefix, wipNodeScope, wipRefFor, type WipRefSweep, type WipRestoreSkip, type WipSnapshot, type WipStage } from "./wip.ts";
 export {
   claimFromPool,

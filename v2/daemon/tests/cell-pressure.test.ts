@@ -69,7 +69,7 @@ test("cell-pressure.1: below the floor, clean archived then idle Cells go oldest
   g(origin.repo, ["commit", "-q", "-m", "payload"]);
   const cellsRoot = join(root, "cells");
   mkdirSync(cellsRoot, { recursive: true });
-  const off = { enabled: true, archivedAfterDays: 30, stoppedAfterDays: null, trimAfterHours: null, fetchUpstream: false, minFreePercent: null, minFreeBytes: null, pressureIdleAfterDays: IDLE_AFTER_MS / 86_400_000, budgetEnforce: true };
+  const off = { workBundle: false, enabled: true, archivedAfterDays: 30, stoppedAfterDays: null, trimAfterHours: null, fetchUpstream: false, minFreePercent: null, minFreeBytes: null, pressureIdleAfterDays: IDLE_AFTER_MS / 86_400_000, budgetEnforce: true };
   const { dir, cleanup } = makeDaemonDir({
     bootHangTimeoutMs: 60_000,
     cells: { root: cellsRoot, retention: off },
@@ -205,7 +205,7 @@ test("cell-pressure.2: a Cell whose work landed upstream, past a stale origin ch
   g(origin.repo, ["remote", "add", "origin", upstream]);
   const cellsRoot = join(root, "cells");
   mkdirSync(cellsRoot, { recursive: true });
-  const retention = { enabled: false, archivedAfterDays: 0, trimAfterHours: null, minFreePercent: null, minFreeBytes: null };
+  const retention = { workBundle: false, enabled: false, archivedAfterDays: 0, trimAfterHours: null, minFreePercent: null, minFreeBytes: null };
   const { dir, cleanup } = makeDaemonDir({
     bootHangTimeoutMs: 60_000,
     cells: { root: cellsRoot, retention: { ...retention, fetchUpstream: false } },

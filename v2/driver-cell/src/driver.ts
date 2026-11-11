@@ -10,6 +10,7 @@ import { captureWork, type CaptureMode, type CaptureReport } from "./capture.ts"
 import { cellPaths, looksLikeCellWrapper, type CellPaths } from "./layout.ts";
 import { isProvisioned, readLedger, type CellLedger } from "./ledger.ts";
 import { provisionCell, type ProvisionedCell, type ProvisionRequest, restoreWipAfterProvision } from "./provision.ts";
+import type { WorkRestoreOutcome } from "./work.ts";
 import { describeSandboxTmpfs, SandboxTmpWatch, sandboxTmpfsCap, type SandboxTmpfsCap } from "./sandboxTmp.ts";
 import { claimFromPool, repoKeyFor } from "./warmPool.ts";
 import type { PoolWorkerResult, RefreshRequest } from "./poolWorker.ts";
@@ -74,6 +75,8 @@ export interface CellServiceConfig {
    * it to move an `evicted` registry row back to `active`. Idempotent.
    */
   onCellMaterialized?(beeId: string, execution?: ExecutionStart): void;
+  /** A work bundle was applied to the fresh checkout (verified or not); the owner decides what happens to the bundle. */
+  onCellWorkRestored?(beeId: string, outcome: WorkRestoreOutcome): void;
 }
 
 export interface UpstreamRefreshPolicy {
@@ -108,6 +111,7 @@ interface ProvisionWorkerResult {
   ok: boolean;
   error?: string;
   wipRestore?: { restored: boolean; reason: string | null; branches?: string[] };
+  workRestore?: WorkRestoreOutcome;
 }
 
 /** `removeCell` refusal: the bee still has a live runtime — stop it first. */
@@ -174,6 +178,7 @@ export class CellService {
     worker.once("message", (message: ProvisionWorkerResult) => {
       this.refreshOriginOf(beeId);
       if (message.wipRestore) this.logWipRestore(beeId, message.wipRestore);
+      if (message.workRestore) this.noteWorkRestore(beeId, message.workRestore);
       if (message.ok) {
         this.maintenanceWorkers.add(worker);
         this.maintenanceByRuntime.set(`${pending.beeId}:g${pending.generation}`, worker);
@@ -250,8 +255,15 @@ export class CellService {
       gitImagesRoot: this.cfg.gitImagesRoot,
     });
     if (cell.wipRestore) this.logWipRestore(beeId, cell.wipRestore);
+    if (cell.workRestore) this.noteWorkRestore(beeId, cell.workRestore);
     this.cells.set(beeId, cell);
     return cell;
+  }
+
+  private noteWorkRestore(beeId: string, outcome: WorkRestoreOutcome): void {
+    if (outcome.status === "skipped" && outcome.reason === "no_bundle") return;
+    this.cfg.log?.(`cell.work.${outcome.status === "restored" ? (outcome.verified ? "restored" : "restore_unverified") : outcome.status === "skipped" ? "restore_skipped" : "restore_failed"} bee=${beeId} commits=${outcome.commits} paths=${outcome.paths}${outcome.reason ? ` reason=${JSON.stringify(outcome.reason)}` : ""}`);
+    this.cfg.onCellWorkRestored?.(beeId, outcome);
   }
 
   private logWipRestore(beeId: string, outcome: { restored: boolean; reason: string | null; branches?: string[] }): void {
@@ -429,6 +441,7 @@ export class CellService {
       if (!claimed) return null;
       const cell = restoreWipAfterProvision(claimed, spec.provision);
       if (cell.wipRestore) this.logWipRestore(beeId, cell.wipRestore);
+      if (cell.workRestore) this.noteWorkRestore(beeId, cell.workRestore);
       return cell;
     } catch {
       // A pool claim is best-effort: any failure falls back to cold provision.

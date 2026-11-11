@@ -231,6 +231,8 @@ export interface DaemonCoreOptions {
   removeSessionLog?: (path: string) => void;
   removeThreadArtifacts?: (operationId: string) => void;
   removeBeeTmp?: (beeId: string) => void;
+  /** A deleted bee's Cell work bundle is dropped with it. */
+  removeCellWork?: (beeId: string, cellId: string) => void;
   /**
    * v7 (spec 08): account policy hook — called AFTER each flag evidence is
    * applied to the store, so the daemon can enact the account-level rules
@@ -372,6 +374,7 @@ export class DaemonCore {
   private readonly removeThreadArtifacts: ((operationId: string) => void) | null;
   private readonly removeSessionLog: ((path: string) => void) | null;
   private readonly removeBeeTmp: ((beeId: string) => void) | null;
+  private readonly removeCellWork: ((beeId: string, cellId: string) => void) | null;
   private readonly onFlagEvidence: ((ev: FlagEvidenceLike) => void) | null;
   private readonly beforeTurn: ((beeId: string, generation: number) => boolean) | null;
   private readonly onUsageEvidence: ((ev: UsageEvidenceLike) => void) | null;
@@ -429,6 +432,7 @@ export class DaemonCore {
     this.removeSessionLog = opts.removeSessionLog ?? null;
     this.removeThreadArtifacts = opts.removeThreadArtifacts ?? null;
     this.removeBeeTmp = opts.removeBeeTmp ?? null;
+    this.removeCellWork = opts.removeCellWork ?? null;
     this.onFlagEvidence = opts.onFlagEvidence ?? null;
     this.beforeTurn = opts.beforeTurn ?? null;
     this.onUsageEvidence = opts.onUsageEvidence ?? null;
@@ -1261,6 +1265,7 @@ export class DaemonCore {
       case "delete": {
         const rt = this.store.currentRuntime(cmd.beeId);
         const threadOperation = this.store.threadOperationForSuccessor(cmd.beeId);
+        const deletedCellId = this.store.getBee(cmd.beeId)?.cellId ?? null;
         const result = this.store.deleteBee(cmd.beeId); // settles this command too (pending → done)
         this.multilineFallback?.cleanupDeleted();
         if (rt && LIVE.includes(rt.state)) {
@@ -1271,6 +1276,7 @@ export class DaemonCore {
         }
         if (threadOperation) this.removeThreadArtifacts?.(threadOperation.id);
         this.removeBeeTmp?.(cmd.beeId);
+        if (deletedCellId != null) this.removeCellWork?.(cmd.beeId, deletedCellId);
         this.log(`cmd.delete id=${cmd.id} bee=${cmd.beeId}`);
         return true;
       }

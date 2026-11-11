@@ -3,6 +3,7 @@ import { gitImagesRootForCells, refreshGitImage } from "./gitImage.ts";
 import { cellPaths } from "./layout.ts";
 import { readLedger } from "./ledger.ts";
 import { provisionCell, restoreWipAfterProvision, type ProvisionedCell, type ProvisionRequest } from "./provision.ts";
+import type { WorkRestoreOutcome } from "./work.ts";
 import { claimFromPool } from "./warmPool.ts";
 
 interface ProvisionWorkerData {
@@ -19,6 +20,7 @@ interface ProvisionWorkerResult {
   ok: boolean;
   error?: string;
   wipRestore?: { restored: boolean; reason: string | null };
+  workRestore?: WorkRestoreOutcome;
 }
 
 interface MaintenanceStart {
@@ -72,7 +74,7 @@ try {
     gitImagesRoot: data.gitImagesRoot,
   });
   provisionedFreshImage = !hadProvisionAttempt && !cell.replayed && cell.copyMode === "image-cow";
-  parentPort?.postMessage({ ok: true, ...(cell.wipRestore ? { wipRestore: cell.wipRestore } : {}) } satisfies ProvisionWorkerResult);
+  parentPort?.postMessage({ ok: true, ...(cell.wipRestore ? { wipRestore: cell.wipRestore } : {}), ...(cell.workRestore ? { workRestore: cell.workRestore } : {}) } satisfies ProvisionWorkerResult);
 } catch (error) {
   parentPort?.postMessage({
     ok: false,

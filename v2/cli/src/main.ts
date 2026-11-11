@@ -84,6 +84,7 @@ import {
   type CellExecResult,
   type CellRemoveResult,
   type CellRetainedRemoveResult,
+  type CellKeepRemoveResult,
   type CellEvictResult,
   type CellParkResult,
   type TranscriptSegmentsResult,
@@ -2837,7 +2838,7 @@ async function cmdArchive(ctx: CliContext, parsed: Parsed): Promise<number> {
 async function cmdCell(ctx: CliContext, parsed: Parsed): Promise<number> {
   const sub = parsed.positional[1];
   const needle = parsed.positional[2];
-  const usage = "usage: hive cell move <bee> --cwd <dir> | cell move-get <moveId> | cell capture <bee> --onto <branch> [--rebase] [--idempotency-key k] | cell remove <bee> [--force] [--idempotency-key k] | cell exec <cellId> -- <argv…> | cell retained-remove <cellId> [--force] | cell gc [--apply] [--measure|--no-measure] | cell evict <bee> [--force] | cell park <bee>";
+  const usage = "usage: hive cell move <bee> --cwd <dir> | cell move-get <moveId> | cell capture <bee> --onto <branch> [--rebase] [--idempotency-key k] | cell remove <bee> [--force] [--idempotency-key k] | cell exec <cellId> -- <argv…> | cell retained-remove <cellId> [--force] | cell gc [--apply] [--measure|--no-measure] | cell evict <bee> [--force] | cell park <bee> | cell keep-remove <bee>|--all";
   switch (sub) {
     case "gc": {
       const apply = parsed.flags.get("--apply") === true;
@@ -2986,6 +2987,18 @@ async function cmdCell(ctx: CliContext, parsed: Parsed): Promise<number> {
         return ctx.json || r.status === "done" ? 0 : 2;
       });
     }
+    case "keep-remove": {
+      const all = parsed.flags.get("--all") === true;
+      if (!all && !needle) throw new Error(usage);
+      return withClient(ctx, async (c) => {
+        const r = await c.request<CellKeepRemoveResult>("cell.keep.remove", all ? { all: true } : { beeId: await resolveBee(c, needle!) }, CELL_GC_TIMEOUT_MS);
+        const lines = [confirm("ok", `kept files removed: ${r.removed.length}`, `${gib(r.removed.reduce((s, k) => s + (k.bytes ?? 0), 0))}${r.skipped.length > 0 ? `; ${r.skipped.length} skipped` : ""}`)];
+        for (const k of r.removed) lines.push(`  removed ${gib(k.bytes).padStart(10)}  ${k.spaceName}`);
+        for (const k of r.skipped) lines.push(`  skipped ${k.reason}  ${k.spaceName}`);
+        emit(ctx, lines, r, false);
+        return 0;
+      });
+    }
     case "retained-remove":
     case "rm-retained": {
       if (!needle) throw new Error(usage);
@@ -3025,6 +3038,13 @@ function unlandedCommitsCause(report: NonNullable<CellGcItem["report"]>): string
   const listed = (report.unlandedCommits ?? []).map((c) => `${c.sha.slice(0, 12)} ${c.subject}`.trim()).join("; ");
   const more = count - (report.unlandedCommits?.length ?? 0);
   return `${count} unlanded commit${count === 1 ? "" : "s"}: ${listed}${more > 0 ? `; +${more} more` : ""}`;
+}
+
+function cellGcWorkNote(i: CellGcItem): string {
+  const w = i.work;
+  if (w == null || (w.commits === 0 && w.paths === 0)) return "";
+  const what = [w.commits > 0 ? `${w.commits} commits` : null, w.paths > 0 ? `${w.paths} paths ${gib(w.capturedBytes)}` : null].filter((x): x is string => x != null).join(", ");
+  return w.bundled ? `  work: bundle ${what}` : `  work: ${what} (not bundled)`;
 }
 
 function gib(bytes: number | null): string {
@@ -3177,6 +3197,12 @@ function renderCellGc(r: CellGcResult): string[] {
       ` · budget ${r.policy.maxBytes == null ? "none" : gib(r.policy.maxBytes)} · max ${r.policy.maxPerPass}/pass` +
       ` · park ≥ ${r.policy.trimAfterMs == null ? "never" : `${r.policy.trimAfterMs / 3_600_000}h`} (${r.policy.purgeIgnoredOnPark ? "purge every ignored path" : "trim patterns only"}) · inspect ${Math.round(r.inspectMs / 1000)}s`,
   );
+  if (r.policy.workBundle !== undefined) {
+    lines.push(
+      `work: ${r.policy.workBundle ? `bundled at eviction (cap ${gib(r.policy.workBundleMaxBytes ?? null)}, unrestored bundles kept ${days(r.policy.workBundleKeepMs ?? null)})` : "OFF — dirty Cells hold"}` +
+        ` · kept ignored files of evicted Cells deleted after ${days(r.policy.keepMs ?? null)}`,
+    );
+  }
   if (r.purge) {
     lines.push(
       `ignored bytes across ${r.purge.cells} Cells: build output ${gib(r.purge.trimBytes)} · installs ${gib(r.purge.installBytes)}${(r.purge.installSharedBytes ?? 0) > 0 ? ` (${gib(r.purge.installSharedBytes)} hard-linked, not freed)` : ""} · outside known patterns ${gib(r.purge.otherIgnoredBytes)}` +
@@ -3192,7 +3218,7 @@ function renderCellGc(r: CellGcResult): string[] {
   if (scratched.length > 0) lines.push(`scratch: ${scratched.length} bees hold ${gib(scratched.reduce((s, i) => s + (i.scratch?.bytes ?? 0), 0))} outside their Cells (HIVE_SCRATCH; removed with the Cell on eviction, never captured or kept)`);
   lines.push(...cellGcHoldLines(r));
   for (const i of planned) {
-    lines.push(`  ${i.verdict === "evict" ? "evict " : "remove"} ${gib(i.bytes).padStart(10)}  ${i.reason.padEnd(13)} ${ageDays(i.idleSince, r.plannedAt).padStart(5)}  ${i.beeLifecycle.padEnd(8)} ${i.beeName || i.beeId}  ${basename(i.wrapperDir)}${i.envFiles.length > 0 ? `  env×${i.envFiles.length}` : ""}${i.keep.entries.length > 0 ? `  keep×${i.keep.entries.length} ${gib(i.keep.bytes)}` : ""}${scratchSuffix(i)}`);
+    lines.push(`  ${i.verdict === "evict" ? "evict " : "remove"} ${gib(i.bytes).padStart(10)}  ${i.reason.padEnd(13)} ${ageDays(i.idleSince, r.plannedAt).padStart(5)}  ${i.beeLifecycle.padEnd(8)} ${i.beeName || i.beeId}  ${basename(i.wrapperDir)}${cellGcWorkNote(i)}${i.envFiles.length > 0 ? `  env×${i.envFiles.length}` : ""}${i.keep.entries.length > 0 ? `  keep×${i.keep.entries.length} ${gib(i.keep.bytes)}` : ""}${scratchSuffix(i)}`);
   }
   const trims = r.items.filter((i) => i.trim.planned).sort((a, b) => (b.trim.bytes ?? 0) - (a.trim.bytes ?? 0));
   if (trims.length > 0) {
@@ -3209,7 +3235,18 @@ function renderCellGc(r: CellGcResult): string[] {
   for (const [reason, items] of [...byReason.entries()].sort((a, b) => b[1].length - a[1].length)) {
     const bytes = items.some((i) => i.bytes != null) ? items.reduce((s, i) => s + (i.bytes ?? 0), 0) : null;
     lines.push(`held ${reason}: ${items.length} Cells, ${gib(bytes)}`);
-    if (reason.startsWith("dirty_") || reason === "unregistered" || reason === "inspect_failed") {
+    if (reason.startsWith("work_")) {
+      for (const i of items.sort((a, b) => (b.work?.capturedBytes ?? 0) - (a.work?.capturedBytes ?? 0)).slice(0, 25)) {
+        const w = i.work;
+        const detail = i.holdDetail ?? null;
+        const captured = w?.capturedBytes ?? detail?.capturedBytes ?? null;
+        const refusal = w?.refusal ? `${w.refusal}${w.refusalDetail ? ` (${w.refusalDetail})` : ""}` : detail?.message ?? null;
+        const why = reason === "work_over_cap" ? `${gib(captured)} of changed paths exceeds the ${gib(r.policy.workBundleMaxBytes ?? null)} cap` : reason === "work_unbundleable" ? refusal ?? "the work cannot be bundled" : `the bundle could not be written${refusal ? `: ${refusal}` : ""}`;
+        lines.push(`  ${gib(i.bytes).padStart(10)}  ${i.beeLifecycle.padEnd(8)} ${i.beeName || i.beeId}  ${basename(i.wrapperDir)}  ${why}${w == null && detail != null ? " (settled from an earlier inspection)" : ""}`);
+        for (const p of w?.largest ?? detail?.largest ?? []) lines.push(`             ${gib(p.bytes).padStart(10)}  ${p.path}`);
+      }
+      if (items.length > 25) lines.push(`  … ${items.length - 25} more (use --json)`);
+    } else if (reason.startsWith("dirty_") || reason === "unregistered" || reason === "inspect_failed") {
       for (const i of items.sort((a, b) => (b.bytes ?? 0) - (a.bytes ?? 0)).slice(0, 25)) {
         lines.push(`  ${gib(i.bytes).padStart(10)}  ${i.beeLifecycle.padEnd(8)} ${i.beeName || i.beeId}  ${basename(i.wrapperDir)}${scratchSuffix(i)}`);
       }
@@ -3230,6 +3267,19 @@ function renderCellGc(r: CellGcResult): string[] {
     }
     const kept = r.outcomes.filter((o) => o.keptPaths.length > 0).length;
     if (kept > 0) lines.push(`  ${kept} evicted Cells moved ignored files to cell-keep/ (restored on revive)`);
+    const bundled = r.outcomes.filter((o) => o.workBundle != null);
+    if (bundled.length > 0) lines.push(`  ${bundled.length} evicted Cells saved their work as bundles under cell-work/ (${gib(bundled.reduce((s, o) => s + (o.workBundle?.bytes ?? 0), 0))}; restored on revive)`);
+    for (const o of bundled) lines.push(`    bundle ${gib(o.workBundle!.bytes).padStart(10)}  ${o.workBundle!.commits} commits, ${o.workBundle!.paths} paths  ${basename(o.wrapperDir)}`);
+  }
+  if (r.stale) {
+    const due = (list: Array<{ status: string }>) => list.filter((e) => e.status === "planned" || e.status === "removed" || e.status === "failed");
+    const keeps = due(r.stale.keeps);
+    const bundles = due(r.stale.bundles);
+    if (keeps.length + bundles.length > 0) {
+      lines.push(`${r.dryRun ? "stale (would delete)" : "stale deleted"}: ${keeps.length} kept-file sets past their window, ${bundles.length} work bundles past their window or orphaned`);
+      for (const k of r.stale.keeps.filter((e) => e.status === "failed")) lines.push(`  failed keep ${k.spaceName}: ${k.reason ?? ""}`);
+      for (const b of r.stale.bundles.filter((e) => e.status === "failed")) lines.push(`  failed bundle ${b.cellId}: ${b.reason ?? ""}`);
+    }
   }
   if (r.trimOutcomes) {
     const trimmed = r.trimOutcomes.filter((o) => o.status === "trimmed");

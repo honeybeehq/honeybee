@@ -7,9 +7,10 @@
 import { lstatSync } from "node:fs";
 import { parentPort, workerData } from "node:worker_threads";
 import type { LandingReceipt } from "./landed.ts";
-import { inspectCellWrapper, measurePathBytes, planParkPaths, verifyParkPaths, type CellWrapperInspection, type ParkMode, type ParkPlan, type TrimSkip } from "./retention.ts";
+import { cellFingerprint, inspectCellWrapper, measurePathBytes, planParkPaths, verifyParkPaths, type CellWrapperInspection, type ParkMode, type ParkPlan, type TrimSkip } from "./retention.ts";
 import { refreshUpstreamMirror, type UpstreamRef } from "./upstream.ts";
 import { confirmWip, pushWip, snapshotWip, sweepWipRefs, type WipSnapshot } from "./wip.ts";
+import { bundleWork, WorkError, type WorkBundleRecord } from "./work.ts";
 
 export interface RetentionWorkerRequest {
   kind?: "inspect";
@@ -109,6 +110,24 @@ export interface WipPushWorkerResult {
   error: string | null;
 }
 
+export interface WorkBundleWorkerRequest {
+  kind: "bundleWork";
+  spaceDir: string;
+  originRepo: string;
+  cellId: string;
+  workRoot: string;
+  maxBytes: number | null;
+  leftoverPatterns?: string[];
+}
+
+export interface WorkBundleWorkerResult {
+  record: WorkBundleRecord | null;
+  /** `cellFingerprint` taken right after the capture; the park requires it unchanged. */
+  fingerprint: string | null;
+  reason: string | null;
+  error: string | null;
+}
+
 export interface WipRefSweepWorkerRequest {
   kind: "sweepWipRefs";
   scopes: string[];
@@ -120,9 +139,16 @@ export interface WipRefSweepWorkerResult {
   error: string | null;
 }
 
-const request = workerData as RetentionWorkerRequest | TrimVerifyWorkerRequest | ParkPlanWorkerRequest | WipPushWorkerRequest | WipRefSweepWorkerRequest;
+const request = workerData as RetentionWorkerRequest | TrimVerifyWorkerRequest | ParkPlanWorkerRequest | WipPushWorkerRequest | WipRefSweepWorkerRequest | WorkBundleWorkerRequest;
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
-if (request.kind === "pushWip") {
+if (request.kind === "bundleWork") {
+  try {
+    const record = bundleWork(request.spaceDir, request.originRepo, request.cellId, request.workRoot, { leftoverPatterns: request.leftoverPatterns, maxBytes: request.maxBytes });
+    parentPort?.postMessage({ record, fingerprint: cellFingerprint(request.spaceDir), reason: null, error: null } satisfies WorkBundleWorkerResult);
+  } catch (err) {
+    parentPort?.postMessage({ record: null, fingerprint: null, reason: err instanceof WorkError ? err.reason : null, error: errorText(err) } satisfies WorkBundleWorkerResult);
+  }
+} else if (request.kind === "pushWip") {
   try {
     const snapshot = snapshotWip(request.spaceDir, request.boxDir, request.cellId, Date.now, request.maxFileBytes, request.leftoverPatterns);
     if (request.previous && snapshot.tree === request.previous.tree && confirmWip(request.originRepo, request.node, request.cellId, request.previous.sha)) {

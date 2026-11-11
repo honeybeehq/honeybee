@@ -153,6 +153,7 @@ import {
   type CellOpKind,
   type CellOpRow,
   type CellOpStatus,
+  type CellHoldDetail,
   type CellRow,
   type CellState,
   type CommandRow,
@@ -981,6 +982,11 @@ function mapCell(r: Row): CellRow {
     wipTree: (r.wip_tree as string | null | undefined) ?? null,
     wipPushedAt: r.wip_pushed_at == null ? null : Number(r.wip_pushed_at),
     wipConfirmedAt: r.wip_confirmed_at == null ? null : Number(r.wip_confirmed_at),
+    workBundleAt: r.work_bundle_at == null ? null : Number(r.work_bundle_at),
+    workBundleSha: (r.work_bundle_sha as string | null | undefined) ?? null,
+    workBundleBytes: r.work_bundle_bytes == null ? null : Number(r.work_bundle_bytes),
+    holdReason: (r.hold_reason as string | null | undefined) ?? null,
+    holdDetail: r.hold_detail == null ? null : (JSON.parse(String(r.hold_detail)) as CellHoldDetail),
   };
 }
 
@@ -9455,7 +9461,7 @@ export class CoreStore {
    * start re-provisions exactly where the agent left off. Idempotent when
    * already evicted; any other state is an illegal transition.
    */
-  evictCell(cellId: string, input: { head: string | null; bytes: number | null; reason: string; envFiles?: string[]; keptPaths?: string[] }): CellRow {
+  evictCell(cellId: string, input: { head: string | null; bytes: number | null; reason: string; envFiles?: string[]; keptPaths?: string[]; workBundle?: { sha: string | null; bytes: number; commits: number; paths: number } | null }): CellRow {
     return this.tx(() => {
       const cell = this.mustGetCell(cellId);
       if (cell.state === "evicted") return cell;
@@ -9466,7 +9472,7 @@ export class CoreStore {
       this.stmt("UPDATE cells SET state = 'evicted', evicted_at = ?, evicted_head = ? WHERE id = ?").run(at, input.head, cellId);
       const next = this.mustGetCell(cellId);
       this.audit("cell.put", cell.sourceBeeId, { cell: next, previous: cell });
-      this.audit("cell.evicted", cell.sourceBeeId, { cellId, evictedAt: at, head: input.head, bytes: input.bytes, reason: input.reason, envFiles: input.envFiles ?? [], keptPaths: input.keptPaths ?? [] });
+      this.audit("cell.evicted", cell.sourceBeeId, { cellId, evictedAt: at, head: input.head, bytes: input.bytes, reason: input.reason, envFiles: input.envFiles ?? [], keptPaths: input.keptPaths ?? [], workBundle: input.workBundle ?? null });
       return next;
     });
   }
@@ -9504,12 +9510,49 @@ export class CoreStore {
     });
   }
 
+  /** The Cell's work was saved as a local bundle (before the checkout is removed); the row carries the fact until a verified restore or the bee's deletion. */
+  recordCellWork(cellId: string, work: { at: number; sha: string | null; bytes: number }): CellRow {
+    return this.tx(() => {
+      const cell = this.mustGetCell(cellId);
+      this.stmt("UPDATE cells SET work_bundle_at = ?, work_bundle_sha = ?, work_bundle_bytes = ?, hold_reason = NULL, hold_detail = NULL WHERE id = ?").run(work.at, work.sha, work.bytes, cellId);
+      const next = this.mustGetCell(cellId);
+      this.audit("cell.put", cell.sourceBeeId, { cell: next, previous: cell });
+      return next;
+    });
+  }
+
+  clearCellWork(cellId: string): CellRow {
+    return this.tx(() => {
+      const cell = this.mustGetCell(cellId);
+      if (cell.workBundleAt == null && cell.workBundleSha == null && cell.workBundleBytes == null) return cell;
+      this.stmt("UPDATE cells SET work_bundle_at = NULL, work_bundle_sha = NULL, work_bundle_bytes = NULL WHERE id = ?").run(cellId);
+      const next = this.mustGetCell(cellId);
+      this.audit("cell.put", cell.sourceBeeId, { cell: next, previous: cell });
+      return next;
+    });
+  }
+
+  /** Why retention holds the Cell, for clients that read the row; null clears it. Quiet when unchanged. */
+  recordCellHold(cellId: string, hold: { reason: string; detail: CellHoldDetail } | null): CellRow {
+    return this.tx(() => {
+      const cell = this.mustGetCell(cellId);
+      const reason = hold?.reason ?? null;
+      const detail = hold == null ? null : JSON.stringify({ ...hold.detail, at: 0 });
+      const current = cell.holdDetail == null ? null : JSON.stringify({ ...cell.holdDetail, at: 0 });
+      if (cell.holdReason === reason && current === detail) return cell;
+      this.stmt("UPDATE cells SET hold_reason = ?, hold_detail = ? WHERE id = ?").run(reason, hold == null ? null : JSON.stringify(hold.detail), cellId);
+      const next = this.mustGetCell(cellId);
+      this.audit("cell.put", cell.sourceBeeId, { cell: next, previous: cell });
+      return next;
+    });
+  }
+
   /** v31 — the driver materialized an evicted Cell again: `evicted → active`. No-op otherwise. */
   reactivateCell(cellId: string): { cell: CellRow; applied: boolean } {
     return this.tx(() => {
       const cell = this.mustGetCell(cellId);
       if (cell.state !== "evicted") return { cell, applied: false };
-      this.stmt("UPDATE cells SET state = 'active', evicted_at = NULL, evicted_head = NULL, parked_at = NULL WHERE id = ?").run(cellId);
+      this.stmt("UPDATE cells SET state = 'active', evicted_at = NULL, evicted_head = NULL, parked_at = NULL, hold_reason = NULL, hold_detail = NULL WHERE id = ?").run(cellId);
       const next = this.mustGetCell(cellId);
       this.audit("cell.put", cell.sourceBeeId, { cell: next, previous: cell });
       return { cell: next, applied: true };

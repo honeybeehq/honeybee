@@ -493,6 +493,11 @@ export const MIRROR_CELL_KEYS = [
   "wipTree",
   "wipPushedAt",
   "wipConfirmedAt",
+  "workBundleAt",
+  "workBundleSha",
+  "workBundleBytes",
+  "holdReason",
+  "holdDetail",
 ] as const;
 export const MIRROR_BEE_MOVE_KEYS = [
   "id",

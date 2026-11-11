@@ -484,6 +484,11 @@ export class ReadOnlyStore {
       wipTree: (r.wip_tree as string | null | undefined) ?? null,
       wipPushedAt: r.wip_pushed_at == null ? null : Number(r.wip_pushed_at),
       wipConfirmedAt: r.wip_confirmed_at == null ? null : Number(r.wip_confirmed_at),
+      workBundleAt: r.work_bundle_at == null ? null : Number(r.work_bundle_at),
+      workBundleSha: (r.work_bundle_sha as string | null | undefined) ?? null,
+      workBundleBytes: r.work_bundle_bytes == null ? null : Number(r.work_bundle_bytes),
+      holdReason: (r.hold_reason as string | null | undefined) ?? null,
+      holdDetail: r.hold_detail == null ? null : (JSON.parse(String(r.hold_detail)) as CellRow["holdDetail"]),
     };
   }
 

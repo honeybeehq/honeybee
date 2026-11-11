@@ -107,6 +107,19 @@ export type CellRow = {
   wipTree: string | null
   wipPushedAt: number | null
   wipConfirmedAt: number | null
+  workBundleAt: number | null
+  workBundleSha: string | null
+  workBundleBytes: number | null
+  holdReason: string | null
+  holdDetail: CellHoldDetail | null
+}
+
+export type CellHoldDetail = {
+  capturedBytes: number | null
+  maxBytes: number | null
+  largest: Array<{ path: string; bytes: number }>
+  message: string | null
+  at: number
 }
 
 export type CellExecParams = {
