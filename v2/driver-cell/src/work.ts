@@ -12,6 +12,7 @@ const LARGEST = 5;
 const WORK_REF = "refs/hive/work";
 const INDEX_REF = "refs/hive/index";
 const HEAD_REF = "refs/hive/head";
+const STASH_NS = "refs/hive/stash";
 const RESTORE_NS = "refs/hive/restore";
 
 export type WorkStage = "measure" | "bundle" | "verify" | "write" | "restore";
@@ -41,6 +42,8 @@ export type WorkRefusal = (typeof WORK_REFUSALS)[number];
 
 export interface WorkMeasure {
   commits: number;
+  /** Stash entries; each is a commit the bundle carries and the restore stores back in order. */
+  stashes: number;
   paths: number;
   modified: number;
   untracked: number;
@@ -56,6 +59,8 @@ export interface WorkBundleRecord {
   createdAt: number;
   head: { sha: string; branch: string | null };
   branches: Array<{ name: string; sha: string }>;
+  /** `git stash list` newest first: the stash commit and the line the list shows. */
+  stashes: Array<{ sha: string; message: string }>;
   work: { sha: string; tree: string } | null;
   index: { sha: string | null; tree: string };
   prerequisites: string[];
@@ -76,8 +81,21 @@ export interface WorkRestoreOutcome {
   paths: number;
 }
 
-export function workNeeded(measure: Pick<WorkMeasure, "commits" | "paths">): boolean {
-  return measure.commits > 0 || measure.paths > 0;
+export function workNeeded(measure: Pick<WorkMeasure, "commits" | "paths" | "stashes">): boolean {
+  return measure.commits > 0 || measure.paths > 0 || measure.stashes > 0;
+}
+
+export function listStashes(repo: string): Array<{ sha: string; message: string }> {
+  const res = tryGit(repo, ["stash", "list", "--format=%H%x00%gs"]);
+  if (res.status !== 0) return [];
+  const out: Array<{ sha: string; message: string }> = [];
+  for (const line of res.stdout.split("\n")) {
+    const nul = line.indexOf("\0");
+    if (nul <= 0) continue;
+    const sha = line.slice(0, nul).trim();
+    if (SHA.test(sha)) out.push({ sha, message: line.slice(nul + 1) });
+  }
+  return out;
 }
 
 function must(cwd: string, args: string[], stage: WorkStage, opts: { env?: Record<string, string>; input?: string; timeoutMs?: number } = {}): string {
@@ -154,7 +172,13 @@ function stripSlash(path: string): string {
   return path.endsWith("/") ? path.slice(0, -1) : path;
 }
 
-/** Shas of every origin ref (peeled) that the Cell's object store holds: the boundary of what is work. */
+/** The origin's object store as an alternate for a Cell-side git call, so every origin ref resolves even when the Cell never fetched it. */
+function originAlternates(originRepo: string): Record<string, string> {
+  const objects = existsSync(originRepo) ? gitPath(originRepo, "objects") : null;
+  return objects ? { GIT_ALTERNATE_OBJECT_DIRECTORIES: alternatesValue([objects]) } : {};
+}
+
+/** Shas of every origin ref (peeled, plus HEAD) that resolve to a commit through the origin's objects: the boundary of what is work. */
 export function originBoundary(spaceDir: string, originRepo: string): string[] {
   const listed = tryGit(originRepo, ["for-each-ref", "--format=%(objectname) %(*objectname)"]);
   if (listed.status !== 0) return [];
@@ -167,7 +191,7 @@ export function originBoundary(spaceDir: string, originRepo: string): string[] {
   const head = revParse(originRepo, "HEAD");
   if (head) candidates.add(head);
   if (candidates.size === 0) return [];
-  const check = tryGit(spaceDir, ["cat-file", "--batch-check=%(objectname) %(objecttype)"], { input: [...candidates].join("\n") + "\n" });
+  const check = tryGit(spaceDir, ["cat-file", "--batch-check=%(objectname) %(objecttype)"], { input: [...candidates].join("\n") + "\n", env: originAlternates(originRepo) });
   if (check.status !== 0) return [];
   const present: string[] = [];
   for (const line of check.stdout.split("\n")) {
@@ -177,8 +201,8 @@ export function originBoundary(spaceDir: string, originRepo: string): string[] {
   return present;
 }
 
-function countLocalCommits(spaceDir: string, boundary: string[]): number {
-  const res = tryGit(spaceDir, ["rev-list", "--count", "--branches", "HEAD", "--stdin"], { input: boundary.map((sha) => `^${sha}\n`).join("") });
+function countLocalCommits(spaceDir: string, originRepo: string, boundary: string[]): number {
+  const res = tryGit(spaceDir, ["rev-list", "--count", "--branches", "HEAD", "--stdin"], { input: boundary.map((sha) => `^${sha}\n`).join(""), env: originAlternates(originRepo) });
   if (res.status !== 0) return 0;
   const n = Number.parseInt(res.stdout.trim(), 10);
   return Number.isFinite(n) ? n : 0;
@@ -195,10 +219,12 @@ export function measureWork(
   for (const path of tree.untracked) sized.push({ path: stripSlash(path), bytes: apparentBytes(join(spaceDir, path)) });
   const capturedBytes = sized.reduce((sum, e) => sum + e.bytes, 0);
   const largest = [...sized].sort((a, b) => b.bytes - a.bytes || (a.path < b.path ? -1 : 1)).slice(0, LARGEST);
-  const commits = originRepo && existsSync(originRepo) ? countLocalCommits(spaceDir, originBoundary(spaceDir, originRepo)) : 0;
-  const refused = commits > 0 || sized.length > 0 ? workRefusal(spaceDir) : null;
+  const commits = originRepo && existsSync(originRepo) ? countLocalCommits(spaceDir, originRepo, originBoundary(spaceDir, originRepo)) : 0;
+  const stashes = listStashes(spaceDir).length;
+  const refused = commits > 0 || sized.length > 0 || stashes > 0 ? workRefusal(spaceDir) : null;
   return {
     commits,
+    stashes,
     paths: sized.length,
     modified: tree.modified.length,
     untracked: tree.untracked.length,
@@ -314,7 +340,7 @@ export function readWorkRecord(workRoot: string, cellId: string): WorkBundleReco
   if (!existsSync(record) || !existsSync(bundle)) return null;
   const parsed = JSON.parse(readFileSync(record, "utf8")) as Partial<WorkBundleRecord>;
   if (parsed.version !== WORK_RECORD_VERSION || parsed.cellId !== cellId || parsed.head == null || !Array.isArray(parsed.branches)) throw new WorkError("restore", "unreadable_record", record);
-  return parsed as WorkBundleRecord;
+  return { ...parsed, stashes: Array.isArray(parsed.stashes) ? parsed.stashes : [] } as WorkBundleRecord;
 }
 
 export function dropWorkBundle(workRoot: string, cellId: string): boolean {
@@ -384,8 +410,8 @@ export function bundleWork(
     must(scratch, ["init", "--quiet", "--bare", shadow], "bundle");
     const shadowObjects = join(shadow, "objects");
     mkdirSync(join(shadowObjects, "info"), { recursive: true });
-    writeFileSync(join(shadowObjects, "info", "alternates"), `${cellObjects}\n`);
-    const objectEnv = { GIT_OBJECT_DIRECTORY: shadowObjects, GIT_ALTERNATE_OBJECT_DIRECTORIES: alternatesValue([cellObjects]) };
+    writeFileSync(join(shadowObjects, "info", "alternates"), `${cellObjects}\n${originObjects}\n`);
+    const objectEnv = { GIT_OBJECT_DIRECTORY: shadowObjects, GIT_ALTERNATE_OBJECT_DIRECTORIES: alternatesValue([cellObjects, originObjects]) };
     const inShadow = (args: string[], input?: string) => must(scratch, ["--git-dir", shadow, ...args], "bundle", { input, timeoutMs });
 
     const tree = workingTreeStatus(spaceDir, leftoverPatterns);
@@ -401,17 +427,19 @@ export function bundleWork(
     const work = workTree === headTree ? null : { sha: must(spaceDir, ["commit-tree", workTree, "-p", head.sha, "-m", `hive work ${cellId} ${stamp}`], "bundle", { env: objectEnv }), tree: workTree };
     const indexSha = indexTree === headTree || indexTree === workTree ? null : must(spaceDir, ["commit-tree", indexTree, "-p", head.sha, "-m", `hive index ${cellId} ${stamp}`], "bundle", { env: objectEnv });
     const branches = localBranches(spaceDir);
+    const stashes = listStashes(spaceDir);
     const boundary = originBoundary(spaceDir, originRepo);
     const boundarySet = new Set(boundary);
 
     const refLines = [
       ...branches.map((b) => `update refs/heads/${b.name} ${b.sha}\n`),
+      ...stashes.map((s, index) => `update ${STASH_NS}/${index} ${s.sha}\n`),
       `update ${HEAD_REF} ${head.sha}\n`,
       ...(work ? [`update ${WORK_REF} ${work.sha}\n`] : []),
       ...(indexSha ? [`update ${INDEX_REF} ${indexSha}\n`] : []),
     ];
     inShadow(["update-ref", "--stdin"], refLines.join(""));
-    const positives = [...branches.filter((b) => !boundarySet.has(b.sha)).map((b) => `refs/heads/${b.name}`), ...(boundarySet.has(head.sha) ? [] : [HEAD_REF]), ...(work ? [WORK_REF] : []), ...(indexSha ? [INDEX_REF] : [])];
+    const positives = [...branches.filter((b) => !boundarySet.has(b.sha)).map((b) => `refs/heads/${b.name}`), ...stashes.map((_s, index) => `${STASH_NS}/${index}`), ...(boundarySet.has(head.sha) ? [] : [HEAD_REF]), ...(work ? [WORK_REF] : []), ...(indexSha ? [INDEX_REF] : [])];
     if (positives.length === 0) throw new WorkError("bundle", "nothing_to_bundle");
     const tmpBundle = join(scratch, "work.bundle");
     inShadow(["bundle", "create", "--quiet", tmpBundle, "--stdin"], [...positives.map((r) => `${r}\n`), ...boundary.map((sha) => `^${sha}\n`)].join(""));
@@ -435,6 +463,7 @@ export function bundleWork(
       if (got !== sha) throw new WorkError("verify", "ref_mismatch", `${ref} is ${got || "absent"}, expected ${sha}`);
     };
     for (const b of branches) if (!boundarySet.has(b.sha)) expectRef(`refs/heads/${b.name}`, b.sha);
+    for (const [index, s] of stashes.entries()) expectRef(`${STASH_NS}/${index}`, s.sha);
     if (!boundarySet.has(head.sha)) expectRef(HEAD_REF, head.sha);
     if (work) {
       expectRef(WORK_REF, work.sha);
@@ -456,6 +485,7 @@ export function bundleWork(
       createdAt: now(),
       head,
       branches,
+      stashes,
       work,
       index: { sha: indexSha, tree: indexTree },
       prerequisites,
@@ -482,7 +512,8 @@ export function bundleWork(
     const again = workingTreeObject(spaceDir, recheckEnv.GIT_INDEX_FILE, recheckEnv, excluded, "write");
     const headAgain = headOf(spaceDir);
     const branchesAgain = JSON.stringify(localBranches(spaceDir));
-    if (again !== workTree || headAgain?.sha !== head.sha || headAgain.branch !== head.branch || branchesAgain !== JSON.stringify(branches)) {
+    const stashesAgain = JSON.stringify(listStashes(spaceDir));
+    if (again !== workTree || headAgain?.sha !== head.sha || headAgain.branch !== head.branch || branchesAgain !== JSON.stringify(branches) || stashesAgain !== JSON.stringify(stashes)) {
       unlinkSync(paths.bundle);
       throw new WorkError("write", "changed_during_capture");
     }
@@ -535,6 +566,7 @@ export function restoreWork(spaceDir: string, workRoot: string, cellId: string, 
     if (fetched.status !== 0) return fail(`fetch_failed: ${fetched.stderr.trim()}`);
     const present = (sha: string) => tryGit(spaceDir, ["cat-file", "-e", `${sha}^{commit}`]).status === 0;
     for (const b of record.branches) if (!present(b.sha)) return fail(`missing_commit: refs/heads/${b.name} ${b.sha}`);
+    for (const s of record.stashes) if (!present(s.sha)) return fail(`missing_commit: stash ${s.sha}`);
     if (!present(record.head.sha)) return fail(`missing_commit: HEAD ${record.head.sha}`);
     if (record.work && !present(record.work.sha)) return fail(`missing_commit: work ${record.work.sha}`);
     if (record.index.sha && !present(record.index.sha)) return fail(`missing_commit: index ${record.index.sha}`);
@@ -548,6 +580,7 @@ export function restoreWork(spaceDir: string, workRoot: string, cellId: string, 
     if (record.work) must(spaceDir, ["read-tree", "-m", "-u", record.work.tree], "restore", { timeoutMs });
     must(spaceDir, ["read-tree", record.index.tree], "restore", { timeoutMs });
     tryGit(spaceDir, ["update-index", "-q", "--refresh"], { timeoutMs });
+    for (const s of [...record.stashes].reverse()) must(spaceDir, ["stash", "store", "-m", s.message, s.sha], "restore");
     if (record.infoExclude != null) {
       const path = gitPath(spaceDir, "info/exclude");
       if (path) {
@@ -573,6 +606,8 @@ export function verifyRestoredWork(spaceDir: string, record: WorkBundleRecord): 
     const got = branches.find((x) => x.name === b.name);
     if (got?.sha !== b.sha) return `branch ${b.name}: ${got?.sha ?? "absent"} != ${b.sha}`;
   }
+  const stashes = listStashes(spaceDir);
+  if (JSON.stringify(stashes) !== JSON.stringify(record.stashes)) return `stashes ${JSON.stringify(stashes)} != ${JSON.stringify(record.stashes)}`;
   const scratch = mkdtempSync(join(tmpdir(), "hive-work-verify-"));
   try {
     const objects = gitPath(spaceDir, "objects");

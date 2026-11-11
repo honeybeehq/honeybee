@@ -87,10 +87,13 @@ function snapshot(space: string) {
     branch,
     diff: g(space, ["diff"]),
     cached: g(space, ["diff", "--cached"]),
+    stashes: g(space, ["stash", "list", "--format=%H %gd %gs"]),
   };
 }
 
 function makeWork(space: string): void {
+  writeFileSync(join(space, "README.md"), "# parked idea\n");
+  g(space, ["stash", "push", "-q", "-m", "parked idea"]);
   g(space, ["checkout", "-q", "-b", "feat"]);
   writeFileSync(join(space, "feature.ts"), "export const feature = true;\n");
   g(space, ["add", "feature.ts"]);
@@ -130,7 +133,8 @@ test("cell-work.1: a dirty stopped Cell is evicted with its work bundled and rev
     assert.equal(planned.reason, "stopped_age");
     assert.equal(planned.report?.uncommitted, true);
     assert.equal(planned.report?.unpushed, true);
-    assert.deepEqual({ commits: planned.work?.commits, paths: planned.work?.paths, modified: planned.work?.modified, untracked: planned.work?.untracked, bundled: planned.work?.bundled }, { commits: 1, paths: 3, modified: 2, untracked: 1, bundled: true });
+    assert.equal(planned.report?.stashed, true, "a stash is work the bundle carries, not a hold");
+    assert.deepEqual({ commits: planned.work?.commits, stashes: planned.work?.stashes, paths: planned.work?.paths, modified: planned.work?.modified, untracked: planned.work?.untracked, bundled: planned.work?.bundled }, { commits: 1, stashes: 1, paths: 3, modified: 2, untracked: 1, bundled: true });
     assert.equal(plan.policy.workBundle, true);
     assert.deepEqual(plan.stale, { keeps: [], bundles: [] });
     assert.equal(existsSync(rig.workRoot), false, "a dry run writes no bundle");
@@ -158,7 +162,8 @@ test("cell-work.1: a dirty stopped Cell is evicted with its work bundled and rev
     const revived = await revive(client, bee.beeId);
     assert.equal(revived.cell?.state, "active");
     const after = snapshot(space);
-    for (const key of ["status", "refs", "head", "branch", "diff", "cached"] as const) assert.equal(after[key], before[key], key);
+    for (const key of ["status", "refs", "head", "branch", "diff", "cached", "stashes"] as const) assert.equal(after[key], before[key], key);
+    assert.match(after.stashes, /stash@\{0\} On \(no branch\): parked idea/);
     assert.equal(readFileSync(join(space, "artifacts", "out.js"), "utf8"), "ignored output\n", "kept ignored output came back");
     await waitFor(async () => (await client.request<ViewResult>("view", { beeId: bee.beeId })).cell?.workBundleAt == null, "bundle reference cleared", 30_000);
     assert.equal(existsSync(join(rig.workRoot, `${cellId}.bundle`)), false, "a verified restore drops the bundle");
@@ -307,7 +312,7 @@ test("cell-work.4: a crash between the park and the registry flip loses nothing:
     const revived = await revive(client, bee.beeId);
     assert.equal(revived.cell?.state, "active");
     const after = snapshot(space);
-    for (const key of ["status", "refs", "head", "branch", "diff", "cached"] as const) assert.equal(after[key], before[key], key);
+    for (const key of ["status", "refs", "head", "branch", "diff", "cached", "stashes"] as const) assert.equal(after[key], before[key], key);
     assert.equal(readFileSync(join(space, "artifacts", "out.js"), "utf8"), "ignored output\n", "kept ignored output came back too");
     await waitFor(async () => (await client.request<ViewResult>("view", { beeId: bee.beeId })).cell?.workBundleAt == null, "bundle reference cleared", 30_000);
     assert.equal(existsSync(join(rig.workRoot, `${cellId}.bundle`)), false);

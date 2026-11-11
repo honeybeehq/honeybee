@@ -12,7 +12,7 @@ import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, 
 import { join } from "node:path";
 import { cellPaths } from "../src/layout.ts";
 import { provisionCell } from "../src/provision.ts";
-import { WorkError, bundleWork, dropWorkBundle, listWorkBundles, measureWork, readWorkRecord, restoreWork, verifyRestoredWork, workBundlePaths, workNeeded } from "../src/work.ts";
+import { WorkError, bundleWork, dropWorkBundle, listStashes, listWorkBundles, measureWork, readWorkRecord, restoreWork, verifyRestoredWork, workBundlePaths, workNeeded } from "../src/work.ts";
 import { commitInCell, g, makeRig } from "./helpers.ts";
 
 const OPTS = { disableCow: true, useGitImages: false } as const;
@@ -118,6 +118,42 @@ test("work.bundle+restore: the Cell is untouched by the capture and a fresh chec
     assert.equal(verifyRestoredWork(space, record), null);
     assert.equal(dropWorkBundle(workRoot, "r"), true);
     assert.equal(readWorkRecord(workRoot, "r"), null);
+  } finally {
+    rig.cleanup();
+  }
+});
+
+test("work.stash+branches: stashes and every side branch the origin lacks are bundled and come back byte-identical, with the stash list in order", { timeout: 120_000 }, () => {
+  const rig = makeRig();
+  try {
+    const { req, paths, space, workRoot } = provisioned(rig, "s");
+    g(space, ["checkout", "-q", "-b", "side/one"]);
+    commitInCell(space, "one.txt", "one\n", "side one");
+    g(space, ["checkout", "-q", "-b", "side/two"]);
+    commitInCell(space, "two.txt", "two\n", "side two");
+    g(space, ["checkout", "-q", "--detach", rig.origin.sha]);
+    writeFileSync(join(space, "src", "app.ts"), "export const version = 3;\n");
+    writeFileSync(join(space, "scratch.txt"), "untracked in the stash\n");
+    g(space, ["stash", "push", "-q", "-u", "-m", "first idea"]);
+    writeFileSync(join(space, "README.md"), "# second\n");
+    g(space, ["stash", "push", "-q", "-m", "second idea"]);
+    assert.equal(g(space, ["status", "--porcelain"]), "", "the tree is clean: only stashes and side branches hold work");
+    const before = { ...snapshot(space), stashes: g(space, ["stash", "list", "--format=%H %gd %gs"]), one: g(space, ["log", "--format=%H %s", "side/one"]), two: g(space, ["log", "--format=%H %s", "side/two"]) };
+    const m = measureWork(space, rig.origin.repo);
+    assert.deepEqual({ commits: m.commits, stashes: m.stashes, paths: m.paths, needed: workNeeded(m) }, { commits: 2, stashes: 2, paths: 0, needed: true });
+    const record = bundleWork(space, rig.origin.repo, "s", workRoot);
+    assert.equal(record.work, null, "a clean tree needs no work commit");
+    assert.deepEqual(record.stashes.map((x) => x.message), ["On (no branch): second idea", "On (no branch): first idea"]);
+    assert.deepEqual(record.branches.map((b) => b.name), ["main", "side/one", "side/two"]);
+    rmSync(paths.wrapperDir, { recursive: true });
+    provisionCell(rig.cellsRoot, req, "op-s2", OPTS);
+    const outcome = restoreWork(space, workRoot, "s", { expectedHead: rig.origin.sha });
+    assert.deepEqual(outcome, { status: "restored", verified: true, reason: null, commits: 2, paths: 0 });
+    const after = { ...snapshot(space), stashes: g(space, ["stash", "list", "--format=%H %gd %gs"]), one: g(space, ["log", "--format=%H %s", "side/one"]), two: g(space, ["log", "--format=%H %s", "side/two"]) };
+    for (const key of ["status", "refs", "head", "branch", "diff", "cached", "stashes", "one", "two"] as const) assert.equal(after[key], before[key], key);
+    assert.equal(listStashes(space).length, 2);
+    assert.equal(g(space, ["show", "stash@{1}^3:scratch.txt"]), "untracked in the stash", "the untracked part of the stash travelled too");
+    assert.equal(g(space, ["for-each-ref", "refs/hive"]), "");
   } finally {
     rig.cleanup();
   }

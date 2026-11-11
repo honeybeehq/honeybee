@@ -167,3 +167,27 @@ test("facts: an unlanded hold is remembered until the origin's main moves or the
     await r.cleanup();
   }
 });
+
+test("facts: with work bundling on, a stash and side branches are work the bundle carries: the Cell is planned, and the plan no longer points at evictionRequiresWip", { timeout: 120_000 }, async () => {
+  const r = rig({ workBundle: true, leftoverPatterns: [".audit", ".proof"] });
+  try {
+    const branchy = r.cells.get("unlanded_branch")!;
+    writeFileSync(join(branchy.spaceDir, "src", "app.ts"), "export const version = 9;\n");
+    g(branchy.spaceDir, ["stash", "push", "-q", "-m", "parked"]);
+    const first = await r.pass();
+    for (const shape of ["untracked", "modified", "unlanded_head", "unlanded_branch", "landed_rebased"] as Shape[]) {
+      assert.deepEqual([shape, r.item(first.result, shape).verdict, r.item(first.result, shape).reason], [shape, "evict", "archived_age"]);
+    }
+    const planned = r.item(first.result, "unlanded_branch");
+    assert.equal(planned.report?.stashed, true);
+    assert.deepEqual(planned.report?.unlandedBranches, ["save/v1"]);
+    assert.deepEqual({ commits: planned.work?.commits, stashes: planned.work?.stashes, bundled: planned.work?.bundled }, { commits: 1, stashes: 1, bundled: true });
+    assert.equal(first.result.totals.workCells, 4);
+    const lines = cellGcHoldLines(first.result).join("\n");
+    assert.doesNotMatch(lines, /evictionRequiresWip/);
+    assert.match(lines, /work bundling is on: work never holds a Cell/);
+    assert.equal(first.result.items.filter((i) => i.reason.startsWith("dirty_")).length, 0, "no dirty hold remains when bundling is on");
+  } finally {
+    await r.cleanup();
+  }
+});

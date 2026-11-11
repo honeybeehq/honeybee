@@ -23,7 +23,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const CELL_AGENT_PATH = join(here, "..", "..", "driver-cell", "test-agent", "agent.mjs");
 
 const allowFile = ["-c", "protocol.file.allow=always"];
-const FLAGS = { enabled: true, stoppedAfterDays: 0, archivedAfterDays: 0, intervalHours: 1, wipPushOnTurnEnd: true, evictionRequiresWip: true, budgetEnforce: true, wipMinIntervalSeconds: 0 };
+const FLAGS = { enabled: true, stoppedAfterDays: 0, archivedAfterDays: 0, intervalHours: 1, wipPushOnTurnEnd: true, evictionRequiresWip: true, budgetEnforce: true, wipMinIntervalSeconds: 0, workBundle: false };
 
 function makeRig(retention: Record<string, unknown>, opts: { submodule?: boolean } = {}) {
   const root = mkdtempSync(join(tmpdir(), "hb-v2-wip-"));

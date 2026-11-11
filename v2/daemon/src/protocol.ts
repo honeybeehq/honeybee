@@ -2700,6 +2700,8 @@ export type CellGcReason = (typeof CELL_GC_REASONS)[number];
 export interface CellGcWork {
   /** Local commits no origin ref reaches. */
   commits: number;
+  /** Stash entries, bundled and stored back on restore. Absent on older daemons. */
+  stashes?: number;
   /** Changed entries as `git status` lists them (a collapsed untracked directory counts once). */
   paths: number;
   modified: number;

@@ -1237,14 +1237,14 @@ export class CellRetentionService {
     const report = inspection.report;
     const wipCovers = policy.evictionRequiresWip && c.cell.state === "active" && inspection.dirtySubmodules.length === 0;
     const work = inspection.work;
-    if (policy.workBundle && !wipCovers && c.cell.state === "active" && work != null && (work.commits > 0 || work.paths > 0)) {
+    if (policy.workBundle && !wipCovers && c.cell.state === "active" && work != null && (work.commits > 0 || work.paths > 0 || work.stashes > 0)) {
       if (work.refusal != null) return "work_unbundleable";
       if (work.capturedBytes > policy.workBundleMaxBytes) return "work_over_cap";
     }
     const bundleCovers = this.workBundleable(c, inspection);
     if (report?.uncommitted && !wipCovers && !bundleCovers) return "dirty_uncommitted";
     if (report?.unpushed && !wipCovers && !bundleCovers) return "dirty_unlanded";
-    if (report?.stashed) return "dirty_stash";
+    if (report?.stashed && !bundleCovers) return "dirty_stash";
     if (report?.originUnknown) return "dirty_origin_unknown";
     if (c.bee == null || c.bee.lifecycle === "deleted") return "bee_deleted";
     const idleFor = now - (base.idleSince ?? now);
@@ -1393,17 +1393,17 @@ export class CellRetentionService {
     const policy = this.deps.policy;
     const work = inspection?.work ?? null;
     if (!policy.workBundle || c.cell?.state !== "active" || inspection == null || work == null) return false;
-    if (work.commits === 0 && work.paths === 0) return false;
+    if (work.commits === 0 && work.paths === 0 && work.stashes === 0) return false;
     if (work.refusal != null || work.capturedBytes > policy.workBundleMaxBytes) return false;
     const report = inspection.report;
-    if (inspection.dirtySubmodules.length > 0 || report?.stashed || report?.originUnknown) return false;
+    if (inspection.dirtySubmodules.length > 0 || report?.originUnknown) return false;
     return true;
   }
 
   private workOf(c: Candidate, inspection: CellWrapperInspection | null): CellGcWork | null {
     const work = inspection?.work ?? null;
     if (work == null) return null;
-    return { commits: work.commits, paths: work.paths, modified: work.modified, untracked: work.untracked, capturedBytes: work.capturedBytes, largest: work.largest, refusal: work.refusal, refusalDetail: work.refusalDetail, bundled: this.workBundleable(c, inspection) };
+    return { commits: work.commits, stashes: work.stashes, paths: work.paths, modified: work.modified, untracked: work.untracked, capturedBytes: work.capturedBytes, largest: work.largest, refusal: work.refusal, refusalDetail: work.refusalDetail, bundled: this.workBundleable(c, inspection) };
   }
 
   /** Why a Cell is held, written to its row so every client reads the same reason and the largest paths. */

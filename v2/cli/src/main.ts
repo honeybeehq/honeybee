@@ -3170,10 +3170,13 @@ export function cellGcHoldLines(r: Pick<CellGcResult, "items" | "policy">): stri
   for (const i of reports) for (const path of i.workingTree?.leftoverPaths ?? []) leftoverNames.set(path, (leftoverNames.get(path) ?? 0) + 1);
   const topLeftovers = [...leftoverNames.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6).map(([name, n]) => `${name}×${n}`).join(" ");
   const wip = r.policy.evictionRequiresWip === true;
+  const bundling = r.policy.workBundle === true;
   const lines = [
     `why held: uncommitted ${uncommitted.length} Cells (tracked files modified in ${modified}, untracked files only in ${uncommitted.length - modified})` +
       ` · unlanded ${unlanded.length} Cells (HEAD unlanded in ${headUnlanded}, only side branches in ${unlanded.length - headUnlanded}; ${commits} commits on no branch of the origin)` +
-      (wip ? " · evictionRequiresWip is on: both become evictable by age once their WIP and branches are pushed" : " · set cellRetention.evictionRequiresWip to evict these after their WIP and branches are pushed"),
+      (bundling
+        ? (uncommitted.length + unlanded.length > 0 ? " · work bundling is on: these hold only for a populated submodule with local state or an origin that cannot be read" : " · work bundling is on: work never holds a Cell")
+        : wip ? " · evictionRequiresWip is on: both become evictable by age once their WIP and branches are pushed" : " · set cellRetention.evictionRequiresWip to evict these after their WIP and branches are pushed"),
   ];
   if (leftoverOnly > 0 || leftoverNames.size > 0) {
     lines.push(`leftovers ignored: ${leftoverOnly} Cells hold only agent leftovers and count as clean${topLeftovers ? ` (${topLeftovers})` : ""}`);
