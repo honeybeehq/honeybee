@@ -31,7 +31,12 @@ for (const stayAlive of [false, true]) test(`auth death isolated daemons: revoke
   const firstAccess = randomUUID(), firstRefresh = randomUUID();
   access.add(firstAccess); refresh.add(firstRefresh);
   let rotations = 0;
+  const profileChecks: boolean[] = [];
+  const usageReads = { source: 0, holder: 0 };
   const provider = createServer(async (req, res) => {
+    if (req.url === "/profile-source") { res.writeHead(access.has(req.headers.authorization?.slice(7) ?? "") ? 200 : 401); res.end("{}"); return; }
+    if (req.url === "/profile-holder") { const ok = access.has(req.headers.authorization?.slice(7) ?? ""); profileChecks.push(ok); res.writeHead(ok ? 200 : 401); res.end(ok ? "{}" : JSON.stringify({ error: { message: "OAuth access token has been revoked" } })); return; }
+    if (req.url === "/usage-source" || req.url === "/usage-holder") { usageReads[req.url === "/usage-source" ? "source" : "holder"]++; res.writeHead(200, { "Content-Type": "application/json" }); res.end(JSON.stringify({ five_hour: { utilization: 10, resets_at: null }, seven_day: { utilization: 20, resets_at: null } })); return; }
     if (req.url === "/call") { res.writeHead(access.has(req.headers.authorization?.slice(7) ?? "") ? 200 : 401); res.end("{}"); return; }
     const chunks: Buffer[] = []; for await (const chunk of req) chunks.push(Buffer.from(chunk));
     const raw = Buffer.concat(chunks).toString();
@@ -66,7 +71,7 @@ for (const stayAlive of [false, true]) test(`auth death isolated daemons: revoke
     for (const result of stopped) if (result.status === "rejected") throw result.reason;
   })();
   t.after(cleanup); t.signal.addEventListener("abort", () => { void cleanup(); }, { once: true });
-  const env = (dir: string) => ({ HOME: join(dir, "empty-user-home"), HIVE_GATEWAYS_DISABLE: "1", HIVE_CLAUDE_OAUTH_TOKEN_URL: endpoint + "/token", ...(stayAlive && dir === holder.dir ? { NODE_OPTIONS: `--import=${clockPreload}` } : {}) });
+  const env = (dir: string) => ({ HOME: join(dir, "empty-user-home"), HIVE_GATEWAYS_DISABLE: "1", HIVE_CLAUDE_OAUTH_TOKEN_URL: endpoint + "/token", HIVE_CLAUDE_PROFILE_URL: endpoint + (dir === holder.dir ? "/profile-holder" : "/profile-source"), HIVE_CLAUDE_USAGE_URL: endpoint + (dir === holder.dir ? "/usage-holder" : "/usage-source"), ...(stayAlive && dir === holder.dir ? { NODE_OPTIONS: `--import=${clockPreload}` } : {}) });
   const poll = <T>(fn: () => Promise<T | null | false>, name: string) => waitFor(fn, name, 30_000);
   const view = (beeId: string) => cb!.request<ViewResult>("view", { beeId });
   const rows = (beeId: string) => cb!.request<AccountInterruptionsResult>("account.interruptions", { beeId });
@@ -118,7 +123,15 @@ for (const stayAlive of [false, true]) test(`auth death isolated daemons: revoke
     await assert.rejects(() => install({ ...newer, generation: old.generation! - 1 }), (error: unknown) => error instanceof RpcError && error.code === "account_lease_conflict");
     assert.ok(bytes.equals(readFileSync(primary)), "regressing generation refuses before file mutation");
     const rotationsBeforeInstall = rotations;
-    await install(newer);
+    const revokedReinstall = await install(old);
+    assert.equal(revokedReinstall.tokenCheck?.result, "revoked", "a re-install over a lost login checks the shipped token");
+    assert.equal(revokedReinstall.restored, undefined);
+    assert.equal(revokedReinstall.account.status, "auth_needed");
+    assert.match(revokedReinstall.account.statusReason ?? "", /OAuth access token has been revoked/);
+    assert.equal((await view(beeId)).runtime?.generation, generation, "a revoked token resumes nothing");
+    const revivingInstall = await install(newer);
+    assert.equal(revivingInstall.tokenCheck?.result, "valid");
+    assert.ok(revivingInstall.restored);
     const after = await poll(async () => { const value = await view(beeId); const mail = (await cb!.request<MailboxResult>("mailbox", { beeId })).messages; return value.runtime?.generation === generation + 1 && mail.find(m => m.id === second.messageId)?.deliveredAt != null ? value : null; }, "single recovery and queued message delivery");
     assert.equal(after.bee?.id, before.bee?.id); assert.equal(after.bee?.providerSessionId, before.bee?.providerSessionId); assert.equal(after.bee?.cellId, before.bee?.cellId);
     const mail = (await cb.request<MailboxResult>("mailbox", { beeId })).messages;
@@ -129,10 +142,15 @@ for (const stayAlive of [false, true]) test(`auth death isolated daemons: revoke
     assert.equal(audit.rows.filter(row => row.kind === "auth_death.resumed").length, 1);
     const publicEvidence = JSON.stringify({ audit, after, interruptions: (await rows(beeId)).interruptions }) + db.output() + da.output();
     assert.equal([firstAccess, firstRefresh, ...access, ...refresh].filter(secret => publicEvidence.includes(secret)).length, 0, "credentials absent from logs, audit and public metadata");
-    await install(newer); assert.equal((await view(beeId)).runtime?.generation, generation + 1); assert.equal(rotations, rotationsBeforeInstall);
+    const healthyRenewal = await install(newer); assert.equal(healthyRenewal.tokenCheck, undefined, "a healthy copy is not probed"); assert.equal((await view(beeId)).runtime?.generation, generation + 1); assert.equal(rotations, rotationsBeforeInstall);
+    assert.deepEqual(profileChecks, [false, true]);
+    const [leasedLimits] = (await cb.request<{ limits: Array<{ readable: boolean; unreadableReason: string | null; error: string | null }> }>("account.limits", { id: leasedId })).limits;
+    assert.deepEqual([leasedLimits!.readable, leasedLimits!.unreadableReason, leasedLimits!.error], [false, "unsupported", "leased: limits come from the authority"]);
+    assert.equal(usageReads.holder, 0, "the leased copy never reads the provider's usage");
     await cb.request("stop", { beeId }); await poll(async () => (await view(beeId)).runtime?.state === "stopped", "operator stopped restored bee");
     await ca.request("account.credentials.refresh", { id, idempotencyKey: randomUUID() }); await install(await minted());
     assert.equal((await view(beeId)).runtime?.generation, generation + 1);
+    console.log(`usage reads: source=${usageReads.source} holder=${usageReads.holder}; profile checks: ${JSON.stringify(profileChecks)}`);
     console.log(`auth death ${stayAlive ? "system-stop" : "exit/restart"}: provider revocation → held accepted FIFO mail → higher lease generation → one same-id/session recovery; duplicate and operator stop fenced`);
   } finally { await cleanup(); }
 });

@@ -1,6 +1,6 @@
 import { LEASE_UNKNOWN_MESSAGE, accountLeaseUnknown, knownAccountLease, presentAccountLease } from "../../core/src/accountLease.ts";
 import { withoutRpcCaller } from "../../core/src/rpcAuditContext.ts";
-import { OBSERVATION_CODECS, localObservationText } from "./limitsObservation.ts";
+import { OBSERVATION_CODECS, OBSERVATION_HARNESSES, localObservationText } from "./limitsObservation.ts";
 /**
  * AccountsService — the daemon's account plane (spec 08 CORE): the calibrated
  * `auto` selection over the store (candidates → ported selector → near-tie
@@ -103,8 +103,8 @@ import { readClaudeKeychain, readClaudeKeychainState, writeClaudeKeychainEntry, 
 import { atomicWriteFileSync } from "./homeDefaults.ts";
 import { withClaudeRefreshLock } from "./claudeRefreshLock.ts";
 import { createLeaseMaterialCodecs, hasRefreshGrant, type LeaseMaterialCodec } from "./leaseMaterial.ts";
-import { LEASE_FENCE_FIELDS, RpcError, type AccountLeaseExportResult, type AccountLeaseInstallParams, type AccountLeaseInstallResult, type AccountLeaseRemoveResult, type AccountLeaseRemoveParams } from "./protocol.ts";
-import { fetchClaudeIdentity, type ClaudeIdentity } from "./login/transports.ts";
+import { LEASE_FENCE_FIELDS, RpcError, type AccountLeaseExportResult, type AccountLeaseInstallParams, type AccountLeaseInstallResult, type AccountLeaseLimits, type AccountLeaseTokenCheck, type AccountLeaseRemoveResult, type AccountLeaseRemoveParams } from "./protocol.ts";
+import { checkClaudeAccessToken, fetchClaudeIdentity, type ClaudeIdentity } from "./login/transports.ts";
 import {
   defaultProviderLimitsHttp,
   fetchSecondaryProviderLimits,
@@ -132,7 +132,10 @@ export interface LimitsFetchers {
   codexResetLimits?: (homePath: string, idempotencyKey: string, creditId?: string) => Promise<CodexResetLimitsFetchResult>;
   /** The Anthropic account a Claude access token belongs to (default: the real profile endpoint). */
   claudeIdentity?: (accessToken: string) => Promise<ClaudeIdentity | null>;
+  claudeTokenCheck?: (accessToken: string) => Promise<AccountLeaseTokenCheck>;
 }
+
+export const LEASED_LIMITS_UNKNOWN = "leased: limits come from the authority";
 
 export type CodexRateLimitsFetchResult =
   | { ok: true; limits: CodexLiveRateLimits }
@@ -980,6 +983,7 @@ export class AccountsService {
       codexRateLimits: opts.fetchers?.codexRateLimits ?? defaultCodexRateLimits(this.cfg.accounts.limitsFetchTimeoutMs, this.cfg.agents.codex?.command ?? "codex"),
       codexResetLimits: opts.fetchers?.codexResetLimits ?? defaultCodexResetLimits(this.cfg.accounts.limitsFetchTimeoutMs, this.cfg.agents.codex?.command ?? "codex"),
       claudeIdentity: opts.fetchers?.claudeIdentity ?? ((accessToken) => fetchClaudeIdentity(accessToken, this.cfg.accounts.limitsFetchTimeoutMs)),
+      claudeTokenCheck: opts.fetchers?.claudeTokenCheck ?? ((accessToken) => checkClaudeAccessToken(accessToken, this.cfg.accounts.limitsFetchTimeoutMs)),
     };
     const centralKeychainReader: KeychainStateReader = opts.keychainStateReader ?? (opts.keychainReader
       ? async home => { const raw = await opts.keychainReader!(home); return raw === null ? { status: "unavailable" } : { status: "present", raw }; }
@@ -1623,7 +1627,7 @@ export class AccountsService {
     });
   }
 
-  installLease(input: AccountLeaseInstallParams, onInstalled: (account: AccountRow) => void = () => {}, localIngress = true): Promise<Omit<AccountLeaseInstallResult, "account" | "restored"> & { account: AccountRow }> {
+  installLease(input: AccountLeaseInstallParams, onInstalled: (account: AccountRow, tokenCheck?: AccountLeaseTokenCheck) => void = () => {}, localIngress = true): Promise<Omit<AccountLeaseInstallResult, "account" | "restored"> & { account: AccountRow }> {
     const explicit = input.adopt === "explicit";
     const forwarded = LEASE_FENCE_FIELDS.some(key => input[key] !== undefined);
     if (forwarded) {
@@ -1696,6 +1700,7 @@ export class AccountsService {
           this.assertAdoptable(account!, explicit);
         }
         if (!account && this.credentialed({ id, harness: input.harness, homePath: this.defaultHomeOf(id) })) throw new RpcError("account_lease_conflict", "The isolated lease home already contains unregistered credentials; preserve them and resolve ownership before installing.");
+        const lostLogin = account ? this.lostLogin(account) : false;
         if (!account) account = this.store.createAccount({ id, harness: input.harness, label: input.label, homePath: this.defaultHomeOf(id), status: "auth_needed" });
         const target = account;
         const initialLease = target.source === "local" && !adopted && !input.enrol;
@@ -1716,6 +1721,8 @@ export class AccountsService {
             if (republish && !proved) this.log(`account.lease.enrolment_republished account=${id} enrolment=${enrolment!.id} authority=${input.authorityNodeId} epoch=${input.epoch} local_primary=absent`);
           }
           if (state.status === "unreadable") throw new RpcError("lease_unavailable", "Account Keychain is unreadable; unlock it before installing a lease.");
+          const tokenCheck = lostLogin ? await this.reinstallTokenCheck(input, codec) : undefined;
+          const checked = tokenCheck ? { tokenCheck } : {};
           if (adopted && !explicit && target.status !== "auth_needed" && state.status === "present" && this.validPrimaryCredential(target.harness, codec.primaryFile, state.raw)) throw new RpcError("account_adopt_refused", "The native account has a Keychain credential; it cannot be adopted.");
           const unchanged = target.source === "leased" && JSON.stringify(knownAccountLease(target)) === JSON.stringify(origin)
             && input.files.every(file => {
@@ -1728,9 +1735,10 @@ export class AccountsService {
             this.recordLeasePublication(id, input.files, codec);
             this.store.transact(() => {
               if (input.generation === undefined) this.store.releaseAuthDeathRecoveryToLegacy(id);
-              onInstalled(this.store.getAccount(id)!);
+              if (input.limits) this.acceptLeaseLimits(id, input.limits);
+              onInstalled(this.store.getAccount(id)!, tokenCheck);
             });
-            return { account: this.store.getAccount(id)!, ...(enrolment ? { enrolment } : {}), adopted: false, backupPath: null, backupAt: null, replacedWorkingLogin: false, keychainPublished: state.status === "present" };
+            return { account: this.store.getAccount(id)!, ...(enrolment ? { enrolment } : {}), ...checked, adopted: false, backupPath: null, backupAt: null, replacedWorkingLogin: false, keychainPublished: state.status === "present" };
           }
           for (const rel of this.credentialPaths(target)) {
             this.leaseFilePath(target.homePath, rel);
@@ -1779,15 +1787,55 @@ export class AccountsService {
           this.store.transact(() => {
             if (input.generation !== undefined || enrolment) this.store.setAccountLease(id, origin);
             if (input.generation === undefined) this.store.releaseAuthDeathRecoveryToLegacy(id);
-            onInstalled(this.store.getAccount(id)!);
+            if (input.limits) this.acceptLeaseLimits(id, input.limits);
+            onInstalled(this.store.getAccount(id)!, tokenCheck);
           });
-          return { account: this.store.getAccount(id)!, ...(enrolment ? { enrolment } : {}), adopted, backupPath, backupAt, replacedWorkingLogin, keychainPublished };
+          return { account: this.store.getAccount(id)!, ...(enrolment ? { enrolment } : {}), ...checked, adopted, backupPath, backupAt, replacedWorkingLogin, keychainPublished };
         };
         codec.keychain?.assertHome(target.homePath);
         return codec.keychain ? codec.keychain.withLock(target.homePath, write) : write();
 
       });
     });
+  }
+
+  private async reinstallTokenCheck(input: AccountLeaseInstallParams, codec: LeaseMaterialCodec): Promise<AccountLeaseTokenCheck | undefined> {
+    if (input.harness !== "claude") return undefined;
+    const primary = input.files.find(file => file.homeRelPath === codec.primaryFile);
+    if (!primary) return undefined;
+    const oauth = (JSON.parse(Buffer.from(primary.contentB64, "base64").toString("utf8")) as { claudeAiOauth?: { accessToken?: unknown } }).claudeAiOauth;
+    if (typeof oauth?.accessToken !== "string" || oauth.accessToken.length === 0) return undefined;
+    const check = await this.fetchers.claudeTokenCheck(oauth.accessToken);
+    this.log(`account.lease.token_check account=${input.id} result=${check.result}${check.detail ? ` detail=${JSON.stringify(check.detail)}` : ""}`);
+    return check;
+  }
+
+  private lostLogin(account: AccountRow): boolean {
+    return account.status === "auth_needed"
+      || this.store.listLiveAuthInterruptions().some(row => row.account === account.id && row.state === "open")
+      || this.store.beesOnAccount(account.id).some(bee => this.store.activeFlags(bee.id).some(flag => flag.flag === "auth_needed"));
+  }
+
+  private leaseLimitsSource(account: AccountRow): string | null {
+    const lease = knownAccountLease(account);
+    return lease ? `authority:${lease.authorityNodeId}` : null;
+  }
+
+  private acceptLeaseLimits(id: string, limits: AccountLeaseLimits): void {
+    const account = this.store.getAccount(id)!;
+    const previous = this.store.getAccountLimits(id);
+    const input: PutAccountLimitsInput = { readable: true, fetchedAt: limits.fetchedAt, plan: limits.plan ?? null, fiveHour: limits.fiveHour ?? null, weekly: limits.weekly ?? null, fableWeekly: limits.fableWeekly ?? null };
+    if (!this.store.observeAccountLimits(id, input, this.leaseLimitsSource(account), null, () => {})) return;
+    if (previous?.readable && previous.fetchedAt < limits.fetchedAt) this.velocities.set(id, this.measureVelocities(previous, input, limits.fetchedAt));
+    this.log(`account.limits account=${id} readable=true shipped=authority weekly=${limits.weekly?.usedPercent ?? "-"} 5h=${limits.fiveHour?.usedPercent ?? "-"} at=${limits.fetchedAt}`);
+  }
+
+  private leasedLimits(account: AccountRow): AccountLimitsRow {
+    const row = this.store.getAccountLimits(account.id);
+    const shipped = this.store.getAccountObservation(account.id).source === this.leaseLimitsSource(account);
+    if (row?.readable && (shipped || OBSERVATION_HARNESSES.has(account.harness))) return row;
+    if (row && !row.readable && row.unreadableReason === "unsupported" && row.error === LEASED_LIMITS_UNKNOWN) return row;
+    return this.store.putAccountLimits(account.id, { readable: false, unreadableReason: "unsupported", error: LEASED_LIMITS_UNKNOWN });
   }
 
   private leaseCredentialCopies(account: AccountRow): { name: string; rel: string; raw: string }[] {
@@ -3067,6 +3115,10 @@ export class AccountsService {
         out.push(this.store.putAccountLimits(id, { readable: false, unreadableReason: "auth_failed", error: LEASE_UNKNOWN_MESSAGE }));
         continue;
       }
+      if (account.source === "leased") {
+        out.push(this.leasedLimits(account));
+        continue;
+      }
       const healthBefore = this.credentialHealthOf(account);
       const fetched = await this.fetchOne(account);
       if (!this.store.getAccount(id)) continue; // removed mid-fetch
@@ -3242,9 +3294,10 @@ export class AccountsService {
 
   private async fetchByHarness(account: AccountRow): Promise<PutAccountLimitsInput> {
     if (accountLeaseUnknown(account)) return { readable: false, unreadableReason: "auth_failed", error: LEASE_UNKNOWN_MESSAGE };
+    if (account.source === "leased") return { readable: false, unreadableReason: "unsupported", error: LEASED_LIMITS_UNKNOWN };
     const authorityPhase = this.authorityFor(account)?.status(account)?.phase;
     if (authorityPhase === "handing_off" || authorityPhase === "adopting") return { readable: false, unreadableReason: "provider_error", error: "Credential ownership is changing; existing access remains usable." };
-    if (account.source !== "leased" && this.store.credentialAuthorityIsDemoted(account.id) && !this.authorityFor(account)?.enabled(account)) return { readable: false, unreadableReason: "auth_failed", error: "Authority transferred; request an access-only lease from the new authority." };
+    if (this.store.credentialAuthorityIsDemoted(account.id) && !this.authorityFor(account)?.enabled(account)) return { readable: false, unreadableReason: "auth_failed", error: "Authority transferred; request an access-only lease from the new authority." };
     switch (account.harness) {
       case "claude": {
         if (this.authorityFor(account)?.enabled(account)) {
@@ -3267,7 +3320,6 @@ export class AccountsService {
           return { readable: false, unreadableReason: "auth_expired", error: "no OAuth token found in home, keychain, or vault" };
         }
         if (credential.expiresAt <= this.now() || credential.accessToken.trim().length === 0) {
-          if (account.source === "leased") return { readable: false, unreadableReason: "auth_expired", error: "Leased access expired; request renewal from its authority." };
           const damagedHome = this.claudeDocumentState(readIfFile(join(account.homePath, ".credentials.json"))) === "damaged";
           const refreshed = await this.refreshClaudeCredential(account, 0, damagedHome ? 0 : undefined);
           if (refreshed.kind === "ok") credential = refreshed.credential;
@@ -4295,7 +4347,7 @@ export class AccountsService {
     const now = this.now();
     if (now - this.lastPeriodicRefreshAt < every) return;
     this.lastPeriodicRefreshAt = now;
-    const ids = this.store.listAccounts().filter(account => !accountLeaseUnknown(account)).map((account) => account.id);
+    const ids = this.store.listAccounts().filter(account => !accountLeaseUnknown(account) && account.source !== "leased").map((account) => account.id);
     if (ids.length === 0) return;
     this.enqueueLimitsRefresh(ids);
   }

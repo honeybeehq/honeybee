@@ -181,6 +181,21 @@ async function fetchClaudeProfile(accessToken: string, timeoutMs: number): Promi
   }
 }
 
+export async function checkClaudeAccessToken(accessToken: string, timeoutMs: number): Promise<{ result: "valid" | "revoked" | "unverified"; detail: string | null }> {
+  try {
+    const response = await fetch(claudeProfileUrl(), {
+      headers: { Authorization: `Bearer ${accessToken}`, "anthropic-beta": "oauth-2025-04-20" },
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (response.ok) return { result: "valid", detail: null };
+    const body = (await response.text().catch(() => "")).replace(/\s+/g, " ").trim().slice(0, 200);
+    const detail = `/api/oauth/profile: HTTP ${response.status}${body ? ` — ${body}` : ""}`;
+    return { result: response.status === 401 || response.status === 403 ? "revoked" : "unverified", detail };
+  } catch (error) {
+    return { result: "unverified", detail: (error instanceof Error ? error.message : String(error)).slice(0, 200) };
+  }
+}
+
 /** The account an access token belongs to, from the profile endpoint; null when the provider did not say. */
 export async function fetchClaudeIdentity(accessToken: string, timeoutMs: number): Promise<ClaudeIdentity | null> {
   return claudeIdentityOf(await fetchClaudeProfile(accessToken, timeoutMs));

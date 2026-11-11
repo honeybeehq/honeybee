@@ -116,6 +116,7 @@ import {
   serializePackage,
   type AccountPause,
   type AccountRow,
+  type AccountLimitsRow,
   type AuthRestoreSource,
   AUTH_INTERRUPTION_RETENTION_MS,
   type AuditRow,
@@ -317,6 +318,7 @@ import { BEE_IMPORT_BUNDLE_BYTES_MAX,
   type AccountBackfillResult,
   type AccountLeaseResult,
   type AccountLeaseInstallParams,
+  type AccountLeaseLimits,
   type AccountLeaseInstallResult,
   type AccountLeaseRemoveResult,
   type AccountLeaseGrant,
@@ -767,6 +769,38 @@ export function isRateLimitCause(detail: string): boolean {
   return isQuotaTextFallback(detail);
 }
 
+
+function leaseLimitsOf(row: AccountLimitsRow | null): { limits?: AccountLeaseLimits } {
+  if (!row?.readable) return {};
+  const window = (usedPercent: number | null, resetsAt: number | null, windowMinutes: number | null) => usedPercent === null ? null : { usedPercent, resetsAt, windowMinutes };
+  return { limits: {
+    fetchedAt: row.fetchedAt,
+    plan: row.plan,
+    fiveHour: window(row.fiveHourPct, row.fiveHourResetsAt, row.fiveHourMinutes),
+    weekly: window(row.weeklyPct, row.weeklyResetsAt, row.weeklyMinutes),
+    fableWeekly: window(row.fableWeeklyPct, row.fableResetsAt, row.fableMinutes),
+  } };
+}
+
+function validLeaseLimits(value: unknown, now: number): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const limits = value as Record<string, unknown>;
+  const windowKeys = ["fiveHour", "weekly", "fableWeekly"];
+  if (Object.keys(limits).some(key => !["fetchedAt", "plan", ...windowKeys].includes(key))) return false;
+  if (typeof limits.fetchedAt !== "number" || !Number.isSafeInteger(limits.fetchedAt) || limits.fetchedAt <= 0 || limits.fetchedAt > now + 60_000) return false;
+  if (limits.plan !== undefined && limits.plan !== null && (typeof limits.plan !== "string" || limits.plan.length > 64)) return false;
+  const finite = (x: unknown, min: number) => typeof x === "number" && Number.isFinite(x) && x >= min;
+  return windowKeys.every(key => {
+    const window = limits[key];
+    if (window === undefined || window === null) return true;
+    if (typeof window !== "object" || Array.isArray(window)) return false;
+    const w = window as Record<string, unknown>;
+    return Object.keys(w).every(k => ["usedPercent", "resetsAt", "windowMinutes"].includes(k))
+      && finite(w.usedPercent, 0)
+      && (w.resetsAt === undefined || w.resetsAt === null || Number.isSafeInteger(w.resetsAt) && (w.resetsAt as number) > 0)
+      && (w.windowMinutes === undefined || w.windowMinutes === null || finite(w.windowMinutes, 1));
+  });
+}
 
 function isAccountConfigImportResult(value: unknown): value is AccountConfigImportResult {
   if (value === null || typeof value !== "object") return false;
@@ -7953,9 +7987,16 @@ export class HiveDaemon {
       if (file.homeRelPath === codec.primaryFile && !this.mustAccounts().validPrimaryCredential(params.harness, file.homeRelPath, JSON.stringify(document))) throw invalid();
     }
     if (!seen.has(codec.primaryFile)) throw invalid();
+    if (params.limits !== undefined && !validLeaseLimits(params.limits, Date.now())) throw new RpcError("invalid_request", "Lease limits require fetchedAt (epoch ms, not in the future), an optional plan, and fiveHour/weekly/fableWeekly windows of {usedPercent, resetsAt?, windowMinutes?}.");
     let restored: AccountCredentialsRestoredResult | undefined;
-    const installed = await this.mustAccounts().installLease(params as unknown as AccountLeaseInstallParams, account => { restored = this.rpcAccountCredentialsRestored({ id: account.id }); }, conn.ingress === "local_unix");
-    return { ...installed, account: restored!.account, restored: restored! };
+    const installed = await this.mustAccounts().installLease(params as unknown as AccountLeaseInstallParams, (account, tokenCheck) => {
+      if (tokenCheck?.result === "revoked") {
+        if (this.mustStore().setAccountStatus(account.id, "auth_needed", `lease token check: ${tokenCheck.detail ?? "provider refused the shipped token"}`).applied) this.log(`account.auth_needed account=${account.id} by=lease_token_check`);
+        return;
+      }
+      restored = this.rpcAccountCredentialsRestored({ id: account.id });
+    }, conn.ingress === "local_unix");
+    return { ...installed, account: restored?.account ?? this.mirrorAccount(this.mustStore().getAccount(installed.account.id)!), ...(restored ? { restored } : {}) };
   }
 
   private rpcAccountLeaseRemove(params: Record<string, unknown>): Promise<AccountLeaseRemoveResult> {
@@ -8031,6 +8072,7 @@ export class HiveDaemon {
       id: account.id, harness: account.harness, label: account.label, shareId: share.shareId, authorityNodeId: input.authorityNodeId!, epoch: share.epoch, expiresAt, files: lease.files, nodeId: input.nodeId,
       ...(lease.authorityInstanceId !== undefined ? { authorityInstanceId: lease.authorityInstanceId } : {}),
       ...(lease.generation !== undefined ? { generation: lease.generation } : {}),
+      ...leaseLimitsOf(this.mustStore().getAccountLimits(account.id)),
     };
     this.mustStore().recordAccountLeaseGrant({ ...grant, fileCount: lease.files.length, replay: window !== undefined });
     return { grant, install, ...(lease.env ? { env: lease.env } : {}), kindNote: lease.kindNote };

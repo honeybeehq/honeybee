@@ -145,7 +145,7 @@ function addAccount(r: Rig, harness: string, label: string, opts: { status?: "ok
 function service(r: Rig, extra: Partial<ConstructorParameters<typeof AccountsService>[0]> = {}): AccountsService {
   // Enrollment validates the chain with one real rotation; the default stub keeps every test off the network.
   const fetchers = { claudeRefresh: async () => (granted({ accessToken: "enrolled-access", refreshToken: CLAUDE_ENROLLED_REFRESH, expiresAt: r.now() + 8 * HOUR })),
-    claudeIdentity: async () => null, ...(extra.fetchers ?? {}) };
+    claudeIdentity: async () => null, claudeTokenCheck: async () => ({ result: "valid" as const, detail: null }), ...(extra.fetchers ?? {}) };
   return new AccountsService({ store: r.store, cfg: r.cfg, log: (op) => r.log.push(op), now: r.now, platform: "linux", keychainReader: async () => null, keychainWriter: async () => false, ...extra, fetchers });
 }
 
@@ -2403,5 +2403,88 @@ test("authority instance: actual enable, refresh, restart, disable/remove/re-add
     assert.notEqual(replacement.authorityInstanceId, a);
     assert.ok(replacement.generation < rotated.generation);
     assert.equal((await svc.mintLease(account)).authorityInstanceId, replacement.authorityInstanceId);
+  } finally { r.cleanup(); }
+});
+
+function leaseInput(r: Rig, accessToken: string, extra: Record<string, unknown> = {}) {
+  const raw = JSON.stringify({ claudeAiOauth: { accessToken, refreshToken: "", expiresAt: r.now() + HOUR } });
+  return { id: "claude-copy", harness: "claude", label: "copy", shareId: "share-usage01", authorityNodeId: "authority-studio", epoch: 1, expiresAt: Math.floor((r.now() + HOUR) / 1000), files: [{ homeRelPath: ".credentials.json", contentB64: Buffer.from(raw).toString("base64"), mode: 0o600 }], ...extra };
+}
+
+const markOk = (r: Rig) => (account: { id: string }) => { r.store.setAccountStatus(account.id, "ok", "test restored"); };
+
+test("lease.usage.1: a leased account's limits refresh makes no usage call and the periodic tick skips leased ids", async () => {
+  const r = rig({ accounts: { limitsRefreshMs: 60_000 } });
+  try {
+    const usageTokens: string[] = [];
+    const svc = service(r, { fetchers: { claudeUsage: async (token: string) => { usageTokens.push(token); return { five_hour: { utilization: 10, resets_at: null }, seven_day: { utilization: 20, resets_at: null } } as never; } } });
+    addAccount(r, "claude", "own", { home: { ".credentials.json": JSON.stringify({ claudeAiOauth: { accessToken: "OWN-ACCESS", refreshToken: CLAUDE_REFRESH, expiresAt: r.now() + 8 * HOUR } }) } });
+    const copy = (await svc.installLease(leaseInput(r, "COPY-ACCESS"), markOk(r))).account;
+    const [row] = await svc.refreshLimits([copy.id]);
+    assert.equal(row!.readable, false);
+    assert.equal(row!.unreadableReason, "unsupported");
+    assert.equal(row!.error, "leased: limits come from the authority");
+    assert.equal(r.store.getAccount(copy.id)!.status, "ok", "no probe means no auth verdict from limits");
+    const before = r.store.lastAuditSeq();
+    await svc.refreshLimits([copy.id]);
+    assert.equal(r.store.lastAuditSeq(), before, "an unchanged unknown row is a quiet no-op");
+    r.setNow(r.now() + 61_000);
+    svc.periodicRefreshTick();
+    await svc.refreshLimits([]);
+    for (let i = 0; i < 50 && usageTokens.length === 0; i++) await new Promise(resolve => setTimeout(resolve, 5));
+    assert.deepEqual(usageTokens, ["OWN-ACCESS"], "only the local account reads the provider");
+  } finally { r.cleanup(); }
+});
+
+test("lease.usage.2: limits shipped in the install payload are the copy's limits; unknown limits rank after known room", async () => {
+  const r = rig();
+  try {
+    const svc = service(r, { fetchers: { claudeUsage: async () => { throw new Error("a leased copy must not read usage"); } } });
+    const own = addAccount(r, "claude", "own", { home: { ".credentials.json": JSON.stringify({ claudeAiOauth: { accessToken: "OWN-ACCESS", refreshToken: CLAUDE_REFRESH, expiresAt: r.now() + 8 * HOUR } }) } });
+    r.store.putAccountLimits(own.id, { readable: true, weekly: { usedPercent: 60, resetsAt: r.now() + 3 * 24 * HOUR, windowMinutes: 7 * 24 * 60 }, fiveHour: { usedPercent: 10, resetsAt: r.now() + 2 * HOUR, windowMinutes: 300 } });
+    const copy = (await svc.installLease(leaseInput(r, "COPY-ACCESS"), markOk(r))).account;
+    const unknown = svc.pick("claude");
+    assert.ok(unknown.ok);
+    assert.equal(unknown.account.id, own.id, "a copy with unknown limits never ranks as zero load");
+    const shipped = { fetchedAt: r.now() - 60_000, plan: "max", weekly: { usedPercent: 5, resetsAt: r.now() + 3 * 24 * HOUR, windowMinutes: 7 * 24 * 60 }, fiveHour: { usedPercent: 1, resetsAt: r.now() + 2 * HOUR, windowMinutes: 300 } };
+    await svc.installLease(leaseInput(r, "COPY-ACCESS-2", { epoch: 2, limits: shipped }), markOk(r));
+    const [row] = await svc.refreshLimits([copy.id]);
+    assert.equal(row!.readable, true);
+    assert.equal(row!.weeklyPct, 5);
+    assert.equal(row!.fetchedAt, shipped.fetchedAt);
+    const ranked = svc.pick("claude");
+    assert.ok(ranked.ok);
+    assert.equal(ranked.account.id, copy.id, "the authority's numbers rank the copy");
+    await svc.installLease(leaseInput(r, "COPY-ACCESS-3", { epoch: 3, limits: { ...shipped, fetchedAt: shipped.fetchedAt - HOUR, weekly: { usedPercent: 90 } } }), markOk(r));
+    assert.equal(r.store.getAccountLimits(copy.id)!.weeklyPct, 5, "an older reading never replaces a newer one");
+    await svc.installLease(leaseInput(r, "COPY-ACCESS-4", { epoch: 4, authorityNodeId: "authority-other" }), markOk(r));
+    assert.equal((await svc.refreshLimits([copy.id]))[0]!.error, "leased: limits come from the authority", "another authority's reading is not this lease's");
+  } finally { r.cleanup(); }
+});
+
+test("lease.usage.3: a re-install over a lost login checks the shipped token once; a healthy renewal is not probed", async () => {
+  const r = rig();
+  try {
+    const checked: string[] = [];
+    const revoked = new Set(["DEAD-ACCESS"]);
+    const svc = service(r, { fetchers: { claudeTokenCheck: async (token: string) => {
+      checked.push(token);
+      return revoked.has(token) ? { result: "revoked" as const, detail: "/api/oauth/profile: HTTP 401 — OAuth access token has been revoked" } : { result: "valid" as const, detail: null };
+    } } });
+    const first = await svc.installLease(leaseInput(r, "FIRST-ACCESS"), markOk(r));
+    assert.equal(first.tokenCheck, undefined, "a fresh copy is not probed");
+    const renewed = await svc.installLease(leaseInput(r, "SECOND-ACCESS", { epoch: 2 }), markOk(r));
+    assert.equal(renewed.tokenCheck, undefined, "a healthy renewal is not probed");
+    assert.deepEqual(checked, []);
+    r.store.setAccountStatus(first.account.id, "auth_needed", "runtime: OAuth access token has been revoked");
+    const seen: Array<string | undefined> = [];
+    const record = (_account: unknown, check?: { result: string }) => { seen.push(check?.result); };
+    const dead = await svc.installLease(leaseInput(r, "DEAD-ACCESS", { epoch: 3 }), record);
+    assert.deepEqual(dead.tokenCheck, { result: "revoked", detail: "/api/oauth/profile: HTTP 401 — OAuth access token has been revoked" });
+    assert.deepEqual(seen, ["revoked"]);
+    assert.equal(r.store.getAccount(first.account.id)!.status, "auth_needed");
+    const live = await svc.installLease(leaseInput(r, "LIVE-ACCESS", { epoch: 4 }), record);
+    assert.equal(live.tokenCheck?.result, "valid");
+    assert.deepEqual(checked, ["DEAD-ACCESS", "LIVE-ACCESS"]);
   } finally { r.cleanup(); }
 });

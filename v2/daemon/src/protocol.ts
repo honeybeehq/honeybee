@@ -1464,6 +1464,26 @@ export interface AccountLeaseInstallParams extends AccountLeaseFences {
   adopt?: boolean | "explicit";
   /** The node this payload was granted for; the receiving node refuses a payload addressed elsewhere (`account_lease_conflict`, reason `node_mismatch`). */
   nodeId?: string;
+  limits?: AccountLeaseLimits;
+}
+
+export interface AccountLeaseLimitsWindow {
+  usedPercent: number;
+  resetsAt?: number | null;
+  windowMinutes?: number | null;
+}
+
+export interface AccountLeaseLimits {
+  fetchedAt: number;
+  plan?: string | null;
+  fiveHour?: AccountLeaseLimitsWindow | null;
+  weekly?: AccountLeaseLimitsWindow | null;
+  fableWeekly?: AccountLeaseLimitsWindow | null;
+}
+
+export interface AccountLeaseTokenCheck {
+  result: "valid" | "revoked" | "unverified";
+  detail: string | null;
 }
 
 export interface AccountLeaseInstallResult {
@@ -1474,7 +1494,8 @@ export interface AccountLeaseInstallResult {
   backupAt: number | null;
   replacedWorkingLogin: boolean;
   keychainPublished: boolean;
-  restored: AccountCredentialsRestoredResult;
+  restored?: AccountCredentialsRestoredResult;
+  tokenCheck?: AccountLeaseTokenCheck;
 }
 
 export interface AccountLeaseRemoveParams {
