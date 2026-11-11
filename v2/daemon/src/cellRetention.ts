@@ -311,6 +311,7 @@ export class CellRetentionService {
   private readonly bootedAt: number;
   private lastPassAt: number | null = null;
   private passInFlight: Promise<CellGcResult> | null = null;
+  private passInFlightDryRun = false;
   private sweepInFlight: Promise<void> | null = null;
   private stopping = false;
   private readonly workers = new Set<Worker>();
@@ -650,10 +651,14 @@ export class CellRetentionService {
     await this.sweep();
   }
 
-  /** Plan (and with `dryRun: false` apply) one pass. Concurrent callers share the in-flight pass. */
+  /** Plan (and with `dryRun: false` apply) one pass. Concurrent callers share the in-flight pass, except that an apply never takes a dry run's result: it waits for it and runs after. */
   run(opts: { dryRun: boolean; measure?: boolean; kind?: CellGcPassKind }): Promise<CellGcResult> {
     if (this.stopping) return Promise.reject(new Error("Cell retention stopped"));
-    if (this.passInFlight) return this.passInFlight;
+    if (this.passInFlight) {
+      if (!opts.dryRun && this.passInFlightDryRun) return this.passInFlight.catch(() => undefined).then(() => this.run(opts));
+      return this.passInFlight;
+    }
+    this.passInFlightDryRun = opts.dryRun;
     this.passInFlight = this.pass({ ...opts, kind: opts.kind ?? "manual" }).finally(() => {
       this.passInFlight = null;
       this.progress = null;
