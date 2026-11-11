@@ -163,7 +163,7 @@ test("cell-park.2: purge mode parks every ignored path, copies env files aside, 
     assert.ok(plan.purge, "every census carries the purge report");
     assert.equal(plan.purge!.mode, "purge");
     assert.ok((plan.purge!.installBytes ?? 0) > 0, "installs are measured");
-    assert.deepEqual(plan.purge!.otherIgnored.map((g) => g.name).sort(), ["tmp"], "ignored paths outside the known patterns are named; a leftover like .proof is disposable, not kept");
+    assert.deepEqual(plan.purge!.otherIgnored.map((g) => g.name).sort(), [".proof", "tmp"], "ignored paths outside the known patterns are named");
     const idleItem = plan.items.find((i) => i.beeId === idle.beeId)!;
     assert.equal(idleItem.trim.planned, true, "the stopped idle Cell is due for a park");
     assert.deepEqual(idleItem.install?.entries.map((e) => e.path), ["node_modules"]);

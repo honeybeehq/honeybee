@@ -1,38 +1,12 @@
 /**
- * Agent leftovers: untracked or ignored top-level entries a Cell bee writes
- * while working (`.audit/`, `.proof/`, review scratch, tool homes) that are
- * never work the owner lands. They do not make a Cell dirty, they are left
- * out of a WIP snapshot, and eviction deletes them instead of keeping them.
- * Matching is by the first path component only, with `*` as the one glob.
+ * Agent leftovers: untracked or ignored top-level entries the operator has
+ * declared disposable in `cells.retention.leftoverPatterns`. They do not make
+ * a Cell dirty, they are left out of a WIP snapshot, and eviction deletes
+ * them instead of keeping them. Nothing is disposable by default: an
+ * untracked file is work until a configuration says otherwise. Matching is
+ * by the first path component only, with `*` as the one glob.
  */
-export const DEFAULT_LEFTOVER_PATTERNS: readonly string[] = [
-  ".audit",
-  ".proof",
-  ".artifacts",
-  ".scratch",
-  ".cache",
-  ".tmp",
-  ".run",
-  ".local",
-  ".local-cache",
-  ".cell-home",
-  ".cell-tools",
-  ".worker-home",
-  ".toolchain",
-  ".tools",
-  ".pgdata",
-  ".checker-stage",
-  ".checker-*",
-  ".proof-*",
-  ".review",
-  ".review-*",
-  ".gate-*",
-  ".*-evidence",
-  ".*-fixture",
-  "__pycache__",
-  ".DS_Store",
-  "*.log",
-];
+export const DEFAULT_LEFTOVER_PATTERNS: readonly string[] = [];
 
 export function validLeftoverPattern(value: unknown): value is string {
   return typeof value === "string" && value.length > 0 && value !== "*" && value !== "." && value !== ".." && !value.includes("/") && !value.includes("\0");

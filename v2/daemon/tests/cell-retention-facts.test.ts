@@ -1,6 +1,6 @@
 /**
- * What a hold is made of, and when a remembered hold is re-judged: agent
- * leftovers never hold a Cell; a Cell whose HEAD is landed by content is not
+ * What a hold is made of, and when a remembered hold is re-judged: declared
+ * agent leftovers never hold a Cell (undeclared ones do, as before); a Cell whose HEAD is landed by content is not
  * unlanded; a Cell judged unlanded is re-inspected when the origin's main
  * moves, not before; the plan carries the working-tree facts and the hold
  * breakdown so `hive cell gc` can say why. Deterministic clock; no daemon.
@@ -89,8 +89,8 @@ function rig(policy: Partial<ResolvedCellRetention> = {}) {
   return { service, store, origin, cells, pass, item, logs, advance: (ms: number) => { now += ms; }, cleanup: async () => { await service.stop(); store.close(); rmSync(root, { recursive: true, force: true }); } };
 }
 
-test("facts: leftovers never hold, landed-by-content is not unlanded, and the plan says what each hold is made of", { timeout: 120_000 }, async () => {
-  const r = rig();
+test("facts: declared leftovers never hold, landed-by-content is not unlanded, and the plan says what each hold is made of", { timeout: 120_000 }, async () => {
+  const r = rig({ leftoverPatterns: [".audit", ".proof"] });
   try {
     const first = await r.pass();
     assert.deepEqual(
@@ -120,8 +120,21 @@ test("facts: leftovers never hold, landed-by-content is not unlanded, and the pl
   }
 });
 
-test("facts: an unlanded hold is remembered until the origin's main moves or the Cell does; landing the work releases it", { timeout: 120_000 }, async () => {
+test("facts: with no declared leftovers an untracked .audit/ holds the Cell exactly as before", { timeout: 120_000 }, async () => {
   const r = rig();
+  try {
+    const first = await r.pass();
+    assert.deepEqual([r.item(first.result, "leftovers").verdict, r.item(first.result, "leftovers").reason], ["hold", "dirty_uncommitted"]);
+    assert.deepEqual(r.item(first.result, "leftovers").workingTree, { modifiedFiles: 0, untrackedFiles: 2, leftoverPaths: [] });
+    assert.equal(holdBreakdownOf(first.result.items).leftoverOnly, 0);
+    assert.equal(cellGcHoldLines(first.result).length, 1, "no leftovers line when nothing is declared");
+  } finally {
+    await r.cleanup();
+  }
+});
+
+test("facts: an unlanded hold is remembered until the origin's main moves or the Cell does; landing the work releases it", { timeout: 120_000 }, async () => {
+  const r = rig({ leftoverPatterns: [".audit", ".proof"] });
   try {
     const first = await r.pass();
     assert.equal(first.inspected, 6);
