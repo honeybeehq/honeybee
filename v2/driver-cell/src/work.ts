@@ -3,6 +3,8 @@ import { tmpdir } from "node:os";
 import { delimiter, dirname, join, resolve } from "node:path";
 import { revParse, tryGit } from "./git.ts";
 import { DEFAULT_LEFTOVER_PATTERNS, leftoverTopLevels } from "./leftovers.ts";
+import { landingTargets, type LandingReceipt } from "./landed.ts";
+import type { UpstreamRef } from "./upstream.ts";
 import { workingTreeStatus, type WorkingTreeStatus } from "./remove.ts";
 
 export const WORK_RECORD_VERSION = 1;
@@ -66,6 +68,9 @@ export interface WorkBundleRecord {
   prerequisites: string[];
   /** The refs the bundle itself carries; a recorded branch missing here is reachable from the origin and recreated from its objects. */
   bundledRefs: string[];
+  /** The commits the bundle was cut against (`--not`): the origin's landing targets, or every origin ref when it has none. */
+  boundary: string[];
+  boundaryKind: "landing" | "all_refs";
   excluded: string[];
   infoExclude: string | null;
   commits: number;
@@ -174,13 +179,48 @@ function stripSlash(path: string): string {
   return path.endsWith("/") ? path.slice(0, -1) : path;
 }
 
-/** The origin's object store as an alternate for a Cell-side git call, so every origin ref resolves even when the Cell never fetched it. */
-function originAlternates(originRepo: string): Record<string, string> {
-  const objects = existsSync(originRepo) ? gitPath(originRepo, "objects") : null;
-  return objects ? { GIT_ALTERNATE_OBJECT_DIRECTORIES: alternatesValue([objects]) } : {};
+export interface WorkBoundaryOptions {
+  receipts?: readonly LandingReceipt[];
+  upstream?: UpstreamRef | null;
+  /** Tests: cut against exactly these commits. */
+  boundaryShas?: readonly string[];
 }
 
-/** Shas of every origin ref (peeled, plus HEAD) that resolve to a commit through the origin's objects: the boundary of what is work. */
+function originObjectDirs(originRepo: string, upstream?: UpstreamRef | null): string[] {
+  const objects = existsSync(originRepo) ? gitPath(originRepo, "objects") : null;
+  return [...(objects ? [objects] : []), ...(upstream ? [upstream.objectsDir] : [])];
+}
+
+/** The origin's (and the upstream mirror's) object store as alternates for a Cell-side git call, so every landing target resolves even when the Cell never fetched it. */
+function originAlternates(originRepo: string, upstream?: UpstreamRef | null): Record<string, string> {
+  const dirs = originObjectDirs(originRepo, upstream);
+  return dirs.length > 0 ? { GIT_ALTERNATE_OBJECT_DIRECTORIES: alternatesValue(dirs) } : {};
+}
+
+/**
+ * The boundary of what is work: the origin's landing targets (its default
+ * branch, the receipts' targets, the upstream mirror). A bundle cut against
+ * them has prerequisites only on the default branch's history, which a
+ * squash-merged, deleted or force-pushed side branch cannot take away. An
+ * origin with no landing target falls back to every one of its refs.
+ */
+export function workBoundary(spaceDir: string, originRepo: string, opts: WorkBoundaryOptions = {}): { shas: string[]; kind: "landing" | "all_refs" } {
+  if (opts.boundaryShas) return { shas: [...opts.boundaryShas], kind: "landing" };
+  const targets = new Set<string>();
+  if (existsSync(originRepo)) for (const sha of landingTargets(originRepo, opts.receipts ?? [])) targets.add(sha);
+  if (opts.upstream) targets.add(opts.upstream.sha);
+  if (targets.size === 0) return { shas: originBoundary(spaceDir, originRepo), kind: "all_refs" };
+  const check = tryGit(spaceDir, ["cat-file", "--batch-check=%(objectname) %(objecttype)"], { input: [...targets].join("\n") + "\n", env: originAlternates(originRepo, opts.upstream) });
+  if (check.status !== 0) return { shas: [], kind: "landing" };
+  const present: string[] = [];
+  for (const line of check.stdout.split("\n")) {
+    const [sha, type] = line.trim().split(" ");
+    if (sha && type === "commit") present.push(sha);
+  }
+  return { shas: present, kind: "landing" };
+}
+
+/** Shas of every origin ref (peeled, plus HEAD) that resolve to a commit through the origin's objects. */
 export function originBoundary(spaceDir: string, originRepo: string): string[] {
   const listed = tryGit(originRepo, ["for-each-ref", "--format=%(objectname) %(*objectname)"]);
   if (listed.status !== 0) return [];
@@ -203,8 +243,8 @@ export function originBoundary(spaceDir: string, originRepo: string): string[] {
   return present;
 }
 
-function countLocalCommits(spaceDir: string, originRepo: string, boundary: string[]): number {
-  const res = tryGit(spaceDir, ["rev-list", "--count", "--branches", "HEAD", "--stdin"], { input: boundary.map((sha) => `^${sha}\n`).join(""), env: originAlternates(originRepo) });
+function countLocalCommits(spaceDir: string, originRepo: string, boundary: string[], upstream?: UpstreamRef | null): number {
+  const res = tryGit(spaceDir, ["rev-list", "--count", "--branches", "HEAD", "--stdin"], { input: boundary.map((sha) => `^${sha}\n`).join(""), env: originAlternates(originRepo, upstream) });
   if (res.status !== 0) return 0;
   const n = Number.parseInt(res.stdout.trim(), 10);
   return Number.isFinite(n) ? n : 0;
@@ -213,7 +253,7 @@ function countLocalCommits(spaceDir: string, originRepo: string, boundary: strin
 export function measureWork(
   spaceDir: string,
   originRepo: string | null,
-  opts: { tree?: WorkingTreeStatus; leftoverPatterns?: readonly string[] } = {},
+  opts: WorkBoundaryOptions & { tree?: WorkingTreeStatus; leftoverPatterns?: readonly string[] } = {},
 ): WorkMeasure {
   const tree = opts.tree ?? workingTreeStatus(spaceDir, opts.leftoverPatterns ?? DEFAULT_LEFTOVER_PATTERNS);
   const sized: Array<{ path: string; bytes: number }> = [];
@@ -221,7 +261,7 @@ export function measureWork(
   for (const path of tree.untracked) sized.push({ path: stripSlash(path), bytes: apparentBytes(join(spaceDir, path)) });
   const capturedBytes = sized.reduce((sum, e) => sum + e.bytes, 0);
   const largest = [...sized].sort((a, b) => b.bytes - a.bytes || (a.path < b.path ? -1 : 1)).slice(0, LARGEST);
-  const commits = originRepo && existsSync(originRepo) ? countLocalCommits(spaceDir, originRepo, originBoundary(spaceDir, originRepo)) : 0;
+  const commits = originRepo && existsSync(originRepo) ? countLocalCommits(spaceDir, originRepo, workBoundary(spaceDir, originRepo, opts).shas, opts.upstream) : 0;
   const stashes = listStashes(spaceDir).length;
   const refused = commits > 0 || sized.length > 0 || stashes > 0 ? workRefusal(spaceDir) : null;
   return {
@@ -342,7 +382,7 @@ export function readWorkRecord(workRoot: string, cellId: string): WorkBundleReco
   if (!existsSync(record) || !existsSync(bundle)) return null;
   const parsed = JSON.parse(readFileSync(record, "utf8")) as Partial<WorkBundleRecord>;
   if (parsed.version !== WORK_RECORD_VERSION || parsed.cellId !== cellId || parsed.head == null || !Array.isArray(parsed.branches)) throw new WorkError("restore", "unreadable_record", record);
-  return { ...parsed, stashes: Array.isArray(parsed.stashes) ? parsed.stashes : [], bundledRefs: Array.isArray(parsed.bundledRefs) ? parsed.bundledRefs : [] } as WorkBundleRecord;
+  return { ...parsed, stashes: Array.isArray(parsed.stashes) ? parsed.stashes : [], bundledRefs: Array.isArray(parsed.bundledRefs) ? parsed.bundledRefs : [], boundary: Array.isArray(parsed.boundary) ? parsed.boundary : [], boundaryKind: parsed.boundaryKind === "landing" ? "landing" : "all_refs" } as WorkBundleRecord;
 }
 
 export function dropWorkBundle(workRoot: string, cellId: string): boolean {
@@ -469,6 +509,147 @@ export function verifyBundleAgainstOrigin(bundle: string, record: WorkBundleReco
   return report;
 }
 
+/** Are the bundle's prerequisites still in its origin? One git call; the cheap check the retention pass runs every pass. */
+export function checkWorkPrerequisites(originRepo: string, workRoot: string, cellId: string): { restorable: boolean | null; missing: string[]; prerequisites: number } {
+  let record: WorkBundleRecord | null;
+  try {
+    record = readWorkRecord(workRoot, cellId);
+  } catch {
+    return { restorable: false, missing: [], prerequisites: 0 };
+  }
+  if (record == null) return { restorable: null, missing: [], prerequisites: 0 };
+  if (!existsSync(originRepo)) return { restorable: false, missing: [...record.prerequisites], prerequisites: record.prerequisites.length };
+  if (record.prerequisites.length === 0) return { restorable: true, missing: [], prerequisites: 0 };
+  const check = tryGit(originRepo, ["cat-file", "--batch-check=%(objectname) %(objecttype)"], { input: record.prerequisites.join("\n") + "\n" });
+  if (check.status !== 0) return { restorable: false, missing: [...record.prerequisites], prerequisites: record.prerequisites.length };
+  const present = new Set(check.stdout.split("\n").map((l) => l.trim().split(" ")).filter(([, type]) => type === "commit").map(([sha]) => sha!));
+  const missing = record.prerequisites.filter((sha) => !present.has(sha));
+  return { restorable: missing.length === 0, missing, prerequisites: record.prerequisites.length };
+}
+
+export type WorkRewriteStatus = "rewrite" | "rewritten" | "unchanged" | "unrestorable" | "no_bundle" | "failed";
+
+export interface WorkRewriteOutcome {
+  status: WorkRewriteStatus;
+  oldBytes: number;
+  newBytes: number | null;
+  oldPrerequisites: string[];
+  newPrerequisites: string[];
+  missing: string[];
+  problems: string[];
+}
+
+/**
+ * Cut an existing bundle against the landing targets without its Cell: the
+ * old bundle is fetched into a scratch repository backed by the origin's
+ * objects, every recorded ref is written there, and a new bundle is created
+ * `--not` the landing targets, so the commits between them and the old
+ * prerequisites come along from the origin. The new bundle is verified
+ * exactly as a fresh one; with `apply` it replaces the old bundle (one
+ * rename) and then the record (one rename). Any failure leaves the old pair
+ * untouched. An old prerequisite the origin no longer holds makes the bundle
+ * `unrestorable`, named with the missing commits.
+ */
+export function rewriteWorkBundle(originRepo: string, workRoot: string, cellId: string, opts: { receipts?: readonly LandingReceipt[]; upstream?: UpstreamRef | null; apply?: boolean; now?: () => number; timeoutMs?: number } = {}): WorkRewriteOutcome {
+  const problems: string[] = [];
+  const outcome = (status: WorkRewriteStatus, extra: Partial<WorkRewriteOutcome> = {}): WorkRewriteOutcome => ({ status, oldBytes: 0, newBytes: null, oldPrerequisites: [], newPrerequisites: [], missing: [], problems, ...extra });
+  let record: WorkBundleRecord | null;
+  try {
+    record = readWorkRecord(workRoot, cellId);
+  } catch (err) {
+    problems.push(err instanceof Error ? err.message : String(err));
+    return outcome("failed");
+  }
+  if (record == null) return outcome("no_bundle");
+  const paths = workBundlePaths(workRoot, cellId);
+  const oldBytes = statSync(paths.bundle).size;
+  const base = { oldBytes, oldPrerequisites: [...record.prerequisites] };
+  const originDirs = originObjectDirs(originRepo, opts.upstream);
+  if (originDirs.length === 0) {
+    problems.push(`origin_unreadable: ${originRepo}`);
+    return outcome("failed", base);
+  }
+  const timeoutMs = opts.timeoutMs ?? 10 * 60_000;
+  const scratch = mkdtempSync(join(tmpdir(), "hive-work-rewrite-"));
+  try {
+    const rw = join(scratch, "rewrite.git");
+    const run = (args: string[], input?: string) => tryGit(scratch, ["--git-dir", rw, ...args], { input, timeoutMs });
+    const mustRun = (args: string[], input?: string) => {
+      const res = run(args, input);
+      if (res.status !== 0) throw new WorkError("bundle", "git_failed", `git ${args.join(" ")} exited ${res.status}: ${res.stderr.trim()}`);
+      return res.stdout.trim();
+    };
+    mustRun(["init", "--quiet", "--bare", rw]);
+    mkdirSync(join(rw, "objects", "info"), { recursive: true });
+    writeFileSync(join(rw, "objects", "info", "alternates"), originDirs.map((d) => `${d}\n`).join(""));
+    const targets = new Set<string>(landingTargets(originRepo, opts.receipts ?? []));
+    if (opts.upstream) targets.add(opts.upstream.sha);
+    if (targets.size === 0) {
+      problems.push("no_landing_target");
+      return outcome("failed", base);
+    }
+    const missing = record.prerequisites.filter((sha) => run(["cat-file", "-e", `${sha}^{commit}`]).status !== 0);
+    if (missing.length > 0) {
+      problems.push(`prerequisites_missing_in_origin: ${missing.length} of ${record.prerequisites.length}`);
+      return outcome("unrestorable", { ...base, missing });
+    }
+    const covered = record.prerequisites.every((sha) => [...targets].some((t) => run(["merge-base", "--is-ancestor", sha, t]).status === 0));
+    if (covered) return outcome("unchanged", { ...base, newBytes: oldBytes, newPrerequisites: [...record.prerequisites] });
+    const verify = run(["bundle", "verify", "--quiet", paths.bundle]);
+    if (verify.status !== 0) {
+      problems.push(`bundle_unverifiable: ${verify.stderr.trim()}`);
+      return outcome("unrestorable", { ...base, missing });
+    }
+    mustRun(["fetch", "--quiet", "--no-tags", "--no-write-fetch-head", paths.bundle, "+refs/*:refs/*"]);
+    const refLines = [
+      ...record.branches.map((b) => `update refs/heads/${b.name} ${b.sha}\n`),
+      ...record.stashes.map((st, index) => `update ${STASH_NS}/${index} ${st.sha}\n`),
+      `update ${HEAD_REF} ${record.head.sha}\n`,
+      ...(record.work ? [`update ${WORK_REF} ${record.work.sha}\n`] : []),
+      ...(record.index.sha ? [`update ${INDEX_REF} ${record.index.sha}\n`] : []),
+    ];
+    const refs = run(["update-ref", "--stdin"], refLines.join(""));
+    if (refs.status !== 0) {
+      problems.push(`refs_unresolvable: ${refs.stderr.trim().split("\n")[0] ?? ""}`);
+      return outcome("unrestorable", { ...base, missing });
+    }
+    const positives = [...record.branches.map((b) => `refs/heads/${b.name}`), ...record.stashes.map((_s, index) => `${STASH_NS}/${index}`), HEAD_REF, ...(record.work ? [WORK_REF] : []), ...(record.index.sha ? [INDEX_REF] : [])];
+    const tmpBundle = join(scratch, "rewritten.bundle");
+    const created = run(["bundle", "create", "--quiet", tmpBundle, "--stdin"], [...positives.map((r) => `${r}\n`), ...[...targets].map((sha) => `^${sha}\n`)].join(""));
+    if (created.status !== 0) {
+      problems.push(`bundle_create_failed: ${created.stderr.trim().split("\n")[0] ?? ""}`);
+      return outcome("failed", base);
+    }
+    const next: WorkBundleRecord = {
+      ...record,
+      prerequisites: bundlePrerequisites(tmpBundle),
+      bundledRefs: bundleHeads(scratch, rw, tmpBundle, timeoutMs),
+      boundary: [...targets],
+      boundaryKind: "landing",
+      bundleBytes: statSync(tmpBundle).size,
+    };
+    const report = verifyBundleAgainstOrigin(tmpBundle, next, originDirs[0]!, join(scratch, "verify.git"), timeoutMs);
+    if (!report.ok) {
+      problems.push(...report.problems);
+      return outcome("failed", { ...base, newBytes: next.bundleBytes, newPrerequisites: next.prerequisites });
+    }
+    if (!opts.apply) return outcome("rewrite", { ...base, newBytes: next.bundleBytes, newPrerequisites: next.prerequisites });
+    const staged = `${paths.bundle}.new`;
+    copyFileSync(tmpBundle, staged);
+    fsyncPath(staged);
+    renameSync(staged, paths.bundle);
+    fsyncPath(workRoot);
+    writeDurable(paths.record, JSON.stringify({ ...next, rewrittenAt: (opts.now ?? Date.now)() }));
+    fsyncPath(workRoot);
+    return outcome("rewritten", { ...base, newBytes: next.bundleBytes, newPrerequisites: next.prerequisites });
+  } catch (err) {
+    problems.push(err instanceof Error ? err.message : String(err));
+    return outcome("failed", base);
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
+  }
+}
+
 /** `hive cell work verify`: the bundle of one Cell, checked against its origin in a throwaway directory; nothing is written anywhere else. */
 export function verifyWorkBundle(originRepo: string, workRoot: string, cellId: string): WorkVerifyReport & { record: WorkBundleRecord | null } {
   const record = readWorkRecord(workRoot, cellId);
@@ -501,7 +682,7 @@ export function bundleWork(
   originRepo: string,
   cellId: string,
   workRoot: string,
-  opts: { leftoverPatterns?: readonly string[]; now?: () => number; maxBytes?: number | null; timeoutMs?: number; beforeVerify?: (bundlePath: string) => void } = {},
+  opts: WorkBoundaryOptions & { leftoverPatterns?: readonly string[]; now?: () => number; maxBytes?: number | null; timeoutMs?: number; beforeVerify?: (bundlePath: string) => void } = {},
 ): WorkBundleRecord {
   const started = Date.now();
   const now = opts.now ?? Date.now;
@@ -523,12 +704,13 @@ export function bundleWork(
     must(scratch, ["init", "--quiet", "--bare", shadow], "bundle");
     const shadowObjects = join(shadow, "objects");
     mkdirSync(join(shadowObjects, "info"), { recursive: true });
-    writeFileSync(join(shadowObjects, "info", "alternates"), `${cellObjects}\n${originObjects}\n`);
-    const objectEnv = { GIT_OBJECT_DIRECTORY: shadowObjects, GIT_ALTERNATE_OBJECT_DIRECTORIES: alternatesValue([cellObjects, originObjects]) };
+    const alternateDirs = [cellObjects, ...originObjectDirs(originRepo, opts.upstream)];
+    writeFileSync(join(shadowObjects, "info", "alternates"), alternateDirs.map((d) => `${d}\n`).join(""));
+    const objectEnv = { GIT_OBJECT_DIRECTORY: shadowObjects, GIT_ALTERNATE_OBJECT_DIRECTORIES: alternatesValue(alternateDirs) };
     const inShadow = (args: string[], input?: string) => must(scratch, ["--git-dir", shadow, ...args], "bundle", { input, timeoutMs });
 
     const tree = workingTreeStatus(spaceDir, leftoverPatterns);
-    const measure = measureWork(spaceDir, originRepo, { tree, leftoverPatterns });
+    const measure = measureWork(spaceDir, originRepo, { tree, leftoverPatterns, receipts: opts.receipts, upstream: opts.upstream, boundaryShas: opts.boundaryShas });
     if (opts.maxBytes != null && measure.capturedBytes > opts.maxBytes) throw new WorkError("bundle", "over_cap", `${measure.capturedBytes} > ${opts.maxBytes}`);
     const excluded = leftoverTopLevels(tree.leftovers, leftoverPatterns);
     const workEnv = { ...objectEnv, GIT_INDEX_FILE: join(scratch, "work.index") };
@@ -541,7 +723,8 @@ export function bundleWork(
     const indexSha = indexTree === headTree || indexTree === workTree ? null : must(spaceDir, ["commit-tree", indexTree, "-p", head.sha, "-m", `hive index ${cellId} ${stamp}`], "bundle", { env: objectEnv });
     const branches = localBranches(spaceDir);
     const stashes = listStashes(spaceDir);
-    const boundary = originBoundary(spaceDir, originRepo);
+    const cut = workBoundary(spaceDir, originRepo, opts);
+    const boundary = cut.shas;
     const boundarySet = new Set(boundary);
 
     const refLines = [
@@ -570,6 +753,8 @@ export function bundleWork(
       index: { sha: indexSha, tree: indexTree },
       prerequisites,
       bundledRefs: bundleHeads(scratch, shadow, tmpBundle, timeoutMs),
+      boundary,
+      boundaryKind: cut.kind,
       excluded,
       infoExclude: null,
       commits: measure.commits,

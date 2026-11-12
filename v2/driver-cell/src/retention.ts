@@ -732,7 +732,7 @@ export function inspectCellWrapper(
   const provisioned = existsSync(join(spaceDir, ".git"));
   const head = provisioned ? revParse(spaceDir, "HEAD") : null;
   const { report, dirtySubmodules, workingTree, headUnlanded, tree, originRepo } = dirtyReportDetailed(target, { receipts: opts.receipts, upstream: opts.upstream ?? null, leftoverPatterns: opts.leftoverPatterns });
-  const work = provisioned && tree != null && opts.measureWork !== false ? measureWork(spaceDir, originRepo, { tree, leftoverPatterns: opts.leftoverPatterns }) : null;
+  const work = provisioned && tree != null && opts.measureWork !== false ? measureWork(spaceDir, originRepo, { tree, leftoverPatterns: opts.leftoverPatterns, receipts: opts.receipts, upstream: opts.upstream ?? null }) : null;
   const ignored = classifyIgnored(spaceDir, opts.trimPatterns ?? DEFAULT_TRIM_PATTERNS, opts.leftoverPatterns ?? DEFAULT_LEFTOVER_PATTERNS);
   const measure = opts.measure !== false;
   const sized = (paths: string[]): PathBytes[] => paths.map((path) => {

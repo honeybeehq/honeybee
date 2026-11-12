@@ -10,7 +10,7 @@ import type { LandingReceipt } from "./landed.ts";
 import { cellFingerprint, inspectCellWrapper, measurePathBytes, planParkPaths, verifyParkPaths, type CellWrapperInspection, type ParkMode, type ParkPlan, type TrimSkip } from "./retention.ts";
 import { refreshUpstreamMirror, type UpstreamRef } from "./upstream.ts";
 import { confirmWip, pushWip, snapshotWip, sweepWipRefs, type WipSnapshot } from "./wip.ts";
-import { bundleWork, verifyWorkBundle, WorkError, type WorkBundleRecord, type WorkVerifyReport } from "./work.ts";
+import { bundleWork, checkWorkPrerequisites, rewriteWorkBundle, verifyWorkBundle, WorkError, type WorkBundleRecord, type WorkRewriteOutcome, type WorkVerifyReport } from "./work.ts";
 
 export interface RetentionWorkerRequest {
   kind?: "inspect";
@@ -122,6 +122,36 @@ export interface WorkBundleWorkerRequest {
   workRoot: string;
   maxBytes: number | null;
   leftoverPatterns?: string[];
+  receipts?: LandingReceipt[];
+  upstream?: UpstreamRef | null;
+}
+
+export interface WorkRewriteWorkerRequest {
+  kind: "rewriteWork";
+  originRepo: string;
+  workRoot: string;
+  cellId: string;
+  apply: boolean;
+  receipts?: LandingReceipt[];
+  upstream?: UpstreamRef | null;
+}
+
+export interface WorkRewriteWorkerResult {
+  outcome: WorkRewriteOutcome | null;
+  error: string | null;
+}
+
+export interface WorkPrerequisiteWorkerRequest {
+  kind: "checkWorkPrerequisites";
+  workRoot: string;
+  bundles: Array<{ cellId: string; originRepo: string }>;
+  deadlineMs: number | null;
+}
+
+export interface WorkPrerequisiteWorkerResult {
+  checked: Array<{ cellId: string; restorable: boolean | null; missing: string[]; prerequisites: number }>;
+  /** Bundles the deadline left unchecked. */
+  unchecked: number;
 }
 
 export interface WorkBundleWorkerResult {
@@ -155,15 +185,32 @@ export interface WipRefSweepWorkerResult {
   error: string | null;
 }
 
-const request = workerData as RetentionWorkerRequest | TrimVerifyWorkerRequest | ParkPlanWorkerRequest | WipPushWorkerRequest | WipRefSweepWorkerRequest | WorkBundleWorkerRequest | WorkVerifyWorkerRequest;
+const request = workerData as RetentionWorkerRequest | TrimVerifyWorkerRequest | ParkPlanWorkerRequest | WipPushWorkerRequest | WipRefSweepWorkerRequest | WorkBundleWorkerRequest | WorkVerifyWorkerRequest | WorkRewriteWorkerRequest | WorkPrerequisiteWorkerRequest;
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
 if (request.kind === "bundleWork") {
   try {
-    const record = bundleWork(request.spaceDir, request.originRepo, request.cellId, request.workRoot, { leftoverPatterns: request.leftoverPatterns, maxBytes: request.maxBytes });
+    const record = bundleWork(request.spaceDir, request.originRepo, request.cellId, request.workRoot, { leftoverPatterns: request.leftoverPatterns, maxBytes: request.maxBytes, receipts: request.receipts, upstream: request.upstream ?? null });
     parentPort?.postMessage({ record, fingerprint: cellFingerprint(request.spaceDir), reason: null, error: null } satisfies WorkBundleWorkerResult);
   } catch (err) {
     parentPort?.postMessage({ record: null, fingerprint: null, reason: err instanceof WorkError ? err.reason : null, error: errorText(err) } satisfies WorkBundleWorkerResult);
   }
+} else if (request.kind === "rewriteWork") {
+  try {
+    parentPort?.postMessage({ outcome: rewriteWorkBundle(request.originRepo, request.workRoot, request.cellId, { receipts: request.receipts, upstream: request.upstream ?? null, apply: request.apply }), error: null } satisfies WorkRewriteWorkerResult);
+  } catch (err) {
+    parentPort?.postMessage({ outcome: null, error: errorText(err) } satisfies WorkRewriteWorkerResult);
+  }
+} else if (request.kind === "checkWorkPrerequisites") {
+  const checked: WorkPrerequisiteWorkerResult["checked"] = [];
+  let unchecked = 0;
+  for (const bundle of request.bundles) {
+    if (request.deadlineMs != null && Date.now() > request.deadlineMs) {
+      unchecked += 1;
+      continue;
+    }
+    checked.push({ cellId: bundle.cellId, ...checkWorkPrerequisites(bundle.originRepo, request.workRoot, bundle.cellId) });
+  }
+  parentPort?.postMessage({ checked, unchecked } satisfies WorkPrerequisiteWorkerResult);
 } else if (request.kind === "verifyWork") {
   try {
     parentPort?.postMessage({ report: verifyWorkBundle(request.originRepo, request.workRoot, request.cellId), error: null } satisfies WorkVerifyWorkerResult);

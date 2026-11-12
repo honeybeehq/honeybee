@@ -7,10 +7,12 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openCoreStore } from "../../core/src/index.ts";
+import { gitEnv } from "../../driver-cell/src/git.ts";
 import { cellPaths } from "../../driver-cell/src/layout.ts";
 import { provisionCell } from "../../driver-cell/src/provision.ts";
 import { commitInCell, commitOn, g, makeOrigin } from "../../driver-cell/tests/helpers.ts";
@@ -60,7 +62,8 @@ function rig(policy: Partial<ResolvedCellRetention> = {}) {
     if (shape === "landed_rebased") {
       const sha = commitInCell(space, `${id}.ts`, "landed work\n", `${id} landed work`);
       g(origin.repo, ["fetch", "--no-tags", "-q", space, `+${sha}:refs/scratch/cell`]);
-      g(origin.repo, ["cherry-pick", sha]);
+      const picked = spawnSync("git", ["cherry-pick", sha], { cwd: origin.repo, encoding: "utf8", env: { ...gitEnv(), GIT_COMMITTER_DATE: "2030-01-01T00:00:00Z" } });
+      if (picked.status !== 0) throw new Error(`cherry-pick failed: ${picked.stderr}`);
       g(origin.repo, ["update-ref", "-d", "refs/scratch/cell"]);
     }
     cells.set(shape, { beeId: bee.id, cellId: cell.id, spaceDir: space });
@@ -182,7 +185,8 @@ test("facts: with work bundling on, a stash and side branches are work the bundl
     assert.equal(planned.report?.stashed, true);
     assert.deepEqual(planned.report?.unlandedBranches, ["save/v1"]);
     assert.deepEqual({ commits: planned.work?.commits, stashes: planned.work?.stashes, bundled: planned.work?.bundled }, { commits: 1, stashes: 1, bundled: true });
-    assert.equal(first.result.totals.workCells, 4);
+    assert.deepEqual({ commits: r.item(first.result, "landed_rebased").work?.commits, bundled: r.item(first.result, "landed_rebased").work?.bundled }, { commits: 1, bundled: true }, "landed by content under another sha: the commit itself is still work the bundle carries");
+    assert.equal(first.result.totals.workCells, 5);
     const lines = cellGcHoldLines(first.result).join("\n");
     assert.doesNotMatch(lines, /evictionRequiresWip/);
     assert.match(lines, /work bundling is on: work never holds a Cell/);

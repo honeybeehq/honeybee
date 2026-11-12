@@ -196,6 +196,7 @@ import {
   hasCommit,
   restoreEnvFiles,
   dropWipRef,
+  landingTargets,
   cellWorkRootForCells,
   type WorkRestoreOutcome,
   adoptWipRef,
@@ -376,6 +377,8 @@ import { BEE_IMPORT_BUNDLE_BYTES_MAX,
   type CellEvictResult,
   type CellParkResult,
   type CellKeepRemoveResult,
+  type CellWorkRewriteResult,
+  type CellWorkVerifyAllResult,
   type CellWorkVerifyResult,
   type TranscriptSegmentsResult,
   type ChampionListResult,
@@ -1964,9 +1967,7 @@ export class HiveDaemon {
     if (!parsed) throw new Error(`resolveCell: cell ${cell.id} has a malformed space name '${cell.spaceName}'`);
     // v31: an evicted Cell re-provisions where the agent left off (its HEAD
     // was verified reachable from the origin at eviction), not at the spawn sha.
-    const sha = cell.state === "evicted" && cell.evictedHead && hasCommit(cell.originRepo, cell.evictedHead)
-      ? cell.evictedHead
-      : cell.sha;
+    const sha = this.provisionShaFor(cell, beeId);
     const restoreWip = (cell.state === "evicted" || !existsSync(cell.spaceDir)) && (this.cfg.cellRetention.wipPushOnTurnEnd || this.cfg.cellRetention.evictionRequiresWip) && cell.wipSha && cell.wipConfirmedAt != null
       ? { sha: cell.wipSha, node: this.wipNode(), cellId: cell.id }
       : null;
@@ -2674,7 +2675,9 @@ export class HiveDaemon {
       case "cell.keep.remove":
         return this.rpcCellKeepRemove(params);
       case "cell.work.verify":
-        return this.rpcCellWorkVerify(params);
+        return params.all === true ? this.rpcCellWorkVerifyAll() : this.rpcCellWorkVerify(params);
+      case "cell.work.rewrite":
+        return this.rpcCellWorkRewrite(params);
       case "bee.rename":
         return this.withIdempotency(verb, params, () => this.rpcRename(params));
       case "bee.tag":
@@ -4370,6 +4373,100 @@ export class HiveDaemon {
       throw new RpcError("runtime_refused", `bee ${beeId} has a live runtime (${rt.state}); a Cell is never parked mid-turn`);
     }
     return row;
+  }
+
+  /**
+   * Where a re-provisioned Cell checks out: the evicted HEAD when the origin
+   * still holds it, else the spawn sha, else the origin's first landing
+   * target (a squash, delete or force-push took both away; a work bundle, if
+   * any, puts HEAD and the refs back afterwards).
+   */
+  private provisionShaFor(cell: CellRow, beeId: string): string {
+    if (!existsSync(cell.originRepo) || (cell.state !== "evicted" && existsSync(cell.spaceDir))) return cell.sha;
+    let target: string | undefined;
+    try {
+      if (cell.state === "evicted" && cell.evictedHead && hasCommit(cell.originRepo, cell.evictedHead)) return cell.evictedHead;
+      if (hasCommit(cell.originRepo, cell.sha)) return cell.sha;
+      target = landingTargets(cell.originRepo, this.mustStore().listLandingReceipts(beeId)).find((sha) => hasCommit(cell.originRepo, sha));
+    } catch {
+      return cell.sha;
+    }
+    if (target == null) return cell.sha;
+    this.log(`cell.provision.sha_fallback bee=${beeId} cell=${cell.id} spawn=${cell.sha} evicted_head=${cell.evictedHead ?? "-"} target=${target}`);
+    return target;
+  }
+
+  private async rpcCellWorkVerifyAll(): Promise<CellWorkVerifyAllResult> {
+    const retention = this.retention;
+    if (!retention) throw new RpcError("node_stopped", "daemon is shutting down");
+    const store = this.mustStore();
+    const items: CellWorkVerifyAllResult["items"] = [];
+    for (const bundle of retention.bundlesOnDisk()) {
+      const bee = bundle.cell ? store.getBee(bundle.cell.sourceBeeId) : null;
+      if (!bundle.cell) {
+        items.push({ beeId: null, beeName: null, cellId: bundle.cellId, status: "orphaned", bundleBytes: bundle.bytes, commits: 0, paths: 0, stashes: 0, problem: "no registry row" });
+        continue;
+      }
+      const result = await retention.verifyWork(bundle.cell);
+      const report = result.report;
+      const status: CellWorkVerifyAllResult["items"][number]["status"] = result.error != null || report == null ? "failed" : report.record == null ? "no_bundle" : report.ok ? "ok" : "failed";
+      items.push({ beeId: bundle.cell.sourceBeeId, beeName: bee?.name ?? null, cellId: bundle.cellId, status, bundleBytes: report?.bundleBytes ?? bundle.bytes, commits: report?.record?.commits ?? 0, paths: report?.record?.paths ?? 0, stashes: report?.record?.stashes.length ?? 0, problem: result.error ?? report?.problems[0] ?? null });
+    }
+    const totals = { bundles: items.length, ok: items.filter((i) => i.status === "ok").length, failed: items.filter((i) => i.status === "failed").length, orphaned: items.filter((i) => i.status === "orphaned").length, bytes: items.reduce((s, i) => s + i.bundleBytes, 0) };
+    this.log(`cell.work.verify all=true bundles=${totals.bundles} ok=${totals.ok} failed=${totals.failed} orphaned=${totals.orphaned}`);
+    return { items, totals };
+  }
+
+  /** `cell.work.rewrite` — existing bundles cut against the landing targets without their Cells; a dry run unless `apply`. */
+  private async rpcCellWorkRewrite(params: Record<string, unknown>): Promise<CellWorkRewriteResult> {
+    if (params.all !== undefined && typeof params.all !== "boolean") throw new RpcError("invalid_request", "cell.work.rewrite: all must be a boolean when given");
+    if (params.apply !== undefined && typeof params.apply !== "boolean") throw new RpcError("invalid_request", "cell.work.rewrite: apply must be a boolean when given");
+    const apply = params.apply === true;
+    const retention = this.retention;
+    if (!retention) throw new RpcError("node_stopped", "daemon is shutting down");
+    const store = this.mustStore();
+    let targets: Array<{ cellId: string; bytes: number; cell: CellRow | null }>;
+    if (params.all === true) targets = retention.bundlesOnDisk();
+    else {
+      const beeId = this.requireBee(params);
+      const bee = store.getBee(beeId);
+      const cell = bee?.cellId ? store.getCell(bee.cellId) : null;
+      if (!bee || bee.substrate !== "cell" || !cell) throw new RpcError("invalid_request", `cell.work.rewrite: bee ${beeId} has no Cell allocation`);
+      targets = [{ cellId: cell.id, bytes: cell.workBundleBytes ?? 0, cell }];
+    }
+    const items: CellWorkRewriteResult["items"] = [];
+    for (const target of targets) {
+      const bee = target.cell ? store.getBee(target.cell.sourceBeeId) : null;
+      if (!target.cell) {
+        items.push({ beeId: null, beeName: null, cellId: target.cellId, status: "orphaned", oldBytes: target.bytes, newBytes: null, oldPrerequisites: 0, newPrerequisites: 0, missing: [], problems: ["no registry row"] });
+        continue;
+      }
+      const result = await retention.rewriteWork(target.cell, apply);
+      const o = result.outcome;
+      if (o == null) {
+        items.push({ beeId: target.cell.sourceBeeId, beeName: bee?.name ?? null, cellId: target.cellId, status: "failed", oldBytes: target.bytes, newBytes: null, oldPrerequisites: 0, newPrerequisites: 0, missing: [], problems: [result.error ?? "worker failed"] });
+        continue;
+      }
+      if (o.status === "rewritten" && target.cell.workBundleAt != null) {
+        try {
+          store.recordCellWork(target.cell.id, { at: target.cell.workBundleAt, sha: target.cell.workBundleSha, bytes: o.newBytes ?? target.bytes });
+        } catch (err) {
+          o.problems.push(`registry: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
+      items.push({ beeId: target.cell.sourceBeeId, beeName: bee?.name ?? null, cellId: target.cellId, status: o.status, oldBytes: o.oldBytes, newBytes: o.newBytes, oldPrerequisites: o.oldPrerequisites.length, newPrerequisites: o.newPrerequisites.length, missing: o.missing, problems: o.problems });
+    }
+    const totals = {
+      bundles: items.length,
+      rewrite: items.filter((i) => i.status === "rewrite" || i.status === "rewritten").length,
+      unchanged: items.filter((i) => i.status === "unchanged").length,
+      unrestorable: items.filter((i) => i.status === "unrestorable").length,
+      failed: items.filter((i) => i.status === "failed" || i.status === "orphaned").length,
+      bytesBefore: items.reduce((s, i) => s + i.oldBytes, 0),
+      bytesAfter: items.reduce((s, i) => s + (i.newBytes ?? i.oldBytes), 0),
+    };
+    this.log(`cell.work.rewrite dry_run=${!apply} bundles=${totals.bundles} rewrite=${totals.rewrite} unchanged=${totals.unchanged} unrestorable=${totals.unrestorable} failed=${totals.failed} bytes_before=${totals.bytesBefore} bytes_after=${totals.bytesAfter}`);
+    return { dryRun: !apply, items, totals };
   }
 
   /** `cell.work.verify` — one bee's work bundle restored into a throwaway directory from its origin and compared; nothing is written. */

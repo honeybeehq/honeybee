@@ -79,6 +79,10 @@ import {
   type WorkBundleWorkerResult,
   type WorkVerifyWorkerRequest,
   type WorkVerifyWorkerResult,
+  type WorkRewriteWorkerRequest,
+  type WorkRewriteWorkerResult,
+  type WorkPrerequisiteWorkerRequest,
+  type WorkPrerequisiteWorkerResult,
   wipNodeScope,
   type RetentionWorkerResult,
   type UpstreamRef,
@@ -1096,7 +1100,7 @@ export class CellRetentionService {
     return new Map(message.inspections.map((i) => [i.key, { inspection: i.inspection, error: i.error, ...(i.budgetCut ? { budgetCut: true } : {}) }] as const));
   }
 
-  private runWorker<T>(request: RetentionWorkerRequest | TrimVerifyWorkerRequest | ParkPlanWorkerRequest | WipPushWorkerRequest | WipRefSweepWorkerRequest | WorkBundleWorkerRequest | WorkVerifyWorkerRequest, onProgress?: (entry: RetentionWorkerInspection) => void): Promise<T> {
+  private runWorker<T>(request: RetentionWorkerRequest | TrimVerifyWorkerRequest | ParkPlanWorkerRequest | WipPushWorkerRequest | WipRefSweepWorkerRequest | WorkBundleWorkerRequest | WorkVerifyWorkerRequest | WorkRewriteWorkerRequest | WorkPrerequisiteWorkerRequest, onProgress?: (entry: RetentionWorkerInspection) => void): Promise<T> {
     this.assertRunning();
     return new Promise((resolvePromise, reject) => {
       const worker = new Worker(this.deps.workerUrl ?? retentionWorkerUrl(), { execArgv: [], workerData: request });
@@ -1451,6 +1455,8 @@ export class CellRetentionService {
         workRoot: this.workRoot(),
         maxBytes: this.deps.policy.workBundleMaxBytes,
         leftoverPatterns: [...this.deps.policy.leftoverPatterns],
+        receipts: store.listLandingReceipts(item.beeId),
+        upstream: this.upstreamRefs.get(cell.originRepo) ?? null,
       } satisfies WorkBundleWorkerRequest);
     } catch (err) {
       result = { record: null, fingerprint: null, reason: null, error: err instanceof Error ? err.message : String(err) };
@@ -1478,6 +1484,18 @@ export class CellRetentionService {
   /** `cell.work.verify`: the Cell's bundle checked against its origin in a throwaway directory, in the worker; nothing is written. */
   async verifyWork(cell: CellRow): Promise<WorkVerifyWorkerResult> {
     return this.runWorker<WorkVerifyWorkerResult>({ kind: "verifyWork", originRepo: cell.originRepo, workRoot: this.workRoot(), cellId: cell.id } satisfies WorkVerifyWorkerRequest);
+  }
+
+  /** `cell.work.rewrite`: one bundle cut against the landing targets in the worker; dry run unless `apply`. */
+  async rewriteWork(cell: CellRow, apply: boolean): Promise<WorkRewriteWorkerResult> {
+    const receipts = this.deps.store().listLandingReceipts(cell.sourceBeeId);
+    return this.runWorker<WorkRewriteWorkerResult>({ kind: "rewriteWork", originRepo: cell.originRepo, workRoot: this.workRoot(), cellId: cell.id, apply, receipts, upstream: this.upstreamRefs.get(cell.originRepo) ?? null } satisfies WorkRewriteWorkerRequest);
+  }
+
+  /** Every bundle on disk with its registry row, for the verbs that walk them. */
+  bundlesOnDisk(): Array<{ cellId: string; createdAt: number; bytes: number; cell: CellRow | null }> {
+    const store = this.deps.store();
+    return listWorkBundles(this.workRoot()).map((b) => ({ ...b, cell: store.getCell(b.cellId) }));
   }
 
   dropWork(cellId: string, why: string): boolean {
@@ -1538,12 +1556,31 @@ export class CellRetentionService {
       }
       out.keeps.push(entry);
     }
-    for (const bundle of listWorkBundles(this.workRoot())) {
+    const bundles = listWorkBundles(this.workRoot());
+    const checks = new Map<string, WorkPrerequisiteWorkerResult["checked"][number]>();
+    if (bundles.length > 0) {
+      try {
+        const budget = this.deps.policy.inspectBudgetMs;
+        const result = await this.runWorker<WorkPrerequisiteWorkerResult>({
+          kind: "checkWorkPrerequisites",
+          workRoot: this.workRoot(),
+          bundles: bundles.map((b) => ({ cellId: b.cellId, originRepo: store.getCell(b.cellId)?.originRepo ?? "" })),
+          deadlineMs: budget == null ? null : Date.now() + budget,
+        } satisfies WorkPrerequisiteWorkerRequest);
+        for (const c of result.checked) checks.set(c.cellId, c);
+        out.unchecked = result.unchecked;
+      } catch (err) {
+        this.deps.log(`cell.work.prerequisites_check_failed ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+    for (const bundle of bundles) {
       this.assertRunning();
       const cell = store.getCell(bundle.cellId);
       const bee = cell ? store.getBee(cell.sourceBeeId) : null;
       const ageMs = Math.max(0, now - bundle.createdAt);
-      const entry = { cellId: bundle.cellId, beeId: cell?.sourceBeeId ?? null, ageMs, bytes: bundle.bytes, status: "kept" as CellGcStale["bundles"][number]["status"], reason: null as string | null };
+      const check = checks.get(bundle.cellId) ?? null;
+      const entry: CellGcStale["bundles"][number] = { cellId: bundle.cellId, beeId: cell?.sourceBeeId ?? null, beeName: bee?.name ?? null, ageMs, bytes: bundle.bytes, status: "kept", reason: null, restorable: check?.restorable ?? null, missingPrerequisites: check?.missing ?? [] };
+      if (check?.restorable === false) this.deps.log(`cell.work.unrestorable cell=${bundle.cellId} bee=${cell?.sourceBeeId ?? "-"} missing=${JSON.stringify(check.missing)}`);
       const orphaned = cell == null || cell.state === "removed" || bee == null || bee.lifecycle === "deleted";
       if (!orphaned && cell.state === "active" && existsSync(cell.spaceDir)) entry.reason = "cell_active";
       else if (!orphaned && policy.workBundleKeepMs == null) entry.reason = "window_disabled";

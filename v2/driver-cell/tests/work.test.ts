@@ -12,7 +12,7 @@ import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, 
 import { join } from "node:path";
 import { cellPaths } from "../src/layout.ts";
 import { provisionCell } from "../src/provision.ts";
-import { WorkError, bundleWork, dropWorkBundle, listStashes, listWorkBundles, measureWork, readWorkRecord, restoreWork, verifyRestoredWork, verifyWorkBundle, workBundlePaths, workNeeded } from "../src/work.ts";
+import { WorkError, bundleWork, checkWorkPrerequisites, dropWorkBundle, listStashes, listWorkBundles, measureWork, readWorkRecord, restoreWork, rewriteWorkBundle, verifyRestoredWork, verifyWorkBundle, workBundlePaths, workNeeded } from "../src/work.ts";
 import { commitInCell, commitOn, g, makeRig } from "./helpers.ts";
 
 const OPTS = { disableCow: true, useGitImages: false } as const;
@@ -187,6 +187,119 @@ test("work.landed-branch: a local branch the origin already reaches is not in th
     assert.equal(broken.ok, false);
     assert.ok(broken.problems.some((p) => /fetch_failed|bundle_unverifiable/.test(p)), broken.problems.join("; "));
     assert.equal(verifyWorkBundle(rig.origin.repo, workRoot, "nope").problems[0], "no_bundle");
+  } finally {
+    rig.cleanup();
+  }
+});
+
+/** The origin gains a side branch `feature/x` with two commits; the Cell is spawned at its tip. */
+function featureBranchOrigin(rig: ReturnType<typeof makeRig>): { c: string } {
+  g(rig.origin.repo, ["checkout", "-q", "-b", "feature/x"]);
+  commitOn(rig.origin.repo, "x.txt", "x1\n", "x1");
+  const c = commitOn(rig.origin.repo, "x.txt", "x2\n", "x2");
+  g(rig.origin.repo, ["checkout", "-q", "main"]);
+  return { c };
+}
+
+/** The origin squash-merges `feature/x`, deletes it, expires its reflogs and prunes: `c` is gone. */
+function squashDeletePrune(rig: ReturnType<typeof makeRig>, c: string): void {
+  g(rig.origin.repo, ["merge", "-q", "--squash", "feature/x"]);
+  g(rig.origin.repo, ["commit", "-q", "-m", "squash x"]);
+  g(rig.origin.repo, ["branch", "-D", "feature/x"]);
+  g(rig.origin.repo, ["reflog", "expire", "--expire=now", "--expire-unreachable=now", "--all"]);
+  g(rig.origin.repo, ["gc", "-q", "--prune=now"]);
+  assert.throws(() => g(rig.origin.repo, ["cat-file", "-e", `${c}^{commit}`]), "the spawn commit is pruned from the origin");
+}
+
+test("work.boundary: a bundle is cut against the landing targets, so a squash-merged, deleted and pruned side branch cannot take its prerequisites away; the restore lands on main's tip", { timeout: 120_000 }, () => {
+  const rig = makeRig();
+  try {
+    const { c } = featureBranchOrigin(rig);
+    const req = { beeId: "bee-fb", originRepo: rig.origin.repo, sha: c, wrapper: "w-fb", repoName: "repo", cellId: "fb" };
+    provisionCell(rig.cellsRoot, req, "op-fb", OPTS);
+    const paths = cellPaths(rig.cellsRoot, req.wrapper, req.repoName, req.cellId);
+    const space = paths.spaceDir;
+    const workRoot = join(rig.root, "cell-work");
+    g(space, ["checkout", "-q", "-b", "agent/work"]);
+    const tip = commitInCell(space, "agent.txt", "agent work\n", "agent commit");
+    writeFileSync(join(space, "README.md"), "# edited\n");
+    const before = snapshot(space);
+    const record = bundleWork(space, rig.origin.repo, "fb", workRoot);
+    assert.equal(record.boundaryKind, "landing");
+    assert.deepEqual(record.boundary, [rig.origin.sha], "cut against main, not feature/x");
+    assert.deepEqual(record.prerequisites, [rig.origin.sha], "the prerequisite is on main's history");
+    assert.equal(record.commits, 3, "x1, x2 and the agent commit travel in the bundle");
+    rmSync(paths.wrapperDir, { recursive: true });
+    squashDeletePrune(rig, c);
+    assert.deepEqual(checkWorkPrerequisites(rig.origin.repo, workRoot, "fb"), { restorable: true, missing: [], prerequisites: 1 });
+    const mainTip = g(rig.origin.repo, ["rev-parse", "main"]);
+    provisionCell(rig.cellsRoot, { ...req, sha: mainTip }, "op-fb2", OPTS);
+    const outcome = restoreWork(space, workRoot, "fb", { expectedHead: mainTip });
+    assert.deepEqual(outcome, { status: "restored", verified: true, reason: null, commits: 3, paths: 1 });
+    const after = snapshot(space);
+    for (const key of ["status", "refs", "head", "branch", "diff", "cached"] as const) assert.equal(after[key], before[key], key);
+    assert.equal(g(space, ["rev-parse", "HEAD"]), tip);
+    assert.equal(g(space, ["log", "--format=%s", "agent/work"]).split("\n").join(" < "), "agent commit < x2 < x1 < initial");
+  } finally {
+    rig.cleanup();
+  }
+});
+
+test("work.rewrite: an old bundle cut against every ref is rewritten to the landing targets from the origin's objects; run before the prune it restores, run after it is named unrestorable and the old pair is untouched", { timeout: 120_000 }, () => {
+  const rig = makeRig();
+  try {
+    const { c } = featureBranchOrigin(rig);
+    const workRoot = join(rig.root, "cell-work");
+    const make = (id: string) => {
+      const req = { beeId: `bee-${id}`, originRepo: rig.origin.repo, sha: c, wrapper: `w-${id}`, repoName: "repo", cellId: id };
+      provisionCell(rig.cellsRoot, req, `op-${id}`, OPTS);
+      const paths = cellPaths(rig.cellsRoot, req.wrapper, req.repoName, req.cellId);
+      g(paths.spaceDir, ["checkout", "-q", "-b", "agent/work"]);
+      commitInCell(paths.spaceDir, "agent.txt", `agent ${id}\n`, `agent ${id}`);
+      writeFileSync(join(paths.spaceDir, "README.md"), `# ${id}\n`);
+      const before = snapshot(paths.spaceDir);
+      const record = bundleWork(paths.spaceDir, rig.origin.repo, id, workRoot, { boundaryShas: [c] });
+      assert.deepEqual(record.prerequisites, [c], "the old boundary leaves the side-branch tip as the prerequisite");
+      rmSync(paths.wrapperDir, { recursive: true });
+      return { req, paths, before, record };
+    };
+    const early = make("early");
+    const late = make("late");
+
+    const dry = rewriteWorkBundle(rig.origin.repo, workRoot, "early", {});
+    assert.equal(dry.status, "rewrite", dry.problems.join("; "));
+    assert.deepEqual(dry.oldPrerequisites, [c]);
+    assert.deepEqual(dry.newPrerequisites, [rig.origin.sha]);
+    assert.ok((dry.newBytes ?? 0) > dry.oldBytes, "x1 and x2 now travel in the bundle");
+    assert.deepEqual(readWorkRecord(workRoot, "early")?.prerequisites, [c], "a dry run writes nothing");
+    const applied = rewriteWorkBundle(rig.origin.repo, workRoot, "early", { apply: true, now: () => 1_700_000_000_000 });
+    assert.equal(applied.status, "rewritten", applied.problems.join("; "));
+    const rewritten = readWorkRecord(workRoot, "early")!;
+    assert.deepEqual(rewritten.prerequisites, [rig.origin.sha]);
+    assert.equal(rewritten.boundaryKind, "landing");
+    assert.equal(statSync(workBundlePaths(workRoot, "early").bundle).size, applied.newBytes);
+    assert.equal(verifyWorkBundle(rig.origin.repo, workRoot, "early").ok, true);
+    assert.equal(rewriteWorkBundle(rig.origin.repo, workRoot, "early", {}).status, "unchanged", "a second pass has nothing to do");
+
+    squashDeletePrune(rig, c);
+    const mainTip = g(rig.origin.repo, ["rev-parse", "main"]);
+    provisionCell(rig.cellsRoot, { ...early.req, sha: mainTip }, "op-early2", OPTS);
+    assert.equal(restoreWork(early.paths.spaceDir, workRoot, "early", { expectedHead: mainTip }).verified, true, "rewritten before the prune: restores");
+    const after = snapshot(early.paths.spaceDir);
+    for (const key of ["status", "refs", "head", "branch", "diff", "cached"] as const) assert.equal(after[key], early.before[key], key);
+
+    const oldBundle = workBundlePaths(workRoot, "late");
+    const oldBytes = statSync(oldBundle.bundle).size;
+    const oldRecord = readFileSync(oldBundle.record, "utf8");
+    const tooLate = rewriteWorkBundle(rig.origin.repo, workRoot, "late", { apply: true });
+    assert.equal(tooLate.status, "unrestorable");
+    assert.deepEqual(tooLate.missing, [c], "named by the commit the origin no longer has");
+    assert.equal(statSync(oldBundle.bundle).size, oldBytes, "the old bundle is untouched");
+    assert.equal(readFileSync(oldBundle.record, "utf8"), oldRecord, "and so is its record");
+    assert.deepEqual(checkWorkPrerequisites(rig.origin.repo, workRoot, "late"), { restorable: false, missing: [c], prerequisites: 1 });
+    provisionCell(rig.cellsRoot, { ...late.req, sha: mainTip }, "op-late2", OPTS);
+    assert.match(restoreWork(late.paths.spaceDir, workRoot, "late", { expectedHead: mainTip }).reason ?? "", /bundle_unverifiable|fetch_failed/);
+    assert.equal(late.record.cellId, "late");
   } finally {
     rig.cleanup();
   }

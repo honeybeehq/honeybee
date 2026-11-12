@@ -85,6 +85,8 @@ import {
   type CellRemoveResult,
   type CellRetainedRemoveResult,
   type CellKeepRemoveResult,
+  type CellWorkRewriteResult,
+  type CellWorkVerifyAllResult,
   type CellWorkVerifyResult,
   type CellEvictResult,
   type CellParkResult,
@@ -2839,7 +2841,7 @@ async function cmdArchive(ctx: CliContext, parsed: Parsed): Promise<number> {
 async function cmdCell(ctx: CliContext, parsed: Parsed): Promise<number> {
   const sub = parsed.positional[1];
   const needle = parsed.positional[2];
-  const usage = "usage: hive cell move <bee> --cwd <dir> | cell move-get <moveId> | cell capture <bee> --onto <branch> [--rebase] [--idempotency-key k] | cell remove <bee> [--force] [--idempotency-key k] | cell exec <cellId> -- <argv…> | cell retained-remove <cellId> [--force] | cell gc [--apply] [--measure|--no-measure] | cell evict <bee> [--force] | cell park <bee> | cell keep-remove <bee>|--all | cell work verify <bee>";
+  const usage = "usage: hive cell move <bee> --cwd <dir> | cell move-get <moveId> | cell capture <bee> --onto <branch> [--rebase] [--idempotency-key k] | cell remove <bee> [--force] [--idempotency-key k] | cell exec <cellId> -- <argv…> | cell retained-remove <cellId> [--force] | cell gc [--apply] [--measure|--no-measure] | cell evict <bee> [--force] | cell park <bee> | cell keep-remove <bee>|--all | cell work verify <bee>|--all | cell work rewrite <bee>|--all [--apply]";
   switch (sub) {
     case "gc": {
       const apply = parsed.flags.get("--apply") === true;
@@ -2991,9 +2993,33 @@ async function cmdCell(ctx: CliContext, parsed: Parsed): Promise<number> {
     case "work": {
       const action = needle;
       const target = parsed.positional[3];
-      if (action !== "verify" || !target) throw new Error(usage);
+      const all = parsed.flags.get("--all") === true;
+      if (action === "rewrite") {
+        if (!all && !target) throw new Error(usage);
+        return withClient(ctx, async (c) => {
+          const apply = parsed.flags.get("--apply") === true;
+          const r = await c.request<CellWorkRewriteResult>("cell.work.rewrite", all ? { all: true, apply } : { beeId: await resolveBee(c, target!), apply }, CELL_GC_TIMEOUT_MS);
+          const lines = [`cell work rewrite (${r.dryRun ? "dry run — nothing was changed; pass --apply to rewrite" : "applied"}): ${r.totals.bundles} bundles · would rewrite ${r.totals.rewrite} · unchanged ${r.totals.unchanged} · unrestorable ${r.totals.unrestorable} · failed ${r.totals.failed} · bytes ${gib(r.totals.bytesBefore)} → ${gib(r.totals.bytesAfter)}`];
+          for (const i of r.items) {
+            if (i.status === "unchanged" && r.items.length > 1) continue;
+            lines.push(`  ${i.status.padEnd(12)} ${gib(i.oldBytes).padStart(10)} → ${(i.newBytes == null ? "?" : gib(i.newBytes)).padStart(10)}  prerequisites ${i.oldPrerequisites} → ${i.newPrerequisites}  ${i.beeName ?? i.beeId ?? "(no bee)"}  ${i.cellId.slice(0, 8)}${i.missing.length > 0 ? `  missing in origin: ${i.missing.map((s) => s.slice(0, 12)).join(" ")}` : ""}${i.problems.length > 0 ? `  ${i.problems[0]}` : ""}`);
+          }
+          emit(ctx, lines, r, false);
+          return r.totals.failed > 0 ? 2 : 0;
+        });
+      }
+      if (action !== "verify" || (!target && !all)) throw new Error(usage);
+      if (all) {
+        return withClient(ctx, async (c) => {
+          const r = await c.request<CellWorkVerifyAllResult>("cell.work.verify", { all: true }, CELL_GC_TIMEOUT_MS);
+          const lines = [`cell work verify --all: ${r.totals.bundles} bundles (${gib(r.totals.bytes)}) · ok ${r.totals.ok} · FAILED ${r.totals.failed} · orphaned ${r.totals.orphaned}`];
+          for (const i of r.items) lines.push(`  ${(i.status === "ok" ? "ok" : i.status.toUpperCase()).padEnd(8)} ${gib(i.bundleBytes).padStart(10)}  ${String(i.commits).padStart(4)} commits ${String(i.paths).padStart(4)} paths ${String(i.stashes).padStart(2)} stashes  ${i.beeName ?? i.beeId ?? "(no bee)"}  ${i.cellId.slice(0, 8)}${i.problem ? `  ${i.problem}` : ""}`);
+          emit(ctx, lines, r, false);
+          return r.totals.failed + r.totals.orphaned > 0 ? 2 : 0;
+        });
+      }
       return withClient(ctx, async (c) => {
-        const beeId = await resolveBee(c, target);
+        const beeId = await resolveBee(c, target!);
         const r = await c.request<CellWorkVerifyResult>("cell.work.verify", { beeId }, CELL_GC_TIMEOUT_MS);
         const lines: string[] = [];
         if (r.status === "no_bundle") lines.push(confirm("ok", "no bundle", `${beeId} (cell ${r.cell.id}, ${r.cell.state}) has no work bundle at ${r.bundlePath}`));
@@ -3309,6 +3335,12 @@ function renderCellGc(r: CellGcResult): string[] {
       for (const k of r.stale.keeps.filter((e) => e.status === "failed")) lines.push(`  failed keep ${k.spaceName}: ${k.reason ?? ""}`);
       for (const b of r.stale.bundles.filter((e) => e.status === "failed")) lines.push(`  failed bundle ${b.cellId}: ${b.reason ?? ""}`);
     }
+    const unrestorable = r.stale.bundles.filter((b) => b.restorable === false);
+    if (unrestorable.length > 0) {
+      lines.push(`work bundle cannot be restored: ${unrestorable.length} bundle${unrestorable.length === 1 ? "" : "s"} whose prerequisites are no longer in the origin (run hive cell work verify <bee>; the bundle file is kept)`);
+      for (const b of unrestorable) lines.push(`  ${b.beeName ?? b.beeId ?? "(no bee)"}  ${b.cellId.slice(0, 8)}  missing ${(b.missingPrerequisites ?? []).map((s) => s.slice(0, 12)).join(" ")}`);
+    }
+    if ((r.stale.unchecked ?? 0) > 0) lines.push(`  ${r.stale.unchecked} bundles left unchecked by the inspection budget`);
   }
   if (r.trimOutcomes) {
     const trimmed = r.trimOutcomes.filter((o) => o.status === "trimmed");

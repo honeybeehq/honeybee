@@ -658,6 +658,7 @@ export const RPC_VERBS = [
   "cell.park",
   "cell.keep.remove",
   "cell.work.verify",
+  "cell.work.rewrite",
   // v23: durable session handoff (same-family reset / cross-family change).
   "bee.handoff",
   "bee.handoff.get",
@@ -2778,7 +2779,9 @@ export type CellGcStaleStatus = "planned" | "removed" | "failed" | "kept";
 /** Kept ignored files and work bundles past their windows: what the pass deletes, or would. */
 export interface CellGcStale {
   keeps: Array<{ spaceName: string; cellId: string | null; beeId: string | null; ageMs: number; status: CellGcStaleStatus; reason: string | null }>;
-  bundles: Array<{ cellId: string; beeId: string | null; ageMs: number; bytes: number; status: CellGcStaleStatus; reason: string | null }>;
+  bundles: Array<{ cellId: string; beeId: string | null; beeName?: string | null; ageMs: number; bytes: number; status: CellGcStaleStatus; reason: string | null; restorable?: boolean | null; missingPrerequisites?: string[] }>;
+  /** Bundles the inspection budget left unchecked this pass. Absent on older daemons. */
+  unchecked?: number;
 }
 
 export interface CellGcTrimOutcome {
@@ -2937,9 +2940,31 @@ export interface CellEvictResult {
 }
 
 /** `cell.keep.remove` — delete kept ignored files (`cell-keep/`) of one evicted bee, or of every Cell that is not active. */
-/** `cell.work.verify` — check one bee's work bundle against its origin in a throwaway directory. Read-only: nothing in the origin, the bundle or any Cell is written. */
+/** `cell.work.verify` — check one bee's work bundle (or, with `all`, every bundle on disk) against its origin in a throwaway directory. Read-only: nothing in the origin, the bundle or any Cell is written. */
 export interface CellWorkVerifyParams {
-  beeId: string;
+  beeId?: string;
+  all?: boolean;
+}
+
+export interface CellWorkVerifyAllResult {
+  items: Array<{ beeId: string | null; beeName: string | null; cellId: string; status: "ok" | "failed" | "no_bundle" | "orphaned"; bundleBytes: number; commits: number; paths: number; stashes: number; problem: string | null }>;
+  totals: { bundles: number; ok: number; failed: number; orphaned: number; bytes: number };
+}
+
+/** `cell.work.rewrite` — cut existing bundles against the origin's landing targets without their Cells. Dry run unless `apply`. */
+export interface CellWorkRewriteParams {
+  beeId?: string;
+  all?: boolean;
+  apply?: boolean;
+}
+
+export const CELL_WORK_REWRITE_STATUSES = ["rewrite", "rewritten", "unchanged", "unrestorable", "no_bundle", "orphaned", "failed"] as const;
+export type CellWorkRewriteStatus = (typeof CELL_WORK_REWRITE_STATUSES)[number];
+
+export interface CellWorkRewriteResult {
+  dryRun: boolean;
+  items: Array<{ beeId: string | null; beeName: string | null; cellId: string; status: CellWorkRewriteStatus; oldBytes: number; newBytes: number | null; oldPrerequisites: number; newPrerequisites: number; missing: string[]; problems: string[] }>;
+  totals: { bundles: number; rewrite: number; unchanged: number; unrestorable: number; failed: number; bytesBefore: number; bytesAfter: number };
 }
 
 export interface CellWorkVerifyResult {

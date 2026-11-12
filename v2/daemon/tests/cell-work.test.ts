@@ -17,7 +17,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { g, makeOrigin } from "../../driver-cell/tests/helpers.ts";
-import { DAEMON_CAPABILITIES, RPC_VERBS, type CellGcResult, type CellKeepRemoveResult, type CellWorkVerifyResult, type MailboxResult, type SendRpcResult, type SpawnResult, type ViewResult } from "../src/protocol.ts";
+import { DAEMON_CAPABILITIES, RPC_VERBS, type CellGcResult, type CellKeepRemoveResult, type CellWorkRewriteResult, type CellWorkVerifyAllResult, type CellWorkVerifyResult, type MailboxResult, type SendRpcResult, type SpawnResult, type ViewResult } from "../src/protocol.ts";
 import type { RpcClient } from "../../cli/src/client.ts";
 import { makeDaemonDir, startDaemon, waitFor, type DaemonHandle } from "./helpers.ts";
 
@@ -112,6 +112,7 @@ const itemFor = (r: CellGcResult, beeId: string) => r.items.find((i) => i.beeId 
 test("cell-work.0: the verb and capability are published", () => {
   assert.ok(RPC_VERBS.includes("cell.keep.remove"));
   assert.ok(RPC_VERBS.includes("cell.work.verify"));
+  assert.ok(RPC_VERBS.includes("cell.work.rewrite"));
   assert.ok((DAEMON_CAPABILITIES as readonly string[]).includes("cell.work.v1"));
 });
 
@@ -361,6 +362,70 @@ test("cell-work.5: mode=plan makes the scheduled pass a dry run that still logs 
     assert.ok((manual.totals.workCapturedBytes ?? 0) > 0);
     const applied = await gc(client, { dryRun: false });
     assert.equal(applied.outcomes!.find((o) => o.beeId === bee.beeId)?.status, "evicted", "hive cell gc --apply is the operator's explicit act and still applies");
+  } finally {
+    await daemon?.stop();
+    rig.cleanup();
+  }
+});
+
+test("cell-work.6: a bundle whose prerequisite the origin lost is named in every plan, rewrite reports it unrestorable, verify --all counts it, and the revive still provisions at the landing target", { timeout: 300_000 }, async () => {
+  const rig = makeRig({ enabled: false, stoppedAfterDays: 0, archivedAfterDays: 0 });
+  let daemon: DaemonHandle | null = null;
+  try {
+    daemon = await startDaemon(rig.dir);
+    const client = await daemon.client();
+    const sound = await spawnIdle(client, "sound", rig.origin.repo);
+    makeWork(sound.view.bee!.cwd);
+    await stopped(client, sound.beeId);
+    const m2 = g(rig.origin.repo, ["rev-parse", "main"]);
+    writeFileSync(join(rig.origin.repo, "later.txt"), "main moves on\n");
+    g(rig.origin.repo, ["add", "later.txt"]);
+    g(rig.origin.repo, ["commit", "-q", "-m", "m3"]);
+    const m3 = g(rig.origin.repo, ["rev-parse", "main"]);
+    const lost = await spawnIdle(client, "lost work", rig.origin.repo);
+    const lostSpace = lost.view.bee!.cwd;
+    assert.equal(g(lostSpace, ["rev-parse", "HEAD"]), m3);
+    writeFileSync(join(lostSpace, "notes.md"), "draft\n");
+    await stopped(client, lost.beeId);
+    const applied = await gc(client, { dryRun: false });
+    assert.deepEqual(applied.outcomes!.filter((o) => o.status === "evicted").map((o) => o.beeId).sort(), [lost.beeId, sound.beeId].sort());
+    const lostRow = (await client.request<ViewResult>("view", { beeId: lost.beeId })).cell!;
+    assert.ok(lostRow.workBundleAt != null);
+
+    g(rig.origin.repo, ["reset", "-q", "--hard", m2]);
+    g(rig.origin.repo, ["reflog", "expire", "--expire=now", "--expire-unreachable=now", "--all"]);
+    g(rig.origin.repo, ["gc", "-q", "--prune=now"]);
+    assert.throws(() => g(rig.origin.repo, ["cat-file", "-e", `${m3}^{commit}`]), "the prerequisite is pruned from the origin");
+
+    const plan = await gc(client);
+    const lostEntry = plan.stale?.bundles.find((b) => b.cellId === lostRow.id);
+    assert.equal(lostEntry?.restorable, false);
+    assert.deepEqual(lostEntry?.missingPrerequisites, [m3]);
+    assert.equal(lostEntry?.beeName, "lost work");
+    assert.equal(plan.stale?.bundles.find((b) => b.beeId === sound.beeId)?.restorable, true);
+    assert.match(readFileSync(join(rig.dir, "hived.log"), "utf8"), /cell\.work\.unrestorable cell=.* missing=\[/);
+
+    const rewrite = await client.request<CellWorkRewriteResult>("cell.work.rewrite", { all: true }, 180_000);
+    assert.equal(rewrite.dryRun, true);
+    assert.deepEqual(rewrite.items.map((i) => [i.beeName, i.status]).sort(), [["lost work", "unrestorable"], ["sound", "unchanged"]]);
+    assert.deepEqual(rewrite.items.find((i) => i.beeId === lost.beeId)?.missing, [m3]);
+    assert.deepEqual(rewrite.totals, { bundles: 2, rewrite: 0, unchanged: 1, unrestorable: 1, failed: 0, bytesBefore: rewrite.totals.bytesBefore, bytesAfter: rewrite.totals.bytesBefore });
+
+    const verified = await client.request<CellWorkVerifyAllResult>("cell.work.verify", { all: true }, 180_000);
+    assert.deepEqual({ bundles: verified.totals.bundles, ok: verified.totals.ok, failed: verified.totals.failed }, { bundles: 2, ok: 1, failed: 1 });
+    assert.match(verified.items.find((i) => i.beeId === lost.beeId)?.problem ?? "", /prerequisites_missing_in_origin/);
+
+    const revived = await revive(client, lost.beeId);
+    assert.equal(revived.cell?.state, "active", "the bee is back even though its work could not be restored");
+    assert.equal(g(lostSpace, ["rev-parse", "HEAD"]), m2, "provisioned at main's tip: evicted HEAD and spawn sha are both gone");
+    const log = readFileSync(join(rig.dir, "hived.log"), "utf8");
+    assert.match(log, /cell\.provision\.sha_fallback bee=.* target=/);
+    assert.match(log, /cell\.work\.kept bee=.* status=failed/);
+    assert.equal(existsSync(join(rig.workRoot, `${lostRow.id}.bundle`)), true, "the unrestorable bundle stays on disk for the operator");
+
+    const soundRevived = await revive(client, sound.beeId);
+    assert.equal(soundRevived.cell?.state, "active");
+    assert.equal(g(sound.view.bee!.cwd, ["status", "--porcelain"]).includes("notes.md"), true, "the sound bundle restores as before");
   } finally {
     await daemon?.stop();
     rig.cleanup();
