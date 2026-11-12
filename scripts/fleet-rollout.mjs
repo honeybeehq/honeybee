@@ -14,18 +14,29 @@ const MIN_FREE_BYTES = 1024 * 1024 * 1024;
 const SUCCESSOR_WAIT_S = 180;
 
 const USAGE = `usage:
-  node scripts/fleet-rollout.mjs <[user@]host|local> <sha> [--artifact <dir>|<host>:<dir>] [--dry-run] [--no-probe] [--allow-low-disk] [--json]
+  node scripts/fleet-rollout.mjs <[user@]host|local> <sha> [--artifact <dir>|<host>:<dir>] [--set cells.retention.<key>=<json>]... [--dry-run] [--no-probe] [--allow-low-disk] [--json]
+    --set writes the key into the host's config.json through the new build's own "hive config set" (atomic, 0600, every other key kept, the file never printed)
+    after the install and before the activation, so the successor daemon boots with it; the plan prints the retention mode the host will have
   node scripts/fleet-rollout.mjs <[user@]host> --inventory [--json]
   node scripts/fleet-rollout.mjs <[user@]host> --rollback [--dry-run] [--force-store] [--json]
   lab only: --lab-root <dir on the host>   (scratch data dir, runtime root, unit dir, PATH shim; never the node's own)`;
 
 function parseArgs(argv) {
-  const o = { host: null, sha: null, artifact: null, dryRun: false, probe: true, allowLowDisk: false, json: false, inventory: false, rollback: false, labRoot: null, forceStore: false };
+  const o = { host: null, sha: null, artifact: null, dryRun: false, probe: true, allowLowDisk: false, json: false, inventory: false, rollback: false, labRoot: null, forceStore: false, sets: [] };
   const positional = [];
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
     const value = () => { const v = argv[i + 1]; if (v === undefined || v.startsWith("--")) throw new Error(`${a} needs a value\n${USAGE}`); i += 1; return v; };
     if (a === "--artifact") o.artifact = value();
+    else if (a === "--set") {
+      const v = value();
+      const eq = v.indexOf("=");
+      const m = eq > 0 ? /^cells\.retention\.([A-Za-z]+)$/.exec(v.slice(0, eq)) : null;
+      if (!m) throw new Error(`--set takes cells.retention.<key>=<json value>, got ${v}\n${USAGE}`);
+      let parsed;
+      try { parsed = JSON.parse(v.slice(eq + 1)); } catch { parsed = v.slice(eq + 1); }
+      o.sets.push({ key: m[1], value: parsed, raw: v.slice(eq + 1) });
+    }
     else if (a === "--lab-root") o.labRoot = value();
     else if (a === "--dry-run") o.dryRun = true;
     else if (a === "--no-probe") o.probe = false;
@@ -158,6 +169,7 @@ PID=$(sed -n 's/.*"pid":\\([0-9]*\\).*/\\1/p' "$DATA/hived.endpoint.json" 2>/dev
 if [ -n "$PID" ] && kill -0 "$PID" 2>/dev/null; then echo PID_ALIVE=yes; echo PID_ARGS=$(ps -o args= -p "$PID" | head -c 600); else echo PID_ALIVE=no; echo PID_ARGS=-; fi
 if [ "$(uname -s)" = Linux ] && [ -n "$PID" ]; then echo ZOMBIES=$(ps -eo stat,ppid | awk -v p="$PID" '$1 ~ /^Z/ && $2==p' | wc -l | tr -d ' '); else echo ZOMBIES=-; fi
 echo FREE_KB=$(df -Pk "$HOME" | tail -1 | awk '{print $4}')
+if [ -f "$DATA/config.json" ]; then echo CONFIG_PRESENT=yes; else echo CONFIG_PRESENT=no; fi
 echo LOG_BYTES=$(stat -c %s "$DATA/hived.log" 2>/dev/null || stat -f %z "$DATA/hived.log" 2>/dev/null || echo 0)
 echo STORE_BYTES=$(stat -c %s "$DATA/core.sqlite3" 2>/dev/null || stat -f %z "$DATA/core.sqlite3" 2>/dev/null || echo 0)
 if [ "$(uname -s)" = Linux ]; then echo SYSTEMD=$(systemctl --user show "$L.service" -p MainPID,ActiveState,SubState,KillMode,NRestarts,TasksCurrent 2>/dev/null | tr '\\n' ' '); echo SYSTEMD_EXEC=$(systemctl --user show "$L.service" -p ExecStart 2>/dev/null | head -c 400 | tr '\\n' ' '); else echo LAUNCHD=$(launchctl print gui/$(id -u)/$L 2>/dev/null | grep -E 'pid =|state =' | head -2 | tr '\\n' ' '); fi
@@ -191,6 +203,7 @@ if [ "$(uname -s)" = Linux ]; then echo SYSTEMD=$(systemctl --user show "$L.serv
   const stage2 = await remote(`
 NODE=${q(interpreter)}; ENTRY=${q(runningEntry)}; DATA=${q(lay.dataDir)}; DIR=${q(runningDir)}
 echo NODE_VERSION=$("$NODE" --version 2>&1)
+echo RETENTION=$("$NODE" -e 'const fs=require("node:fs");const p=process.argv[1];try{if(!fs.existsSync(p)){console.log(JSON.stringify({present:false,nodeKind:null,retention:null}));process.exit(0)}const c=JSON.parse(fs.readFileSync(p,"utf8"));const cells=c&&typeof c==="object"&&c.cells&&typeof c.cells==="object"?c.cells:{};console.log(JSON.stringify({present:true,nodeKind:c&&typeof c==="object"&&c.nodeKind!==undefined?c.nodeKind:null,retention:cells.retention&&typeof cells.retention==="object"?cells.retention:null}))}catch(e){console.log(JSON.stringify({present:true,error:String(e&&e.message||e)}))}' "$DATA/config.json" 2>&1 | tail -1)
 echo ACTIVATE_IN_BUNDLE=$(grep -l 'runtime.activate' "$DIR"/dist/v2/cli*.js 2>/dev/null | wc -l | tr -d ' ')
 echo BUNDLE_SCHEMA=$(grep -hoE '^(var|let|const) SCHEMA_VERSION[0-9]* = [0-9]+;$' "$DIR"/dist/v2/cli*.js 2>/dev/null | grep -oE '[0-9]+;$' | tr -d ';' | sort -u | tr '\\n' ',')
 echo IDENTITY=$(tr -d '\\n ' < "$DIR/dist/build-identity.json" 2>/dev/null || echo -)
@@ -200,6 +213,8 @@ echo RUNTIME_STATUS=$("$NODE" "$ENTRY" runtime status --json --data-dir "$DATA" 
 `, { timeoutMs: 180_000 });
   const g = kv(stage2.stdout);
   facts.nodeVersion = g.NODE_VERSION ?? null;
+  facts.configPresent = f.CONFIG_PRESENT === "yes";
+  facts.retention = g.RETENTION ? json(g.RETENTION) : null;
   facts.hasActivate = Number(g.ACTIVATE_IN_BUNDLE) > 0;
   facts.runningSchema = (g.BUNDLE_SCHEMA ?? "").split(",").filter(Boolean).map(Number);
   facts.runningIdentity = g.IDENTITY && g.IDENTITY !== "-" ? JSON.parse(g.IDENTITY) : null;
@@ -217,6 +232,54 @@ echo RUNTIME_STATUS=$("$NODE" "$ENTRY" runtime status --json --data-dir "$DATA" 
 
 const fmtBytes = (n) => n == null ? "-" : n >= 1e9 ? `${(n / 1e9).toFixed(1)} GB` : n >= 1e6 ? `${(n / 1e6).toFixed(0)} MB` : `${n} B`;
 
+/**
+ * The retention mode and budget enforcement the host will run with after the
+ * activation: config.json as it is, overlaid with every --set, resolved the
+ * way cellRetentionOf does (mode is "plan" only when written so; budgetEnforce
+ * defaults to true on satellites, false elsewhere). Unknown when the section
+ * could not be read: the rollout refuses such a host.
+ */
+function retentionAfter(f) {
+  const r = f.retention;
+  if (!r || r.error) return { ok: false, reason: r?.error ? `config.json unreadable: ${r.error}` : "the retention section could not be read" };
+  const written = { ...(r.retention ?? {}) };
+  const sources = Object.fromEntries(Object.keys(written).map((k) => [k, "config"]));
+  for (const s of options.sets) { written[s.key] = s.value; sources[s.key] = "--set"; }
+  const nodeKind = r.nodeKind ?? "workstation";
+  const mode = written.mode === "plan" ? "plan" : "apply";
+  const modeSource = written.mode === undefined ? "default" : written.mode === "plan" || written.mode === "apply" ? sources.mode : `default (invalid value ${JSON.stringify(written.mode)} falls back)`;
+  const enforceDefault = nodeKind === "satellite";
+  const budgetEnforce = typeof written.budgetEnforce === "boolean" ? written.budgetEnforce : enforceDefault;
+  const enforceSource = typeof written.budgetEnforce === "boolean" ? sources.budgetEnforce : "default";
+  const enabled = typeof written.enabled === "boolean" ? written.enabled : true;
+  return { ok: true, nodeKind, present: r.present, mode, modeSource, budgetEnforce, enforceSource, enabled, enabledSource: typeof written.enabled === "boolean" ? sources.enabled : "default", keysWritten: Object.keys(r.retention ?? {}) };
+}
+
+function describeRetention(a) {
+  return `after activation this host runs retention mode=${a.mode} (${a.modeSource})${a.enabled ? "" : ", enabled=false"}; budgetEnforce=${a.budgetEnforce} (${a.enforceSource}); nodeKind ${a.nodeKind}; config.json ${a.present ? `has ${a.keysWritten.length} retention key(s): ${a.keysWritten.join(", ") || "none"}` : "absent"}` +
+    (a.mode === "plan" ? " — scheduled passes plan only, no eviction until mode=apply" : " — scheduled passes EVICT (bundles first); set cells.retention.mode=plan to hold");
+}
+
+async function applyConfigSets(f, sha) {
+  if (options.sets.length === 0) return;
+  const cli = join(f.runtimeRoot, sha, "dist", "cli.js");
+  const cmds = options.sets.map((s) => `${q(f.interpreter)} ${q(cli)} config set ${q(`cells.retention.${s.key}`)} ${q(s.raw)} --data-dir ${q(f.dataDir)}`);
+  if (options.dryRun) { step("config", `DRY RUN would run on ${options.host} (the new build's own writer, after install, before activation):\n  ${cmds.join("\n  ")}`); return; }
+  for (const cmd of cmds) {
+    const r = await remote(cmd, { timeoutMs: 60_000, allowFailure: true });
+    if (r.code !== 0) fail("config_set_failed", `hive config set failed on ${options.host}: ${(r.stdout + r.stderr).trim().slice(-600)}`);
+    step("config", (r.stdout.trim().split("\n").pop() ?? "").slice(0, 300));
+  }
+  const after = await readFacts();
+  const a = retentionAfter(after);
+  if (!a.ok) fail("config_unverified", `retention could not be read back after hive config set: ${a.reason}`);
+  for (const s of options.sets) {
+    const got = after.retention?.retention?.[s.key];
+    if (JSON.stringify(got) !== JSON.stringify(s.value)) fail("config_unverified", `cells.retention.${s.key} reads ${JSON.stringify(got)} after the write, expected ${JSON.stringify(s.value)}`);
+  }
+  step("config", `verified: ${describeRetention(a)}`);
+}
+
 function inventoryRow(f) {
   return {
     host: f.host, target: f.target, running: f.running?.sourceRevision ?? f.runningIdentity?.sourceRevision ?? null, protocol: f.running?.protocol ?? null,
@@ -224,6 +287,7 @@ function inventoryRow(f) {
     unitForm: f.exec.form, killMode: f.unit?.killMode ?? null, restart: f.unit?.restart ?? null, nodePin: f.interpreter, nodeVersion: f.nodeVersion ?? null,
     hasActivate: f.hasActivate, hasRuntimeUpdate: f.hasRuntimeUpdate, currentLink: f.currentLink, installed: f.installed.length,
     liveRuntimes: f.liveRuntimes.length, bees: f.bees, pid: f.endpoint?.pid ?? null, zombies: f.zombies, free: fmtBytes(f.freeBytes), log: fmtBytes(f.logBytes), storeFile: fmtBytes(f.storeBytes),
+    retention: (() => { const a = f.retention === undefined ? null : retentionAfter(f); return a == null ? null : a.ok ? `mode=${a.mode} (${a.modeSource}) budgetEnforce=${a.budgetEnforce} (${a.enforceSource}) nodeKind=${a.nodeKind}` : `unknown: ${a.reason}`; })(),
   };
 }
 
@@ -547,15 +611,19 @@ async function apply() {
     const useActivate = f.hasActivate && f.exec.form === "launcher";
     const route = useActivate ? "runtime.activate" : f.hasActivate ? "service reload (the unit changes form this run, so the loaded service is restarted from outside)" : "first hop (marker + service restart)";
     step("plan", `${f.running.sourceRevision} -> ${sha} via ${route}; ${f.liveRuntimes.length} live runtimes must survive: ${f.liveRuntimes.map((r) => `${r.name ?? r.beeId.slice(0, 8)}#${r.generation}@${r.pid}`).join(", ") || "none"}`);
+    const retention = retentionAfter(f);
+    if (!retention.ok) fail("retention_unknown", `refusing ${options.host}: ${retention.reason}; the retention mode after activation cannot be established`);
+    step("retention", describeRetention(retention));
     await backupBefore(f, sha);
     await shipAndInstall(f, sha, artifact);
+    await applyConfigSets(f, sha);
     const adoption = await adoptUnit(f, sha);
     const current = adoption.facts ?? f;
     const result = useActivate ? await switchByActivate(current, sha) : await switchByRestart(current, sha);
-    if (options.dryRun) { step("done", "DRY RUN: nothing was changed"); return { host: options.host, sha, dryRun: true, route, inventory: inventoryRow(f) }; }
+    if (options.dryRun) { step("done", "DRY RUN: nothing was changed"); return { host: options.host, sha, dryRun: true, route, retention, sets: options.sets, inventory: inventoryRow(f) }; }
     const final = await readFacts();
     step("done", `${options.host} runs ${final.running?.sourceRevision} pid ${final.endpoint?.pid}; current -> ${final.currentLink}, previous -> ${final.previousLink}; ${final.liveRuntimes.length} live runtimes; store ${final.store?.schemaVersion}/${final.store?.minReaderSchema}${findings.length ? `; ${findings.length} finding(s) to read above` : ""}`);
-    return { host: options.host, sha, changed: true, route, result, inventory: inventoryRow(final) };
+    return { host: options.host, sha, changed: true, route, retention: retentionAfter(final), sets: options.sets, result, inventory: inventoryRow(final) };
   } finally { rmSync(scratch, { recursive: true, force: true }); }
 }
 

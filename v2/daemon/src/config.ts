@@ -1031,6 +1031,79 @@ export function publicNamingConfig(naming: ResolvedNamingConfig): {
   };
 }
 
+function readRawConfig(configPath: string): Record<string, unknown> {
+  if (!existsSync(configPath)) return {};
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(readFileSync(configPath, "utf8"));
+  } catch (err) {
+    throw new ConfigError(`config: ${configPath} is not valid json: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) throw new ConfigError(`config: ${configPath} must contain a json object`);
+  return parsed as Record<string, unknown>;
+}
+
+function writeRawConfig(configPath: string, raw: Record<string, unknown>): void {
+  const tmp = `${configPath}.${process.pid}.tmp`;
+  mkdirSync(dirname(configPath), { recursive: true });
+  writeFileSync(tmp, `${JSON.stringify(raw, null, 2)}\n`, { mode: 0o600 });
+  renameSync(tmp, configPath);
+}
+
+/** The `cells.retention` keys config.json may carry, as `cellRetentionOf` reads them. */
+export const RETENTION_CONFIG_KEYS = [
+  "enabled", "archivedAfterDays", "stoppedAfterDays", "retainedAfterDays", "maxBytes", "intervalHours", "maxPerPass", "trimAfterHours", "trimPatterns", "leftoverPatterns",
+  "minFreePercent", "minFreeBytes", "pressureIdleAfterDays", "fetchUpstream", "maxEvictionsPerDay", "purgeIgnoredOnPark", "budgetEnforce", "wipPushOnTurnEnd", "evictionRequiresWip",
+  "wipMaxFileBytes", "wipMinIntervalSeconds", "idleDays", "workBundle", "workBundleMaxBytes", "workBundleKeepDays", "keepDays", "mode", "inspectBudgetSeconds",
+] as const;
+export type RetentionConfigKey = (typeof RETENTION_CONFIG_KEYS)[number];
+
+export interface RetentionConfigReading {
+  nodeKind: NodeKind;
+  /** The `cells.retention` object as written, or null when the file has none. Never any other section. */
+  raw: Record<string, unknown> | null;
+  resolved: ResolvedCellRetention;
+}
+
+/** The retention section of config.json and what it resolves to; nothing else in the file is returned. */
+export function readRetentionConfig(configPath: string): RetentionConfigReading {
+  const raw = readRawConfig(configPath);
+  const nodeKind = nodeKindOf(raw);
+  const cells = raw.cells;
+  const section = cells && typeof cells === "object" && !Array.isArray(cells) ? (cells as Record<string, unknown>).retention : undefined;
+  const retention = section && typeof section === "object" && !Array.isArray(section) ? (section as Record<string, unknown>) : null;
+  return { nodeKind, raw: retention, resolved: cellRetentionOf(retention ?? undefined, nodeKind) };
+}
+
+/**
+ * Set or unset (`undefined`) retention keys in config.json: every other key
+ * in the file is preserved byte for byte in meaning, the file is written
+ * atomically with mode 0600, and a value `cellRetentionOf` would fall back
+ * from is refused before anything is written.
+ */
+export function patchRetentionConfig(configPath: string, patch: Record<string, unknown>): RetentionConfigReading {
+  const raw = readRawConfig(configPath);
+  const nodeKind = nodeKindOf(raw);
+  for (const key of Object.keys(patch)) {
+    if (!(RETENTION_CONFIG_KEYS as readonly string[]).includes(key)) throw new ConfigError(`config: cells.retention.${key} is not a retention key (known: ${RETENTION_CONFIG_KEYS.join(", ")})`);
+  }
+  const cells = raw.cells && typeof raw.cells === "object" && !Array.isArray(raw.cells) ? { ...(raw.cells as Record<string, unknown>) } : {};
+  const current = cells.retention && typeof cells.retention === "object" && !Array.isArray(cells.retention) ? { ...(cells.retention as Record<string, unknown>) } : {};
+  for (const [key, value] of Object.entries(patch)) {
+    if (value === undefined) delete current[key];
+    else current[key] = value;
+  }
+  const resolved = cellRetentionOf(current, nodeKind);
+  for (const key of Object.keys(patch)) {
+    const warning = resolved.warnings.find((w) => w.startsWith(`cells.retention.${key} `));
+    if (warning) throw new ConfigError(`config: ${warning}`);
+  }
+  cells.retention = current;
+  raw.cells = cells;
+  writeRawConfig(configPath, raw);
+  return { nodeKind, raw: current, resolved };
+}
+
 /**
  * Merge a naming patch into config.json and return the resolved naming.
  * Unknown top-level keys in the existing file are preserved.

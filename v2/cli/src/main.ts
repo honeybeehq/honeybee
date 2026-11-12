@@ -21,7 +21,7 @@ import { homedir } from "node:os";
 import { createInterface } from "node:readline";
 import { closeSync, existsSync, openSync, readSync, statSync, fsyncSync, unlinkSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
-import { type ResolvedNodeConfig } from "../../daemon/src/config.ts";
+import { patchRetentionConfig, readRetentionConfig, RETENTION_CONFIG_KEYS, type ResolvedNodeConfig } from "../../daemon/src/config.ts";
 import {
   createServiceManager,
   explicitServiceEntry,
@@ -352,6 +352,7 @@ const BOOL_FLAGS = new Set([
   // v31 (cell gc): a full census with the per-Cell du walk, or never walk.
   "--measure",
   "--no-measure",
+  "--effective",
   "--tree",
   "--wait",
   // v23 (handoff): stop the source immediately instead of at its idle boundary.
@@ -2999,7 +3000,7 @@ async function cmdCell(ctx: CliContext, parsed: Parsed): Promise<number> {
         return withClient(ctx, async (c) => {
           const apply = parsed.flags.get("--apply") === true;
           const r = await c.request<CellWorkRewriteResult>("cell.work.rewrite", all ? { all: true, apply } : { beeId: await resolveBee(c, target!), apply }, CELL_GC_TIMEOUT_MS);
-          const lines = [`cell work rewrite (${r.dryRun ? "dry run — nothing was changed; pass --apply to rewrite" : "applied"}): ${r.totals.bundles} bundles · would rewrite ${r.totals.rewrite} · unchanged ${r.totals.unchanged} · unrestorable ${r.totals.unrestorable} · failed ${r.totals.failed} · bytes ${gib(r.totals.bytesBefore)} → ${gib(r.totals.bytesAfter)}`];
+          const lines = [`cell work rewrite (${r.dryRun ? "dry run — nothing was changed; pass --apply to rewrite" : "applied"}): ${r.totals.bundles} bundles · ${r.dryRun ? "would rewrite" : "rewrote"} ${r.totals.rewrite} · unchanged ${r.totals.unchanged} · unrestorable ${r.totals.unrestorable} · failed ${r.totals.failed} · bytes ${gib(r.totals.bytesBefore)} → ${gib(r.totals.bytesAfter)}`];
           for (const i of r.items) {
             if (i.status === "unchanged" && r.items.length > 1) continue;
             lines.push(`  ${i.status.padEnd(12)} ${gib(i.oldBytes).padStart(10)} → ${(i.newBytes == null ? "?" : gib(i.newBytes)).padStart(10)}  prerequisites ${i.oldPrerequisites} → ${i.newPrerequisites}  ${i.beeName ?? i.beeId ?? "(no bee)"}  ${i.cellId.slice(0, 8)}${i.missing.length > 0 ? `  missing in origin: ${i.missing.map((s) => s.slice(0, 12)).join(" ")}` : ""}${i.problems.length > 0 ? `  ${i.problems[0]}` : ""}`);
@@ -3732,6 +3733,50 @@ async function cmdCommands(ctx: CliContext, parsed: Parsed): Promise<number> {
     },
   );
   emit(ctx, () => renderCommands(result.commands, stale), publicEnvRecords(result), stale);
+  return 0;
+}
+
+const CONFIG_USAGE = "usage: hive config get cells.retention[.<key>] [--effective] | hive config set cells.retention.<key> <value>   (value is json: plan, true, 7, null; --data-dir names the node; the daemon reads config.json at boot)";
+
+/** The retention section of this node's config.json, read or written through the daemon's own parser; the rest of the file is never printed. */
+function cmdConfig(ctx: CliContext, parsed: Parsed): number {
+  const action = parsed.positional[1];
+  const key = parsed.positional[2];
+  if ((action !== "get" && action !== "set") || !key || !/^cells\.retention(\.[A-Za-z]+)?$/.test(key)) throw new Error(CONFIG_USAGE);
+  const sub = key.split(".")[2];
+  const configPath = ctx.cfg.configPath;
+  const effectiveOf = (reading: ReturnType<typeof readRetentionConfig>): Record<string, unknown> => {
+    const r = reading.resolved;
+    const days = (ms: number | null) => (ms == null ? null : ms / 86_400_000);
+    return {
+      nodeKind: reading.nodeKind, enabled: r.enabled, mode: r.mode, idleDays: days(r.idleMs), archivedAfterDays: days(r.archivedAfterMs), stoppedAfterDays: days(r.stoppedAfterMs), retainedAfterDays: days(r.retainedAfterMs),
+      keepDays: days(r.keepMs), workBundle: r.workBundle, workBundleMaxBytes: r.workBundleMaxBytes, workBundleKeepDays: days(r.workBundleKeepMs), inspectBudgetSeconds: r.inspectBudgetMs == null ? null : r.inspectBudgetMs / 1000,
+      budgetEnforce: r.budgetEnforce, minFreePercent: r.minFreePercent, minFreeBytes: r.minFreeBytes, pressureIdleAfterDays: days(r.pressureIdleAfterMs), fetchUpstream: r.fetchUpstream, maxPerPass: r.maxPerPass, maxEvictionsPerDay: r.maxEvictionsPerDay,
+      intervalHours: r.intervalMs / 3_600_000, trimAfterHours: r.trimAfterMs == null ? null : r.trimAfterMs / 3_600_000, purgeIgnoredOnPark: r.purgeIgnoredOnPark, evictionRequiresWip: r.evictionRequiresWip, wipPushOnTurnEnd: r.wipPushOnTurnEnd, warnings: r.warnings,
+    };
+  };
+  if (action === "get") {
+    const reading = readRetentionConfig(configPath);
+    const effective = parsed.flags.get("--effective") === true;
+    const value = sub == null ? (effective ? effectiveOf(reading) : reading.raw) : effective ? effectiveOf(reading)[sub] : reading.raw?.[sub];
+    const lines = sub == null
+      ? [`cells.retention (${effective ? "effective, defaults applied" : "as written"}) in ${tildify(configPath)}:`, JSON.stringify(value ?? null, null, 2)]
+      : [`${key} = ${value === undefined ? "(unset)" : JSON.stringify(value)}${effective ? ` (effective, nodeKind ${reading.nodeKind})` : ""}`];
+    emit(ctx, lines, { key, effective, nodeKind: reading.nodeKind, value: value ?? null, configPath }, false);
+    return 0;
+  }
+  const rawValue = parsed.positional[3];
+  if (sub == null || rawValue === undefined) throw new Error(CONFIG_USAGE);
+  if (!(RETENTION_CONFIG_KEYS as readonly string[]).includes(sub)) throw new Error(`hive config: ${key} is not a retention key (known: ${RETENTION_CONFIG_KEYS.map((k) => `cells.retention.${k}`).join(", ")})`);
+  let value: unknown;
+  try {
+    value = JSON.parse(rawValue);
+  } catch {
+    value = rawValue;
+  }
+  const reading = patchRetentionConfig(configPath, { [sub]: rawValue === "unset" ? undefined : value });
+  const lines = [confirm("ok", `${key} = ${rawValue === "unset" ? "(unset)" : JSON.stringify(value)}`, `written to ${tildify(configPath)} (0600, other keys preserved); effective ${sub} is ${JSON.stringify(effectiveOf(reading)[sub])}; the daemon reads it at its next boot`)];
+  emit(ctx, lines, { key, value: value ?? null, effective: effectiveOf(reading)[sub] ?? null, configPath }, false);
   return 0;
 }
 
@@ -5374,6 +5419,8 @@ export async function runV2Cli(argv: string[], io: CliIo = defaultIo): Promise<n
         emit(ctx, [JSON.stringify(result)], result, false);
         return 0;
       }
+      case "config":
+        return cmdConfig(ctx, parsed);
       case "deploy-info":
         return await cmdDeployInfo(ctx);
       case "health":
