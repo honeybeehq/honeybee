@@ -10,7 +10,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import type { NodeHarnessesResult } from "../src/protocol.ts";
@@ -163,5 +163,38 @@ test("rpc.node.harnesses: nativeLogin answers what account.import would find, be
     if (daemon) await daemon.stop();
     cleanup();
     rmSync(dirname(machineHome), { recursive: true, force: true });
+  }
+});
+
+test("rpc.node.harnesses: the version probe runs each harness on a throwaway home and leaves the daemon's HOME untouched", async () => {
+  const machineHome = join(mkdtempSync(join(tmpdir(), "hb-probe-home-")), "home");
+  mkdirSync(machineHome, { recursive: true });
+  const install = mkdtempSync(join(tmpdir(), "hb-probe-cli-"));
+  const writer = join(install, "fake-writer");
+  writeFileSync(
+    writer,
+    '#!/bin/sh\nfor d in "${CODEX_HOME:-$HOME/.codex}" "${XDG_STATE_HOME:-$HOME/.local/state}" "${XDG_CACHE_HOME:-$HOME/.cache}" "$HOME/.gemini"; do mkdir -p "$d" && : > "$d/touched"; done\n[ -d "${CODEX_HOME:-/nonexistent}" ] || { echo "WARNING: CODEX_HOME missing"; }\necho "writer 2.0.0"\n',
+  );
+  chmodSync(writer, 0o755);
+  const { dir, cleanup } = makeDaemonDir({ agents: { ...UNRESOLVABLE_MUSE, codex: { command: writer }, agy: { command: writer }, other: { command: writer, adapter: "stub" } } });
+  let daemon: DaemonHandle | null = null;
+  try {
+    daemon = await startDaemon(dir, { env: { HOME: machineHome, CODEX_HOME: join(machineHome, ".codex") } });
+    const client = await daemon.client();
+    const { harnesses } = await client.request<NodeHarnessesResult>("node.harnesses");
+    const byName = new Map(harnesses.map((h) => [h.harness, h.version]));
+    assert.equal(byName.get("codex"), "writer 2.0.0", "CODEX_HOME exists in the scratch home, so codex starts without a warning");
+    assert.equal(byName.get("agy"), "writer 2.0.0");
+    assert.equal(existsSync(join(machineHome, ".codex")), false, "codex --version wrote nothing into the machine's ~/.codex");
+    assert.equal(existsSync(join(machineHome, ".gemini")), false, "agy runs with HOME on the scratch home, as its accounts do");
+    assert.equal(existsSync(join(machineHome, ".local")), false);
+    assert.equal(existsSync(join(machineHome, ".cache")), false);
+    assert.deepEqual(readdirSync(machineHome).filter((name) => name !== ".hive"), [], "a harness with no recipe still gets the scratch XDG dirs");
+    client.close();
+  } finally {
+    if (daemon) await daemon.stop();
+    cleanup();
+    rmSync(dirname(machineHome), { recursive: true, force: true });
+    rmSync(install, { recursive: true, force: true });
   }
 });

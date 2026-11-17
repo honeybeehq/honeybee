@@ -255,6 +255,7 @@ import {
   type GrokMcpServerStdio,
 } from "../../adapters/src/index.ts";
 import { GATEWAY_NAME, MAX_TOKEN_ISSUER_LENGTH, gatewayUrlRefusal, httpGateway, liveGateways, writeGatewayFile, type LiveGateway } from "./gateways.ts";
+import { runVersionProbe } from "./versionProbe.ts";
 import { installSkillTreeForHarness, parseSkillTree, readSkillsManifest, skillTreeDir, storeSkillTree } from "./skills.ts";
 import { DaemonCore, type BootReport, type I1ViolationEvent } from "./loops.ts";
 import { QuotaRecovery } from "./quotaRecovery.ts";
@@ -7365,7 +7366,7 @@ export class HiveDaemon {
         present: resolved !== null,
         path: resolved?.path ?? null,
         source: resolved?.source ?? null,
-        version: !resolved ? null : unisolated ? readVersionStamp(resolved.path, spec.versionStamps ?? []) : await this.probeHarnessVersion(resolved.path, env, spec.versionStamps ?? []),
+        version: !resolved ? null : unisolated ? readVersionStamp(resolved.path, spec.versionStamps ?? []) : await this.probeHarnessVersion(resolved.path, kinds, env, spec.versionStamps ?? []),
         unavailable: native ? null : unisolated,
         nativeLogin: nativeKind !== undefined && (await this.accounts?.nativeLoginSource(nativeKind)) != null,
       });
@@ -7376,7 +7377,7 @@ export class HiveDaemon {
   /** `--version` first lines, cached per (path, mtime, stamps) so repeat calls are free. */
   private readonly harnessVersionCache = new Map<string, string | null>();
 
-  private probeHarnessVersion(path: string, env: Record<string, string>, stamps: string[]): Promise<string | null> {
+  private probeHarnessVersion(path: string, kinds: readonly string[], env: Record<string, string>, stamps: string[]): Promise<string | null> {
     let key: string;
     try {
       key = `${path}\0${statSync(path).mtimeMs}`;
@@ -7392,15 +7393,9 @@ export class HiveDaemon {
     }
     const hit = this.harnessVersionCache.get(key);
     if (hit !== undefined) return Promise.resolve(hit);
-    return new Promise((resolvePromise) => {
-      execFile(path, ["--version"], { env, timeout: 2000, maxBuffer: 64 * 1024 }, (error, stdout) => {
-        const line = error
-          ? null
-          : String(stdout).split("\n").map((l) => l.trim()).find((l) => l.length > 0) ?? null;
-        const version = line ? line.slice(0, 120) : null;
-        this.harnessVersionCache.set(key, version);
-        resolvePromise(version);
-      });
+    return runVersionProbe(path, kinds, env).then((version) => {
+      this.harnessVersionCache.set(key, version);
+      return version;
     });
   }
 
