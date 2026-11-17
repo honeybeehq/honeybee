@@ -71,6 +71,7 @@ export interface IdentityRecipe {
   loginFlow: LoginRecipe;
   /** Configuration-only onboarding entries. Credentials are never entries here. */
   configImport?: AccountConfigImportRecipe;
+  skillsDir: string;
 }
 
 export interface NativeAccountRecipe {
@@ -401,6 +402,7 @@ const KIMI_MODEL_KEYS = [
 
 export const ACCOUNT_RECIPES: Readonly<Record<string, IdentityRecipe>> = {
   claude: {
+    skillsDir: "skills",
     // With CLAUDE_CONFIG_DIR set, all three live inside the config dir. On
     // macOS the OAuth credential itself is the Keychain item for the home
     // (see daemon keychain.ts); the vault keeps it as .credentials.json.
@@ -463,6 +465,7 @@ export const ACCOUNT_RECIPES: Readonly<Record<string, IdentityRecipe>> = {
     },
   },
   codex: {
+    skillsDir: "skills",
     credentialFiles: ["auth.json"],
     // Keep the legacy mirror for older Codex auth discovery, but do not set
     // HOME: developer tools inside Codex must see the user's real home.
@@ -546,6 +549,7 @@ export const ACCOUNT_RECIPES: Readonly<Record<string, IdentityRecipe>> = {
     },
   },
   opencode: {
+    skillsDir: "skills",
     // opencode keeps auth under $XDG_DATA_HOME/opencode/auth.json; the
     // activated home carries a private xdg-data/ subtree for it.
     credentialFiles: ["xdg-data/opencode/auth.json"],
@@ -592,6 +596,7 @@ export const ACCOUNT_RECIPES: Readonly<Record<string, IdentityRecipe>> = {
     },
   },
   grok: {
+    skillsDir: "skills",
     credentialFiles: ["auth.json"],
     configFiles: ["config.toml"],
     vendorHome: { dir: ".grok" },
@@ -638,6 +643,7 @@ export const ACCOUNT_RECIPES: Readonly<Record<string, IdentityRecipe>> = {
     },
   },
   kimi: {
+    skillsDir: "skills",
     credentialFiles: ["credentials/kimi-code.json"],
     configFiles: ["config.toml", "tui.toml"],
     vendorHome: { dir: ".kimi" },
@@ -703,6 +709,7 @@ export const ACCOUNT_RECIPES: Readonly<Record<string, IdentityRecipe>> = {
     },
   },
   agy: {
+    skillsDir: "skills",
     credentialFiles: [".gemini/antigravity-cli/antigravity-oauth-token"],
     configFiles: [".gemini/antigravity/antigravity_state.pbtxt"],
     // Local agy uses the OS keyring independently of HOME. Its supported SSH
@@ -744,6 +751,7 @@ export const ACCOUNT_RECIPES: Readonly<Record<string, IdentityRecipe>> = {
     },
   },
   muse: {
+    skillsDir: "muse/skills",
     // XDG_CONFIG_HOME (HARNESS_HOME_ENV) is the account home, so Muse keeps
     // auth.json, settings and trust under <home>/muse; its sessions and
     // caches go to a private XDG data dir inside the same home.
@@ -809,6 +817,7 @@ export const ACCOUNT_RECIPES: Readonly<Record<string, IdentityRecipe>> = {
     },
   },
   cursor: {
+    skillsDir: "skills",
     // cursor-agent's credential store is NOT home-relative (machine-global
     // keychain / $XDG_CONFIG_HOME); the vault keeps a canonical auth.json.
     credentialFiles: ["auth.json", "cli-config.json"],
@@ -919,6 +928,12 @@ export function nativeAccountRecipe(harness: string, platform: string): NativeAc
     signIn: `Run \`${recipe.login.command} ${recipe.login.args.join(" ")}\` on this computer, then mark the account restored.`,
     redirectEnv: ["HOME", ...(HARNESS_HOME_ENV[harness] ? [HARNESS_HOME_ENV[harness]] : []), ...Object.keys(recipe.extraEnv ?? {})],
   };
+}
+
+export const LEGACY_SKILLS_DIR = "skills";
+
+export function skillsDirFor(harness: string): string | undefined {
+  return ACCOUNT_RECIPES[harness]?.skillsDir;
 }
 
 export function recipeFor(harness: string): IdentityRecipe | undefined {

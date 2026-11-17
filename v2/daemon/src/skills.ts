@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, rmdirSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve, sep } from "node:path";
+import { LEGACY_SKILLS_DIR, skillsDirFor } from "../../core/src/accountRecipes.ts";
 import { RpcError } from "./protocol.ts";
 
 export const SKILLS_MANIFEST = ".hive-skills.json";
@@ -161,18 +162,18 @@ function removeEmptyParents(path: string, stopAt: string): void {
 }
 
 /**
- * Install the stored tree into `<homePath>/skills`: every file of the tree is
+ * Install the stored tree into `<homePath>/<skillsRel>`: every file of the tree is
  * written (atomically, content from the node's copy), files the previous
  * manifest installed but the tree no longer has are removed, anything the
  * manifest never listed is left alone, and the manifest records the digest.
  * A home whose manifest already names the digest is left untouched.
  */
-export function installSkillTreeIntoHome(treeDir: string, homePath: string): { status: "installed" | "unchanged"; digest: string; files: number } {
+export function installSkillTreeIntoHome(treeDir: string, homePath: string, skillsRel: string): { status: "installed" | "unchanged"; digest: string; files: number; dir: string } {
   const stored = readSkillsManifest(treeDir);
   if (!stored) throw new Error(`skills: stored tree at ${treeDir} has no manifest`);
-  const skillsDir = join(homePath, "skills");
+  const skillsDir = join(homePath, skillsRel);
   const current = readSkillsManifest(skillsDir);
-  if (current?.digest === stored.digest) return { status: "unchanged", digest: stored.digest, files: stored.files.length };
+  if (current?.digest === stored.digest) return { status: "unchanged", digest: stored.digest, files: stored.files.length, dir: skillsDir };
   mkdirSync(skillsDir, { recursive: true, mode: 0o700 });
   const root = resolve(skillsDir);
   const keep = new Set(stored.files.map((file) => file.path));
@@ -195,7 +196,30 @@ export function installSkillTreeIntoHome(treeDir: string, homePath: string): { s
     removeEmptyParents(target, root);
   }
   writeFileAtomically(join(skillsDir, SKILLS_MANIFEST), manifestText(stored.digest, stored.files), false);
-  return { status: "installed", digest: stored.digest, files: stored.files.length };
+  return { status: "installed", digest: stored.digest, files: stored.files.length, dir: skillsDir };
+}
+
+export function removeSkillTreeFromDir(dir: string): number {
+  const current = readSkillsManifest(dir);
+  if (!current) return 0;
+  const root = resolve(dir);
+  for (const prior of current.files) {
+    const target = resolve(root, prior.path);
+    rmSync(target, { force: true });
+    removeEmptyParents(target, root);
+  }
+  rmSync(join(root, SKILLS_MANIFEST), { force: true });
+  try {
+    if (readdirSync(root).length === 0) rmdirSync(root);
+  } catch {}
+  return current.files.length;
+}
+
+export function installSkillTreeForHarness(treeDir: string, homePath: string, harness: string): { status: "installed" | "unchanged"; digest: string; files: number; dir: string; removedLegacy: number } | null {
+  const skillsRel = skillsDirFor(harness);
+  if (skillsRel === undefined) return null;
+  const removedLegacy = skillsRel === LEGACY_SKILLS_DIR ? 0 : removeSkillTreeFromDir(join(homePath, LEGACY_SKILLS_DIR));
+  return { ...installSkillTreeIntoHome(treeDir, homePath, skillsRel), removedLegacy };
 }
 
 /** Read a directory into the wire tree shape (the CLI edge and callers that hold the tree on disk). */

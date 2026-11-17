@@ -1602,7 +1602,7 @@ async function cmdSkills(ctx: CliContext, parsed: Parsed): Promise<number> {
   });
   emit(ctx, [
     confirm("ok", r.changed ? "installed" : "already installed", `skill tree ${r.tree.digest} (${r.tree.files} files, ${r.tree.bytes} bytes)`, r.deduped),
-    ...r.homes.map((home) => `  ${home.status === "installed" ? "+" : "="} ${home.account}  ${tildify(home.home)}`),
+    ...r.homes.map((home) => `  ${home.status === "installed" ? "+" : "="} ${home.account}  ${tildify(home.dir)}`),
   ], r, false);
   return 0;
 }

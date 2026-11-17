@@ -201,7 +201,7 @@ export interface AccountsServiceOptions {
   /** The gateways a home is seeded with: registered HTTP endpoints plus the stdio shim files. Default: the files only. */
   gateways?: () => LiveGateway[];
   /** H7: install the node's current skill tree into an owned home at activation; absent = no tree. */
-  skillsSync?: (homePath: string) => { status: "installed" | "unchanged" | "none"; digest?: string };
+  skillsSync?: (homePath: string, harness: string) => { status: "installed" | "unchanged" | "none"; digest?: string; dir?: string };
   /** The provider just accepted this account's credential: a rotation it issued, or a probe it answered. */
   onCredentialValidated?: (accountId: string, by: "refresh" | "limits_probe") => void;
 }
@@ -959,7 +959,7 @@ export class AccountsService {
   private readonly codexLeaseRefresh: (homePath: string) => Promise<void>;
   private readonly gatewayMcpSeeder: (homePath: string, harness: string) => Promise<GatewayMcpSeedResult>;
   private readonly gateways: () => LiveGateway[];
-  private readonly skillsSync: (homePath: string) => { status: "installed" | "unchanged" | "none"; digest?: string };
+  private readonly skillsSync: (homePath: string, harness: string) => { status: "installed" | "unchanged" | "none"; digest?: string; dir?: string };
   private readonly onCredentialValidated: (accountId: string, by: "refresh" | "limits_probe") => void;
 
   constructor(opts: AccountsServiceOptions) {
@@ -4488,8 +4488,8 @@ export class AccountsService {
     } else if (gatewaySeed.status === "skipped") {
       this.log(`account.activate.gateways account=${account.id} skipped=${JSON.stringify(gatewaySeed.reason ?? "unknown")}`);
     }
-    const skills = this.skillsSync(account.homePath);
-    if (skills.status === "installed") this.log(`account.activate.skills account=${account.id} digest=${skills.digest}`);
+    const skills = this.skillsSync(account.homePath, account.harness);
+    if (skills.status === "installed") this.log(`account.activate.skills account=${account.id} digest=${skills.digest} dir=${skills.dir}`);
     return result;
   }
 

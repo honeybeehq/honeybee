@@ -905,10 +905,15 @@ export interface SkillTreeEntry {
  * `invalid_request` with `details.reason` (`digest` | `sha256` | `size` |
  * `path` | `content` | `entries` | `bytes`) and `details.index`. The node
  * keeps its own copy under `<dataDir>/skills/<digest>/`, writes the tree into
- * `<home>/skills/` of every Honeybee-owned account home that exists (native
- * vendor homes are never written), and installs it into every home activated
- * later. `<home>/skills/.hive-skills.json` records the digest and the files
- * Honeybee owns there; files it never listed are left alone.
+ * the directory each account's harness reads skills from (the recipe's
+ * `skillsDir` under the home: `<home>/skills/` for most harnesses,
+ * `<home>/muse/skills/` for Muse, whose home is its XDG_CONFIG_HOME) of every
+ * Honeybee-owned account home that exists (native vendor homes are never
+ * written), and installs it into every home activated later; each home entry's
+ * `dir` names that directory. `<dir>/.hive-skills.json` records the digest and
+ * the files Honeybee owns there; files it never listed are left alone. Where
+ * `skillsDir` is not `skills`, a tree an older node wrote at `<home>/skills/`
+ * is removed through its manifest, file by file.
  */
 export interface SkillsInstallParams {
   tree: { digest: string; entries: SkillTreeEntry[] };
@@ -920,7 +925,7 @@ export interface SkillsInstallResult extends DedupMarkers {
   /** False when this digest was already the node's tree. */
   changed: boolean;
   replaced: string | null;
-  homes: Array<{ account: string; home: string; status: "installed" | "unchanged" }>;
+  homes: Array<{ account: string; home: string; dir: string; status: "installed" | "unchanged" }>;
 }
 
 /**

@@ -255,7 +255,7 @@ import {
   type GrokMcpServerStdio,
 } from "../../adapters/src/index.ts";
 import { GATEWAY_NAME, MAX_TOKEN_ISSUER_LENGTH, gatewayUrlRefusal, httpGateway, liveGateways, writeGatewayFile, type LiveGateway } from "./gateways.ts";
-import { installSkillTreeIntoHome, parseSkillTree, readSkillsManifest, skillTreeDir, storeSkillTree } from "./skills.ts";
+import { installSkillTreeForHarness, parseSkillTree, readSkillsManifest, skillTreeDir, storeSkillTree } from "./skills.ts";
 import { DaemonCore, type BootReport, type I1ViolationEvent } from "./loops.ts";
 import { QuotaRecovery } from "./quotaRecovery.ts";
 import { AuthResume, type CredentialValidatedReceipt } from "./authResume.ts";
@@ -1021,7 +1021,7 @@ export class HiveDaemon {
       fetchers: this.deps.fetchers,
       ...(this.deps.gatewayMcpSeeder ? { gatewayMcpSeeder: this.deps.gatewayMcpSeeder } : {}),
       gateways: () => this.gateways(),
-      skillsSync: (homePath) => this.syncSkillsIntoHome(homePath),
+      skillsSync: (homePath, harness) => this.syncSkillsIntoHome(homePath, harness),
       onCredentialValidated: (accountId, by) => this.credentialValidatedQuietly(accountId, by),
     });
     const accounts = this.accounts;
@@ -8234,7 +8234,7 @@ export class HiveDaemon {
   }
 
   /** Activation hook: an owned home gets the node's current tree when its manifest names another digest or none. */
-  private syncSkillsIntoHome(homePath: string): { status: "installed" | "unchanged" | "none"; digest?: string } {
+  private syncSkillsIntoHome(homePath: string, harness: string): { status: "installed" | "unchanged" | "none"; digest?: string; dir?: string } {
     const tree = this.store?.skillTree();
     if (!tree) return { status: "none" };
     const dir = skillTreeDir(this.skillsRoot(), tree.digest);
@@ -8242,8 +8242,10 @@ export class HiveDaemon {
       this.log(`skills.copy_missing digest=${tree.digest} dir=${dir}`);
       return { status: "none" };
     }
-    const result = installSkillTreeIntoHome(dir, homePath);
-    return { status: result.status, digest: result.digest };
+    const result = installSkillTreeForHarness(dir, homePath, harness);
+    if (!result) return { status: "none" };
+    if (result.removedLegacy > 0) this.log(`skills.legacy_removed home=${homePath} files=${result.removedLegacy}`);
+    return { status: result.status, digest: result.digest, dir: result.dir };
   }
 
   private rpcSkillsInstall(params: Record<string, unknown>, conn: RpcConn): Promise<SkillsInstallResult> {
@@ -8255,8 +8257,10 @@ export class HiveDaemon {
       const homes: SkillsInstallResult["homes"] = [];
       for (const account of store.listAccounts()) {
         if (accounts.isNative(account) || !existsSync(account.homePath)) continue;
-        const installed = installSkillTreeIntoHome(dir, account.homePath);
-        homes.push({ account: account.id, home: account.homePath, status: installed.status });
+        const installed = installSkillTreeForHarness(dir, account.homePath, account.harness);
+        if (!installed) continue;
+        if (installed.removedLegacy > 0) this.log(`skills.legacy_removed account=${account.id} files=${installed.removedLegacy}`);
+        homes.push({ account: account.id, home: account.homePath, dir: installed.dir, status: installed.status });
       }
       const put = store.putSkillTree({ digest: tree.digest, files: tree.files.length, bytes: tree.bytes, principal: conn.authorityPrincipal ?? "-", homes: homes.filter((home) => home.status === "installed").length });
       if (put.replaced && put.replaced.digest !== tree.digest) rmSync(skillTreeDir(this.skillsRoot(), put.replaced.digest), { recursive: true, force: true });
