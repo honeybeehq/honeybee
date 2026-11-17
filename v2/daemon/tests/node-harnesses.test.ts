@@ -12,7 +12,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import type { NodeHarnessesResult } from "../src/protocol.ts";
 import { makeDaemonDir, startDaemon, type DaemonHandle } from "./helpers.ts";
 
@@ -132,5 +132,36 @@ test("rpc.node.harnesses: the version probe runs under the spec env and re-probe
     if (daemon) await daemon.stop();
     cleanup();
     rmSync(install, { recursive: true, force: true });
+  }
+});
+
+test("rpc.node.harnesses: nativeLogin answers what account.import would find, before and after a sign-in lands", async () => {
+  const machineHome = join(mkdtempSync(join(tmpdir(), "hb-native-login-")), "home");
+  mkdirSync(machineHome, { recursive: true });
+  const { dir, cleanup } = makeDaemonDir({ agents: { ...UNRESOLVABLE_MUSE, codex: { command: "hb-test-no-such-codex" } } });
+  let daemon: DaemonHandle | null = null;
+  try {
+    daemon = await startDaemon(dir, { env: { HOME: machineHome, CODEX_HOME: join(machineHome, ".codex") }, platform: "linux" });
+    const client = await daemon.client();
+    const facts = async () => new Map((await client.request<NodeHarnessesResult>("node.harnesses")).harnesses.map((h) => [h.harness, h.nativeLogin]));
+
+    assert.equal((await facts()).get("codex"), false);
+    assert.equal((await facts()).get("muse"), false, "Muse offers no native account on linux");
+    await assert.rejects(client.request("account.import", { harness: "codex" }), (err: Error & { code?: string }) => err.code === "no_credentials_to_import");
+
+    mkdirSync(join(machineHome, ".codex"), { recursive: true });
+    writeFileSync(join(machineHome, ".codex", "auth.json"), "{}");
+    assert.equal((await facts()).get("codex"), false, "an empty auth.json is no login, for import and for nativeLogin alike");
+    await assert.rejects(client.request("account.import", { harness: "codex" }), (err: Error & { code?: string }) => err.code === "no_credentials_to_import");
+
+    writeFileSync(join(machineHome, ".codex", "auth.json"), '{"auth_mode":"chatgpt","tokens":{"access_token":"a","refresh_token":"r"}}');
+    assert.equal((await facts()).get("codex"), true);
+    const imported = await client.request<{ created: boolean; source: { files: string[] } }>("account.import", { harness: "codex" });
+    assert.deepEqual({ created: imported.created, files: imported.source.files }, { created: true, files: ["auth.json"] });
+    client.close();
+  } finally {
+    if (daemon) await daemon.stop();
+    cleanup();
+    rmSync(dirname(machineHome), { recursive: true, force: true });
   }
 });

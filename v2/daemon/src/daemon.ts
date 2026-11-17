@@ -7357,7 +7357,8 @@ export class HiveDaemon {
       const resolved = resolveExecutable(spec.command, { env });
       const kinds = [harness, spec.adapter ?? harness];
       const unisolated = kinds.map((kind) => this.accounts?.isolationRefusal(kind) ?? null).find((reason) => reason !== null) ?? null;
-      const native = kinds.some((kind) => this.accounts?.nativeRecipe(kind));
+      const nativeKind = kinds.find((kind) => this.accounts?.nativeRecipe(kind));
+      const native = nativeKind !== undefined;
       harnesses.push({
         harness,
         command: spec.command,
@@ -7366,6 +7367,7 @@ export class HiveDaemon {
         source: resolved?.source ?? null,
         version: !resolved ? null : unisolated ? readVersionStamp(resolved.path, spec.versionStamps ?? []) : await this.probeHarnessVersion(resolved.path, env, spec.versionStamps ?? []),
         unavailable: native ? null : unisolated,
+        nativeLogin: nativeKind !== undefined && (await this.accounts?.nativeLoginSource(nativeKind)) != null,
       });
     }
     return { harnesses };
@@ -7736,8 +7738,7 @@ export class HiveDaemon {
         if (moved) throw new RpcError("account_unavailable", moved);
         return { account: accounts.mirrorRow(existing), created: false, credentialHealth: accounts.credentialHealthOf(existing), source: { home, files: accounts.nativeLoginFiles(harness) } };
       }
-      const files = accounts.nativeLoginFiles(harness);
-      if (files.length === 0 && harness === "claude") { if (await accounts.nativeKeychainLogin(home)) files.push("keychain"); }
+      const files = (await accounts.nativeLoginSource(harness))?.files ?? [];
       if (files.length === 0) throw new RpcError("no_credentials_to_import", `account.import: no ${harness} login found at ${home}; sign in there first (${recipe.login.command} ${recipe.login.args.join(" ")})`, { checked: accounts.nativeLoginPaths(harness) });
       const label = typeof params.label === "string" ? params.label : native.label;
       const id = typeof params.id === "string" ? params.id : accountIdFor(harness, label);

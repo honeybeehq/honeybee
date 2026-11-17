@@ -133,6 +133,8 @@ export const DAEMON_CAPABILITIES = [
   "account.login.flow.v1",
   /** Per-harness executable facts (`node.harnesses`), resolved with the same rule the spawn path uses. */
   "node.harnesses.v1",
+  /** `node.harnesses` facts carry `nativeLogin`, computed with the check `account.import` uses. */
+  "node.harnesses.native_login.v1",
   "daemon.instance.v1",
   /**
    * v18 (2026-09-02): honest credentials — mirror account rows (snapshot +
@@ -2404,6 +2406,13 @@ export interface HarnessFact {
    * never executed, so its `version` is null.
    */
   unavailable: string | null;
+  /**
+   * Whether `account.import {harness}` would find this computer's own sign-in
+   * to adopt right now: the same check it runs (the vendor home's primary
+   * credential file, or the Keychain item for Claude on macOS). False when the
+   * harness offers no native account on this node.
+   */
+  nativeLogin: boolean;
 }
 
 export interface HealthResult {

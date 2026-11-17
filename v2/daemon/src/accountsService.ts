@@ -2089,6 +2089,14 @@ export class AccountsService {
     return primaryPath !== undefined && this.validPrimaryCredential(harness, primary, readIfFile(primaryPath)) ? present.map(file => file.rel) : [];
   }
 
+  async nativeLoginSource(harness: string): Promise<{ home: string; files: string[] } | null> {
+    const home = this.nativeHomeOf(harness);
+    if (home === null || !recipeFor(harness)) return null;
+    const files = this.nativeLoginFiles(harness);
+    if (files.length === 0 && harness === "claude" && await this.nativeKeychainLogin(home)) files.push("keychain");
+    return files.length > 0 ? { home, files } : null;
+  }
+
   /** The machine-side credential paths `nativeLoginFiles` looks at. */
   nativeLoginPaths(harness: string): string[] {
     return resolveVendorHome(harness, this.env, this.home)?.files.filter(file => file.role === "credential").map(file => file.path) ?? [];

@@ -3828,9 +3828,9 @@ async function cmdHarnesses(ctx: CliContext): Promise<number> {
   const lines = result.harnesses.map((h) =>
     h.unavailable
       ? `${h.harness}: unavailable — ${h.unavailable}`
-      : h.present
+      : (h.present
       ? `${h.harness}: ${h.path} (${h.source}${h.version ? `; ${h.version}` : ""})`
-      : `${h.harness}: not found — command '${h.command}' resolves nowhere on this node (PATH + standard install dirs)`,
+      : `${h.harness}: not found — command '${h.command}' resolves nowhere on this node (PATH + standard install dirs)`) + (h.nativeLogin ? " · this computer's sign-in can be imported (hive account import " + h.harness + ")" : ""),
   );
   emit(ctx, lines, result, false);
   return 0;
