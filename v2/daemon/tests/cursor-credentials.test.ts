@@ -549,3 +549,39 @@ test("cursor usage URL: production unless a test harness env names an https over
   assert.equal(cursorUsageUrl({ HIVE_TEST_PLATFORM: "linux", HIVE_CURSOR_USAGE_URL: "not a url" }), CURSOR_USAGE_URL);
   assert.equal(cursorUsageUrl({ HIVE_TEST_PLATFORM: "linux", HIVE_CURSOR_USAGE_URL: "https://127.0.0.1:1/x" }), "https://127.0.0.1:1/x");
 });
+
+test("cursor foreign home: re-capture and repair never write a home outside Honeybee's account homes; the vault alone carries the newer token to probe, spawn and lease", async () => {
+  const r = rig("foreign");
+  try {
+    const cursor = fakeCursorStore();
+    const externalHome = join(r.dir, "external-cursor-home");
+    mkdirSync(externalHome, { recursive: true });
+    const old = fakeJwt("auth0|user_a", r.now() + 5 * MIN, "old");
+    const homeBytes = authDoc(old);
+    writeFileSync(join(externalHome, "auth.json"), homeBytes);
+    const account = r.store.createAccount({ id: "cursor-ext", harness: "cursor", homePath: externalHome, label: "ext", status: "ok" });
+    mkdirSync(join(r.vault, "cursor", account.id), { recursive: true });
+    writeFileSync(join(r.vault, "cursor", account.id, "auth.json"), homeBytes);
+    const fresh = fakeJwt("auth0|user_a", r.now() + 3 * HOUR, "fresh");
+    cursor.state.raw = authDoc(fresh);
+    const seen: string[] = [];
+    const svc = service(r, cursor, { postJson: async (_url, headers) => { seen.push(headers.Authorization!); return usage(r); } });
+
+    // Probe path: near expiry -> re-capture; only the vault is written.
+    await svc.refreshLimits([account.id]);
+    assert.deepEqual(seen, [`Bearer ${fresh}`], "the probe used the re-captured vault token");
+    assert.equal(vaultToken(r, account), fresh);
+    assert.equal(readFileSync(join(externalHome, "auth.json"), "utf8"), homeBytes, "the foreign home is untouched by re-capture");
+    assert.ok(r.log.some((line) => line === `account.cursor.home_not_owned account=${account.id} writes=vault_only`));
+
+    // Repair before probe, spawn env and lease: the copies differ, but the foreign home is still not written.
+    await svc.refreshLimits([account.id]);
+    assert.equal(svc.credentialEnvOf(account).CURSOR_AUTH_TOKEN, fresh, "spawn env uses the selection (vault)");
+    const lease = await svc.mintLease(account);
+    assert.deepEqual(JSON.parse(Buffer.from(lease.files[0]!.contentB64, "base64").toString("utf8")), { accessToken: fresh });
+    assert.equal(readFileSync(join(externalHome, "auth.json"), "utf8"), homeBytes, "the foreign home is untouched by repair");
+    assert.ok(!r.log.some((line) => line.startsWith(`account.cursor.repaired account=${account.id} copies=home`)));
+  } finally {
+    r.cleanup();
+  }
+});

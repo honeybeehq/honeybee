@@ -1002,6 +1002,8 @@ export class AccountsService {
   private readonly cursorRecaptures = new Map<string, Promise<CursorRecapture>>();
   /** Per-account Cursor credential lock: re-capture and explicit capture never interleave. */
   private readonly cursorLocks = new Map<string, Promise<void>>();
+  /** Accounts already logged as having a home Honeybee does not own (logged once each). */
+  private readonly cursorForeignHomeLogged = new Set<string>();
   private readonly nativeKeychainSeeds = new Map<string, Set<Promise<unknown>>>();
   private readonly codexLeaseRefresh: (homePath: string) => Promise<void>;
   private readonly gatewayMcpSeeder: (homePath: string, harness: string) => Promise<GatewayMcpSeedResult>;
@@ -4345,14 +4347,32 @@ export class AccountsService {
     const selected = this.cursorSelection(account).selected;
     if (!selected) return;
     const repaired: string[] = [];
+    const homeOwned = this.cursorHomeOwned(account);
     for (const [where, root] of [["vault", this.vaultDirOf(account)], ["home", account.homePath]] as const) {
       const path = join(root, "auth.json");
       if (readIfFile(path) === selected.raw) continue;
+      if (where === "home" && !homeOwned) continue;
       mkdirSync(root, { recursive: true, mode: 0o700 });
       atomicWriteFileSync(path, selected.raw);
       repaired.push(where);
     }
     if (repaired.length > 0) this.log(`account.cursor.repaired account=${account.id} copies=${repaired.join(",")} from=${selected.where}`);
+  }
+
+  /**
+   * Whether Honeybee may write Cursor credentials into this account's home.
+   * A home outside Honeybee's account homes (an account added with an
+   * explicit external path) is never written: re-capture and repair update
+   * the vault only, which the probe and the spawn selection read first.
+   */
+  private cursorHomeOwned(account: AccountRow): boolean {
+    const refusal = this.foreignHomeRefusal(account, "writes Cursor credentials into");
+    if (refusal === null) return true;
+    if (!this.cursorForeignHomeLogged.has(account.id)) {
+      this.cursorForeignHomeLogged.add(account.id);
+      this.log(`account.cursor.home_not_owned account=${account.id} writes=vault_only`);
+    }
+    return false;
   }
 
   /** Run `work` holding the account's Cursor credential lock (re-capture, repair, explicit capture and login landing all take it). */
@@ -4439,7 +4459,7 @@ export class AccountsService {
     const vaultDir = this.vaultDirOf(current);
     mkdirSync(vaultDir, { recursive: true, mode: 0o700 });
     atomicWriteFileSync(join(vaultDir, "auth.json"), bytes);
-    atomicWriteFileSync(join(current.homePath, "auth.json"), bytes);
+    if (this.cursorHomeOwned(current)) atomicWriteFileSync(join(current.homePath, "auth.json"), bytes);
     this.log(`account.cursor.recaptured account=${account.id} source=${live.source === "keychain" ? "keychain" : "global_file"} exp=${new Date(claims.expiresAt).toISOString()}`);
     return "recaptured";
   }
