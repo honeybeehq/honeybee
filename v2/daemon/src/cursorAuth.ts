@@ -91,50 +91,27 @@ async function readCursorKeychainSecret(service: string): Promise<string | undef
 }
 
 /**
- * The login document Honeybee keeps from Cursor's store: the access token and
- * its refresh token only. Cursor's machine-wide API key is never captured.
+ * The login document Honeybee keeps from Cursor's store: the access token
+ * only. Honeybee never refreshes Cursor tokens, so it never takes the refresh
+ * token, and it never takes Cursor's machine-wide API key.
  */
-export function cursorLoginDocument(auth: { accessToken: string; refreshToken?: string }): string {
-  return `${JSON.stringify({ accessToken: auth.accessToken, ...(auth.refreshToken ? { refreshToken: auth.refreshToken } : {}) }, null, 2)}\n`;
+export function cursorLoginDocument(auth: { accessToken: string }): string {
+  return `${JSON.stringify({ accessToken: auth.accessToken }, null, 2)}\n`;
 }
 
 /**
- * Read the live credential store written by `cursor-agent login` as one
- * snapshot. The Keychain holds the tokens as separate items, so the access
- * token is read again after the refresh token: if cursor-agent rotated in
- * between, the read is retried once and otherwise reported as absent rather
- * than pairing tokens from two logins. Only the access and refresh tokens are
- * returned; Cursor's machine-wide API key is not.
+ * Read the access token from the live credential store written by
+ * `cursor-agent login`: one Keychain item, else the global auth.json. One
+ * value, so there is no snapshot of several items to tear.
  */
 export const readCursorLiveAuth: CursorAuthReader = async () => {
   if (keychainAvailable()) {
-    let torn = false;
-    for (let attempt = 0; attempt < 2; attempt += 1) {
-      const accessToken = await readCursorKeychainSecret("cursor-access-token");
-      if (!accessToken) break;
-      const refreshToken = await readCursorKeychainSecret("cursor-refresh-token");
-      const confirm = await readCursorKeychainSecret("cursor-access-token");
-      if (confirm !== accessToken) {
-        torn = true;
-        continue;
-      }
-      return parseCursorAuth(cursorLoginDocument({ accessToken, ...(refreshToken ? { refreshToken } : {}) }), "keychain");
-    }
-    // Rotating twice in a row: report nothing rather than a mixed pair.
-    if (torn) return null;
+    const accessToken = await readCursorKeychainSecret("cursor-access-token");
+    if (accessToken) return parseCursorAuth(cursorLoginDocument({ accessToken }), "keychain");
   }
   const file = readCursorAuthFile(cursorGlobalAuthPath());
-  if (!file?.accessToken) return null;
-  return parseCursorAuth(cursorLoginDocument({ accessToken: file.accessToken, ...(file.refreshToken ? { refreshToken: file.refreshToken } : {}) }), file.source);
+  return file?.accessToken ? parseCursorAuth(cursorLoginDocument({ accessToken: file.accessToken }), file.source) : null;
 };
-
-/** Runtime-only secret env derived from an account's authoritative home. */
-export function cursorCredentialEnv(homePath: string): Record<string, string> {
-  const auth = readCursorAuthFile(join(homePath, "auth.json"));
-  if (auth?.apiKey) return { CURSOR_API_KEY: auth.apiKey };
-  if (auth?.accessToken) return { CURSOR_AUTH_TOKEN: auth.accessToken };
-  return {};
-}
 
 /** The claims Honeybee relies on in a Cursor access token. */
 export interface CursorTokenClaims {
@@ -174,25 +151,33 @@ export function cursorTokenClaims(token: string | undefined): CursorTokenClaims 
   return { iss, sub, expiresAt: exp * 1000 };
 }
 
-/** The Cursor user a credential belongs to (`iss` + `sub`), or null when the token carries no readable identity. */
-export function cursorTokenIdentity(auth: Pick<CursorAuthSnapshot, "accessToken"> | null): string | null {
+/** The Cursor user a token names: issuer and subject, compared as separate fields. */
+export interface CursorIdentity {
+  iss: string;
+  sub: string;
+}
+
+/** The Cursor user a credential belongs to, or null when its token carries no readable identity. */
+export function cursorTokenIdentity(auth: Pick<CursorAuthSnapshot, "accessToken"> | null): CursorIdentity | null {
   const claims = cursorTokenClaims(auth?.accessToken);
-  return claims ? `${claims.iss}#${claims.sub}` : null;
+  return claims ? { iss: claims.iss, sub: claims.sub } : null;
+}
+
+export function sameCursorIdentity(a: CursorIdentity | null, b: CursorIdentity | null): boolean {
+  return a !== null && b !== null && a.iss === b.iss && a.sub === b.sub;
 }
 
 export type CursorIdentityVerdict = "same" | "different" | "unverified" | "first";
 
 /**
  * Whether a captured Cursor credential belongs to the user the account
- * already holds. `heldIdentity` is the account's identity (see
- * AccountsService.cursorHeldIdentity); null only when no copy the account
- * holds carries one. `first` = nothing to compare against, so anything is
- * accepted; `unverified` = the account has an identity but the new
- * credential carries none.
+ * already holds. `first` only when the account holds no credential at all;
+ * `unverified` when the account's credential or the new one names no user
+ * (taking it needs an explicit --replace-account).
  */
-export function cursorIdentityVerdict(heldIdentity: string | null, nextRaw: string | null): CursorIdentityVerdict {
-  if (heldIdentity === null) return "first";
+export function cursorIdentityVerdict(held: { hasCredentials: boolean; identity: CursorIdentity | null }, nextRaw: string | null): CursorIdentityVerdict {
+  if (!held.hasCredentials) return "first";
   const next = cursorTokenIdentity(parseCursorAuth(nextRaw));
-  if (next === null) return "unverified";
-  return next === heldIdentity ? "same" : "different";
+  if (held.identity === null || next === null) return "unverified";
+  return sameCursorIdentity(held.identity, next) ? "same" : "different";
 }

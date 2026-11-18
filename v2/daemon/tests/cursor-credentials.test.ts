@@ -112,7 +112,7 @@ test("cursor identity: iss + sub of a signed-shape JWT name the user; alg none, 
   const a2 = fakeJwt("auth0|user_a", Date.now() + 2 * HOUR, "2");
   const b = fakeJwt("auth0|user_b", Date.now() + HOUR, "3");
   const exp = Math.floor((Date.now() + HOUR) / 1000);
-  assert.equal(cursorTokenIdentity({ accessToken: a }), `${ISS}#auth0|user_a`);
+  assert.deepEqual(cursorTokenIdentity({ accessToken: a }), { iss: ISS, sub: "auth0|user_a" });
   assert.equal(cursorTokenIdentity({ accessToken: "not-a-jwt" }), null);
   assert.equal(cursorTokenIdentity({ accessToken: `${b64({ alg: "none" })}.${b64({ iss: ISS, sub: "auth0|user_a", exp })}.sig` }), null, "alg none");
   assert.equal(cursorTokenIdentity({ accessToken: `${b64({ alg: "NONE" })}.${b64({ iss: ISS, sub: "auth0|user_a", exp })}.sig` }), null, "alg NONE");
@@ -120,11 +120,15 @@ test("cursor identity: iss + sub of a signed-shape JWT name the user; alg none, 
   assert.equal(cursorTokenIdentity({ accessToken: `${b64({ alg: "RS256" })}.${b64({ sub: "auth0|user_a", exp })}.sig` }), null, "no iss");
   assert.equal(cursorTokenIdentity({ accessToken: `${b64({ alg: "RS256" })}.${b64({ iss: ISS, exp })}.sig` }), null, "no sub");
   assert.equal(cursorTokenIdentity({ accessToken: `${b64({ alg: "RS256" })}.${b64({ iss: ISS, sub: "auth0|user_a" })}.sig` }), null, "no exp");
-  const held = cursorTokenIdentity({ accessToken: a });
+  const held = { hasCredentials: true, identity: cursorTokenIdentity({ accessToken: a }) };
   assert.equal(cursorIdentityVerdict(held, authDoc(a2)), "same");
   assert.equal(cursorIdentityVerdict(held, authDoc(b)), "different");
   assert.equal(cursorIdentityVerdict(held, authDoc("opaque-token")), "unverified");
-  assert.equal(cursorIdentityVerdict(null, authDoc(b)), "first");
+  // iss and sub are separate fields: the same sub from another issuer is another user.
+  const otherIssuer = `${b64({ alg: "RS256" })}.${b64({ iss: "https://other-issuer.test", sub: "auth0|user_a", exp })}.sig`;
+  assert.equal(cursorIdentityVerdict(held, authDoc(otherIssuer)), "different");
+  assert.equal(cursorIdentityVerdict({ hasCredentials: false, identity: null }, authDoc(b)), "first", "first only with no credential at all");
+  assert.equal(cursorIdentityVerdict({ hasCredentials: true, identity: null }, authDoc(b)), "unverified", "an identity-less credential is not a first capture");
 });
 
 test("cursor refresh-before-expiry: a token near its exp is re-captured from Cursor's login into home + vault before the probe and the spawn; a fresh one costs no store read", async () => {
@@ -375,7 +379,7 @@ test("cursor copies: an identity-less copy never makes a capture 'first'; home/v
     writeFileSync(join(lease.homePath, "auth.json"), authDoc(fakeJwt("auth0|user_b", r.now() + 9 * HOUR, "home-b")));
     const minted = await service(r, cursor).mintLease(lease);
     const shipped = JSON.parse(Buffer.from(minted.files[0]!.contentB64, "base64").toString("utf8")) as { accessToken: string };
-    assert.equal(cursorTokenIdentity(shipped), `${ISS}#auth0|user_a`);
+    assert.deepEqual(cursorTokenIdentity(shipped), { iss: ISS, sub: "auth0|user_a" });
   } finally {
     r.cleanup();
   }
@@ -411,7 +415,7 @@ test("cursor lease schema: mint ships exactly {accessToken}; install refuses ext
   }
 });
 
-test("cursor live store: the global auth.json is read without its API key", async () => {
+test("cursor live store: the global auth.json is read for its access token only", async () => {
   const r = rig("live");
   const saved = { path: process.env.HIVE_CURSOR_AUTH_PATH, nokc: process.env.HIVE_NO_KEYCHAIN };
   try {
@@ -422,9 +426,9 @@ test("cursor live store: the global auth.json is read without its API key", asyn
     process.env.HIVE_NO_KEYCHAIN = "1";
     const live = await readCursorLiveAuth();
     assert.equal(live?.accessToken, token);
-    assert.equal(live?.refreshToken, "FAKE-R");
+    assert.equal(live?.refreshToken, undefined, "the refresh token is never taken");
     assert.equal(live?.apiKey, undefined);
-    assert.ok(!live!.raw.includes("FAKE-API-KEY"));
+    assert.ok(!live!.raw.includes("FAKE-API-KEY") && !live!.raw.includes("FAKE-R"));
   } finally {
     if (saved.path === undefined) delete process.env.HIVE_CURSOR_AUTH_PATH; else process.env.HIVE_CURSOR_AUTH_PATH = saved.path;
     if (saved.nokc === undefined) delete process.env.HIVE_NO_KEYCHAIN; else process.env.HIVE_NO_KEYCHAIN = saved.nokc;
@@ -432,33 +436,107 @@ test("cursor live store: the global auth.json is read without its API key", asyn
   }
 });
 
-test("cursor Keychain snapshot: a token rotated between item reads is re-read, never paired with another login's refresh token", { skip: process.platform !== "darwin" }, async () => {
+test("cursor Keychain: only the access-token item is read; never the refresh token or API key", { skip: process.platform !== "darwin" }, async () => {
   const r = rig("keychain");
   const saved = { bin: process.env.HIVE_TEST_SECURITY_BIN, nokc: process.env.HIVE_NO_KEYCHAIN };
   try {
-    // A fake `security` shim: the access token changes after its first read (a rotation mid-snapshot).
-    const counter = join(r.dir, "access-reads");
-    writeFileSync(counter, "0");
-    const t1 = fakeJwt("auth0|user_a", r.now() + HOUR, "t1");
-    const t2 = fakeJwt("auth0|user_a", r.now() + 2 * HOUR, "t2");
+    const calls = join(r.dir, "security-calls");
+    const token = fakeJwt("auth0|user_a", r.now() + HOUR, "kc");
     const shim = join(r.dir, "security");
     writeFileSync(shim, `#!/bin/sh
+echo "$*" | sed -n 's/.*-s \\([a-z-]*\\).*/\\1/p' >> ${calls}
 case "$*" in
-  *cursor-access-token*) n=$(cat ${counter}); echo $((n+1)) > ${counter}; if [ "$n" = "0" ]; then echo "${t1}"; else echo "${t2}"; fi ;;
-  *cursor-refresh-token*) n=$(cat ${counter}); if [ "$n" = "1" ]; then echo "FAKE-R1"; else echo "FAKE-R2"; fi ;;
+  *cursor-access-token*) echo "${token}" ;;
+  *cursor-refresh-token*) echo "FAKE-R" ;;
+  *cursor-api-key*) echo "FAKE-API-KEY" ;;
   *) exit 44 ;;
 esac
 `, { mode: 0o755 });
     process.env.HIVE_TEST_SECURITY_BIN = shim;
     delete process.env.HIVE_NO_KEYCHAIN;
     const live = await readCursorLiveAuth();
-    assert.equal(live?.accessToken, t2, "the torn first snapshot was discarded");
-    assert.equal(live?.refreshToken, "FAKE-R2");
-    assert.equal(live?.apiKey, undefined, "the machine's Cursor API key is never read");
-    assert.equal(readFileSync(counter, "utf8").trim(), "4", "four access reads: the torn pair, then the confirmed pair");
+    assert.equal(live?.accessToken, token);
+    assert.equal(live?.refreshToken, undefined);
+    assert.equal(live?.apiKey, undefined);
+    assert.deepEqual(readFileSync(calls, "utf8").trim().split("\n"), ["cursor-access-token"], "one Keychain item read");
   } finally {
     if (saved.bin === undefined) delete process.env.HIVE_TEST_SECURITY_BIN; else process.env.HIVE_TEST_SECURITY_BIN = saved.bin;
     if (saved.nokc === undefined) delete process.env.HIVE_NO_KEYCHAIN; else process.env.HIVE_NO_KEYCHAIN = saved.nokc;
+    r.cleanup();
+  }
+});
+
+test("cursor capture: exactly the validated {accessToken} bytes land in vault and home; an identity-less credential needs --replace-account", async () => {
+  const r = rig("bytes");
+  try {
+    const cursor = fakeCursorStore();
+    const mine = fakeJwt("auth0|user_a", r.now() + HOUR, "mine");
+    const account = addCursor(r, "a", authDoc(mine));
+    const next = fakeJwt("auth0|user_a", r.now() + 4 * HOUR, "next");
+    cursor.state.raw = authDoc(next, "FAKE-LIVE-REFRESH");
+    await service(r, cursor).captureAccount(account);
+    const expected = `${JSON.stringify({ accessToken: next }, null, 2)}\n`;
+    assert.equal(readFileSync(join(r.vault, "cursor", account.id, "auth.json"), "utf8"), expected);
+    assert.equal(readFileSync(join(account.homePath, "auth.json"), "utf8"), expected);
+
+    const opaque = addCursor(r, "opaque", authDoc("opaque-token"));
+    await assert.rejects(service(r, cursor).captureAccount(opaque), (error: unknown) => error instanceof CredentialAuthorityError && error.reason === "identity_unverified" && /current credential names no Cursor user/.test(error.message));
+    await service(r, cursor).captureAccount(opaque, { replaceAccount: true });
+    assert.equal(readFileSync(join(opaque.homePath, "auth.json"), "utf8"), expected);
+  } finally {
+    r.cleanup();
+  }
+});
+
+test("cursor repair: an interrupted write is fixed up from the identity-bearing selection before probe, spawn and lease", async () => {
+  const r = rig("repair");
+  try {
+    const cursor = fakeCursorStore();
+    // A re-capture wrote the vault, then stopped before the home.
+    const old = fakeJwt("auth0|user_a", r.now() + 2 * HOUR, "old");
+    const newer = fakeJwt("auth0|user_a", r.now() + 5 * HOUR, "newer");
+    const account = addCursor(r, "a", authDoc(old));
+    writeFileSync(join(r.vault, "cursor", account.id, "auth.json"), `${JSON.stringify({ accessToken: newer }, null, 2)}\n`);
+    const svc = service(r, cursor);
+    assert.equal(svc.credentialEnvOf(account).CURSOR_AUTH_TOKEN, newer, "the spawn env uses the selection, not the stale home copy");
+    await svc.activateForSpawn(account, { cwd: r.dir });
+    assert.equal(homeToken(account), newer, "home repaired from the vault");
+    assert.ok(r.log.some((line) => line === `account.cursor.repaired account=${account.id} copies=home from=vault`));
+
+    // A replace wrote the vault (new user) and stopped before the home: the home follows the vault's user, never back.
+    const replaced = addCursor(r, "b", authDoc(fakeJwt("auth0|user_a", r.now() + 9 * HOUR, "old-user")));
+    const otherUser = fakeJwt("auth0|user_b", r.now() + HOUR, "new-user");
+    writeFileSync(join(r.vault, "cursor", replaced.id, "auth.json"), `${JSON.stringify({ accessToken: otherUser }, null, 2)}\n`);
+    const seen: string[] = [];
+    const probing = service(r, cursor, { postJson: async (_url, headers) => { seen.push(headers.Authorization!); return usage(r); } });
+    await probing.refreshLimits([replaced.id]);
+    assert.deepEqual(seen, [`Bearer ${otherUser}`]);
+    assert.equal(homeToken(replaced), otherUser);
+  } finally {
+    r.cleanup();
+  }
+});
+
+test("cursor lock: the gate is judged again after taking the lock, before the store is read", async () => {
+  const r = rig("lock");
+  try {
+    const cursor = fakeCursorStore();
+    cursor.state.raw = authDoc(fakeJwt("auth0|user_a", r.now() + 9 * HOUR, "live"));
+    const account = addCursor(r, "a", authDoc(fakeJwt("auth0|user_a", r.now() + 5 * MIN, "near")));
+    const svc = service(r, cursor);
+    let release!: () => void;
+    const holding = svc.withCursorLock(account.id, () => new Promise<void>((resolve) => { release = resolve; }));
+    await new Promise((resolve) => setImmediate(resolve));
+    const waiting = svc.recaptureCursor(account);
+    // While the lock is held, a capture lands a fresh token.
+    const fresh = `${JSON.stringify({ accessToken: fakeJwt("auth0|user_a", r.now() + 6 * HOUR, "fresh") }, null, 2)}\n`;
+    writeFileSync(join(r.vault, "cursor", account.id, "auth.json"), fresh);
+    writeFileSync(join(account.homePath, "auth.json"), fresh);
+    release();
+    await holding;
+    assert.equal(await waiting, "fresh");
+    assert.equal(cursor.state.reads, 0, "the store was not read once the token was fresh");
+  } finally {
     r.cleanup();
   }
 });

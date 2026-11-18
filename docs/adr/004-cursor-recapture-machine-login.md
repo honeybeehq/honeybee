@@ -38,24 +38,41 @@ Login and `hive account capture` refuse a credential whose identity differs from
 the account's held identity. The refusal reasons are `different_account` and
 `identity_unverified`. `--replace-account` overrides the refusal on purpose.
 
-Rules that keep this safe:
+## Threat model
 
-- **Identity.** A token's identity is its JWT `iss` and `sub`. The token must have
-  a signed shape: a header `alg` other than `none` and a non-empty signature, plus
-  `iss`, `sub` and `exp`. Honeybee cannot check Cursor's signature, and anyone who
-  can write the user's own credential store already owns the user.
-- **Which copy counts.** An account's identity is its vault copy's identity, else
-  its home copy's. A copy without an identity never makes a capture a first capture
-  while the other copy has one. Copies belonging to another user are ignored.
-- **One writer at a time.** Re-capture, explicit capture and login landing hold one
-  per-account lock. Just before writing, re-capture checks the account again: same
-  identity, and a later `exp` than every copy it holds.
-- **What is read.** The Keychain items are read as one snapshot: the access token is
-  read again after the refresh token, and a mismatch means another read. Cursor's
-  machine-wide API key is never captured, and leases never carry one.
-- **When the store is read.** Only when the cached token has a known `exp` within
-  15 minutes, or after an exact HTTP 401 status. An opaque token never triggers a
-  read.
+Anyone who can write the user's own Cursor store, or an account home or vault,
+already owns that user. These rules do not defend against a hostile local writer.
+They defend against two things: races with `cursor-agent` and other Honeybee
+operations, and Honeybee's own mistakes, such as capturing the wrong user or
+writing an older token over a newer one.
+
+## Rules
+
+- **Access token only.** Honeybee reads and keeps only Cursor's access token: one
+  Keychain item, or the `accessToken` field of the global `auth.json`. It never
+  refreshes, so it never takes the refresh token. Cursor's machine-wide API key is
+  never captured or leased.
+- **Identity.** A token's identity is its JWT `iss` and `sub`, compared as separate
+  fields. The token must have a signed shape: a header `alg` other than `none` and
+  a non-empty signature, plus `iss`, `sub` and `exp`. Honeybee does not check the
+  signature; under the threat model that is out of scope.
+- **First capture.** A capture counts as the account's first only when the account
+  holds no credential at all. An existing credential without an identity needs
+  `--replace-account`.
+- **One selection.** The probe, the spawn and the lease use the same credential.
+  The account's identity comes from its vault copy, else its home copy. Among
+  copies with that identity, the latest `exp` wins. Before each probe, spawn and
+  lease, Honeybee rewrites both copies to the selected bytes, which repairs an
+  interrupted write. Writes go to the vault first, so a repair never brings back a
+  replaced user.
+- **Exact bytes.** Capture and login validate one `{accessToken}` document and write
+  exactly those bytes to the vault and the home, without reading them back.
+- **One writer at a time.** Re-capture, repair, explicit capture and login landing
+  hold one lock per account. After taking it, re-capture checks again before
+  reading the store: the account row, any active login flow and the token's expiry.
+  Just before writing, it checks once more: same identity, and a later `exp`.
+- **When the store is read.** Only when the selected token has a known `exp` within
+  15 minutes, or after an exact HTTP 401 status.
 - **Errors.** Cursor probe errors carry the HTTP status only, never a response body.
 - **Leases.** A lease's `auth.json` is exactly `{accessToken}`. Mint and install
   both enforce this.

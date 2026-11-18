@@ -114,11 +114,13 @@ import {
   ProviderHttpError,
 } from "./providerLimits.ts";
 import {
-  cursorCredentialEnv,
   cursorIdentityVerdict,
   cursorLoginDocument,
   cursorTokenClaims,
   cursorTokenIdentity,
+  sameCursorIdentity,
+  type CursorIdentity,
+  type CursorTokenClaims,
   parseCursorAuth,
   type CursorAuthSnapshot,
   readCursorLiveAuth,
@@ -517,6 +519,14 @@ export type CursorRecapture =
   | "different_account"
   /** Which Cursor user the login belongs to cannot be read; nothing was changed. */
   | "identity_unverified";
+/** One of a Cursor account's credential copies (vault or home). */
+interface CursorCopy {
+  where: "vault" | "home";
+  path: string;
+  raw: string;
+  auth: CursorAuthSnapshot;
+  claims: CursorTokenClaims | null;
+}
 const CENTRAL_TICK_POLL_MS = 1000;
 
 // How long a lease mint keeps deferring to a healthy running Claude: Claude
@@ -2051,7 +2061,12 @@ export class AccountsService {
    * home's captured auth.json is lifted into the process environment here.
    */
   credentialEnvOf(account: AccountRow): Record<string, string> {
-    return account.harness === "cursor" ? cursorCredentialEnv(account.homePath) : {};
+    if (account.harness !== "cursor") return {};
+    // The same identity-checked selection the probe and the lease use.
+    const selected = this.cursorSelection(account).selected?.auth;
+    if (selected?.apiKey) return { CURSOR_API_KEY: selected.apiKey };
+    if (selected?.accessToken) return { CURSOR_AUTH_TOKEN: selected.accessToken };
+    return {};
   }
 
   /**
@@ -3437,6 +3452,7 @@ export class AccountsService {
    * carry the HTTP status only, never a response body.
    */
   private async fetchCursorLimits(account: AccountRow): Promise<PutAccountLimitsInput> {
+    await this.withCursorLock(account.id, async () => this.repairCursorCopies(this.store.getAccount(account.id) ?? account));
     await this.recaptureCursor(account);
     const first = await this.probeCursor(account);
     if (first.status !== 401) return first.result;
@@ -4268,62 +4284,78 @@ export class AccountsService {
   }
 
   /**
-   * cursor: ship auth.json holding exactly the access token — the refresh
-   * token never leaves this node, and no API key is leased. The token is
-   * first re-captured from Cursor's own login when it is near expiry; a token
-   * with less than CURSOR_MIN_SHIP_TTL_MS left is refused, never shipped dying.
+   * cursor: ship auth.json holding exactly the access token — no refresh
+   * token, no API key. The token is first re-captured from Cursor's own login
+   * when it is near expiry; a token with less than CURSOR_MIN_SHIP_TTL_MS left
+   * is refused, never shipped dying.
    */
   private async mintCursorLease(account: AccountRow): Promise<EphemeralCredential> {
+    await this.withCursorLock(account.id, async () => this.repairCursorCopies(this.store.getAccount(account.id) ?? account));
     const recapture = await this.recaptureCursor(account);
-    const held = this.freshestCursorAuth(account);
-    if (!held) throw new LeaseRefusal("lease_unavailable", `no Cursor credential for ${account.id}; ${cursorRecoveryHint(account.id)}`);
-    const claims = cursorTokenClaims(held.auth.accessToken);
-    if (!claims) throw new LeaseRefusal("lease_unsupported", `Cursor account ${account.id} holds no identity-bearing access token to lease (API keys are not leased); ${cursorRecoveryHint(account.id)}`);
-    if (claims.expiresAt - this.now() <= CURSOR_MIN_SHIP_TTL_MS) {
+    const selected = this.cursorSelection(account).selected;
+    if (!selected) throw new LeaseRefusal("lease_unavailable", `no Cursor credential for ${account.id}; ${cursorRecoveryHint(account.id)}`);
+    if (!selected.claims) throw new LeaseRefusal("lease_unsupported", `Cursor account ${account.id} holds no identity-bearing access token to lease (API keys are not leased); ${cursorRecoveryHint(account.id)}`);
+    if (selected.claims.expiresAt - this.now() <= CURSOR_MIN_SHIP_TTL_MS) {
       throw new LeaseRefusal("lease_unavailable", `Cursor access token for ${account.id} is expired or near expiry and Cursor's login on this computer had no newer one (${recapture}); ${cursorRecoveryHint(account.id, recapture)}`);
     }
-    const expSeconds = Math.floor(claims.expiresAt / 1000);
+    const expSeconds = Math.floor(selected.claims.expiresAt / 1000);
     return {
-      files: [{ homeRelPath: "auth.json", contentB64: Buffer.from(`${JSON.stringify({ accessToken: held.auth.accessToken })}\n`, "utf8").toString("base64"), mode: 0o600 }],
+      files: [{ homeRelPath: "auth.json", contentB64: Buffer.from(cursorLoginDocument({ accessToken: selected.auth.accessToken! }), "utf8").toString("base64"), mode: 0o600 }],
       expiresAt: expSeconds,
-      kindNote: `cursor: shipped access-token-only auth.json (refresh token withheld), exp ${new Date(expSeconds * 1000).toISOString()}`,
+      kindNote: `cursor: shipped access-token-only auth.json, exp ${new Date(expSeconds * 1000).toISOString()}`,
     };
   }
 
   /**
-   * The Cursor user this account holds: the identity of its vault copy when
-   * that carries one, else its home copy's. A copy without a readable
-   * identity never hides one the other copy has.
+   * The one Cursor credential selection the probe, the spawn and the lease
+   * use. The account's identity is its vault copy's (else its home copy's);
+   * among the copies of that identity the latest JWT `exp` wins. With no
+   * identity anywhere, the vault copy, else the home copy. `hasCredentials`
+   * is true when either copy exists at all.
    */
-  private cursorHeldIdentity(account: AccountRow): string | null {
-    for (const root of [this.vaultDirOf(account), account.homePath]) {
-      const identity = cursorTokenIdentity(parseCursorAuth(readIfFile(join(root, "auth.json"))));
-      if (identity) return identity;
+  private cursorSelection(account: AccountRow): { hasCredentials: boolean; identity: CursorIdentity | null; selected: CursorCopy | null; copies: CursorCopy[] } {
+    const copies: CursorCopy[] = [];
+    let hasCredentials = false;
+    for (const [where, root] of [["vault", this.vaultDirOf(account)], ["home", account.homePath]] as const) {
+      const path = join(root, "auth.json");
+      const raw = readIfFile(path);
+      if (raw === null) continue;
+      hasCredentials = true;
+      const auth = parseCursorAuth(raw, where);
+      if (auth) copies.push({ where, path, raw, auth, claims: cursorTokenClaims(auth.accessToken) });
     }
-    return null;
+    const identityOf = (copy: CursorCopy): CursorIdentity | null => copy.claims ? { iss: copy.claims.iss, sub: copy.claims.sub } : null;
+    const identity = copies.map(identityOf).find((value) => value !== null) ?? null;
+    let selected: CursorCopy | null = null;
+    for (const copy of copies) {
+      if (identity !== null && !sameCursorIdentity(identityOf(copy), identity)) continue;
+      if (!selected || (copy.claims?.expiresAt ?? -1) > (selected.claims?.expiresAt ?? -1)) selected = copy;
+    }
+    return { hasCredentials, identity, selected, copies };
   }
 
   /**
-   * The account's freshest Cursor credential between home and vault, among
-   * copies that belong to the account's identity (by JWT `exp`). Without an
-   * identity anywhere, the vault copy, else the home copy.
+   * Make the home and vault copies hold the selected credential's bytes, so
+   * an interrupted write (one copy updated, the other not) is repaired on the
+   * next probe, spawn or lease. Vault first. Local accounts only; call it
+   * holding the account's Cursor lock.
    */
-  private freshestCursorAuth(account: AccountRow): { raw: string; auth: CursorAuthSnapshot; expiresAt: number | null } | null {
-    const identity = this.cursorHeldIdentity(account);
-    let best: { raw: string; auth: CursorAuthSnapshot; expiresAt: number | null } | null = null;
-    for (const root of [this.vaultDirOf(account), account.homePath]) {
-      const raw = readIfFile(join(root, "auth.json"));
-      const auth = parseCursorAuth(raw, root);
-      if (raw === null || !auth) continue;
-      const claims = cursorTokenClaims(auth.accessToken);
-      if (identity !== null && (!claims || `${claims.iss}#${claims.sub}` !== identity)) continue;
-      const expiresAt = claims?.expiresAt ?? null;
-      if (!best || (expiresAt ?? -1) > (best.expiresAt ?? -1)) best = { raw, auth, expiresAt };
+  private repairCursorCopies(account: AccountRow): void {
+    if (account.harness !== "cursor" || account.source !== "local" || this.isNative(account)) return;
+    const selected = this.cursorSelection(account).selected;
+    if (!selected) return;
+    const repaired: string[] = [];
+    for (const [where, root] of [["vault", this.vaultDirOf(account)], ["home", account.homePath]] as const) {
+      const path = join(root, "auth.json");
+      if (readIfFile(path) === selected.raw) continue;
+      mkdirSync(root, { recursive: true, mode: 0o700 });
+      atomicWriteFileSync(path, selected.raw);
+      repaired.push(where);
     }
-    return best;
+    if (repaired.length > 0) this.log(`account.cursor.repaired account=${account.id} copies=${repaired.join(",")} from=${selected.where}`);
   }
 
-  /** Run `work` holding the account's Cursor credential lock (re-capture, explicit capture and login landing all take it). */
+  /** Run `work` holding the account's Cursor credential lock (re-capture, repair, explicit capture and login landing all take it). */
   async withCursorLock<T>(accountId: string, work: () => Promise<T>): Promise<T> {
     const previous = this.cursorLocks.get(accountId) ?? Promise.resolve();
     let release!: () => void;
@@ -4339,29 +4371,34 @@ export class AccountsService {
     }
   }
 
+  /** Whether a Cursor re-capture may read the machine-wide store now, judged from the account as it is. */
+  private cursorRecaptureGate(account: AccountRow, force: boolean): CursorRecapture | null {
+    if (account.harness !== "cursor" || account.source !== "local" || this.isNative(account)) return "skipped";
+    if (this.store.activeLoginFlow(account.id)) return "skipped";
+    const selected = this.cursorSelection(account).selected;
+    if (!selected?.claims) return "skipped";
+    if (!force && selected.claims.expiresAt - this.now() > CURSOR_RECAPTURE_AHEAD_MS) return "fresh";
+    return null;
+  }
+
   /**
-   * Re-capture a local Cursor account's token from Cursor's machine-wide
-   * login (Keychain / global auth.json), which cursor-agent keeps fresh.
-   * Honeybee never calls a Cursor refresh endpoint. Without `force` the store
-   * is read only when the cached token has a known JWT `exp` within
-   * CURSOR_RECAPTURE_AHEAD_MS; `force` is for an exact HTTP 401. The login is
-   * taken only when it belongs to the account's Cursor user and carries a
-   * later `exp`, checked again just before the write. Leased accounts never
-   * re-capture: their authority node leases them access-only tokens.
-   * Single-flight per account, under the account's Cursor lock.
+   * Re-capture a local Cursor account's access token from Cursor's
+   * machine-wide login (Keychain / global auth.json), which cursor-agent
+   * keeps fresh. Honeybee never calls a Cursor refresh endpoint. Without
+   * `force` the store is read only when the selected token's known JWT `exp`
+   * is within CURSOR_RECAPTURE_AHEAD_MS; `force` is for an exact HTTP 401.
+   * Under the account's Cursor lock the copies are repaired and the gate is
+   * judged again (row, login flow, expiry) before the store is read; the
+   * token is taken only for the account's iss + sub with a later `exp`,
+   * checked once more right before the write. Leased accounts never
+   * re-capture. Single-flight per account.
    */
   recaptureCursor(account: AccountRow, opts: { force?: boolean } = {}): Promise<CursorRecapture> {
-    if (account.harness !== "cursor" || account.source !== "local" || this.isNative(account)) return Promise.resolve("skipped");
-    const held = this.freshestCursorAuth(account);
-    if (!held?.auth.accessToken) return Promise.resolve("skipped");
-    if (!opts.force) {
-      if (held.expiresAt === null) return Promise.resolve("skipped");
-      if (held.expiresAt - this.now() > CURSOR_RECAPTURE_AHEAD_MS) return Promise.resolve("fresh");
-    }
-    if (this.store.activeLoginFlow(account.id)) return Promise.resolve("skipped");
+    const early = this.cursorRecaptureGate(account, opts.force === true);
+    if (early) return Promise.resolve(early);
     const joined = this.cursorRecaptures.get(account.id);
     if (joined) return joined;
-    const pending = this.withCursorLock(account.id, () => this.recaptureCursorOnce(account)).catch((error: unknown) => {
+    const pending = this.withCursorLock(account.id, () => this.recaptureCursorLocked(account.id, opts.force === true)).catch((error: unknown) => {
       this.log(`account.cursor.recapture_failed account=${account.id} err=${JSON.stringify(errorDetail(error).slice(0, 200))}`);
       return "absent" as const;
     });
@@ -4371,16 +4408,22 @@ export class AccountsService {
     });
   }
 
-  private async recaptureCursorOnce(account: AccountRow): Promise<CursorRecapture> {
-    const identity = this.cursorHeldIdentity(account);
+  private async recaptureCursorLocked(accountId: string, force: boolean): Promise<CursorRecapture> {
+    const account = this.store.getAccount(accountId);
+    if (!account) return "skipped";
+    this.repairCursorCopies(account);
+    const gate = this.cursorRecaptureGate(account, force);
+    if (gate) return gate;
+    const identity = this.cursorSelection(account).identity;
     const live = await this.cursorAuthReader();
     if (!live?.accessToken) return "absent";
+    const liveIdentity = cursorTokenIdentity(live);
     const claims = cursorTokenClaims(live.accessToken);
-    if (identity === null || claims === null) {
+    if (identity === null || liveIdentity === null || claims === null) {
       this.log(`account.cursor.recapture_refused account=${account.id} reason=identity_unverified`);
       return "identity_unverified";
     }
-    if (`${claims.iss}#${claims.sub}` !== identity) {
+    if (!sameCursorIdentity(liveIdentity, identity)) {
       this.log(`account.cursor.recapture_refused account=${account.id} reason=different_account`);
       return "different_account";
     }
@@ -4388,15 +4431,15 @@ export class AccountsService {
     // write (synchronous from here on, so nothing interleaves).
     const current = this.store.getAccount(account.id);
     if (!current || current.source !== "local" || this.store.activeLoginFlow(account.id)) return "unchanged";
-    if (this.cursorHeldIdentity(current) !== identity) return "unchanged";
-    const now = this.freshestCursorAuth(current);
-    if (now?.auth.accessToken === live.accessToken) return "unchanged";
-    if (now?.expiresAt != null && claims.expiresAt <= now.expiresAt) return "unchanged";
-    const document = cursorLoginDocument({ accessToken: live.accessToken, ...(live.refreshToken ? { refreshToken: live.refreshToken } : {}) });
-    atomicWriteFileSync(join(current.homePath, "auth.json"), document);
+    const now = this.cursorSelection(current);
+    if (!sameCursorIdentity(now.identity, identity)) return "unchanged";
+    if (now.selected?.auth.accessToken === live.accessToken) return "unchanged";
+    if (now.selected?.claims && claims.expiresAt <= now.selected.claims.expiresAt) return "unchanged";
+    const bytes = cursorLoginDocument({ accessToken: live.accessToken });
     const vaultDir = this.vaultDirOf(current);
     mkdirSync(vaultDir, { recursive: true, mode: 0o700 });
-    atomicWriteFileSync(join(vaultDir, "auth.json"), document);
+    atomicWriteFileSync(join(vaultDir, "auth.json"), bytes);
+    atomicWriteFileSync(join(current.homePath, "auth.json"), bytes);
     this.log(`account.cursor.recaptured account=${account.id} source=${live.source === "keychain" ? "keychain" : "global_file"} exp=${new Date(claims.expiresAt).toISOString()}`);
     return "recaptured";
   }
@@ -4690,7 +4733,10 @@ export class AccountsService {
     this.assertOwnedHome(account, "writes into");
     const unisolated = this.isolationRefusal(account.harness);
     if (unisolated) throw new Error(unisolated);
-    if (account.harness === "cursor") await this.recaptureCursor(account);
+    if (account.harness === "cursor") {
+      await this.withCursorLock(account.id, async () => this.repairCursorCopies(this.store.getAccount(account.id) ?? account));
+      await this.recaptureCursor(account);
+    }
     if (this.authorityFor(account)?.enabled(account)) {
       await this.authorityFor(account)!.ensure(account, account.harness === "codex" ? CODEX_MIN_SHIP_TTL_MS : CLAUDE_MIN_SHIP_TTL_MS);
       await this.authorityFor(account)!.checkRuntimeCopies(account);
@@ -4776,17 +4822,29 @@ export class AccountsService {
     if (!this.validPrimaryCredential(account.harness, primaryFile, primaryRaw)) {
       return { ok: false, reason: "invalid_primary" };
     }
-    // Cursor has one machine-wide login slot: whoever signed in last, by any
-    // means, is what a login or capture sees. Refuse a credential for a
-    // different Cursor user than the one this account holds.
-    if (account.harness === "cursor" && opts.allowDifferentAccount !== true) {
-      const refusal = this.cursorIdentityRefusal(account, primaryRaw);
-      if (refusal) return { ok: false, ...refusal };
-    }
-    // Cursor's provider login lands outside CURSOR_CONFIG_DIR. Materialize
-    // that explicit credential into the account home before vault backup.
-    if (account.harness === "cursor" && overrides[primaryFile] !== undefined) {
-      atomicWriteFileSync(join(account.homePath, primaryFile), overrides[primaryFile] as string);
+    if (account.harness === "cursor") {
+      // Honeybee keeps Cursor's access token only. These exact bytes are
+      // validated, identity-checked and then published to the vault and the
+      // home; nothing is read back.
+      const accessToken = parseCursorAuth(primaryRaw)?.accessToken;
+      if (!accessToken) return { ok: false, reason: "invalid_primary" };
+      const bytes = cursorLoginDocument({ accessToken });
+      // Cursor has one machine-wide login slot: whoever signed in last, by any
+      // means, is what a login or capture sees. Refuse a credential for a
+      // different Cursor user than the one this account holds.
+      if (opts.allowDifferentAccount !== true) {
+        const refusal = this.cursorIdentityRefusal(account, bytes);
+        if (refusal) return { ok: false, ...refusal };
+      }
+      // Vault first: it names the account's identity, so an interrupted write
+      // is repaired from it (repairCursorCopies), never back to the old user.
+      const captured = captureHomeToVault(account.harness, account.homePath, this.vaultDirOf(account), { ...overrides, [primaryFile]: bytes });
+      mkdirSync(account.homePath, { recursive: true, mode: 0o700 });
+      atomicWriteFileSync(join(account.homePath, primaryFile), bytes);
+      const at = this.now();
+      this.store.recordAccountLogin(account.id, at);
+      const updated = this.store.setAccountRefreshTokenExpiry(account.id, null, "credential captured").account;
+      return { ok: true, account: updated, captured, at };
     }
     const captured = captureHomeToVault(account.harness, account.homePath, this.vaultDirOf(account), overrides);
     if (!captured.includes(primaryFile)) return { ok: false, reason: "primary_not_captured" };
@@ -4798,15 +4856,17 @@ export class AccountsService {
   }
 
   /** Why a Cursor credential must not be captured into this account (identity mismatch), or null. */
-  private cursorIdentityRefusal(account: AccountRow, primaryRaw: string | null): { reason: "different_account" | "identity_unverified"; message: string } | null {
-    const verdict = cursorIdentityVerdict(this.cursorHeldIdentity(account), primaryRaw);
+  private cursorIdentityRefusal(account: AccountRow, nextRaw: string): { reason: "different_account" | "identity_unverified"; message: string } | null {
+    const selection = this.cursorSelection(account);
+    const verdict = cursorIdentityVerdict(selection, nextRaw);
     if (verdict === "different") {
       this.log(`account.capture.refused account=${account.id} reason=different_account`);
       return { reason: "different_account", message: `The Cursor sign-in on this computer belongs to a different Cursor user than ${account.id}; nothing was changed. Sign in to Cursor as this account's user and try again, or replace the account's login with it: hive account login ${account.id} --replace-account` };
     }
     if (verdict === "unverified") {
       this.log(`account.capture.refused account=${account.id} reason=identity_unverified`);
-      return { reason: "identity_unverified", message: `Honeybee cannot tell which Cursor user the sign-in on this computer belongs to, so it cannot confirm it is ${account.id}'s; nothing was changed. If it is: hive account login ${account.id} --replace-account` };
+      const why = selection.identity === null ? `${account.id}'s current credential names no Cursor user` : "the Cursor sign-in on this computer names no Cursor user";
+      return { reason: "identity_unverified", message: `Honeybee cannot confirm this is the same Cursor user: ${why}; nothing was changed. If it is: hive account login ${account.id} --replace-account` };
     }
     return null;
   }
