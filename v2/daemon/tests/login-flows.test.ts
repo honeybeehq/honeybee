@@ -1029,7 +1029,7 @@ test("flows.cli-exit: a CLI that exits without a credential fails typed (process
 });
 
 test("flows.expiry+cancel: expiry kills the worker and marks expired; cancel kills and marks cancelled; cancel on a terminal flow is a no-op; a landed credential is never un-done by a late cancel", async () => {
-  const r = rig({ agents: fakeCliAgent("cursor", "CURSOR_CONFIG_DIR", "cli-config.json", { FAKE_CLI_URL: "https://cursor.com/login", FAKE_CLI_HANG: "1" }) });
+  const r = rig({ agents: fakeCliAgent("cursor", "CURSOR_CONFIG_DIR", "cli-config.json", { FAKE_CLI_URL: "https://cursor.com/loginDeepControl?mode=login", FAKE_CLI_HANG: "1" }) });
   try {
     const { flows } = services(r);
     const acct = account(r, "cursor", "c");
@@ -1352,7 +1352,8 @@ test("redaction: thrown input and encoded variants never reach flow, audit, mirr
 test("redaction: every CLI recipe strips credential queries and fragments before persistence", async () => {
   const words = ["code", "token", "access_token", "id_token", "refresh_token", "password", "secret", "apikey", "api_key", "key", "auth", "assertion", "session", "credential", "passwd", "cookie", "signature", "sig", "secrets", "tokens", "credentials", "secret_ref", "secret-ref", "secretref", "authorization", "bearer", "otp", "passphrase", "pin", "private-key", "accessKey", "signing_key", "sessionKey", "auth-key", "encryption_key", "masterKey", "code_verifier", "client_secret", "codeChallengeEvil", "Code", "ToKeNs"];
   for (const [harness, homeEnv, file, host] of [["grok", "GROK_HOME", "auth.json", "accounts.x.ai"], ["kimi", "KIMI_CODE_HOME", "credentials/kimi-code.json", "auth.kimi.com"], ["agy", "HOME", ".gemini/antigravity-cli/antigravity-oauth-token", "accounts.google.com"], ["codex", "CODEX_HOME", "auth.json", "auth.openai.com"], ["muse", "XDG_CONFIG_HOME", "muse/auth.json", "auth.meta.com"], ["cursor", "CURSOR_CONFIG_DIR", "auth.json", "cursor.com"]]) {
-    const url = new URL(`https://${host}/oauth/authorize?client_id=app&redirect_uri=https%3A%2F%2Fcallback.example%2Fdone&state=nonce&nonce=public-nonce&scope=openid&code_challenge=public-challenge&code_challenge_method=S256`);
+    const url = new URL(`https://${host}/${harness === "cursor" ? "loginDeepControl" : "oauth/authorize"}?client_id=app&redirect_uri=https%3A%2F%2Fcallback.example%2Fdone&state=nonce&nonce=public-nonce&scope=openid&code_challenge=public-challenge&code_challenge_method=S256`);
+    if (harness === "cursor") url.searchParams.set("challenge", "public-challenge");
     for (const word of words) url.searchParams.set(word, `planted-${word}-value`);
     url.hash = "fragment-credential";
     const r = rig({ agents: fakeCliAgent(harness!, homeEnv!, file!, { FAKE_CLI_URL: url.toString(), FAKE_CLI_HANG: "1" }) });
@@ -1361,13 +1362,17 @@ test("redaction: every CLI recipe strips credential queries and fragments before
       const { flow } = await flows.start(account(r, harness!, "url"));
       const ready = await waitFor(() => { const f = r.store.getLoginFlow(flow.id); return f?.authorizationUrl ? f : null; }, "sanitized URL", CLI_READY_TIMEOUT_MS, 20);
       const clean = new URL(ready.authorizationUrl!);
-      assert.equal(clean.searchParams.get("client_id"), "app");
-      assert.equal(clean.searchParams.get("redirect_uri"), "https://callback.example/done");
-      assert.equal(clean.searchParams.get("state"), "nonce");
-      assert.equal(clean.searchParams.get("scope"), "openid");
-      assert.equal(clean.searchParams.get("nonce"), harness === "codex" ? null : "public-nonce");
-      assert.equal(clean.searchParams.get("code_challenge"), "public-challenge");
-      assert.equal(clean.searchParams.get("code_challenge_method"), "S256");
+      if (harness === "cursor") {
+        assert.deepEqual([...clean.searchParams], [["challenge", "public-challenge"]]);
+      } else {
+        assert.equal(clean.searchParams.get("client_id"), "app");
+        assert.equal(clean.searchParams.get("redirect_uri"), "https://callback.example/done");
+        assert.equal(clean.searchParams.get("state"), "nonce");
+        assert.equal(clean.searchParams.get("scope"), "openid");
+        assert.equal(clean.searchParams.get("nonce"), harness === "codex" ? null : "public-nonce");
+        assert.equal(clean.searchParams.get("code_challenge"), "public-challenge");
+        assert.equal(clean.searchParams.get("code_challenge_method"), "S256");
+      }
       for (const word of words) assert.equal(clean.searchParams.has(word), false, word);
       assert.doesNotMatch(redactionSurfaces(r), /planted-|fragment-credential/);
     } finally {
@@ -1391,7 +1396,17 @@ test("redaction: userinfo and nested credentials refuse; Claude flag is restrict
 
 test("redaction: unsafe CLI URLs fail typed without reaching persisted or mirrored fields", async () => {
   for (const [harness, homeEnv, file] of [["grok", "GROK_HOME", "auth.json"], ["kimi", "KIMI_CODE_HOME", "credentials/kimi-code.json"], ["agy", "HOME", ".gemini/antigravity-cli/antigravity-oauth-token"], ["codex", "CODEX_HOME", "auth.json"], ["muse", "XDG_CONFIG_HOME", "muse/auth.json"], ["cursor", "CURSOR_CONFIG_DIR", "auth.json"]]) {
-    for (const url of ["https://user:planted-pass@auth.openai.com/oauth/authorize?client_id=app", "https://auth.openai.com/oauth/authorize?redirect_uri=https%3A%2F%2Fcallback.example%2F%3Ftoken%3Dplanted-nested", "https://auth.openai.com/oauth/authorize?state=sk-planted-key-0123456789abcdef", "https://auth.openai.com/oauth/authorize?redirect_uri=https%3A%2F%2Fu%3Aplanted-nested-pass%40callback.example%2Fdone", "https://auth.openai.com/oauth/authorize?state=%7B%22access_token%22%3A%22planted-json%22%7D"]) {
+    const cursor = harness === "cursor";
+    const endpoint = cursor ? "cursor.com/loginDeepControl" : "auth.openai.com/oauth/authorize";
+    const redirect = cursor ? "redirectTarget" : "redirect_uri";
+    const state = cursor ? "uuid" : "state";
+    for (const url of [
+      `https://user:planted-pass@${endpoint}?client_id=app`,
+      `https://${endpoint}?${redirect}=https%3A%2F%2Fcallback.example%2F%3Ftoken%3Dplanted-nested`,
+      `https://${endpoint}?${state}=sk-planted-key-0123456789abcdef`,
+      `https://${endpoint}?${redirect}=https%3A%2F%2Fu%3Aplanted-nested-pass%40callback.example%2Fdone`,
+      `https://${endpoint}?${state}=%7B%22access_token%22%3A%22planted-json%22%7D`,
+    ]) {
       const r = rig({ agents: fakeCliAgent(harness!, homeEnv!, file!, { FAKE_CLI_URL: url, FAKE_CLI_HANG: "1" }) });
       const { flows } = services(r);
       try {
@@ -1416,7 +1431,7 @@ test("redaction: CLI-echoed callback URLs never project codes, tokens or fragmen
       const { flow } = await flows.start(account(r, harness!, "callback"));
       await waitFor(() => r.store.getLoginFlow(flow.id)?.phase === "failed" ? true : null, "callback process consumed", CLI_READY_TIMEOUT_MS, 20);
       assert.doesNotMatch(redactionSurfaces(r), /planted-/);
-      if (harness !== "codex") assert.ok(r.store.auditRows().some((row) => JSON.stringify(row.payload).includes("https://callback.example/callback")));
+      if (harness !== "codex" && harness !== "cursor") assert.ok(r.store.auditRows().some((row) => JSON.stringify(row.payload).includes("https://callback.example/callback")));
     } finally {
       await flows.shutdown();
       r.cleanup();

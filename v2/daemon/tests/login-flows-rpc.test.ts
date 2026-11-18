@@ -135,7 +135,7 @@ test("rpc.login.1: capability tags, start/rejoin/alias, snapshot + watch rows, t
   const cursor = makeDaemonDir({
     accounts: { loginTimeoutMs: 30_000, loginWorkerBackend: "pipe" },
     agents: {
-      cursor: { command: process.execPath, args: [], adapter: "cursor", login: { command: process.execPath, args: [FAKE_CLI] }, env: { FAKE_LOGIN_HOME_ENV: "CURSOR_CONFIG_DIR", FAKE_LOGIN_FILE: "auth.json", FAKE_CLI_URL: "https://cursor.com/loginDeepControl?x=1", FAKE_CLI_PROMPT: "code", FAKE_CLI_EXPECT: SENTINEL, FAKE_CLI_ECHO: "1", FAKE_LOGIN_CONTENT: `{"accessToken":"SENTINEL-CURSOR-TOKEN","refreshToken":"r"}` } },
+      cursor: { command: process.execPath, args: [], adapter: "cursor", login: { command: process.execPath, args: [FAKE_CLI] }, env: { FAKE_LOGIN_HOME_ENV: "CURSOR_CONFIG_DIR", FAKE_LOGIN_FILE: "auth.json", FAKE_CLI_URL: "https://cursor.com/loginDeepControl?uuid=fixture", FAKE_CLI_PROMPT: "code", FAKE_CLI_EXPECT: SENTINEL, FAKE_CLI_ECHO: "1", FAKE_LOGIN_CONTENT: `{"accessToken":"SENTINEL-CURSOR-TOKEN","refreshToken":"r"}` } },
     },
   });
   daemon = null;
@@ -160,7 +160,7 @@ test("rpc.login.1: capability tags, start/rejoin/alias, snapshot + watch rows, t
     // code prompt is not recognized as input (a prompt-less method never
     // asks). The URL is; the flow waits in the browser phase.
     const browser = await waitPhase(client, started.flow.id, ["waiting_browser"], "waiting_browser");
-    assert.equal(browser.authorizationUrl, "https://cursor.com/loginDeepControl?x=1");
+    assert.equal(browser.authorizationUrl, "https://cursor.com/loginDeepControl?uuid=fixture");
     await rejects(() => client.request("account.login.submit", { flowId: started.flow.id, values: { code: SENTINEL } }), "login_flow_refused");
     const got = await client.request<AccountGetResult>("account.get", { id: added.account.id });
     assert.equal(got.loginFlow?.id, started.flow.id);

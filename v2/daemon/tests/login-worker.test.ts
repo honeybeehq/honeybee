@@ -48,6 +48,17 @@ test("worker.parser: Codex browser login ignores its callback listener in every 
   }
 });
 
+test("worker.parser: Cursor only publishes the agent login link", () => {
+  const method = recipeFor("cursor")?.loginFlow.methods.find((candidate) => candidate.id === "cursor-browser");
+  assert.ok(method?.run.mode === "cli");
+  const parser = new LoginOutputParser({ cues: method.run.cli.cues });
+  const diagnostic = "Or, install Cursor at https://cursor.com/download\n";
+  const url = "https://cursor.com/loginDeepControl?challenge=fixture&uuid=fixture&mode=login&redirectTarget=cli";
+  assert.equal(parser.feed(diagnostic, 0).url, null);
+  assert.equal(parser.feed("Open a browser and navigate to this link: " + url + "\n", 1).url, url);
+  assert.equal(parser.feed(diagnostic, 2).url, url);
+});
+
 test("worker.clean: ANSI/OSC sequences are stripped and \\r redraws resolve to the last overwrite", () => {
   assert.equal(cleanTerminalText("\u001b[36m⠋ Starting\r\u001b[K⠙ Starting login\r\u001b[K⠹ Done\u001b[0m\nnext"), "⠹ Done\nnext");
   assert.equal(cleanTerminalText("\u001b]0;title\u0007plain\u001b[?25l"), "plain");

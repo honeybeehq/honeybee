@@ -298,6 +298,7 @@ const GENERIC_URL = "(https?://[^\\s'\"<>)\\]]+)";
 // Codex prints its local callback listener before the sign-in link. Only
 // the authorization endpoint is a browser target, including for custom issuers.
 const CODEX_BROWSER_URL = "(https?://[^/\\s'\"<>)\\]]+/oauth/authorize\\?[^\\s'\"<>)\\]]+)";
+const CURSOR_BROWSER_URL = "(https?://[^/\\s'\"<>)\\]]+/loginDeepControl\\?[^\\s'\"<>)\\]]+)";
 // A prompt is a line that ENDS in a prompt terminator (`:` / `>`); a device
 // line such as "Enter this one-time code: ABCD-1234" ends in the code and
 // is never an ask.
@@ -824,7 +825,7 @@ export const ACCOUNT_RECIPES: Readonly<Record<string, IdentityRecipe>> = {
     // The machine-global credential store (Keychain / global auth.json) is
     // read by the daemon's Cursor bridge; only cli-config.json is home-relative.
     vendorHome: { dir: ".cursor" },
-    login: { command: "cursor-agent", args: ["login"] },
+    login: { command: "agent", args: ["login"] },
     loginFlow: {
       defaultMethodId: "cursor-browser",
       methods: [
@@ -836,12 +837,17 @@ export const ACCOUNT_RECIPES: Readonly<Record<string, IdentityRecipe>> = {
           // cursor-agent polls Cursor's auth session; no loopback callback.
           remoteCapable: true,
           fields: [],
+          authorizationUrl: {
+            hosts: ["cursor.com"],
+            paths: ["/loginDeepControl"],
+            parameters: ["challenge", "uuid", "mode", "redirectTarget", "supportsSelectedTeamLogin"],
+          },
           run: {
             mode: "cli",
             cli: {
               tty: false,
               env: { BROWSER: "true" },
-              cues: { url: GENERIC_URL, prompts: [], failure: GENERIC_FAILURE },
+              cues: { url: CURSOR_BROWSER_URL, prompts: [], failure: GENERIC_FAILURE },
               landing: "external_digest",
             },
           },
