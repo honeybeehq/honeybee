@@ -223,58 +223,65 @@ export class CliRunner implements LoginRunner {
   private async checkLanding(final = false, existingLogin = false): Promise<boolean> {
     if (this.checking && !final) return false;
     this.checking = true;
-    const host = this.host;
     try {
-      if (!host.stillActive()) return false;
-      const account = host.store.getAccount(host.account.id);
-      if (!account) return false;
-      const recipe = recipeFor(account.harness);
-      if (!recipe) return false;
-      const primaryFile = primaryCredentialFile(recipe);
-      let externalRaw: string | null = null;
-      let detectedBy: "mtime" | "digest" | "already_signed_in" | null = null;
-      if (this.spec.landing === "external_digest") {
-        externalRaw = await host.accounts.externalLoginCredential(account);
-        if (!host.isCurrent(this)) return false;
-        const digest = externalRaw ? credentialDigest(externalRaw) : null;
-        if (digest !== null && digest !== this.baselineDigest) detectedBy = "digest";
-        else if (digest !== null && existingLogin) detectedBy = "already_signed_in";
-      }
-      const mtime = primaryCredentialMtime(account.homePath, recipe);
-      if (!detectedBy && externalRaw === null && mtime !== null && (this.baselineMtime === null || mtime > this.baselineMtime)) detectedBy = "mtime";
-      if (!detectedBy) return false;
-      const overrides: Record<string, string> = externalRaw ? { [primaryFile]: externalRaw } : {};
-      let primaryRaw = overrides[primaryFile] ?? null;
-      if (primaryRaw === null) {
-        try {
-          primaryRaw = readFileSync(join(account.homePath, primaryFile), "utf8");
-        } catch {
-          primaryRaw = null;
-        }
-      }
-      if (!host.stillActive()) return false;
-      const captured = host.accounts.persistCredentialCapture(account, primaryFile, primaryRaw, overrides, { allowDifferentAccount: host.replaceAccount() });
-      if (!captured.ok && (captured.reason === "different_account" || captured.reason === "identity_unverified")) {
-        // Someone else's sign-in: fail now with the reason instead of waiting out the flow.
-        host.log(`account.login.rejected flow=${host.flowId} account=${account.id} by=${detectedBy} reason=${captured.reason}`);
-        host.release(this);
-        void this.worker?.kill();
-        host.fail(err(captured.reason, captured.message), true);
-        return true;
-      }
-      if (!captured.ok) {
-        // Not a credential yet (partial write / invalid): re-baseline and keep waiting.
-        this.baselineMtime = mtime;
-        this.baselineDigest = externalRaw ? credentialDigest(externalRaw) : this.baselineDigest;
-        host.log(`account.login.rejected flow=${host.flowId} account=${account.id} by=${detectedBy} reason=${captured.reason}`);
-        return false;
-      }
-      host.log(`account.login.captured flow=${host.flowId} account=${account.id} by=${detectedBy} files=${captured.captured.join(",")}`);
-      if (primaryRaw !== null) await host.accounts.confirmClaudeLoginPublication(account, primaryRaw);
-      host.succeed();
-      return true;
+      // Cursor's capture shares one lock with re-capture and explicit capture.
+      return this.host.account.harness === "cursor"
+        ? await this.host.accounts.withCursorLock(this.host.account.id, () => this.checkLandingNow(final, existingLogin))
+        : await this.checkLandingNow(final, existingLogin);
     } finally {
       this.checking = false;
     }
+  }
+
+  private async checkLandingNow(final: boolean, existingLogin: boolean): Promise<boolean> {
+    const host = this.host;
+    if (!host.stillActive()) return false;
+    const account = host.store.getAccount(host.account.id);
+    if (!account) return false;
+    const recipe = recipeFor(account.harness);
+    if (!recipe) return false;
+    const primaryFile = primaryCredentialFile(recipe);
+    let externalRaw: string | null = null;
+    let detectedBy: "mtime" | "digest" | "already_signed_in" | null = null;
+    if (this.spec.landing === "external_digest") {
+      externalRaw = await host.accounts.externalLoginCredential(account);
+      if (!host.isCurrent(this)) return false;
+      const digest = externalRaw ? credentialDigest(externalRaw) : null;
+      if (digest !== null && digest !== this.baselineDigest) detectedBy = "digest";
+      else if (digest !== null && existingLogin) detectedBy = "already_signed_in";
+    }
+    const mtime = primaryCredentialMtime(account.homePath, recipe);
+    if (!detectedBy && externalRaw === null && mtime !== null && (this.baselineMtime === null || mtime > this.baselineMtime)) detectedBy = "mtime";
+    if (!detectedBy) return false;
+    const overrides: Record<string, string> = externalRaw ? { [primaryFile]: externalRaw } : {};
+    let primaryRaw = overrides[primaryFile] ?? null;
+    if (primaryRaw === null) {
+      try {
+        primaryRaw = readFileSync(join(account.homePath, primaryFile), "utf8");
+      } catch {
+        primaryRaw = null;
+      }
+    }
+    if (!host.stillActive()) return false;
+    const captured = host.accounts.persistCredentialCapture(account, primaryFile, primaryRaw, overrides, { allowDifferentAccount: host.replaceAccount() });
+    if (!captured.ok && (captured.reason === "different_account" || captured.reason === "identity_unverified")) {
+      // Someone else's sign-in: fail now with the reason instead of waiting out the flow.
+      host.log(`account.login.rejected flow=${host.flowId} account=${account.id} by=${detectedBy} reason=${captured.reason}`);
+      host.release(this);
+      void this.worker?.kill();
+      host.fail(err(captured.reason, captured.message), true);
+      return true;
+    }
+    if (!captured.ok) {
+      // Not a credential yet (partial write / invalid): re-baseline and keep waiting.
+      this.baselineMtime = mtime;
+      this.baselineDigest = externalRaw ? credentialDigest(externalRaw) : this.baselineDigest;
+      host.log(`account.login.rejected flow=${host.flowId} account=${account.id} by=${detectedBy} reason=${captured.reason}`);
+      return false;
+    }
+    host.log(`account.login.captured flow=${host.flowId} account=${account.id} by=${detectedBy} files=${captured.captured.join(",")}`);
+    if (primaryRaw !== null) await host.accounts.confirmClaudeLoginPublication(account, primaryRaw);
+    host.succeed();
+    return true;
   }
 }

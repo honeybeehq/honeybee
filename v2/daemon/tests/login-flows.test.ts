@@ -1034,7 +1034,7 @@ test("flows.cli-exit: a CLI that exits without a credential fails typed (process
 /** A fake Cursor access token: an unsigned JWT naming the Cursor user. */
 function fakeCursorJwt(sub: string, expMs: number, nonce: string): string {
   const b64 = (value: object) => Buffer.from(JSON.stringify(value)).toString("base64url");
-  return `${b64({ alg: "none" })}.${b64({ sub, exp: Math.floor(expMs / 1000), nonce })}.fake`;
+  return `${b64({ alg: "RS256" })}.${b64({ iss: "https://fake-cursor-issuer.test", sub, exp: Math.floor(expMs / 1000), nonce })}.fake`;
 }
 
 function cursorAccountHolding(r: Rig, label: string, token: string) {

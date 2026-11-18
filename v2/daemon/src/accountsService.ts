@@ -111,10 +111,14 @@ import {
   defaultProviderLimitsHttp,
   fetchSecondaryProviderLimits,
   type ProviderLimitsHttp,
+  ProviderHttpError,
 } from "./providerLimits.ts";
 import {
   cursorCredentialEnv,
   cursorIdentityVerdict,
+  cursorLoginDocument,
+  cursorTokenClaims,
+  cursorTokenIdentity,
   parseCursorAuth,
   type CursorAuthSnapshot,
   readCursorLiveAuth,
@@ -986,6 +990,8 @@ export class AccountsService {
   private readonly leaseMints = new Map<string, Promise<EphemeralCredential>>();
   /** At most one Cursor re-capture per account; concurrent callers join it. */
   private readonly cursorRecaptures = new Map<string, Promise<CursorRecapture>>();
+  /** Per-account Cursor credential lock: re-capture and explicit capture never interleave. */
+  private readonly cursorLocks = new Map<string, Promise<void>>();
   private readonly nativeKeychainSeeds = new Map<string, Set<Promise<unknown>>>();
   private readonly codexLeaseRefresh: (homePath: string) => Promise<void>;
   private readonly gatewayMcpSeeder: (homePath: string, harness: string) => Promise<GatewayMcpSeedResult>;
@@ -1718,6 +1724,8 @@ export class AccountsService {
           ? { legacyAuthorityInstanceId: rememberedInstance, legacyAuthorityGenerationFloor: Math.max(rememberedFloor, input.generation ?? 0) } : {};
         const codec = this.leaseMaterialCodecs.get(input.harness);
         if (!codec) throw new RpcError("lease_unsupported", "This harness has no lease material codec.");
+        // Cursor leases carry exactly {accessToken} in auth.json: no refresh token, no API key, no other files.
+        if (input.harness === "cursor" && (input.files.length !== 1 || input.files[0]?.homeRelPath !== codec.primaryFile || !(() => { try { return codec.provesAccessOnly!(JSON.parse(Buffer.from(input.files[0]!.contentB64, "base64").toString("utf8"))); } catch { return false; } })())) throw new RpcError("invalid_request", "A Cursor lease must carry exactly one auth.json holding only an identity-bearing accessToken.", { reason: "unknown_material" });
         if (enrolment && (input.files.length !== 1 || input.files[0]?.homeRelPath !== codec.primaryFile)) throw new RpcError("account_lease_enrol_refused", "Enrolled leases publish primary credential material only; profile files remain local.", { reason: "unknown_material" });
         if (enrolment && input.files.some(file => { try { const document = JSON.parse(Buffer.from(file.contentB64, "base64").toString("utf8")); return hasRefreshGrant(document) || !codec.provesAccessOnly?.(document); } catch { return true; } })) throw new RpcError("account_lease_enrol_refused", "Enrolment requires recognised access-only incoming material.", { reason: "unknown_material" });
         const origin = { ...(forwarded || previous?.fencesForwarded ? { fencesForwarded: true } : {}), ...(currentInstanceFloor !== undefined ? { authorityGenerationFloor: currentInstanceFloor } : {}), ...legacyInstance, ...(retiredInstances.length ? { retiredAuthorityInstanceIds: retiredInstances } : {}), ...(input.authorityInstanceId !== undefined ? { authorityInstanceId: input.authorityInstanceId } : {}), shareId: input.shareId, authorityNodeId: input.authorityNodeId, epoch: input.epoch, ...(input.generation !== undefined ? { generation: input.generation } : {}), ...(input.generation !== undefined || enrolment ? { materialPublished: true } : {}), ...(viaNodeId !== undefined ? { viaNodeId } : {}), ...(enrolment ? { enrolment, installedFiles: previous?.installedFiles ?? [codec.primaryFile, ...Object.values(codec.mirrors)] } : {}), expiresAt: input.expiresAt, adoptedAt: adopted ? this.now() : previous?.adoptedAt ?? null, revokedAt: null };
@@ -3424,24 +3432,32 @@ export class AccountsService {
 
   /**
    * Cursor's probe: re-capture first when the cached token is near expiry;
-   * after a 401, re-capture once from Cursor's own login and probe again
-   * before the failure can mark the account auth_needed.
+   * after an exact HTTP 401, re-capture once from Cursor's own login and
+   * probe again before the failure can mark the account auth_needed. Errors
+   * carry the HTTP status only, never a response body.
    */
   private async fetchCursorLimits(account: AccountRow): Promise<PutAccountLimitsInput> {
     await this.recaptureCursor(account);
-    let first: PutAccountLimitsInput;
-    try {
-      first = await this.fetchSecondaryProvider(account);
-    } catch (error) {
-      const message = errorDetail(error).slice(0, 500);
-      if (!isAuthFailureLimitsError(message)) throw error;
-      first = { readable: false, unreadableReason: "auth_failed", error: message };
-    }
-    if (first.readable || first.unreadableReason !== "auth_failed") return first;
+    const first = await this.probeCursor(account);
+    if (first.status !== 401) return first.result;
     const again = await this.recaptureCursor(account, { force: true });
     this.log(`account.cursor.probe_auth_failed account=${account.id} recapture=${again}`);
-    if (again === "recaptured") return this.fetchSecondaryProvider(account);
-    return { ...first, error: `${first.error ?? "authentication failed"}; ${cursorRecoveryHint(account.id, again)}` };
+    const settled = again === "recaptured" ? await this.probeCursor(account) : first;
+    return settled.status === 401
+      ? { ...settled.result, error: `${settled.result.error}; ${cursorRecoveryHint(account.id, again)}` }
+      : settled.result;
+  }
+
+  private async probeCursor(account: AccountRow): Promise<{ result: PutAccountLimitsInput; status: number | null }> {
+    try {
+      return { result: await this.fetchSecondaryProvider(account), status: null };
+    } catch (error) {
+      if (error instanceof ProviderHttpError) {
+        return { result: { readable: false, unreadableReason: error.status === 401 ? "auth_failed" : "provider_error", error: `Cursor usage probe: HTTP ${error.status}` }, status: error.status };
+      }
+      const timedOut = error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
+      return { result: { readable: false, unreadableReason: timedOut ? "timeout" : "provider_error", error: timedOut ? "Cursor usage probe: timed out" : "Cursor usage probe: request failed" }, status: null };
+    }
   }
 
   private async fetchSecondaryProvider(account: AccountRow): Promise<PutAccountLimitsInput> {
@@ -4252,25 +4268,21 @@ export class AccountsService {
   }
 
   /**
-   * cursor: ship auth.json with the access token (or API key) only — the
-   * refresh token never leaves this node. The token is first re-captured
-   * from Cursor's own login when it is near expiry; a token with less than
-   * CURSOR_MIN_SHIP_TTL_MS left is refused, never shipped dying.
+   * cursor: ship auth.json holding exactly the access token — the refresh
+   * token never leaves this node, and no API key is leased. The token is
+   * first re-captured from Cursor's own login when it is near expiry; a token
+   * with less than CURSOR_MIN_SHIP_TTL_MS left is refused, never shipped dying.
    */
   private async mintCursorLease(account: AccountRow): Promise<EphemeralCredential> {
     const recapture = await this.recaptureCursor(account);
     const held = this.freshestCursorAuth(account);
     if (!held) throw new LeaseRefusal("lease_unavailable", `no Cursor credential for ${account.id}; ${cursorRecoveryHint(account.id)}`);
-    if (held.auth.apiKey) {
-      return {
-        files: [{ homeRelPath: "auth.json", contentB64: Buffer.from(`${JSON.stringify({ apiKey: held.auth.apiKey })}\n`, "utf8").toString("base64"), mode: 0o600 }],
-        kindNote: "cursor: shipped auth.json with the API key only",
-      };
-    }
-    if (held.expiresAt === null || held.expiresAt - this.now() <= CURSOR_MIN_SHIP_TTL_MS) {
+    const claims = cursorTokenClaims(held.auth.accessToken);
+    if (!claims) throw new LeaseRefusal("lease_unsupported", `Cursor account ${account.id} holds no identity-bearing access token to lease (API keys are not leased); ${cursorRecoveryHint(account.id)}`);
+    if (claims.expiresAt - this.now() <= CURSOR_MIN_SHIP_TTL_MS) {
       throw new LeaseRefusal("lease_unavailable", `Cursor access token for ${account.id} is expired or near expiry and Cursor's login on this computer had no newer one (${recapture}); ${cursorRecoveryHint(account.id, recapture)}`);
     }
-    const expSeconds = Math.floor(held.expiresAt / 1000);
+    const expSeconds = Math.floor(claims.expiresAt / 1000);
     return {
       files: [{ homeRelPath: "auth.json", contentB64: Buffer.from(`${JSON.stringify({ accessToken: held.auth.accessToken })}\n`, "utf8").toString("base64"), mode: 0o600 }],
       expiresAt: expSeconds,
@@ -4278,39 +4290,78 @@ export class AccountsService {
     };
   }
 
-  /** The Cursor credential with the latest access-token `exp` between the account home and its vault. */
+  /**
+   * The Cursor user this account holds: the identity of its vault copy when
+   * that carries one, else its home copy's. A copy without a readable
+   * identity never hides one the other copy has.
+   */
+  private cursorHeldIdentity(account: AccountRow): string | null {
+    for (const root of [this.vaultDirOf(account), account.homePath]) {
+      const identity = cursorTokenIdentity(parseCursorAuth(readIfFile(join(root, "auth.json"))));
+      if (identity) return identity;
+    }
+    return null;
+  }
+
+  /**
+   * The account's freshest Cursor credential between home and vault, among
+   * copies that belong to the account's identity (by JWT `exp`). Without an
+   * identity anywhere, the vault copy, else the home copy.
+   */
   private freshestCursorAuth(account: AccountRow): { raw: string; auth: CursorAuthSnapshot; expiresAt: number | null } | null {
+    const identity = this.cursorHeldIdentity(account);
     let best: { raw: string; auth: CursorAuthSnapshot; expiresAt: number | null } | null = null;
-    for (const path of [join(account.homePath, "auth.json"), join(this.vaultDirOf(account), "auth.json")]) {
-      const raw = readIfFile(path);
-      const auth = parseCursorAuth(raw, path);
+    for (const root of [this.vaultDirOf(account), account.homePath]) {
+      const raw = readIfFile(join(root, "auth.json"));
+      const auth = parseCursorAuth(raw, root);
       if (raw === null || !auth) continue;
-      const exp = auth.accessToken ? expFromJwt(auth.accessToken) : undefined;
-      const expiresAt = exp === undefined ? null : exp * 1000;
+      const claims = cursorTokenClaims(auth.accessToken);
+      if (identity !== null && (!claims || `${claims.iss}#${claims.sub}` !== identity)) continue;
+      const expiresAt = claims?.expiresAt ?? null;
       if (!best || (expiresAt ?? -1) > (best.expiresAt ?? -1)) best = { raw, auth, expiresAt };
     }
     return best;
+  }
+
+  /** Run `work` holding the account's Cursor credential lock (re-capture, explicit capture and login landing all take it). */
+  async withCursorLock<T>(accountId: string, work: () => Promise<T>): Promise<T> {
+    const previous = this.cursorLocks.get(accountId) ?? Promise.resolve();
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    const tail = previous.then(() => held);
+    this.cursorLocks.set(accountId, tail);
+    await previous;
+    try {
+      return await work();
+    } finally {
+      release();
+      if (this.cursorLocks.get(accountId) === tail) this.cursorLocks.delete(accountId);
+    }
   }
 
   /**
    * Re-capture a local Cursor account's token from Cursor's machine-wide
    * login (Keychain / global auth.json), which cursor-agent keeps fresh.
    * Honeybee never calls a Cursor refresh endpoint. Without `force` the store
-   * is read only when the cached token is within CURSOR_RECAPTURE_AHEAD_MS
-   * of its expiry. The login is taken only when it belongs to the same Cursor
-   * user as the cached one and carries a newer token; it is then written to
-   * the account home and vault. Leased accounts never re-capture: their
-   * authority node leases them access-only tokens. Single-flight per account.
+   * is read only when the cached token has a known JWT `exp` within
+   * CURSOR_RECAPTURE_AHEAD_MS; `force` is for an exact HTTP 401. The login is
+   * taken only when it belongs to the account's Cursor user and carries a
+   * later `exp`, checked again just before the write. Leased accounts never
+   * re-capture: their authority node leases them access-only tokens.
+   * Single-flight per account, under the account's Cursor lock.
    */
   recaptureCursor(account: AccountRow, opts: { force?: boolean } = {}): Promise<CursorRecapture> {
     if (account.harness !== "cursor" || account.source !== "local" || this.isNative(account)) return Promise.resolve("skipped");
     const held = this.freshestCursorAuth(account);
-    if (!held || held.auth.apiKey || !held.auth.accessToken) return Promise.resolve("skipped");
-    if (!opts.force && held.expiresAt !== null && held.expiresAt - this.now() > CURSOR_RECAPTURE_AHEAD_MS) return Promise.resolve("fresh");
+    if (!held?.auth.accessToken) return Promise.resolve("skipped");
+    if (!opts.force) {
+      if (held.expiresAt === null) return Promise.resolve("skipped");
+      if (held.expiresAt - this.now() > CURSOR_RECAPTURE_AHEAD_MS) return Promise.resolve("fresh");
+    }
     if (this.store.activeLoginFlow(account.id)) return Promise.resolve("skipped");
     const joined = this.cursorRecaptures.get(account.id);
     if (joined) return joined;
-    const pending = this.recaptureCursorOnce(account, held).catch((error: unknown) => {
+    const pending = this.withCursorLock(account.id, () => this.recaptureCursorOnce(account)).catch((error: unknown) => {
       this.log(`account.cursor.recapture_failed account=${account.id} err=${JSON.stringify(errorDetail(error).slice(0, 200))}`);
       return "absent" as const;
     });
@@ -4320,32 +4371,33 @@ export class AccountsService {
     });
   }
 
-  private async recaptureCursorOnce(account: AccountRow, held: { raw: string; auth: CursorAuthSnapshot; expiresAt: number | null }): Promise<CursorRecapture> {
+  private async recaptureCursorOnce(account: AccountRow): Promise<CursorRecapture> {
+    const identity = this.cursorHeldIdentity(account);
     const live = await this.cursorAuthReader();
     if (!live?.accessToken) return "absent";
-    const verdict = cursorIdentityVerdict(held.raw, live.raw);
-    if (verdict === "different" || verdict === "first") {
-      // `first`: the cached token names no user, so the live one cannot be matched to it.
-      const outcome = verdict === "different" ? "different_account" : "identity_unverified";
-      this.log(`account.cursor.recapture_refused account=${account.id} reason=${outcome}`);
-      return outcome;
-    }
-    if (verdict === "unverified") {
+    const claims = cursorTokenClaims(live.accessToken);
+    if (identity === null || claims === null) {
       this.log(`account.cursor.recapture_refused account=${account.id} reason=identity_unverified`);
       return "identity_unverified";
     }
-    if (live.accessToken === held.auth.accessToken) return "unchanged";
-    const liveExp = expFromJwt(live.accessToken);
-    const liveExpiresAt = liveExp === undefined ? null : liveExp * 1000;
-    if (liveExpiresAt === null || (held.expiresAt !== null && liveExpiresAt <= held.expiresAt)) return "unchanged";
-    // The account may have changed hands while the store was read.
+    if (`${claims.iss}#${claims.sub}` !== identity) {
+      this.log(`account.cursor.recapture_refused account=${account.id} reason=different_account`);
+      return "different_account";
+    }
+    // Compare-and-swap: judge the account as it is now, right before the
+    // write (synchronous from here on, so nothing interleaves).
     const current = this.store.getAccount(account.id);
     if (!current || current.source !== "local" || this.store.activeLoginFlow(account.id)) return "unchanged";
-    atomicWriteFileSync(join(current.homePath, "auth.json"), live.raw);
+    if (this.cursorHeldIdentity(current) !== identity) return "unchanged";
+    const now = this.freshestCursorAuth(current);
+    if (now?.auth.accessToken === live.accessToken) return "unchanged";
+    if (now?.expiresAt != null && claims.expiresAt <= now.expiresAt) return "unchanged";
+    const document = cursorLoginDocument({ accessToken: live.accessToken, ...(live.refreshToken ? { refreshToken: live.refreshToken } : {}) });
+    atomicWriteFileSync(join(current.homePath, "auth.json"), document);
     const vaultDir = this.vaultDirOf(current);
     mkdirSync(vaultDir, { recursive: true, mode: 0o700 });
-    atomicWriteFileSync(join(vaultDir, "auth.json"), live.raw);
-    this.log(`account.cursor.recaptured account=${account.id} source=${live.source === "keychain" ? "keychain" : "global_file"} exp=${new Date(liveExpiresAt).toISOString()}`);
+    atomicWriteFileSync(join(vaultDir, "auth.json"), document);
+    this.log(`account.cursor.recaptured account=${account.id} source=${live.source === "keychain" ? "keychain" : "global_file"} exp=${new Date(claims.expiresAt).toISOString()}`);
     return "recaptured";
   }
 
@@ -4728,7 +4780,7 @@ export class AccountsService {
     // means, is what a login or capture sees. Refuse a credential for a
     // different Cursor user than the one this account holds.
     if (account.harness === "cursor" && opts.allowDifferentAccount !== true) {
-      const refusal = this.cursorIdentityRefusal(account, primaryFile, primaryRaw);
+      const refusal = this.cursorIdentityRefusal(account, primaryRaw);
       if (refusal) return { ok: false, ...refusal };
     }
     // Cursor's provider login lands outside CURSOR_CONFIG_DIR. Materialize
@@ -4746,9 +4798,8 @@ export class AccountsService {
   }
 
   /** Why a Cursor credential must not be captured into this account (identity mismatch), or null. */
-  private cursorIdentityRefusal(account: AccountRow, primaryFile: string, primaryRaw: string | null): { reason: "different_account" | "identity_unverified"; message: string } | null {
-    const held = readIfFile(join(this.vaultDirOf(account), primaryFile)) ?? readIfFile(join(account.homePath, primaryFile));
-    const verdict = cursorIdentityVerdict(held, primaryRaw);
+  private cursorIdentityRefusal(account: AccountRow, primaryRaw: string | null): { reason: "different_account" | "identity_unverified"; message: string } | null {
+    const verdict = cursorIdentityVerdict(this.cursorHeldIdentity(account), primaryRaw);
     if (verdict === "different") {
       this.log(`account.capture.refused account=${account.id} reason=different_account`);
       return { reason: "different_account", message: `The Cursor sign-in on this computer belongs to a different Cursor user than ${account.id}; nothing was changed. Sign in to Cursor as this account's user and try again, or replace the account's login with it: hive account login ${account.id} --replace-account` };
@@ -4766,7 +4817,13 @@ export class AccountsService {
    * Claude/Cursor use their external provider store when present; file-based
    * harnesses use the account home.
    */
-  async captureAccount(account: AccountRow, opts: { replaceAccount?: boolean } = {}): Promise<CaptureOutcome> {
+  captureAccount(account: AccountRow, opts: { replaceAccount?: boolean } = {}): Promise<CaptureOutcome> {
+    return account.harness === "cursor"
+      ? this.withCursorLock(account.id, () => this.captureAccountNow(account, opts))
+      : this.captureAccountNow(account, opts);
+  }
+
+  private async captureAccountNow(account: AccountRow, opts: { replaceAccount?: boolean }): Promise<CaptureOutcome> {
     this.assertLocalAccount(account);
     const foreign = this.foreignHomeRefusal(account, "captures credentials from");
     if (foreign) throw new Error(foreign);

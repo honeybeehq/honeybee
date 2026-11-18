@@ -354,7 +354,7 @@ export async function startDaemon(dir: string, opts: { env?: Record<string, stri
       HIVE_CLAUDE_OAUTH_TOKEN_URL: "http://127.0.0.1:9/v1/oauth/token",
       HIVE_CODEX_OAUTH_TOKEN_URL: "http://127.0.0.1:9/oauth/token",
       HIVE_GROK_OAUTH_TOKEN_URL: "http://127.0.0.1:9/oauth/token",
-      HIVE_CURSOR_USAGE_URL: "http://127.0.0.1:9/aiserver.v1.DashboardService/GetCurrentPeriodUsage",
+      HIVE_CURSOR_USAGE_URL: "https://127.0.0.1:9/aiserver.v1.DashboardService/GetCurrentPeriodUsage",
       HIVE_TEST_META_URL: "http://127.0.0.1:9",
       // Successful test shutdown owns and reaps its disposable runtimes.
       // Production never sets this; restart-survival semantics stay intact.

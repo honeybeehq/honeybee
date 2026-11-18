@@ -19,11 +19,13 @@ import { join } from "node:path";
 import { openCoreStore, type AccountRow, type CoreStore } from "../../core/src/index.ts";
 import { AccountsService, CURSOR_RECAPTURE_AHEAD_MS, type EphemeralCredential } from "../src/accountsService.ts";
 import { loadNodeConfig, type ResolvedNodeConfig } from "../src/config.ts";
-import { cursorIdentityVerdict, cursorTokenIdentity, parseCursorAuth, type CursorAuthSnapshot } from "../src/cursorAuth.ts";
+import { cursorIdentityVerdict, cursorTokenIdentity, parseCursorAuth, readCursorLiveAuth, type CursorAuthSnapshot } from "../src/cursorAuth.ts";
 import { CredentialAuthorityError } from "../src/claudeCredentialAuthority.ts";
 import { RpcError } from "../src/protocol.ts";
+import { ProviderHttpError } from "../src/providerLimits.ts";
 
 const MIN = 60_000;
+const ISS = "https://fake-cursor-issuer.test";
 const HOUR = 60 * MIN;
 
 interface Rig {
@@ -53,7 +55,7 @@ function rig(name: string): Rig {
 /** A fake Cursor access token: an unsigned JWT with `sub` and `exp`. */
 function fakeJwt(sub: string, expMs: number, nonce: string): string {
   const b64 = (value: object) => Buffer.from(JSON.stringify(value)).toString("base64url");
-  return `${b64({ alg: "none", typ: "JWT" })}.${b64({ sub, exp: Math.floor(expMs / 1000), nonce })}.fake-signature`;
+  return `${b64({ alg: "RS256", typ: "JWT" })}.${b64({ iss: ISS, sub, exp: Math.floor(expMs / 1000), nonce })}.fake-signature`;
 }
 
 function authDoc(accessToken: string, refreshToken = "FAKE-CURSOR-REFRESH"): string {
@@ -104,15 +106,24 @@ function vaultToken(r: Rig, account: AccountRow): string | undefined {
   return parseCursorAuth(readFileSync(join(r.vault, "cursor", account.id, "auth.json"), "utf8"))?.accessToken;
 }
 
-test("cursor identity: the JWT sub names the user; same / different / unverified / first", () => {
+test("cursor identity: iss + sub of a signed-shape JWT name the user; alg none, unsigned, or missing iss/sub/exp carry no identity", () => {
+  const b64 = (value: object) => Buffer.from(JSON.stringify(value)).toString("base64url");
   const a = fakeJwt("auth0|user_a", Date.now() + HOUR, "1");
   const a2 = fakeJwt("auth0|user_a", Date.now() + 2 * HOUR, "2");
   const b = fakeJwt("auth0|user_b", Date.now() + HOUR, "3");
-  assert.equal(cursorTokenIdentity({ accessToken: a }), "auth0|user_a");
+  const exp = Math.floor((Date.now() + HOUR) / 1000);
+  assert.equal(cursorTokenIdentity({ accessToken: a }), `${ISS}#auth0|user_a`);
   assert.equal(cursorTokenIdentity({ accessToken: "not-a-jwt" }), null);
-  assert.equal(cursorIdentityVerdict(authDoc(a), authDoc(a2)), "same");
-  assert.equal(cursorIdentityVerdict(authDoc(a), authDoc(b)), "different");
-  assert.equal(cursorIdentityVerdict(authDoc(a), authDoc("opaque-token")), "unverified");
+  assert.equal(cursorTokenIdentity({ accessToken: `${b64({ alg: "none" })}.${b64({ iss: ISS, sub: "auth0|user_a", exp })}.sig` }), null, "alg none");
+  assert.equal(cursorTokenIdentity({ accessToken: `${b64({ alg: "NONE" })}.${b64({ iss: ISS, sub: "auth0|user_a", exp })}.sig` }), null, "alg NONE");
+  assert.equal(cursorTokenIdentity({ accessToken: `${b64({ alg: "RS256" })}.${b64({ iss: ISS, sub: "auth0|user_a", exp })}.` }), null, "unsigned");
+  assert.equal(cursorTokenIdentity({ accessToken: `${b64({ alg: "RS256" })}.${b64({ sub: "auth0|user_a", exp })}.sig` }), null, "no iss");
+  assert.equal(cursorTokenIdentity({ accessToken: `${b64({ alg: "RS256" })}.${b64({ iss: ISS, exp })}.sig` }), null, "no sub");
+  assert.equal(cursorTokenIdentity({ accessToken: `${b64({ alg: "RS256" })}.${b64({ iss: ISS, sub: "auth0|user_a" })}.sig` }), null, "no exp");
+  const held = cursorTokenIdentity({ accessToken: a });
+  assert.equal(cursorIdentityVerdict(held, authDoc(a2)), "same");
+  assert.equal(cursorIdentityVerdict(held, authDoc(b)), "different");
+  assert.equal(cursorIdentityVerdict(held, authDoc("opaque-token")), "unverified");
   assert.equal(cursorIdentityVerdict(null, authDoc(b)), "first");
 });
 
@@ -175,7 +186,7 @@ test("cursor 401: one forced re-capture and a second probe keep the account ok; 
       postJson: async (_url, headers) => {
         seen.push(headers.Authorization!);
         if (headers.Authorization === `Bearer ${fresh}`) return usage(r);
-        throw new Error("/aiserver.v1.DashboardService/GetCurrentPeriodUsage: HTTP 401");
+        throw new ProviderHttpError("/aiserver.v1.DashboardService/GetCurrentPeriodUsage: HTTP 401 — {\"error\":\"secret-body\"}", 401);
       },
     });
     cursor.state.raw = authDoc(fresh);
@@ -192,7 +203,9 @@ test("cursor 401: one forced re-capture and a second probe keep the account ok; 
     await svc.refreshLimits([second.id]);
     const after = r.store.getAccount(second.id)!;
     assert.equal(after.status, "auth_needed");
-    assert.match(after.statusReason ?? "", /HTTP 401; capture again if Cursor on this computer is signed in as this account's user: hive account capture cursor-b; else log in: hive account login cursor-b$/);
+    assert.ok(!(after.statusReason ?? "").includes("secret-body"), "no response body in the status reason");
+    assert.ok(!r.log.join("\n").includes("secret-body"), "no response body in the log");
+    assert.match(after.statusReason ?? "", /^limits probe: Cursor usage probe: HTTP 401; capture again if Cursor on this computer is signed in as this account's user: hive account capture cursor-b; else log in: hive account login cursor-b$/);
     const readiness = svc.credentialReadiness(after);
     assert.equal(readiness.ready, false);
     assert.match(readiness.ready ? "" : readiness.message, /hive account capture cursor-b; else log in: hive account login cursor-b/);
@@ -281,4 +294,180 @@ test("cursor identity at capture: another user's login is refused with a reason 
   } finally {
     r.cleanup();
   }
+});
+
+test("cursor read gate: only a known exp within 15 minutes or an exact HTTP 401 reads Cursor's login; other statuses and opaque tokens never do, and errors carry the status only", async () => {
+  const r = rig("gate");
+  try {
+    const cursor = fakeCursorStore();
+    cursor.state.raw = authDoc(fakeJwt("auth0|user_a", r.now() + 9 * HOUR, "live"));
+    // An opaque cached token has no known exp: spawns and probes never read the store for it.
+    const opaque = addCursor(r, "opaque", authDoc("opaque-token"));
+    const statuses: number[] = [403, 500];
+    const svc = service(r, cursor, {
+      postJson: async () => {
+        const status = statuses.shift() ?? 200;
+        if (status !== 200) throw new ProviderHttpError(`/usage: HTTP ${status} — unauthorized revoked secret-body`, status);
+        return usage(r);
+      },
+    });
+    await svc.activateForSpawn(opaque, { cwd: r.dir });
+    assert.equal(cursor.state.reads, 0, "no read for an opaque token at spawn");
+    // A 403 whose body says "unauthorized revoked" is not a 401: no re-capture, not auth_needed, no body kept.
+    const fresh = addCursor(r, "a", authDoc(fakeJwt("auth0|user_a", r.now() + 6 * HOUR, "held")));
+    const [forbidden] = await svc.refreshLimits([fresh.id]);
+    assert.equal(forbidden!.unreadableReason, "provider_error");
+    assert.equal(forbidden!.error, "Cursor usage probe: HTTP 403");
+    const [failed] = await svc.refreshLimits([fresh.id]);
+    assert.equal(failed!.error, "Cursor usage probe: HTTP 500");
+    assert.equal(cursor.state.reads, 0, "no read for non-401 statuses");
+    assert.equal(r.store.getAccount(fresh.id)!.status, "ok");
+    assert.ok(!r.log.join("\n").includes("secret-body"));
+  } finally {
+    r.cleanup();
+  }
+});
+
+test("cursor re-capture compare-and-swap: a newer token or another user written while Cursor's login is read is never overwritten", async () => {
+  const r = rig("cas");
+  try {
+    const old = fakeJwt("auth0|user_a", r.now() + 5 * MIN, "old");
+    const account = addCursor(r, "a", authDoc(old));
+    const vaultPath = join(r.vault, "cursor", account.id, "auth.json");
+    const newer = fakeJwt("auth0|user_a", r.now() + 10 * HOUR, "newer");
+    const live = fakeJwt("auth0|user_a", r.now() + 2 * HOUR, "live");
+    // While the store is read, an explicit capture lands a newer token for the same user.
+    const racing = { state: { raw: null as string | null, reads: 0 }, reader: async (): Promise<CursorAuthSnapshot | null> => {
+      writeFileSync(vaultPath, authDoc(newer));
+      writeFileSync(join(account.homePath, "auth.json"), authDoc(newer));
+      return parseCursorAuth(authDoc(live), "keychain");
+    } };
+    assert.equal(await service(r, racing).recaptureCursor(account, { force: true }), "unchanged");
+    assert.equal(vaultToken(r, account), newer, "an older exp is never written over a newer one");
+
+    // While the store is read, the account is replaced with another user's login.
+    const other = fakeJwt("auth0|user_b", r.now() + 3 * HOUR, "other");
+    const swapped = { state: { raw: null as string | null, reads: 0 }, reader: async (): Promise<CursorAuthSnapshot | null> => {
+      writeFileSync(vaultPath, authDoc(other));
+      writeFileSync(join(account.homePath, "auth.json"), authDoc(other));
+      return parseCursorAuth(authDoc(fakeJwt("auth0|user_a", r.now() + 20 * HOUR, "late-a")), "keychain");
+    } };
+    assert.equal(await service(r, swapped).recaptureCursor(r.store.getAccount(account.id)!, { force: true }), "unchanged");
+    assert.equal(vaultToken(r, account), other, "a different sub is never written over the account's new identity");
+  } finally {
+    r.cleanup();
+  }
+});
+
+test("cursor copies: an identity-less copy never makes a capture 'first'; home/vault selection requires the account's sub", async () => {
+  const r = rig("copies");
+  try {
+    const cursor = fakeCursorStore();
+    const mine = fakeJwt("auth0|user_a", r.now() + HOUR, "mine");
+    const account = addCursor(r, "a", authDoc(mine));
+    // The vault copy lost its identity; the home copy still names user_a.
+    writeFileSync(join(r.vault, "cursor", account.id, "auth.json"), authDoc("opaque-token"));
+    cursor.state.raw = authDoc(fakeJwt("auth0|user_b", r.now() + 5 * HOUR, "other"));
+    await assert.rejects(service(r, cursor).captureAccount(account), (error: unknown) => error instanceof CredentialAuthorityError && error.reason === "different_account");
+
+    // A home copy with another user's later token is ignored; the lease ships the account's own user.
+    const lease = addCursor(r, "lease", authDoc(fakeJwt("auth0|user_a", r.now() + 2 * HOUR, "vault-a")));
+    writeFileSync(join(lease.homePath, "auth.json"), authDoc(fakeJwt("auth0|user_b", r.now() + 9 * HOUR, "home-b")));
+    const minted = await service(r, cursor).mintLease(lease);
+    const shipped = JSON.parse(Buffer.from(minted.files[0]!.contentB64, "base64").toString("utf8")) as { accessToken: string };
+    assert.equal(cursorTokenIdentity(shipped), `${ISS}#auth0|user_a`);
+  } finally {
+    r.cleanup();
+  }
+});
+
+test("cursor lease schema: mint ships exactly {accessToken}; install refuses extra fields, API keys, alg-none tokens and extra files; API-key-only accounts are not leased", async () => {
+  const authority = rig("schema-a");
+  const satellite = rig("schema-s");
+  try {
+    const cursor = fakeCursorStore();
+    const keyOnly = addCursor(authority, "key", `${JSON.stringify({ apiKey: "FAKE-API-KEY" })}\n`);
+    await assert.rejects(service(authority, cursor).mintLease(keyOnly), /API keys are not leased/);
+
+    const sat = service(satellite, fakeCursorStore());
+    const token = fakeJwt("auth0|user_a", satellite.now() + 2 * HOUR, "lease");
+    const b64 = (value: unknown) => Buffer.from(JSON.stringify(value)).toString("base64");
+    const unsigned = `${Buffer.from(JSON.stringify({ alg: "none" })).toString("base64url")}.${Buffer.from(JSON.stringify({ iss: ISS, sub: "auth0|user_a", exp: Math.floor((satellite.now() + HOUR) / 1000) })).toString("base64url")}.x`;
+    const base = { id: "cursor-a", harness: "cursor", label: "a", shareId: "share-cursor-0002", authorityNodeId: "authority-test", epoch: 1, expiresAt: Math.floor((satellite.now() + HOUR) / 1000) };
+    for (const [label, files] of [
+      ["extra field", [{ homeRelPath: "auth.json", contentB64: b64({ accessToken: token, note: "x" }), mode: 0o600 }]],
+      ["api key", [{ homeRelPath: "auth.json", contentB64: b64({ accessToken: token, apiKey: "FAKE-API-KEY" }), mode: 0o600 }]],
+      ["api key only", [{ homeRelPath: "auth.json", contentB64: b64({ apiKey: "FAKE-API-KEY" }), mode: 0o600 }]],
+      ["alg none", [{ homeRelPath: "auth.json", contentB64: b64({ accessToken: unsigned }), mode: 0o600 }]],
+      ["extra file", [{ homeRelPath: "auth.json", contentB64: b64({ accessToken: token }), mode: 0o600 }, { homeRelPath: "cli-config.json", contentB64: b64({}), mode: 0o600 }]],
+    ] as const) {
+      await assert.rejects(sat.installLease({ ...base, files: [...files] }), (error: unknown) => error instanceof RpcError && error.code === "invalid_request", label);
+    }
+    const ok = await sat.installLease({ ...base, files: [{ homeRelPath: "auth.json", contentB64: b64({ accessToken: token }), mode: 0o600 }] });
+    assert.equal(ok.account.source, "leased");
+  } finally {
+    authority.cleanup();
+    satellite.cleanup();
+  }
+});
+
+test("cursor live store: the global auth.json is read without its API key", async () => {
+  const r = rig("live");
+  const saved = { path: process.env.HIVE_CURSOR_AUTH_PATH, nokc: process.env.HIVE_NO_KEYCHAIN };
+  try {
+    const path = join(r.dir, "global-auth.json");
+    const token = fakeJwt("auth0|user_a", r.now() + HOUR, "g");
+    writeFileSync(path, JSON.stringify({ accessToken: token, refreshToken: "FAKE-R", apiKey: "FAKE-API-KEY" }));
+    process.env.HIVE_CURSOR_AUTH_PATH = path;
+    process.env.HIVE_NO_KEYCHAIN = "1";
+    const live = await readCursorLiveAuth();
+    assert.equal(live?.accessToken, token);
+    assert.equal(live?.refreshToken, "FAKE-R");
+    assert.equal(live?.apiKey, undefined);
+    assert.ok(!live!.raw.includes("FAKE-API-KEY"));
+  } finally {
+    if (saved.path === undefined) delete process.env.HIVE_CURSOR_AUTH_PATH; else process.env.HIVE_CURSOR_AUTH_PATH = saved.path;
+    if (saved.nokc === undefined) delete process.env.HIVE_NO_KEYCHAIN; else process.env.HIVE_NO_KEYCHAIN = saved.nokc;
+    r.cleanup();
+  }
+});
+
+test("cursor Keychain snapshot: a token rotated between item reads is re-read, never paired with another login's refresh token", { skip: process.platform !== "darwin" }, async () => {
+  const r = rig("keychain");
+  const saved = { bin: process.env.HIVE_TEST_SECURITY_BIN, nokc: process.env.HIVE_NO_KEYCHAIN };
+  try {
+    // A fake `security` shim: the access token changes after its first read (a rotation mid-snapshot).
+    const counter = join(r.dir, "access-reads");
+    writeFileSync(counter, "0");
+    const t1 = fakeJwt("auth0|user_a", r.now() + HOUR, "t1");
+    const t2 = fakeJwt("auth0|user_a", r.now() + 2 * HOUR, "t2");
+    const shim = join(r.dir, "security");
+    writeFileSync(shim, `#!/bin/sh
+case "$*" in
+  *cursor-access-token*) n=$(cat ${counter}); echo $((n+1)) > ${counter}; if [ "$n" = "0" ]; then echo "${t1}"; else echo "${t2}"; fi ;;
+  *cursor-refresh-token*) n=$(cat ${counter}); if [ "$n" = "1" ]; then echo "FAKE-R1"; else echo "FAKE-R2"; fi ;;
+  *) exit 44 ;;
+esac
+`, { mode: 0o755 });
+    process.env.HIVE_TEST_SECURITY_BIN = shim;
+    delete process.env.HIVE_NO_KEYCHAIN;
+    const live = await readCursorLiveAuth();
+    assert.equal(live?.accessToken, t2, "the torn first snapshot was discarded");
+    assert.equal(live?.refreshToken, "FAKE-R2");
+    assert.equal(live?.apiKey, undefined, "the machine's Cursor API key is never read");
+    assert.equal(readFileSync(counter, "utf8").trim(), "4", "four access reads: the torn pair, then the confirmed pair");
+  } finally {
+    if (saved.bin === undefined) delete process.env.HIVE_TEST_SECURITY_BIN; else process.env.HIVE_TEST_SECURITY_BIN = saved.bin;
+    if (saved.nokc === undefined) delete process.env.HIVE_NO_KEYCHAIN; else process.env.HIVE_NO_KEYCHAIN = saved.nokc;
+    r.cleanup();
+  }
+});
+
+test("cursor usage URL: production unless a test harness env names an https override", async () => {
+  const { cursorUsageUrl, CURSOR_USAGE_URL } = await import("../src/providerLimits.ts");
+  assert.equal(CURSOR_USAGE_URL, "https://api2.cursor.sh/aiserver.v1.DashboardService/GetCurrentPeriodUsage");
+  assert.equal(cursorUsageUrl({ HIVE_CURSOR_USAGE_URL: "https://127.0.0.1:1/x" }), CURSOR_USAGE_URL, "ignored outside the test harness");
+  assert.equal(cursorUsageUrl({ HIVE_TEST_PLATFORM: "linux", HIVE_CURSOR_USAGE_URL: "http://127.0.0.1:1/x" }), CURSOR_USAGE_URL, "refused when not https");
+  assert.equal(cursorUsageUrl({ HIVE_TEST_PLATFORM: "linux", HIVE_CURSOR_USAGE_URL: "not a url" }), CURSOR_USAGE_URL);
+  assert.equal(cursorUsageUrl({ HIVE_TEST_PLATFORM: "linux", HIVE_CURSOR_USAGE_URL: "https://127.0.0.1:1/x" }), "https://127.0.0.1:1/x");
 });

@@ -12,6 +12,33 @@ import { mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { AccountRow, PutAccountLimitsInput } from "../../core/src/index.ts";
 import { atomicWriteFileSync } from "./homeDefaults.ts";
+import { isTestDaemonEnv } from "./testNetworkGuard.ts";
+
+/** A provider answered with a non-2xx status. `status` is the exact HTTP status. */
+export class ProviderHttpError extends Error {
+  readonly status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+  }
+}
+
+export const CURSOR_USAGE_URL = "https://api2.cursor.sh/aiserver.v1.DashboardService/GetCurrentPeriodUsage";
+
+/**
+ * Cursor's usage endpoint. HIVE_CURSOR_USAGE_URL is honoured only inside the
+ * test harness (a HIVE_TEST_* environment) and only when it is https;
+ * anywhere else the production URL is used.
+ */
+export function cursorUsageUrl(env: NodeJS.ProcessEnv = process.env): string {
+  const override = env.HIVE_CURSOR_USAGE_URL?.trim();
+  if (!override || !isTestDaemonEnv(env)) return CURSOR_USAGE_URL;
+  try {
+    return new URL(override).protocol === "https:" ? override : CURSOR_USAGE_URL;
+  } catch {
+    return CURSOR_USAGE_URL;
+  }
+}
 
 export interface ProviderLimitsHttp {
   getJson: (url: string, headers: Record<string, string>) => Promise<unknown>;
@@ -34,7 +61,7 @@ export function defaultProviderLimitsHttp(timeoutMs: number): ProviderLimitsHttp
     if (!response.ok) {
       const body = await response.text().catch(() => "");
       const detail = body.replace(/\s+/g, " ").trim().slice(0, 200);
-      throw new Error(`${new URL(url).pathname}: HTTP ${response.status}${detail ? ` — ${detail}` : ""}`);
+      throw new ProviderHttpError(`${new URL(url).pathname}: HTTP ${response.status}${detail ? ` — ${detail}` : ""}`, response.status);
     }
     return response.json();
   };
@@ -328,7 +355,7 @@ async function cursorLimits(options: ProviderLimitsOptions): Promise<PutAccountL
   const token = auth?.accessToken;
   if (typeof token !== "string" || !token) return unreadable("auth_expired", `no Cursor access token; log in: hive account login ${options.account.id}`);
   const body = await options.http.postJson(
-    process.env.HIVE_CURSOR_USAGE_URL ?? "https://api2.cursor.sh/aiserver.v1.DashboardService/GetCurrentPeriodUsage",
+    cursorUsageUrl(),
     { Authorization: `Bearer ${token}` },
     {},
   ) as {
