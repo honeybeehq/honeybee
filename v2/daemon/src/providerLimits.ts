@@ -328,7 +328,7 @@ async function cursorLimits(options: ProviderLimitsOptions): Promise<PutAccountL
   const token = auth?.accessToken;
   if (typeof token !== "string" || !token) return unreadable("auth_expired", `no Cursor access token; log in: hive account login ${options.account.id}`);
   const body = await options.http.postJson(
-    "https://api2.cursor.sh/aiserver.v1.DashboardService/GetCurrentPeriodUsage",
+    process.env.HIVE_CURSOR_USAGE_URL ?? "https://api2.cursor.sh/aiserver.v1.DashboardService/GetCurrentPeriodUsage",
     { Authorization: `Bearer ${token}` },
     {},
   ) as {

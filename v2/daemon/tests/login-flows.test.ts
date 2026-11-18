@@ -20,7 +20,7 @@
  */
 import { after, test } from "node:test";
 import assert from "node:assert/strict";
-import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -30,6 +30,7 @@ import { loadNodeConfig, type NodeConfigFile, type ResolvedNodeConfig } from "..
 import { LoginFlowService, LoginFlowRefusal, MUSE_OAUTH_CLIENT_ID, WORKER_ENV_ALLOWLIST, claudeAuthorizeUrl, legacyLoginSeatName, museDeviceAuthorize, museDeviceToken, plausibleApiKey, splitClaudeCode, workerBaseEnv, type LoginTransports } from "../src/loginFlows.ts";
 import { DENIED, DROP, EXPIRED, PENDING, SLOW_DOWN, deviceAuthorization, granted, startFakeMetaDevice, type FakeMetaDevice } from "./fixtures/fake-meta-device.ts";
 import { pipeSpawner } from "../src/loginWorker.ts";
+import { parseCursorAuth, type CursorAuthSnapshot } from "../src/cursorAuth.ts";
 import { waitFor } from "./helpers.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -129,6 +130,8 @@ interface Fakes {
   transports?: Partial<LoginTransports>;
   keychainWriter?: (homePath: string, credentials: string) => Promise<boolean>;
   keychainReader?: (homePath: string) => Promise<string | null>;
+  /** Cursor's machine-wide login (fake); null when absent. */
+  cursorAuthReader?: () => Promise<CursorAuthSnapshot | null>;
   spawner?: ReturnType<typeof pipeSpawner> | null;
   tmuxExec?: (args: string[]) => { status: number | null; stdout: string };
 }
@@ -149,7 +152,7 @@ function services(r: Rig, fakes: Fakes = {}): { accounts: AccountsService; flows
     platform: fakes.platform ?? "linux",
     keychainReader: fakes.keychainReader ?? (async () => null),
     keychainWriter: fakes.keychainWriter ?? (async () => false),
-    cursorAuthReader: async () => null,
+    cursorAuthReader: fakes.cursorAuthReader ?? (async () => null),
   });
   const flows = new LoginFlowService({
     store: r.store,
@@ -1027,6 +1030,95 @@ test("flows.cli-exit: a CLI that exits without a credential fails typed (process
     r.cleanup();
   }
 });
+
+/** A fake Cursor access token: an unsigned JWT naming the Cursor user. */
+function fakeCursorJwt(sub: string, expMs: number, nonce: string): string {
+  const b64 = (value: object) => Buffer.from(JSON.stringify(value)).toString("base64url");
+  return `${b64({ alg: "none" })}.${b64({ sub, exp: Math.floor(expMs / 1000), nonce })}.fake`;
+}
+
+function cursorAccountHolding(r: Rig, label: string, token: string) {
+  const acct = account(r, "cursor", label);
+  const raw = JSON.stringify({ accessToken: token, refreshToken: "FAKE-CURSOR-REFRESH" });
+  for (const dir of [acct.homePath, join(r.vault, "cursor", acct.id)]) {
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "auth.json"), raw);
+  }
+  return acct;
+}
+
+function vaultCursorToken(r: Rig, id: string): string | undefined {
+  return parseCursorAuth(readFileSync(join(r.vault, "cursor", id, "auth.json"), "utf8"))?.accessToken;
+}
+
+test("flows.cursor-already-signed-in: a clean cursor-agent exit with an unchanged machine-wide login captures it (same user) instead of failing or waiting", async () => {
+  const r = rig({ agents: fakeCliAgent("cursor", "CURSOR_CONFIG_DIR", "cli-config.json", { FAKE_CLI_EXIT_NO_CRED_MS: "100" }) });
+  try {
+    const held = fakeCursorJwt("auth0|user_a", r.now() - 60_000, "expired");
+    const live = fakeCursorJwt("auth0|user_a", r.now() + 3_600_000, "live");
+    const { flows } = services(r, { cursorAuthReader: async () => parseCursorAuth(JSON.stringify({ accessToken: live, refreshToken: "FAKE-LIVE-REFRESH" }), "keychain") });
+    const acct = cursorAccountHolding(r, "a", held);
+    const started = Date.now();
+    const { flow } = await flows.start(acct);
+    const done = await waitFor(() => {
+      const f = r.store.getLoginFlow(flow.id) as LoginFlowRow;
+      return f.phase === "succeeded" || f.phase === "failed" ? f : null;
+    }, "settled", 5000, 20);
+    assert.equal(done.phase, "succeeded", JSON.stringify(done.error));
+    assert.ok(Date.now() - started < 5000, "settled at exit, not at the flow timeout");
+    assert.equal(vaultCursorToken(r, acct.id), live);
+    assert.equal(r.store.getAccount(acct.id)?.status, "ok");
+    assert.ok(r.log.some((line) => line.startsWith(`account.login.captured flow=${flow.id} account=${acct.id} by=already_signed_in`)));
+  } finally {
+    r.cleanup();
+  }
+});
+
+test("flows.cursor-identity: a login that lands as another Cursor user fails at once with different_account and changes nothing; --replace-account takes it", async () => {
+  const r = rig({ agents: fakeCliAgent("cursor", "CURSOR_CONFIG_DIR", "cli-config.json", { FAKE_CLI_URL: "https://cursor.com/loginDeepControl?mode=login", FAKE_CLI_HANG: "1" }) });
+  try {
+    let liveRaw: string | null = null;
+    const { flows } = services(r, { cursorAuthReader: async () => parseCursorAuth(liveRaw, "keychain") });
+    const held = fakeCursorJwt("auth0|user_a", r.now() - 60_000, "held");
+    const acct = cursorAccountHolding(r, "a", held);
+    const { flow } = await flows.start(acct);
+    await waitFor(() => (r.store.getLoginFlow(flow.id)?.authorizationUrl ? true : null), "url", 5000, 20);
+    const pid = flows.workerStatus(flow.id)?.pid as number;
+    // Someone signs Cursor in as another user while the flow waits.
+    liveRaw = JSON.stringify({ accessToken: fakeCursorJwt("auth0|user_b", r.now() + 3_600_000, "b"), refreshToken: "FAKE-B-REFRESH" });
+    const failed = await waitFor(() => {
+      flows.tick();
+      const f = r.store.getLoginFlow(flow.id) as LoginFlowRow;
+      return f.phase === "failed" ? f : null;
+    }, "failed", 5000, 25);
+    assert.equal(failed.error?.code, "different_account");
+    assert.match(failed.error?.message ?? "", /belongs to a different Cursor user than cursor-a; nothing was changed/);
+    assert.equal(failed.retryable, true);
+    assert.equal(vaultCursorToken(r, acct.id), held, "the vault keeps the account's own login");
+    await waitFor(() => { try { process.kill(pid, 0); return null; } catch { return true; } }, "worker killed", 4000);
+
+    // The operator says to take it anyway: the next sign-in lands as user_b.
+    const replaced = await flows.start(acct, { replaceAccount: true });
+    await waitFor(() => (r.store.getLoginFlow(replaced.flow.id)?.authorizationUrl ? true : null), "url 2", 5000, 20);
+    liveRaw = JSON.stringify({ accessToken: fakeCursorJwt("auth0|user_b", r.now() + 7_200_000, "b2"), refreshToken: "FAKE-B-REFRESH-2" });
+    const landed = await waitFor(() => {
+      r.advance(1_000);
+      flows.tick();
+      const f = r.store.getLoginFlow(replaced.flow.id) as LoginFlowRow;
+      return f.phase === "succeeded" || f.phase === "failed" ? f : null;
+    }, "replaced landed", 5000, 25);
+    assert.equal(landed.phase, "succeeded", JSON.stringify(landed.error));
+    assert.equal(cursorTokenSub(vaultCursorToken(r, acct.id)), "auth0|user_b");
+    await flows.shutdown();
+  } finally {
+    r.cleanup();
+  }
+});
+
+function cursorTokenSub(token: string | undefined): string | null {
+  if (!token) return null;
+  return (JSON.parse(Buffer.from(token.split(".")[1]!, "base64url").toString("utf8")) as { sub: string }).sub;
+}
 
 test("flows.expiry+cancel: expiry kills the worker and marks expired; cancel kills and marks cancelled; cancel on a terminal flow is a no-op; a landed credential is never un-done by a late cancel", async () => {
   const r = rig({ agents: fakeCliAgent("cursor", "CURSOR_CONFIG_DIR", "cli-config.json", { FAKE_CLI_URL: "https://cursor.com/loginDeepControl?mode=login", FAKE_CLI_HANG: "1" }) });

@@ -64,6 +64,8 @@ import {
   selectLeastLoadedAccount,
   windowRolledOver,
   isFableModel,
+  authRecoveryHint,
+  cursorRecoveryHint,
   type AccountLimits,
   type NativeAccountRecipe,
   type AccountAdmissionCandidate,
@@ -112,7 +114,9 @@ import {
 } from "./providerLimits.ts";
 import {
   cursorCredentialEnv,
+  cursorIdentityVerdict,
   parseCursorAuth,
+  type CursorAuthSnapshot,
   readCursorLiveAuth,
   type CursorAuthReader,
 } from "./cursorAuth.ts";
@@ -484,6 +488,31 @@ export const CODEX_MIN_SHIP_TTL_MS = 15 * 60_000;
 // refreshed through the daemon's own OAuth refresher before shipping, never
 // re-shipped dying.
 export const CLAUDE_MIN_SHIP_TTL_MS = 15 * 60_000;
+
+// Cursor: Honeybee never refreshes Cursor tokens itself; cursor-agent keeps
+// the machine-wide login fresh and Honeybee re-reads it. The re-read runs
+// only when the account's cached access token is this close to its JWT `exp`
+// (or after a 401), so ordinary spawns and probes cost no Keychain read.
+export const CURSOR_RECAPTURE_AHEAD_MS = 15 * 60_000;
+// Never lease a Cursor access token with less than this lifetime left.
+export const CURSOR_MIN_SHIP_TTL_MS = 5 * 60_000;
+
+/** What one Cursor re-capture from the machine-wide login found. */
+export type CursorRecapture =
+  /** Not a local Cursor account with a cached token-based login: nothing to do. */
+  | "skipped"
+  /** The cached token is not near expiry; the store was not read. */
+  | "fresh"
+  /** The account home and vault now hold Cursor's newer token. */
+  | "recaptured"
+  /** Cursor's login holds the same token or an older one. */
+  | "unchanged"
+  /** Cursor has no login on this computer. */
+  | "absent"
+  /** Cursor's login belongs to another Cursor user; nothing was changed. */
+  | "different_account"
+  /** Which Cursor user the login belongs to cannot be read; nothing was changed. */
+  | "identity_unverified";
 const CENTRAL_TICK_POLL_MS = 1000;
 
 // How long a lease mint keeps deferring to a healthy running Claude: Claude
@@ -955,6 +984,8 @@ export class AccountsService {
   private readonly velocities = new Map<string, WindowVelocities>();
   /** v19: at most one lease mint per account; concurrent callers join it. */
   private readonly leaseMints = new Map<string, Promise<EphemeralCredential>>();
+  /** At most one Cursor re-capture per account; concurrent callers join it. */
+  private readonly cursorRecaptures = new Map<string, Promise<CursorRecapture>>();
   private readonly nativeKeychainSeeds = new Map<string, Set<Promise<unknown>>>();
   private readonly codexLeaseRefresh: (homePath: string) => Promise<void>;
   private readonly gatewayMcpSeeder: (homePath: string, harness: string) => Promise<GatewayMcpSeedResult>;
@@ -2223,7 +2254,7 @@ export class AccountsService {
     if (account.source === "leased" && knownAccountLease(account)?.revokedAt != null) return { ready: false, code: "account_lease_revoked", message: `Lease ${knownAccountLease(account)!.shareId} from ${knownAccountLease(account)!.authorityNodeId} was revoked; request renewal from its authority.` };
     if (account.status === "auth_needed") {
       if (native) return { ready: false, code: "account_auth_needed", message: this.nativeSignInMessage(account, "needs its sign-in") };
-      return { ready: false, code: "account_auth_needed", message: this.authNeededReason(account) ?? `account ${account.id} needs login; log in with: hive account login ${account.id}` };
+      return { ready: false, code: "account_auth_needed", message: this.authNeededReason(account) ?? `account ${account.id} needs login; ${authRecoveryHint(account.harness, account.id)}` };
     }
     const attention = account.harness === "claude" ? this.store.accountCredentialAttention(account.id) : null;
     if (attention) return { ready: false, code: "credential_file_damaged", message: `account ${account.id}: ${attention}; credential publication requires recovery; retry republish or run hive account login ${account.id}` };
@@ -2238,7 +2269,7 @@ export class AccountsService {
       case "invalid":
         return { ready: false, code: "account_credential_invalid", message: `account ${account.id} has a credential file that is not a usable ${account.harness} credential; re-lease or log in with: hive account login ${account.id}` };
       case "expired":
-        return { ready: false, code: "account_credential_expired", message: `account ${account.id} has an expired credential with no refresh path on this node; re-lease or log in with: hive account login ${account.id}` };
+        return { ready: false, code: "account_credential_expired", message: `account ${account.id} has an expired credential with no refresh path on this node; ${account.source === "leased" ? "request a new lease from its authority" : `re-lease or ${authRecoveryHint(account.harness, account.id)}`}` };
       case "present":
         return { ready: true };
     }
@@ -3165,7 +3196,7 @@ export class AccountsService {
       if (centralInDoubt && current.status === "auth_needed") {
         // The authority already recorded why; a probe must not replace that reason with its own wording.
       } else if (!fetched.readable && fetched.error && fetched.unreadableReason === "auth_failed") {
-        const reason = centralInDoubt ? fetched.error : `limits probe: ${fetched.error.slice(0, 200)}`;
+        const reason = centralInDoubt ? fetched.error : `limits probe: ${fetched.error.slice(0, account.harness === "cursor" ? 400 : 200)}`;
         if (this.store.setAccountStatus(id, current.status === "paused" ? "paused" : "auth_needed", reason).applied) {
           this.log(`account.auth_needed account=${id} by=limits_probe`);
         }
@@ -3368,9 +3399,10 @@ export class AccountsService {
         if (!result.ok) return { readable: false, unreadableReason: result.unreadableReason, error: result.error };
         return parseCodexRateLimits(result.limits);
       }
+      case "cursor":
+        return this.fetchCursorLimits(account);
       case "grok":
       case "kimi":
-      case "cursor":
       case "opencode":
         return this.fetchSecondaryProvider(account);
       case "agy":
@@ -3388,6 +3420,28 @@ export class AccountsService {
       default:
         return { readable: false, unreadableReason: "unsupported", error: `${account.harness} has no limits source` };
     }
+  }
+
+  /**
+   * Cursor's probe: re-capture first when the cached token is near expiry;
+   * after a 401, re-capture once from Cursor's own login and probe again
+   * before the failure can mark the account auth_needed.
+   */
+  private async fetchCursorLimits(account: AccountRow): Promise<PutAccountLimitsInput> {
+    await this.recaptureCursor(account);
+    let first: PutAccountLimitsInput;
+    try {
+      first = await this.fetchSecondaryProvider(account);
+    } catch (error) {
+      const message = errorDetail(error).slice(0, 500);
+      if (!isAuthFailureLimitsError(message)) throw error;
+      first = { readable: false, unreadableReason: "auth_failed", error: message };
+    }
+    if (first.readable || first.unreadableReason !== "auth_failed") return first;
+    const again = await this.recaptureCursor(account, { force: true });
+    this.log(`account.cursor.probe_auth_failed account=${account.id} recapture=${again}`);
+    if (again === "recaptured") return this.fetchSecondaryProvider(account);
+    return { ...first, error: `${first.error ?? "authentication failed"}; ${cursorRecoveryHint(account.id, again)}` };
   }
 
   private async fetchSecondaryProvider(account: AccountRow): Promise<PutAccountLimitsInput> {
@@ -3931,12 +3985,13 @@ export class AccountsService {
         return Promise.resolve(this.mintOpenCodeLease(account));
       case "muse":
         return this.mintMuseLease(account, opts);
+      case "cursor":
+        return this.mintCursorLease(account);
       default:
-        // cursor's machine-global keychain slot (and every unmodeled harness)
-        // has no defensible lease artifact — a durable, typed refusal.
+        // Every unmodeled harness has no defensible lease artifact — a durable, typed refusal.
         throw new LeaseRefusal(
           "lease_unsupported",
-          `harness "${account.harness}" has no credential-lease strategy (supported: claude, codex, grok, kimi, muse, opencode)`,
+          `harness "${account.harness}" has no credential-lease strategy (supported: claude, codex, cursor, grok, kimi, muse, opencode)`,
         );
     }
   }
@@ -4194,6 +4249,104 @@ export class AccountsService {
     }
     candidates.sort((a, b) => b.expiresAt - a.expiresAt);
     return candidates[0]?.document ?? null;
+  }
+
+  /**
+   * cursor: ship auth.json with the access token (or API key) only — the
+   * refresh token never leaves this node. The token is first re-captured
+   * from Cursor's own login when it is near expiry; a token with less than
+   * CURSOR_MIN_SHIP_TTL_MS left is refused, never shipped dying.
+   */
+  private async mintCursorLease(account: AccountRow): Promise<EphemeralCredential> {
+    const recapture = await this.recaptureCursor(account);
+    const held = this.freshestCursorAuth(account);
+    if (!held) throw new LeaseRefusal("lease_unavailable", `no Cursor credential for ${account.id}; ${cursorRecoveryHint(account.id)}`);
+    if (held.auth.apiKey) {
+      return {
+        files: [{ homeRelPath: "auth.json", contentB64: Buffer.from(`${JSON.stringify({ apiKey: held.auth.apiKey })}\n`, "utf8").toString("base64"), mode: 0o600 }],
+        kindNote: "cursor: shipped auth.json with the API key only",
+      };
+    }
+    if (held.expiresAt === null || held.expiresAt - this.now() <= CURSOR_MIN_SHIP_TTL_MS) {
+      throw new LeaseRefusal("lease_unavailable", `Cursor access token for ${account.id} is expired or near expiry and Cursor's login on this computer had no newer one (${recapture}); ${cursorRecoveryHint(account.id, recapture)}`);
+    }
+    const expSeconds = Math.floor(held.expiresAt / 1000);
+    return {
+      files: [{ homeRelPath: "auth.json", contentB64: Buffer.from(`${JSON.stringify({ accessToken: held.auth.accessToken })}\n`, "utf8").toString("base64"), mode: 0o600 }],
+      expiresAt: expSeconds,
+      kindNote: `cursor: shipped access-token-only auth.json (refresh token withheld), exp ${new Date(expSeconds * 1000).toISOString()}`,
+    };
+  }
+
+  /** The Cursor credential with the latest access-token `exp` between the account home and its vault. */
+  private freshestCursorAuth(account: AccountRow): { raw: string; auth: CursorAuthSnapshot; expiresAt: number | null } | null {
+    let best: { raw: string; auth: CursorAuthSnapshot; expiresAt: number | null } | null = null;
+    for (const path of [join(account.homePath, "auth.json"), join(this.vaultDirOf(account), "auth.json")]) {
+      const raw = readIfFile(path);
+      const auth = parseCursorAuth(raw, path);
+      if (raw === null || !auth) continue;
+      const exp = auth.accessToken ? expFromJwt(auth.accessToken) : undefined;
+      const expiresAt = exp === undefined ? null : exp * 1000;
+      if (!best || (expiresAt ?? -1) > (best.expiresAt ?? -1)) best = { raw, auth, expiresAt };
+    }
+    return best;
+  }
+
+  /**
+   * Re-capture a local Cursor account's token from Cursor's machine-wide
+   * login (Keychain / global auth.json), which cursor-agent keeps fresh.
+   * Honeybee never calls a Cursor refresh endpoint. Without `force` the store
+   * is read only when the cached token is within CURSOR_RECAPTURE_AHEAD_MS
+   * of its expiry. The login is taken only when it belongs to the same Cursor
+   * user as the cached one and carries a newer token; it is then written to
+   * the account home and vault. Leased accounts never re-capture: their
+   * authority node leases them access-only tokens. Single-flight per account.
+   */
+  recaptureCursor(account: AccountRow, opts: { force?: boolean } = {}): Promise<CursorRecapture> {
+    if (account.harness !== "cursor" || account.source !== "local" || this.isNative(account)) return Promise.resolve("skipped");
+    const held = this.freshestCursorAuth(account);
+    if (!held || held.auth.apiKey || !held.auth.accessToken) return Promise.resolve("skipped");
+    if (!opts.force && held.expiresAt !== null && held.expiresAt - this.now() > CURSOR_RECAPTURE_AHEAD_MS) return Promise.resolve("fresh");
+    if (this.store.activeLoginFlow(account.id)) return Promise.resolve("skipped");
+    const joined = this.cursorRecaptures.get(account.id);
+    if (joined) return joined;
+    const pending = this.recaptureCursorOnce(account, held).catch((error: unknown) => {
+      this.log(`account.cursor.recapture_failed account=${account.id} err=${JSON.stringify(errorDetail(error).slice(0, 200))}`);
+      return "absent" as const;
+    });
+    this.cursorRecaptures.set(account.id, pending);
+    return pending.finally(() => {
+      if (this.cursorRecaptures.get(account.id) === pending) this.cursorRecaptures.delete(account.id);
+    });
+  }
+
+  private async recaptureCursorOnce(account: AccountRow, held: { raw: string; auth: CursorAuthSnapshot; expiresAt: number | null }): Promise<CursorRecapture> {
+    const live = await this.cursorAuthReader();
+    if (!live?.accessToken) return "absent";
+    const verdict = cursorIdentityVerdict(held.raw, live.raw);
+    if (verdict === "different" || verdict === "first") {
+      // `first`: the cached token names no user, so the live one cannot be matched to it.
+      const outcome = verdict === "different" ? "different_account" : "identity_unverified";
+      this.log(`account.cursor.recapture_refused account=${account.id} reason=${outcome}`);
+      return outcome;
+    }
+    if (verdict === "unverified") {
+      this.log(`account.cursor.recapture_refused account=${account.id} reason=identity_unverified`);
+      return "identity_unverified";
+    }
+    if (live.accessToken === held.auth.accessToken) return "unchanged";
+    const liveExp = expFromJwt(live.accessToken);
+    const liveExpiresAt = liveExp === undefined ? null : liveExp * 1000;
+    if (liveExpiresAt === null || (held.expiresAt !== null && liveExpiresAt <= held.expiresAt)) return "unchanged";
+    // The account may have changed hands while the store was read.
+    const current = this.store.getAccount(account.id);
+    if (!current || current.source !== "local" || this.store.activeLoginFlow(account.id)) return "unchanged";
+    atomicWriteFileSync(join(current.homePath, "auth.json"), live.raw);
+    const vaultDir = this.vaultDirOf(current);
+    mkdirSync(vaultDir, { recursive: true, mode: 0o700 });
+    atomicWriteFileSync(join(vaultDir, "auth.json"), live.raw);
+    this.log(`account.cursor.recaptured account=${account.id} source=${live.source === "keychain" ? "keychain" : "global_file"} exp=${new Date(liveExpiresAt).toISOString()}`);
+    return "recaptured";
   }
 
   private async mintMuseLease(account: AccountRow, opts: LeaseOptions): Promise<EphemeralCredential> {
@@ -4485,6 +4638,7 @@ export class AccountsService {
     this.assertOwnedHome(account, "writes into");
     const unisolated = this.isolationRefusal(account.harness);
     if (unisolated) throw new Error(unisolated);
+    if (account.harness === "cursor") await this.recaptureCursor(account);
     if (this.authorityFor(account)?.enabled(account)) {
       await this.authorityFor(account)!.ensure(account, account.harness === "codex" ? CODEX_MIN_SHIP_TTL_MS : CLAUDE_MIN_SHIP_TTL_MS);
       await this.authorityFor(account)!.checkRuntimeCopies(account);
@@ -4556,9 +4710,11 @@ export class AccountsService {
     primaryFile: string,
     primaryRaw: string | null,
     overrides: Record<string, string>,
+    opts: { allowDifferentAccount?: boolean } = {},
   ):
     | { ok: true; account: AccountRow; captured: string[]; at: number }
-    | { ok: false; reason: "invalid_primary" | "primary_not_captured" } {
+    | { ok: false; reason: "invalid_primary" | "primary_not_captured" }
+    | { ok: false; reason: "different_account" | "identity_unverified"; message: string } {
     this.assertLocalAccount(account);
     const foreign = this.foreignHomeRefusal(account, "captures credentials from");
     if (foreign) throw new Error(foreign);
@@ -4567,6 +4723,13 @@ export class AccountsService {
     }
     if (!this.validPrimaryCredential(account.harness, primaryFile, primaryRaw)) {
       return { ok: false, reason: "invalid_primary" };
+    }
+    // Cursor has one machine-wide login slot: whoever signed in last, by any
+    // means, is what a login or capture sees. Refuse a credential for a
+    // different Cursor user than the one this account holds.
+    if (account.harness === "cursor" && opts.allowDifferentAccount !== true) {
+      const refusal = this.cursorIdentityRefusal(account, primaryFile, primaryRaw);
+      if (refusal) return { ok: false, ...refusal };
     }
     // Cursor's provider login lands outside CURSOR_CONFIG_DIR. Materialize
     // that explicit credential into the account home before vault backup.
@@ -4582,13 +4745,28 @@ export class AccountsService {
     return { ok: true, account: updated, captured, at };
   }
 
+  /** Why a Cursor credential must not be captured into this account (identity mismatch), or null. */
+  private cursorIdentityRefusal(account: AccountRow, primaryFile: string, primaryRaw: string | null): { reason: "different_account" | "identity_unverified"; message: string } | null {
+    const held = readIfFile(join(this.vaultDirOf(account), primaryFile)) ?? readIfFile(join(account.homePath, primaryFile));
+    const verdict = cursorIdentityVerdict(held, primaryRaw);
+    if (verdict === "different") {
+      this.log(`account.capture.refused account=${account.id} reason=different_account`);
+      return { reason: "different_account", message: `The Cursor sign-in on this computer belongs to a different Cursor user than ${account.id}; nothing was changed. Sign in to Cursor as this account's user and try again, or replace the account's login with it: hive account login ${account.id} --replace-account` };
+    }
+    if (verdict === "unverified") {
+      this.log(`account.capture.refused account=${account.id} reason=identity_unverified`);
+      return { reason: "identity_unverified", message: `Honeybee cannot tell which Cursor user the sign-in on this computer belongs to, so it cannot confirm it is ${account.id}'s; nothing was changed. If it is: hive account login ${account.id} --replace-account` };
+    }
+    return null;
+  }
+
   /**
    * Explicit recovery capture. It snapshots the credential that is valid
    * right now, without requiring a login flow to observe a fresh write.
    * Claude/Cursor use their external provider store when present; file-based
    * harnesses use the account home.
    */
-  async captureAccount(account: AccountRow): Promise<CaptureOutcome> {
+  async captureAccount(account: AccountRow, opts: { replaceAccount?: boolean } = {}): Promise<CaptureOutcome> {
     this.assertLocalAccount(account);
     const foreign = this.foreignHomeRefusal(account, "captures credentials from");
     if (foreign) throw new Error(foreign);
@@ -4609,8 +4787,9 @@ export class AccountsService {
       }
     }
     const overrides = externalRaw === null ? {} : { [primaryFile]: externalRaw };
-    const result = this.persistCredentialCapture(account, primaryFile, primaryRaw, overrides);
+    const result = this.persistCredentialCapture(account, primaryFile, primaryRaw, overrides, { allowDifferentAccount: opts.replaceAccount === true });
     if (!result.ok) {
+      if (result.reason === "different_account" || result.reason === "identity_unverified") throw new CredentialAuthorityError(result.message, result.reason);
       if (result.reason === "invalid_primary") {
         throw new Error(`no valid ${account.harness} credential found for ${account.id}; complete a provider login first`);
       }

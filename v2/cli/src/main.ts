@@ -142,6 +142,7 @@ import type { ReadOnlyStore } from "./readonly.ts";
 import { beeTaskList, isTaskStatus, isTaskTransitionAction, parseTaskListRef } from "../../core/src/tasks.ts";
 import { filterMailbox, INBOX_AGENT, isInboxAgent, TASK_STATUSES, type AuditRow, type CommandRow, type DeliveryConfirmationResolution, type NodeCapacity, type TemplateRow, type ChampionRow } from "../../core/src/types.ts";
 import { matchAccount } from "../../core/src/accountMatch.ts";
+import { authRecoveryHint } from "../../core/src/accountRecipes.ts";
 import { publicAuditRow, publicEnvRecords } from "../../core/src/envRedaction.ts";
 import { hostname } from "node:os";
 import type { AuditTailResult, DeployInfoResult, GatewayRegisterResult, RuntimeActivateResult, RuntimeInstallResult, RuntimeProbeResult, RuntimePruneResult, RuntimeStatusResult, RuntimeVersion, SkillsInstallResult } from "../../daemon/src/protocol.ts";
@@ -895,7 +896,7 @@ const ACCOUNT_USAGE =
   "       hive account credentials <export|adopt-prepare|export-prepare|export-commit|adopt|adopt-abort|export-abort|export-confirm|export-settle|stand-down|handoff-status|handoff-key-rotate|handoff-identity-set|stand-down-receipt|take-over-apply|take-over-complete|take-over-cancel> --file protected-payload.json [--out protected-material.json] [--replace] [--retained-generation N] [--discard-retained-chain --confirm]\n" +
   "       hive account lease install [--enrol] --file payload.json | lease remove <id> [--check-only | --discard-native --confirm] | lease export <id> --json\n" +
   "       hive account lease grant <id> --node <nodeId> [--share <shareId>] [--epoch <n>] [--ttl-ms <ms>] [--authority <nodeId>] [--out material.json] [--register] --json | lease batch --file items.json [--idempotency-key key] [--out material.json] [--register] --json\n" +
-  "       hive account capture <selector> | verify <selector> | limits [<selector>] | reset <selector> [--credit-id id] --idempotency-key key\n" +
+  "       hive account capture <selector> [--replace-account] | verify <selector> | limits [<selector>] | reset <selector> [--credit-id id] --idempotency-key key\n" +
   "       hive account restored <selector> | interruptions [<selector>]\n" +
   "       hive account import <harness> [--label l] [--id id] [--penalty n]   (adopt this computer's own harness login; it stays signed in)\n" +
   "       hive account import [--root ~/.hive] [--dry-run] | backfill [--dry-run]";
@@ -1134,7 +1135,7 @@ async function cmdAccount(ctx: CliContext, parsed: Parsed): Promise<number> {
               : "; unverified until a login/capture")
         : r.credentialHealth === "unverified"
           ? " — existing credentials adopted (unverified until a login/capture/limits probe)"
-          : ` — status ${r.account.status}; log in with: hive account login ${r.account.id}`;
+          : ` — status ${r.account.status}; ${authRecoveryHint(r.account.harness, r.account.id)}`;
       emit(
         ctx,
         [
@@ -1378,7 +1379,8 @@ async function cmdAccount(ctx: CliContext, parsed: Parsed): Promise<number> {
     case "capture": {
       const id = parsed.positional[2];
       if (!id) throw new Error(ACCOUNT_USAGE);
-      const r = await withClient(ctx, (c) => c.request<AccountCaptureResult>("account.capture", { id, idempotencyKey: key }));
+      const replaceAccount = parsed.flags.get("--replace-account") === true;
+      const r = await withClient(ctx, (c) => c.request<AccountCaptureResult>("account.capture", { id, idempotencyKey: key, ...(replaceAccount ? { replaceAccount: true } : {}) }));
       emit(
         ctx,
         [

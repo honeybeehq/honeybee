@@ -8011,7 +8011,7 @@ export class HiveDaemon {
     }
     let captured: CaptureOutcome;
     try {
-      captured = await this.mustAccounts().captureAccount(account);
+      captured = await this.mustAccounts().captureAccount(account, { replaceAccount: this.replaceAccountParam(params, "account.capture") });
     } catch (err) {
       throw new RpcError("invalid_request", err instanceof Error ? err.message : String(err));
     }

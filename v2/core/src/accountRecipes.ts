@@ -1025,3 +1025,21 @@ export function recipeEnvFor(harness: string, homePath: string): Record<string, 
   if (!recipe?.extraEnv) return {};
   return Object.fromEntries(Object.entries(recipe.extraEnv).map(([k, v]) => [k, v.replaceAll("{home}", homePath)]));
 }
+
+/**
+ * What to do when a Cursor account needs its sign-in. Cursor keeps its own
+ * login fresh in one machine-wide slot, so a fresh capture of that login is
+ * usually enough; a browser login is the fallback. `recapture` is the
+ * outcome of the daemon's own re-capture attempt, when one ran.
+ */
+export function cursorRecoveryHint(accountId: string, recapture?: string): string {
+  if (recapture === "different_account") {
+    return `Cursor on this computer is signed in as a different user than ${accountId}; sign in to Cursor as this account's user, then capture it: hive account capture ${accountId}`;
+  }
+  return `capture again if Cursor on this computer is signed in as this account's user: hive account capture ${accountId}; else log in: hive account login ${accountId}`;
+}
+
+/** The next step for an account that needs its sign-in, per harness. */
+export function authRecoveryHint(harness: string, accountId: string): string {
+  return harness === "cursor" ? cursorRecoveryHint(accountId) : `log in with: hive account login ${accountId}`;
+}

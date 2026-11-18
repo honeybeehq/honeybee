@@ -9,9 +9,11 @@
  * so two account homes do not depend on whichever identity touched the global
  * slot last.
  *
- * This intentionally does not bring back v1's credential synchronizer,
- * freshness arbitration, or background harvesting. Login is the only
- * global-store → account-home transition.
+ * Login and capture still take the store explicitly. Since ADR 004
+ * (docs/adr/004-cursor-recapture-machine-login.md) the authority node also
+ * re-reads it on demand: only when the cached token is near its JWT exp or
+ * a probe got a 401, and only for the same Cursor user (JWT `sub`). There is
+ * no background harvesting, and Honeybee never calls a Cursor refresh endpoint.
  */
 import { execFile } from "node:child_process";
 import { readFileSync, statSync } from "node:fs";
@@ -115,4 +117,42 @@ export function cursorCredentialEnv(homePath: string): Record<string, string> {
   if (auth?.apiKey) return { CURSOR_API_KEY: auth.apiKey };
   if (auth?.accessToken) return { CURSOR_AUTH_TOKEN: auth.accessToken };
   return {};
+}
+
+/**
+ * The Cursor user a credential belongs to: the access token's JWT `sub`.
+ * Decoded without verifying the signature: this compares two tokens Cursor
+ * itself issued, it does not authenticate anything. null when the token is
+ * not a JWT with a string `sub` (an API key, a malformed token).
+ */
+export function cursorTokenIdentity(auth: Pick<CursorAuthSnapshot, "accessToken"> | null): string | null {
+  const token = auth?.accessToken;
+  if (!token) return null;
+  const parts = token.split(".");
+  if (parts.length !== 3 || !parts[1]) return null;
+  try {
+    const claims = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8")) as Record<string, unknown> | null;
+    const sub = claims && typeof claims === "object" ? claims.sub : undefined;
+    return typeof sub === "string" && sub.length > 0 ? sub : null;
+  } catch {
+    return null;
+  }
+}
+
+export type CursorIdentityVerdict = "same" | "different" | "unverified" | "first";
+
+/**
+ * Whether a captured Cursor credential belongs to the user the account
+ * already holds. The account's identity is the one in the credential it
+ * holds (vault, else home): Honeybee keeps no separate identity column.
+ * `first` = the account holds no identifiable credential yet, so anything is
+ * accepted; `unverified` = the account holds an identity but the new
+ * credential carries none.
+ */
+export function cursorIdentityVerdict(heldRaw: string | null, nextRaw: string | null): CursorIdentityVerdict {
+  const held = cursorTokenIdentity(parseCursorAuth(heldRaw));
+  if (held === null) return "first";
+  const next = cursorTokenIdentity(parseCursorAuth(nextRaw));
+  if (next === null) return "unverified";
+  return next === held ? "same" : "different";
 }

@@ -1,4 +1,5 @@
 import { LEASE_UNKNOWN_MESSAGE } from "../../core/src/accountLease.ts";
+import { authRecoveryHint } from "../../core/src/accountRecipes.ts";
 /**
  * Human-mode renderers for Honeybee v2 CLI output.
  *
@@ -355,7 +356,7 @@ export function renderAccountVerify(r: AccountVerifyResult): string[] {
   const detail = r.outcome === "verified"
     ? "the provider answered an authenticated read"
     : r.outcome === "auth_needed"
-      ? `the provider refused the credential${why}; log in with: hive account login ${r.account.id}`
+      ? `the provider refused the credential${why}${r.account.harness === "cursor" && why.includes("hive account capture") ? "" : `; ${authRecoveryHint(r.account.harness, r.account.id)}`}`
       : r.outcome === "absent"
         ? `no credential to verify; log in with: hive account login ${r.account.id}`
         : r.probe === "none"

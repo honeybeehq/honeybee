@@ -1,5 +1,6 @@
 import { recipeFor, parseClaudeCredentials, parseMuseCredentials, type AccountRow } from "../../core/src/index.ts";
 import { CODEX_CREDENTIAL_CODEC } from "./codexCredentialAuthority.ts";
+import { parseCursorAuth } from "./cursorAuth.ts";
 import { grokAccessOnly, grokCredentialEntry } from "./grokCredentialAuthority.ts";
 import type { KeychainState, KeychainStateReader, KeychainRemover } from "./keychain.ts";
 
@@ -22,7 +23,11 @@ export interface LeaseMaterialCodec {
 }
 
 export function createLeaseMaterialCodecs(claude: LeaseKeychainCodec): ReadonlyMap<string, LeaseMaterialCodec> {
-  const accessOnly = new Map([["grok", grokAccessOnly]]);
+  const cursorAccessOnly = (document: Record<string, unknown>): Record<string, unknown> => {
+    const { refreshToken: _refresh, ...rest } = document;
+    return rest;
+  };
+  const accessOnly = new Map([["grok", grokAccessOnly], ["cursor", cursorAccessOnly]]);
   const nonempty = (value: unknown) => typeof value === "string" && value.length > 0;
   const proofs = new Map<string, (document: Record<string, unknown>) => boolean>([
     ["claude", document => parseClaudeCredentials(JSON.stringify(document)) !== null],
@@ -30,6 +35,8 @@ export function createLeaseMaterialCodecs(claude: LeaseKeychainCodec): ReadonlyM
     ["grok", document => grokCredentialEntry(document) !== null || Object.values(document).length > 0 && Object.values(document).every(value => value !== null && typeof value === "object" && !Array.isArray(value) && (value as Record<string, unknown>).auth_mode === "api_key" && nonempty((value as Record<string, unknown>).key))],
     ["kimi", document => nonempty(document.api_key)],
     ["opencode", document => Object.values(document).length > 0 && Object.values(document).every(value => value !== null && typeof value === "object" && !Array.isArray(value) && ((value as Record<string, unknown>).type === "oauth" && nonempty((value as Record<string, unknown>).access) || (value as Record<string, unknown>).type === "api" && nonempty((value as Record<string, unknown>).key)))],
+    // Cursor: an access token or API key, never the refresh token (the authority node keeps it).
+    ["cursor", document => parseCursorAuth(JSON.stringify(document)) !== null && !hasRefreshGrant(document)],
     ["muse", document => { const credential = parseMuseCredentials(JSON.stringify(document)); return credential !== null && credential.mechanism === "api_key"; }],
   ]);
   return new Map([...proofs.keys()].map(harness => {

@@ -942,8 +942,6 @@ test("lease.flight.2: refused while the account's refresher is mid-rotation", as
 test("lease.strategy.1: harnesses without a lease strategy are a durable typed refusal", async () => {
   const r = rig();
   try {
-    const cursor = addAccount(r, "cursor", "c");
-    await refuses(() => service(r).mintLease(cursor), "lease_unsupported", /no credential-lease strategy/);
     const stub = addAccount(r, "stub", "s");
     await refuses(() => service(r).mintLease(stub), "lease_unsupported", /no credential-lease strategy/);
   } finally {
