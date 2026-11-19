@@ -1,6 +1,7 @@
 import {statSync,realpathSync} from "node:fs";
 import {delimiter,join,resolve} from "node:path";
 import { spawnSync } from "node:child_process";
+import { isMainThread } from "node:worker_threads";
 
 export class HostGitRefused extends Error {
   readonly code = "host_git_refused";
@@ -33,7 +34,7 @@ export function assertHostGitVersion(cwd: string, env: NodeJS.ProcessEnv): void 
   const match = /^git version (\d+)\.(\d+)(?:\.(\d+))?/m.exec(result.stdout ?? "");
   if (result.error || result.status !== 0 || !match) throw new HostGitRefused("version_unavailable", "cannot verify the required Git >=2.44; install a supported Git before operating on this checkout");
   const major = Number(match[1]), minor = Number(match[2]);
-  if (major < 2 || major === 2 && minor < 44) throw new HostGitRefused("unsupported_version", `Git >=2.44 is required for host checkout operations; found ${match[0].slice(4)}`);
+  if ((major < 2 || major === 2 && minor < 44) && isMainThread) process.stderr.write(`host git ${executable.path} is ${match[0].slice(4)}: older than 2.44, so the lazy-fetch guard (GIT_NO_LAZY_FETCH) may not be in force with this git\n`);
   versionChecks.set(executable.path,executable.key);
 }
 
