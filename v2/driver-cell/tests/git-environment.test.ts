@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { HostGitRefused } from "../../core/src/hostGitRuntime.ts";
@@ -48,7 +48,7 @@ test("host Git does not fetch missing objects implicitly through local transport
   }
 });
 
-test("host Git pins object flags through wrappers and refuses unsupported versions", () => {
+test("host Git pins object flags through wrappers and reports Git without the lazy-fetch guard once per executable", () => {
   const rig = makeRig();
   const previousPath = process.env.PATH;
   try {
@@ -60,18 +60,33 @@ test("host Git pins object flags through wrappers and refuses unsupported versio
       chmodSync(wrapper, 0o700);
     };
     process.env.PATH = `${bin}:${previousPath ?? ""}`;
-    writeWrapper("2.43.0");
-    assert.throws(() => tryGit(rig.origin.repo, ["rev-list", "HEAD"]), (error: unknown) => error instanceof HostGitRefused && error.reason === "unsupported_version" && error.message.includes(">=2.44"));
-    assert.equal(existsSync(unexpected), false);
-    writeWrapper("2.44.0");
-    assert.equal(tryGit(rig.origin.repo, ["rev-list", "HEAD"], { env: { GIT_NO_LAZY_FETCH: "0", GIT_NO_REPLACE_OBJECTS: "0" } }).status, 0);
-    assert.equal(existsSync(unexpected), true);
-    const checked=readFileSync(versions,"utf8");
-    assert.equal(tryGit(rig.origin.repo,["rev-list","HEAD"]).status,0);
-    assert.equal(readFileSync(versions,"utf8"),checked);
-    writeWrapper("2.43.0");
-    assert.throws(()=>tryGit(rig.origin.repo,["rev-list","HEAD"]),HostGitRefused);
-    assert.notEqual(readFileSync(versions,"utf8"),checked);
+    const writes: string[] = [];
+    const write = process.stderr.write;
+    process.stderr.write = ((chunk: string | Uint8Array) => { writes.push(String(chunk)); return true; }) as typeof process.stderr.write;
+    const guardNotices = () => writes.filter((line) => line.includes("lazy-fetch guard (GIT_NO_LAZY_FETCH) may not be in force"));
+    try {
+      writeWrapper("2.43.0");
+      assert.equal(tryGit(rig.origin.repo, ["rev-list", "HEAD"]).status, 0);
+      assert.equal(existsSync(unexpected), true);
+      assert.equal(tryGit(rig.origin.repo, ["rev-list", "HEAD"]).status, 0);
+      assert.deepEqual(guardNotices(), [`host git ${realpathSync(wrapper)} is version 2.43.0: older than 2.44, so the lazy-fetch guard (GIT_NO_LAZY_FETCH) may not be in force with this git\n`]);
+      rmSync(unexpected);
+      writeWrapper("2.44.0");
+      assert.equal(tryGit(rig.origin.repo, ["rev-list", "HEAD"], { env: { GIT_NO_LAZY_FETCH: "0", GIT_NO_REPLACE_OBJECTS: "0" } }).status, 0);
+      assert.equal(existsSync(unexpected), true);
+      const checked=readFileSync(versions,"utf8");
+      assert.equal(tryGit(rig.origin.repo,["rev-list","HEAD"]).status,0);
+      assert.equal(readFileSync(versions,"utf8"),checked);
+      assert.equal(guardNotices().length, 1);
+      writeWrapper("2.43.0");
+      assert.equal(tryGit(rig.origin.repo,["rev-list","HEAD"]).status,0);
+      assert.notEqual(readFileSync(versions,"utf8"),checked);
+      assert.equal(guardNotices().length, 2);
+    } finally {
+      process.stderr.write = write;
+    }
+    writeFileSync(wrapper, "#!/bin/sh\nexit 1\n");
+    assert.throws(() => tryGit(rig.origin.repo, ["rev-list", "HEAD"]), (error: unknown) => error instanceof HostGitRefused && error.reason === "version_unavailable" && error.message === "Host Git refused: cannot verify the required Git >=2.44; install a supported Git before operating on this checkout");
     const env = hostGitEnv({ GIT_NO_LAZY_FETCH: "0", GIT_NO_REPLACE_OBJECTS: "0" });
     assert.equal(env.GIT_NO_LAZY_FETCH, "1");
     assert.equal(env.GIT_NO_REPLACE_OBJECTS, "1");
