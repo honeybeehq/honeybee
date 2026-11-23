@@ -19,7 +19,7 @@ import { join } from "node:path";
 import { openCoreStore, type AccountRow, type CoreStore } from "../../core/src/index.ts";
 import { AccountsService, CURSOR_RECAPTURE_AHEAD_MS, type EphemeralCredential } from "../src/accountsService.ts";
 import { loadNodeConfig, type ResolvedNodeConfig } from "../src/config.ts";
-import { cursorIdentityVerdict, cursorTokenIdentity, parseCursorAuth, readCursorLiveAuth, type CursorAuthSnapshot } from "../src/cursorAuth.ts";
+import { CursorStoreUnavailableError, cursorIdentityVerdict, cursorTokenIdentity, parseCursorAuth, readCursorLiveAuth, type CursorAuthSnapshot } from "../src/cursorAuth.ts";
 import { CredentialAuthorityError } from "../src/claudeCredentialAuthority.ts";
 import { RpcError } from "../src/protocol.ts";
 import { ProviderHttpError } from "../src/providerLimits.ts";
@@ -684,6 +684,65 @@ test("cursor imported account: activation gives the home its cli-config.json, he
     await svc.activateForSpawn(kept, { cwd: r.dir });
     assert.equal(config(kept), '{"from":"home"}');
   } finally {
+    r.cleanup();
+  }
+});
+
+const settlesWithin = async <T>(work: Promise<T>, ms: number): Promise<T> => {
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([work, new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error(`still blocked after ${ms}ms`)), ms); })]);
+  } finally {
+    clearTimeout(timer);
+  }
+};
+
+test("cursor locked Keychain: a store read that never answers does not block a spawn or a probe; the cached token is used", async () => {
+  const r = rig("locked");
+  try {
+    const nearExpiry = fakeJwt("auth0|user_a", r.now() + 5 * MIN, "near");
+    const account = addCursor(r, "a", authDoc(nearExpiry));
+    let reads = 0;
+    const seen: string[] = [];
+    const svc = new AccountsService({
+      store: r.store,
+      cfg: r.cfg,
+      log: (op) => r.log.push(op),
+      now: r.now,
+      platform: "linux",
+      keychainReader: async () => null,
+      keychainWriter: async () => false,
+      cursorAuthReader: () => { reads += 1; return new Promise(() => {}); },
+      providerHttp: { getJson: async () => { throw new Error("unexpected GET"); }, postJson: async (_url, headers) => { seen.push(headers.Authorization!); return usage(r); } },
+    });
+    await settlesWithin(svc.activateForSpawn(account, { cwd: r.dir }), 5_000);
+    assert.equal(homeToken(account), nearExpiry);
+    assert.equal(svc.credentialEnvOf(account).CURSOR_AUTH_TOKEN, nearExpiry);
+    const [row] = await settlesWithin(svc.refreshLimits([account.id]), 5_000);
+    assert.equal(row!.readable, true);
+    assert.deepEqual(seen, [`Bearer ${nearExpiry}`]);
+    assert.ok(reads >= 2);
+    assert.ok(r.log.some((line) => line === `account.cursor.recapture_store_unavailable account=${account.id}`));
+    assert.equal(r.store.getAccount(account.id)!.status, "ok");
+  } finally {
+    r.cleanup();
+  }
+});
+
+test("cursor locked Keychain: the real reader stops a hung security process at its short timeout", { skip: process.platform !== "darwin" }, async () => {
+  const r = rig("hung-security");
+  const saved = { bin: process.env.HIVE_TEST_SECURITY_BIN, nokc: process.env.HIVE_NO_KEYCHAIN };
+  try {
+    const shim = join(r.dir, "security");
+    writeFileSync(shim, "#!/bin/sh\nexec sleep 30\n", { mode: 0o755 });
+    process.env.HIVE_TEST_SECURITY_BIN = shim;
+    delete process.env.HIVE_NO_KEYCHAIN;
+    const started = Date.now();
+    await assert.rejects(settlesWithin(readCursorLiveAuth({ timeoutMs: 200 }), 5_000), CursorStoreUnavailableError);
+    assert.ok(Date.now() - started < 3_000);
+  } finally {
+    if (saved.bin === undefined) delete process.env.HIVE_TEST_SECURITY_BIN; else process.env.HIVE_TEST_SECURITY_BIN = saved.bin;
+    if (saved.nokc === undefined) delete process.env.HIVE_NO_KEYCHAIN; else process.env.HIVE_NO_KEYCHAIN = saved.nokc;
     r.cleanup();
   }
 });

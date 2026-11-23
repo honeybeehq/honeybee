@@ -34,7 +34,9 @@ export interface CursorAuthSnapshot {
   source: string;
 }
 
-export type CursorAuthReader = () => Promise<CursorAuthSnapshot | null>;
+export class CursorStoreUnavailableError extends Error {}
+
+export type CursorAuthReader = (opts?: { timeoutMs?: number }) => Promise<CursorAuthSnapshot | null>;
 
 /** Parse Cursor's own auth.json shape. A refresh token alone cannot authenticate a run. */
 export function parseCursorAuth(raw: string | null, source = "auth.json"): CursorAuthSnapshot | null {
@@ -75,17 +77,20 @@ function readCursorAuthFile(path: string): CursorAuthSnapshot | null {
   }
 }
 
-async function readCursorKeychainSecret(service: string): Promise<string | undefined> {
+async function readCursorKeychainSecret(service: string, shortTimeoutMs?: number): Promise<string | undefined> {
   const security = securityExecutable();
   try {
     const { stdout } = await execFileAsync(
       security,
       ["find-generic-password", "-a", "cursor-user", "-s", service, "-w"],
-      { timeout: SECURITY_EXEC_TIMEOUT_MS },
+      { timeout: shortTimeoutMs ?? SECURITY_EXEC_TIMEOUT_MS, killSignal: "SIGKILL" },
     );
     const value = String(stdout).trim();
     return value.length > 0 ? value : undefined;
-  } catch {
+  } catch (error) {
+    if (shortTimeoutMs !== undefined && (error as { killed?: boolean }).killed === true) {
+      throw new CursorStoreUnavailableError("the Keychain did not answer in time");
+    }
     return undefined;
   }
 }
@@ -104,9 +109,9 @@ export function cursorLoginDocument(auth: { accessToken: string }): string {
  * `cursor-agent login`: one Keychain item, else the global auth.json. One
  * value, so there is no snapshot of several items to tear.
  */
-export const readCursorLiveAuth: CursorAuthReader = async () => {
+export const readCursorLiveAuth: CursorAuthReader = async (opts = {}) => {
   if (keychainAvailable()) {
-    const accessToken = await readCursorKeychainSecret("cursor-access-token");
+    const accessToken = await readCursorKeychainSecret("cursor-access-token", opts.timeoutMs);
     if (accessToken) return parseCursorAuth(cursorLoginDocument({ accessToken }), "keychain");
   }
   const file = readCursorAuthFile(cursorGlobalAuthPath());

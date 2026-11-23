@@ -119,6 +119,7 @@ import {
   cursorTokenClaims,
   cursorTokenIdentity,
   sameCursorIdentity,
+  CursorStoreUnavailableError,
   type CursorIdentity,
   type CursorTokenClaims,
   parseCursorAuth,
@@ -504,6 +505,7 @@ export const CURSOR_RECAPTURE_AHEAD_MS = 15 * 60_000;
 export const CURSOR_MIN_SHIP_TTL_MS = 5 * 60_000;
 
 const CURSOR_CLI_CONFIG_FILE = "cli-config.json";
+const CURSOR_BACKGROUND_READ_TIMEOUT_MS = 2_000;
 
 /** What one Cursor re-capture from the machine-wide login found. */
 export type CursorRecapture =
@@ -520,7 +522,9 @@ export type CursorRecapture =
   /** Cursor's login belongs to another Cursor user; nothing was changed. */
   | "different_account"
   /** Which Cursor user the login belongs to cannot be read; nothing was changed. */
-  | "identity_unverified";
+  | "identity_unverified"
+  /** Cursor's login could not be read in time (a locked Keychain); the cached token stays in use. */
+  | "store_unavailable";
 /** One of a Cursor account's credential copies (vault or home). */
 interface CursorCopy {
   where: "vault" | "home";
@@ -4441,6 +4445,18 @@ export class AccountsService {
     });
   }
 
+  private async readCursorStoreBriefly(): Promise<CursorAuthSnapshot | null> {
+    let timer: NodeJS.Timeout | undefined;
+    const deadline = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new CursorStoreUnavailableError("Cursor's login store did not answer in time")), CURSOR_BACKGROUND_READ_TIMEOUT_MS);
+    });
+    try {
+      return await Promise.race([this.cursorAuthReader({ timeoutMs: CURSOR_BACKGROUND_READ_TIMEOUT_MS }), deadline]);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   private async recaptureCursorLocked(accountId: string, force: boolean): Promise<CursorRecapture> {
     const account = this.store.getAccount(accountId);
     if (!account) return "skipped";
@@ -4448,7 +4464,14 @@ export class AccountsService {
     const gate = this.cursorRecaptureGate(account, force);
     if (gate) return gate;
     const identity = this.cursorSelection(account).identity;
-    const live = await this.cursorAuthReader();
+    let live: CursorAuthSnapshot | null;
+    try {
+      live = await this.readCursorStoreBriefly();
+    } catch (error) {
+      if (!(error instanceof CursorStoreUnavailableError)) throw error;
+      this.log(`account.cursor.recapture_store_unavailable account=${account.id}`);
+      return "store_unavailable";
+    }
     if (!live?.accessToken) return "absent";
     const liveIdentity = cursorTokenIdentity(live);
     const claims = cursorTokenClaims(live.accessToken);
