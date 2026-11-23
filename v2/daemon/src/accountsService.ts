@@ -4891,10 +4891,21 @@ export class AccountsService {
     return { reason: "credential_stale", message: `Cursor just rejected this same sign-in (HTTP 401); nothing was changed. ${signInAgain}` };
   }
 
+  private localCursorAccountHolding(excludedId: string, identity: CursorIdentity | null): AccountRow | null {
+    if (identity === null) return null;
+    return this.store.listAccounts().find((candidate) => candidate.id !== excludedId && candidate.harness === "cursor" && candidate.source === "local" && !this.isNative(candidate) && sameCursorIdentity(this.cursorSelection(candidate).identity, identity)) ?? null;
+  }
+
   /** Why a Cursor credential must not be captured into this account (identity mismatch), or null. */
   private cursorIdentityRefusal(account: AccountRow, nextRaw: string): { reason: "different_account" | "identity_unverified"; message: string } | null {
     const selection = this.cursorSelection(account);
     const verdict = cursorIdentityVerdict(selection, nextRaw);
+    if (verdict === "first") {
+      const holder = this.localCursorAccountHolding(account.id, cursorTokenIdentity(parseCursorAuth(nextRaw)));
+      if (!holder) return null;
+      this.log(`account.capture.refused account=${account.id} reason=identity_held_by_other holder=${holder.id}`);
+      return { reason: "different_account", message: `Cursor on this computer is already signed in as the Cursor user of ${holder.id}; nothing was changed. Sign in to Cursor as the user for ${account.id} and try again, or pass --replace-account to share that user.` };
+    }
     if (verdict === "different") {
       this.log(`account.capture.refused account=${account.id} reason=different_account`);
       return { reason: "different_account", message: `The Cursor sign-in on this computer belongs to a different Cursor user than ${account.id}; nothing was changed. Sign in to Cursor as this account's user and try again, or replace the account's login with it: hive account login ${account.id} --replace-account` };

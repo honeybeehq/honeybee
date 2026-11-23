@@ -293,6 +293,7 @@ test("cursor identity at capture: another user's login is refused with a reason 
     // A first capture into an empty account has nothing to compare against.
     const empty = r.store.createAccount({ id: "cursor-new", harness: "cursor", homePath: join(r.homes, "cursor-new"), label: "new", status: "auth_needed" });
     mkdirSync(empty.homePath, { recursive: true });
+    cursor.state.raw = authDoc(fakeJwt("auth0|user_c", r.now() + 7 * HOUR, "new-user"));
     await svc.captureAccount(empty);
     assert.ok(existsSync(join(r.vault, "cursor", "cursor-new", "auth.json")));
   } finally {
@@ -623,6 +624,31 @@ test("cursor stale sign-in: capture and login refuse an expired token or the tok
     await svc.refreshLimits([absent.id]);
     assert.match(r.store.getAccount(absent.id)!.statusReason ?? "", /log in: hive account login cursor-b/);
     assert.doesNotMatch(r.store.getAccount(absent.id)!.statusReason ?? "", /capture again/);
+  } finally {
+    r.cleanup();
+  }
+});
+
+test("cursor first capture: a new account never silently adopts the Cursor user another local account already holds", async () => {
+  const r = rig("first-dup");
+  try {
+    const cursor = fakeCursorStore();
+    const token = fakeJwt("auth0|user_a", r.now() + 6 * HOUR, "a");
+    addCursor(r, "a", authDoc(token));
+    const added = r.store.createAccount({ id: "cursor-new", harness: "cursor", homePath: join(r.homes, "cursor-new"), label: "new", status: "auth_needed" });
+    const svc = service(r, cursor);
+    cursor.state.raw = authDoc(fakeJwt("auth0|user_a", r.now() + 7 * HOUR, "machine"));
+    await assert.rejects(svc.captureAccount(added), (error: unknown) => error instanceof CredentialAuthorityError && error.reason === "different_account" && /already signed in as the Cursor user of cursor-a/.test(error.message) && /--replace-account/.test(error.message));
+    assert.equal(existsSync(join(added.homePath, "auth.json")), false);
+    assert.equal(existsSync(join(r.vault, "cursor", added.id, "auth.json")), false);
+    assert.equal(r.store.getAccount(added.id)!.status, "auth_needed");
+
+    const explicit = await svc.captureAccount(added, { replaceAccount: true });
+    assert.equal(explicit.account.status, "ok", "--replace-account is the explicit way to share a user");
+
+    const other = r.store.createAccount({ id: "cursor-other", harness: "cursor", homePath: join(r.homes, "cursor-other"), label: "other", status: "auth_needed" });
+    cursor.state.raw = authDoc(fakeJwt("auth0|user_b", r.now() + 7 * HOUR, "b"));
+    assert.equal((await svc.captureAccount(other)).account.status, "ok", "a user nobody holds is still a normal first sign-in");
   } finally {
     r.cleanup();
   }
