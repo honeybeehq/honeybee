@@ -1112,6 +1112,7 @@ test("flows.cursor-identity: a login that lands as another Cursor user fails at 
     }, "failed", 5000, 25);
     assert.equal(failed.error?.code, "different_account");
     assert.match(failed.error?.message ?? "", /belongs to a different Cursor user than cursor-a; nothing was changed/);
+    assert.match(failed.error?.message ?? "", /hive account login cursor-a --replace-account$/, "the instruction survives");
     assert.equal(failed.retryable, true);
     assert.equal(vaultCursorToken(r, acct.id), held, "the vault keeps the account's own login");
     await waitFor(() => { try { process.kill(pid, 0); return null; } catch { return true; } }, "worker killed", 4000);

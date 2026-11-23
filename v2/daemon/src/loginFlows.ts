@@ -101,6 +101,8 @@ export interface LoginFlowServiceOptions {
 
 type RecipeMethod = LoginRecipeMethod;
 
+const LOGIN_ERROR_MESSAGE_MAX_CHARS = 600;
+
 export class LoginFlowService {
   private readonly store: CoreStore;
   private readonly cfg: ResolvedNodeConfig;
@@ -584,7 +586,7 @@ export class LoginFlowService {
       return this.fail(flowId, err("provider_error", "The sign-in response was refused because it may contain submitted credentials."), true);
     }
     const safePatch = { ...patch };
-    if (safePatch.error) safePatch.error = { ...safePatch.error, message: redactor.redact(safePatch.error.message).slice(0, 200) };
+    if (safePatch.error) safePatch.error = { ...safePatch.error, message: redactor.redact(safePatch.error.message).slice(0, LOGIN_ERROR_MESSAGE_MAX_CHARS) };
     if (safePatch.detail) safePatch.detail = redactor.redact(safePatch.detail);
     const updated = this.store.updateLoginFlow(flowId, safePatch, reason).flow;
     if (isTerminal(updated.phase)) {
