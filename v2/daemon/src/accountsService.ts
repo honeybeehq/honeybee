@@ -503,6 +503,8 @@ export const CURSOR_RECAPTURE_AHEAD_MS = 15 * 60_000;
 // Never lease a Cursor access token with less than this lifetime left.
 export const CURSOR_MIN_SHIP_TTL_MS = 5 * 60_000;
 
+const CURSOR_CLI_CONFIG_FILE = "cli-config.json";
+
 /** What one Cursor re-capture from the machine-wide login found. */
 export type CursorRecapture =
   /** Not a local Cursor account with a cached token-based login: nothing to do. */
@@ -4357,6 +4359,17 @@ export class AccountsService {
       repaired.push(where);
     }
     if (repaired.length > 0) this.log(`account.cursor.repaired account=${account.id} copies=${repaired.join(",")} from=${selected.where}`);
+    if (homeOwned) this.restoreCursorConfigFromVault(account);
+  }
+
+  private restoreCursorConfigFromVault(account: AccountRow): void {
+    const homeConfig = join(account.homePath, CURSOR_CLI_CONFIG_FILE);
+    if (existsSync(homeConfig)) return;
+    const vaultConfig = readIfFile(join(this.vaultDirOf(account), CURSOR_CLI_CONFIG_FILE));
+    if (vaultConfig === null) return;
+    mkdirSync(account.homePath, { recursive: true, mode: 0o700 });
+    atomicWriteFileSync(homeConfig, vaultConfig);
+    this.log(`account.cursor.config_restored account=${account.id}`);
   }
 
   /**

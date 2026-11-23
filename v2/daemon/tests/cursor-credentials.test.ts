@@ -653,3 +653,37 @@ test("cursor first capture: a new account never silently adopts the Cursor user 
     r.cleanup();
   }
 });
+
+test("cursor imported account: activation gives the home its cli-config.json, heals a home that already lost it, and never overwrites one", async () => {
+  const r = rig("imported");
+  try {
+    const cursor = fakeCursorStore();
+    const svc = service(r, cursor);
+    const importedInto = (label: string, home: Record<string, string>): AccountRow => {
+      const account = r.store.createAccount({ id: `cursor-${label}`, harness: "cursor", homePath: join(r.homes, `cursor-${label}`), label, status: "ok" });
+      const vault = join(r.vault, "cursor", account.id);
+      mkdirSync(vault, { recursive: true });
+      mkdirSync(account.homePath, { recursive: true });
+      writeFileSync(join(vault, "auth.json"), authDoc(fakeJwt(`auth0|${label}`, r.now() + 6 * HOUR, label)));
+      writeFileSync(join(vault, "cli-config.json"), '{"from":"vault"}');
+      for (const [file, body] of Object.entries(home)) writeFileSync(join(account.homePath, file), body);
+      return account;
+    };
+    const config = (account: AccountRow) => readFileSync(join(account.homePath, "cli-config.json"), "utf8");
+
+    const empty = importedInto("empty", {});
+    await svc.activateForSpawn(empty, { cwd: r.dir });
+    assert.equal(config(empty), '{"from":"vault"}');
+    assert.ok(homeToken(empty));
+
+    const healed = importedInto("healed", { "auth.json": authDoc(fakeJwt("auth0|healed", r.now() + 6 * HOUR, "healed")) });
+    await svc.activateForSpawn(healed, { cwd: r.dir });
+    assert.equal(config(healed), '{"from":"vault"}');
+
+    const kept = importedInto("kept", { "auth.json": authDoc(fakeJwt("auth0|kept", r.now() + 6 * HOUR, "kept")), "cli-config.json": '{"from":"home"}' });
+    await svc.activateForSpawn(kept, { cwd: r.dir });
+    assert.equal(config(kept), '{"from":"home"}');
+  } finally {
+    r.cleanup();
+  }
+});
