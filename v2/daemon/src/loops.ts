@@ -4,6 +4,7 @@ import type { QuotaBoundary } from "../../core/src/quota.ts";
 import { deliveryConfirmationIntentFits } from "../../core/src/deliveryConfirmationTypes.ts";
 import {ProcessIdentityUnavailableError} from "../../driver-hsr/src/psutil.ts";
 import { ExecutionFenceError } from "../../core/src/executionFence.ts";
+import { NonRetryableStartError } from "../../harness/src/driver.ts";
 import type { ReconnectToolsReceipt } from "../../core/src/reconnectTools.ts";
 /**
  * DaemonCore — the daemon's loop cores (WP4 of the reset), extracted from the
@@ -893,9 +894,9 @@ export class DaemonCore {
    * `spawn_failed` is set. Returns true iff a NEW wake was enqueued now.
    */
   private ensureWake(beeId: string): boolean {
-    const { command, outcome } = this.store.enqueueWake(beeId);
+    const { command, outcome, suppressedBy } = this.store.enqueueWake(beeId);
     if (outcome === "suppressed") {
-      this.log(`wake.suppressed bee=${beeId}`);
+      this.log(`wake.suppressed bee=${beeId} ${suppressedBy === "spawn_failed" ? "flag=spawn_failed" : `reason=${suppressedBy}`}`);
       return false;
     }
     if (outcome !== "enqueued" || !command) return false;
@@ -1127,7 +1128,7 @@ export class DaemonCore {
   }
 
   private retryThreadWriterLockedBoot(beeId: string, generation: number, exitCause: string | undefined): void {
-    if (exitCause === "stopped_by_user" || this.store.hasUserStop(beeId, generation) || this.store.getBee(beeId)?.lifecycle === "archived") {
+    if (exitCause === "stopped_by_user" || this.store.hasUserStop(beeId, generation) || this.store.getBee(beeId)?.lifecycle === "archived" || this.store.hasPendingArchive(beeId)) {
       this.store.endThreadWriterLock(beeId, exitCause === "stopped_by_user" ? "stopped by user" : "operator ended the retries");
       this.log(`thread_writer_locked.retry_ended bee=${beeId} gen=${generation}`);
       return;
@@ -1241,7 +1242,7 @@ export class DaemonCore {
     } catch (err) {
       if (err instanceof CoreError) throw err; // contract rejections keep their moot path
       const detail = err instanceof Error ? err.message : String(err);
-      const retryable = (err as { retryable?: unknown } | null)?.retryable !== false;
+      const retryable = !(err instanceof NonRetryableStartError);
       const res = this.store.reportCommandFailure(cmd.id, "spawn_failed", `driver start failed: ${detail}`, { retryable });
       this.log(`cmd.${cmd.verb} id=${cmd.id} bee=${cmd.beeId} gen=${generation} start_failed status=${res.status} attempts=${res.attempts} err=${JSON.stringify(detail)}`);
       return false;

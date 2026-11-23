@@ -608,6 +608,7 @@ export interface SendResult {
 export interface WakeResult {
   /** The send_wake now pending for the bee (new or already there); null when none. */
   command: CommandRow | null;
+  suppressedBy?: "spawn_failed" | typeof THREAD_WRITER_LOCKED_STOP_REASON;
   /**
    * enqueued   — a new send_wake was enqueued (possibly deferred: see nextAttemptAt)
    * pending    — an identical wake was already queued/running for this generation
@@ -3797,7 +3798,11 @@ export class CoreStore {
   }
 
   private threadWriterLockRetriesEnded(bee: BeeRow, current: RuntimeRow | null): boolean {
-    return bee.lifecycle === "archived" && current !== null && this.threadWriterLockEpisode(bee.id, current)?.lastStop === true;
+    return (bee.lifecycle === "archived" || this.hasPendingArchive(bee.id)) && current !== null && this.threadWriterLockEpisode(bee.id, current)?.lastStop === true;
+  }
+
+  hasPendingArchive(beeId: string): boolean {
+    return this.stmt("SELECT 1 FROM commands WHERE bee_id = ? AND verb = 'archive' AND status IN ('queued','running') LIMIT 1").get(beeId) !== undefined;
   }
 
   hasUserStop(beeId: string, generation: number): boolean {
@@ -3904,17 +3909,17 @@ export class CoreStore {
         flag: "spawn_failed",
         spawnFailures: bee.spawnFailures,
       });
-      return { command: null, outcome: "suppressed" };
+      return { command: null, outcome: "suppressed", suppressedBy: "spawn_failed" };
     }
     if (opts.freshMail !== true && this.threadWriterLockRetriesEnded(bee, current)) {
       this.audit("wake.suppressed", beeId, { beeId, targetGeneration, reason: THREAD_WRITER_LOCKED_STOP_REASON });
-      return { command: null, outcome: "suppressed" };
+      return { command: null, outcome: "suppressed", suppressedBy: THREAD_WRITER_LOCKED_STOP_REASON };
     }
     if (current && this.threadWriterLockRetriesExhausted(beeId, current, current.updatedAt)) {
       this.applyThreadWriterLockRetriesStopped(beeId);
       if (opts.freshMail !== true) {
         this.audit("wake.suppressed", beeId, { beeId, targetGeneration, reason: THREAD_WRITER_LOCKED_STOP_REASON });
-        return { command: null, outcome: "suppressed" };
+        return { command: null, outcome: "suppressed", suppressedBy: THREAD_WRITER_LOCKED_STOP_REASON };
       }
       return { command: this.applyEnqueue("send_wake", beeId, {}, targetGeneration, null, this.freshMailWakeNotBefore(bee, current)), outcome: "enqueued" };
     }

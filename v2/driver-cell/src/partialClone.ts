@@ -1,25 +1,22 @@
 import { closeSync, mkdtempSync, openSync, readSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { NonRetryableStartError } from "../../harness/src/driver.ts";
 import { repoLocalConfigText, tryGit, type GitResult } from "./git.ts";
 
 const PARTIAL_CLONE_CONFIG_HINT = /partialclone|promisor/i;
 
 const SHOWN_MISSING_OBJECTS = 3;
 
-export class CellSourceRefusal extends Error {
-  readonly retryable = false as const;
-  readonly code: "partial_clone_missing_objects";
-
-  constructor(code: "partial_clone_missing_objects", message: string) {
+export class CellSourceRefusal extends NonRetryableStartError {
+  constructor(message: string) {
     super(message);
     this.name = "CellSourceRefusal";
-    this.code = code;
   }
 }
 
 export function isNonRetryableProvisionError(error: unknown): boolean {
-  return (error as { retryable?: unknown } | null)?.retryable === false;
+  return error instanceof NonRetryableStartError;
 }
 
 function promisorRemotes(originRepo: string): string[] | null {
@@ -103,14 +100,12 @@ function refuseMissingCommitObjects(originRepo: string, sha: string, remotes: st
   const { listing, missing } = listCommitObjects(originRepo, sha);
   if (listing.status !== 0) {
     throw new CellSourceRefusal(
-      "partial_clone_missing_objects",
       `source ${originRepo} is a partial clone (promisor remote ${remote}) and commit ${sha} cannot be read locally: ${listing.stderr.trim().replace(/\s+/g, " ")}. ${remediation(originRepo, remote)}`,
     );
   }
   if (missing.count === 0) return;
   const more = missing.count > SHOWN_MISSING_OBJECTS ? ` and ${missing.count - SHOWN_MISSING_OBJECTS} more` : "";
   throw new CellSourceRefusal(
-    "partial_clone_missing_objects",
     `source ${originRepo} is a partial clone (promisor remote ${remote}) and is missing ${missing.count} object(s) that commit ${sha} needs (${missing.shown.join(", ")}${more}). ${remediation(originRepo, remote)}`,
   );
 }

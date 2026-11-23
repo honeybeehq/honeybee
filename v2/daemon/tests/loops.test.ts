@@ -18,6 +18,7 @@ import { DaemonCore, type DaemonCoreOptions, type DaemonPolicy, type I1Violation
 import type { PerformanceRecorder } from "../src/performance.ts";
 import { RuntimeHost } from "../../driver-hsr/src/index.ts";
 import { codexAdapter, stubAdapter, type AdapterSignal } from "../../adapters/src/index.ts";
+import { NonRetryableStartError } from "../../harness/src/driver.ts";
 import { AGENT_PATH, FakeDriver, sleep, waitFor } from "./helpers.ts";
 import { BUZ_INJECTION_MARKER, DELIVERY_INTERRUPT_NOTICE } from "../src/envelope.ts";
 
@@ -1902,7 +1903,7 @@ test("budget.7i: a start that fails for another reason during lock back-off repl
   try {
     lockBoot(rig);
     const wake = queuedWake(rig)!;
-    rig.driver.start = () => { throw Object.assign(new Error("partial clone missing objects"), { retryable: false }); };
+    rig.driver.start = () => { throw new NonRetryableStartError("partial clone missing objects"); };
     rig.clock.now = wake.nextAttemptAt;
     rig.core.step();
     rig.core.step();

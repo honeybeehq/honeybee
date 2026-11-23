@@ -344,7 +344,6 @@ test("provision.partial_clone: a source partial clone missing the commit's blobs
       let refusal: unknown;
       assert.throws(() => provisionCell(rig.cellsRoot, request(partial.older, `old${id}`), "cmd-1", { disableCow, useGitImages: false }), (err) => (refusal = err, true));
       assert.ok(refusal instanceof CellSourceRefusal);
-      assert.equal(refusal.retryable, false);
       assert.match(refusal.message, /partial clone \(promisor remote origin\) and is missing 1 object\(s\)/);
       assert.match(refusal.message, /backfill --no-sparse/);
       assert.match(refusal.message, /fetch --refetch --no-filter origin/);

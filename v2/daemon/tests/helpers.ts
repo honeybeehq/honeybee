@@ -1,3 +1,4 @@
+import { NonRetryableStartError } from "../../harness/src/driver.ts";
 import { inspectProcess, exactProcessBirth } from "../../harness/src/processIdentity.ts";
 /**
  * WP4 test helpers. SAFETY: everything runs against fresh OS temp dirs
@@ -114,7 +115,7 @@ export class FakeDriver implements RuntimeDriver {
   start(beeId: string, generation: number): void {
     if (this.procs.has(beeId)) throw new Error(`fake driver: ${beeId} already live`);
     this.starts.push({ beeId, generation });
-    if (this.startError != null) throw Object.assign(new Error(this.startError), this.startErrorRetryable ? {} : { retryable: false });
+    if (this.startError != null) throw this.startErrorRetryable ? new Error(this.startError) : new NonRetryableStartError(this.startError);
     const pid = this.nextPid++;
     const proc: FakeProc = { generation, pid, pidStartedAt: this.now(), degraded: false };
     this.procs.set(beeId, proc);

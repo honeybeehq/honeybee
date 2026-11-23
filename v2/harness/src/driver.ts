@@ -173,3 +173,5 @@ export interface RuntimeDriver {
   /** Boot-time enumeration of live processes, for reconcileAtBoot (B7). */
   snapshotLive(): LiveProcess[];
 }
+
+export class NonRetryableStartError extends Error {}

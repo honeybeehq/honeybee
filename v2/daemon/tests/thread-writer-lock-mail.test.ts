@@ -300,3 +300,73 @@ test("lock-mail.9: fresh mail pulls a long lock back-off in to the minimum gap, 
     rig.cleanup();
   }
 });
+
+test("lock-mail.10: an archive queued while the lock stop is exiting gets no retry and no restart", () => {
+  const rig = setup();
+  try {
+    rig.store.send("b", "queued before the archive", { sender: "bee-x" });
+    rig.core.step();
+    const generation = rig.store.currentRuntime("b")!.generation;
+    const stop = rig.driver.stop.bind(rig.driver);
+    rig.driver.stop = () => ({ hadProcess: true });
+    rig.driver.evidence.push({ beeId: "b", generation, flag: "resource_blocked", action: "set", detail: D });
+    rig.core.step();
+    rig.driver.stop = stop;
+    rig.driver.procs.delete("b");
+    const starts = rig.driver.starts.length;
+    rig.store.enqueueCommand("archive", "b");
+    rig.driver.events.push({ beeId: "b", generation, kind: "exited", exitCause: "stopped_by_system" });
+    for (let i = 0; i < 4; i++) rig.core.step();
+    rig.clock.now += 60 * 60_000;
+    for (let i = 0; i < 4; i++) rig.core.step();
+    assert.equal(rig.store.getBee("b")!.lifecycle, "archived");
+    assert.equal(rig.driver.starts.length, starts);
+    assert.equal(queuedWake(rig), undefined);
+    assert.deepEqual(rig.store.activeFlags("b"), []);
+  } finally {
+    rig.cleanup();
+  }
+});
+
+test("lock-mail.11: a suppressed wake logs why it was suppressed", () => {
+  const locked = setup();
+  try {
+    locked.store.send("b", "held", { sender: "bee-x" });
+    locked.core.step();
+    raiseLockOnEveryBoot(locked);
+    lock(locked);
+    for (let i = 0; i < 12 && queuedWake(locked); i++) {
+      locked.clock.now = queuedWake(locked)!.nextAttemptAt;
+      locked.core.step();
+      locked.core.step();
+      locked.core.step();
+    }
+    assert.ok(locked.ops.includes("wake.suppressed bee=b reason=thread_writer_locked"));
+  } finally {
+    locked.cleanup();
+  }
+  const failed = makeRig({ i1DeadlineSteps: 10_000_000 });
+  try {
+    failed.driver.bootCrash = true;
+    failed.store.createBee({ id: "b", name: "b", agent: "stub", substrate: "hsr", cwd: "/tmp" });
+    failed.store.send("b", "held", { sender: "bee-x" });
+    failed.store.enqueueCommand("spawn", "b");
+    for (let i = 0; i < 12; i++) { failed.core.step(); failed.clock.now += 60_000; }
+    assert.ok(failed.ops.includes("wake.suppressed bee=b flag=spawn_failed"));
+  } finally {
+    failed.cleanup();
+  }
+});
+
+test("lock-mail.12: an arbitrary thrown object with retryable=false stays on the normal retry budget", () => {
+  const rig = makeRig({ i1DeadlineSteps: 10_000_000 });
+  try {
+    rig.driver.start = () => { throw Object.assign(new Error("unrelated failure"), { retryable: false }); };
+    rig.store.createBee({ id: "b", name: "b", agent: "stub", substrate: "hsr", cwd: "/tmp" });
+    const command = rig.store.enqueueCommand("spawn", "b");
+    for (let i = 0; i < 12; i++) { rig.core.step(); rig.clock.now += 60_000; }
+    assert.equal(rig.store.getCommand(command.id)!.attempts, 3);
+  } finally {
+    rig.cleanup();
+  }
+});
