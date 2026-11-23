@@ -68,6 +68,36 @@ export function makePartialClone(root: string, origin: FixtureOrigin, name = "pa
   return { repo, head, older: origin.sha };
 }
 
+export function makeSparsePartialClone(root: string, origin: FixtureOrigin, name = "sparse-partial"): PartialCloneFixture {
+  g(origin.repo, ["config", "uploadpack.allowFilter", "true"]);
+  g(origin.repo, ["config", "uploadpack.allowAnySHA1InWant", "true"]);
+  writeFileSync(join(origin.repo, "src", "app.ts"), "export const version = 2;\n");
+  const head = commitOn(origin.repo, "later.txt", "later\n", "later commit");
+  const repo = join(root, name);
+  const { GIT_NO_LAZY_FETCH: _lazyFetchOff, ...env } = gitEnv();
+  const clone = spawnSync("git", ["clone", "--quiet", "--filter=blob:none", "--sparse", `file://${origin.repo}`, repo], { cwd: root, encoding: "utf8", env });
+  if (clone.status !== 0) throw new Error(`sparse partial clone failed: ${clone.stderr}`);
+  return { repo, head, older: origin.sha };
+}
+
+export function makeLargeCompletePartialClone(root: string, name = "large-partial"): { repo: string; head: string } {
+  const repo = join(root, name);
+  mkdirSync(repo, { recursive: true });
+  g(repo, ["init", "-q", "-b", "main"]);
+  const directory = Array.from({ length: 20 }, (_, depth) => `${String(depth).padStart(2, "0")}${"d".repeat(198)}`).join("/");
+  const commands = ["commit refs/heads/main", "committer fixture <fixture@hive.invalid> 1700000000 +0000", "data 5", "large"];
+  for (let index = 0; index < 20_000; index += 1) {
+    const body = `blob ${index}\n`;
+    commands.push(`M 100644 inline ${directory}/${index}.txt`, `data ${body.length}`, body);
+  }
+  const imported = spawnSync("git", ["fast-import", "--quiet"], { cwd: repo, input: `${commands.join("\n")}\n`, encoding: "utf8", env: gitEnv(), maxBuffer: 16 * 1024 * 1024 });
+  if (imported.status !== 0) throw new Error(`fast-import failed: ${imported.stderr}`);
+  g(repo, ["remote", "add", "origin", "file:///nonexistent"]);
+  g(repo, ["config", "remote.origin.promisor", "true"]);
+  g(repo, ["config", "remote.origin.partialclonefilter", "blob:none"]);
+  return { repo, head: g(repo, ["rev-parse", "refs/heads/main"]) };
+}
+
 /** Commit inside a cell space (detached HEAD) — the "agent did work" fixture. */
 export function commitInCell(spaceDir: string, file: string, content: string, message: string): string {
   writeFileSync(join(spaceDir, file), content);

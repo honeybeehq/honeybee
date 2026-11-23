@@ -187,12 +187,12 @@ export interface GitResult {
 }
 
 /** Run git, returning the result without throwing. */
-export function tryGit(cwd: string, args: string[], opts: { env?: Record<string, string>; input?: string; timeoutMs?: number } = {}): GitResult {
+export function tryGit(cwd: string, args: string[], opts: { env?: Record<string, string>; input?: string; timeoutMs?: number; stdoutFd?: number } = {}): GitResult {
   const env = gitEnv(opts.env);
   assertHostGitVersion(cwd, env);
   const verb = subcommandOf(args);
   const overrides = verb !== undefined && READ_ONLY_VERBS.has(verb) ? [] : repoLocalExecOverrides(cwd, env);
-  const res = spawnSync("git", args, { cwd, encoding: "utf8", env: hostGitEnv(env, overrides), input: opts.input, timeout: opts.timeoutMs, maxBuffer: 64 * 1024 * 1024 });
+  const res = spawnSync("git", args, { cwd, encoding: "utf8", env: hostGitEnv(env, overrides), input: opts.input, timeout: opts.timeoutMs, maxBuffer: 64 * 1024 * 1024, ...(opts.stdoutFd === undefined ? {} : { stdio: ["pipe", opts.stdoutFd, "pipe"] as ["pipe", number, "pipe"] }) });
   if (res.error) throw res.error; // git binary missing — a machine boundary, not a git failure
   const missingObjects=hasMissingGitObjects(res.status,res.stderr??"");
   return { ...(missingObjects?{missingObjects:true}:{}), status: res.status, stdout: res.stdout ?? "", stderr: res.stderr ?? "" };

@@ -34,7 +34,7 @@ import { performance } from "node:perf_hooks";
 import { join } from "node:path";
 import { cowCopy, cowPlatform, probeCow, type CowPlatform } from "./cow.ts";
 import { adoptOriginRemote, git } from "./git.ts";
-import { assertSourceHasCommitObjects } from "./partialClone.ts";
+import { assertCloneFallbackHasCommitObjects, assertSourceHasCommitObjects } from "./partialClone.ts";
 import {
   gitImagesRootForCells,
   refreshGitImage,
@@ -412,6 +412,7 @@ function runProvisionOperation(
       }
     }
     if (mode === "clone") {
+      assertCloneFallbackHasCommitObjects(req.originRepo, req.sha);
       git(paths.boxDir, ["clone", "--local", "--no-checkout", req.originRepo, paths.spaceDir]);
       adoptOriginRemote(req.originRepo, paths.spaceDir, { trackingRefs: true });
     }

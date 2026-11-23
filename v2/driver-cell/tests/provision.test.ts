@@ -13,8 +13,8 @@ import { provisionCell, provisionRequestOf, reserveCell } from "../src/provision
 import { isProvisioned, readLedger, writeLedger, newLedger } from "../src/ledger.ts";
 import { cellPaths, parseSpaceName } from "../src/layout.ts";
 import { probeCow } from "../src/cow.ts";
-import { fingerprintOrigin, g, makePartialClone, makeRig } from "./helpers.ts";
-import { CellSourceRefusal } from "../src/partialClone.ts";
+import { fingerprintOrigin, g, makeLargeCompletePartialClone, makePartialClone, makeRig, makeSparsePartialClone } from "./helpers.ts";
+import { assertSourceHasCommitObjects, CellSourceRefusal } from "../src/partialClone.ts";
 
 const COW_AVAILABLE = (() => {
   if (platform() !== "darwin" && platform() !== "linux") return false;
@@ -298,6 +298,42 @@ test("provision.reserve: reserveCell writes the seed ledger (origin/sha/warm/san
   }
 });
 
+test("provision.partial_clone_sparse: a sparse partial clone provisions on copy-on-write with only its sparse paths", { skip: !COW_AVAILABLE }, () => {
+  const rig = makeRig();
+  try {
+    const sparse = makeSparsePartialClone(rig.root, rig.origin);
+    const cell = provisionCell(rig.cellsRoot, { ...req(rig, { originRepo: sparse.repo, sha: sparse.head, wrapper: "bee-sparse", cellId: "sparse", beeId: "bee-sparse" }) }, "cmd-1", { disableCow: false, useGitImages: false });
+    assert.equal(g(cell.paths.spaceDir, ["rev-parse", "HEAD"]), sparse.head);
+    assert.equal(existsSync(join(cell.paths.spaceDir, "README.md")), true);
+    assert.equal(existsSync(join(cell.paths.spaceDir, "src", "app.ts")), false, "paths outside the sparse cone stay out");
+  } finally {
+    rig.cleanup();
+  }
+});
+
+test("provision.partial_clone_sparse_clone: the clone fallback drops sparse config, so it refuses once with a remedy that hydrates every path", () => {
+  const rig = makeRig();
+  try {
+    const sparse = makeSparsePartialClone(rig.root, rig.origin);
+    let refusal: unknown;
+    assert.throws(() => provisionCell(rig.cellsRoot, { ...req(rig, { originRepo: sparse.repo, sha: sparse.head, wrapper: "bee-sparseclone", cellId: "sparseclone", beeId: "bee-sparseclone" }) }, "cmd-1", { disableCow: true, useGitImages: false }), (err) => (refusal = err, true));
+    assert.ok(refusal instanceof CellSourceRefusal);
+    assert.match(refusal.message, /backfill --no-sparse/);
+  } finally {
+    rig.cleanup();
+  }
+});
+
+test("provision.partial_clone_large: a complete partial clone whose object listing exceeds the git output buffer passes the check", () => {
+  const rig = makeRig();
+  try {
+    const large = makeLargeCompletePartialClone(rig.root);
+    assert.doesNotThrow(() => assertSourceHasCommitObjects(large.repo, large.head));
+  } finally {
+    rig.cleanup();
+  }
+});
+
 test("provision.partial_clone: a source partial clone missing the commit's blobs is refused once, not retryable, with remediation; a commit it holds provisions", () => {
   const rig = makeRig();
   try {
@@ -310,7 +346,7 @@ test("provision.partial_clone: a source partial clone missing the commit's blobs
       assert.ok(refusal instanceof CellSourceRefusal);
       assert.equal(refusal.retryable, false);
       assert.match(refusal.message, /partial clone \(promisor remote origin\) and is missing 1 object\(s\)/);
-      assert.match(refusal.message, /backfill/);
+      assert.match(refusal.message, /backfill --no-sparse/);
       assert.match(refusal.message, /fetch --refetch --no-filter origin/);
       const paths = cellPaths(rig.cellsRoot, `bee-old${id}`, "fixture", `old${id}`);
       assert.equal(existsSync(paths.spaceDir), false, "refused before any .git is placed");
