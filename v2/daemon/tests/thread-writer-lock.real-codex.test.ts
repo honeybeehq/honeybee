@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { createServer, type ServerResponse } from "node:http";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -8,7 +8,36 @@ import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { makeDaemonDir, startDaemon, waitFor } from "./helpers.ts";
 import { THREAD_WRITER_LOCKED_RETRYING_DETAIL } from "../../core/src/index.ts";
+import { codexAdapter } from "../../adapters/src/index.ts";
 import type { AuditTailResult, SpawnResult, ViewResult } from "../src/protocol.ts";
+
+function resumeReplyWhileHeld(codex: string, env: NodeJS.ProcessEnv, threadId: string, cwd: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const probe = spawn(codex, ["app-server"], { env, stdio: ["pipe", "pipe", "ignore"] });
+    probe.once("error", reject);
+    createInterface({ input: probe.stdout! }).on("line", line => {
+      let message: { id?: unknown };
+      try { message = JSON.parse(line); } catch { return; }
+      if (message.id === 1) {
+        probe.stdin!.write(`${JSON.stringify({ jsonrpc: "2.0", method: "initialized" })}\n`);
+        probe.stdin!.write(`${JSON.stringify({ jsonrpc: "2.0", id: 2, method: "thread/resume", params: { threadId, cwd, approvalPolicy: "never", sandbox: "read-only", excludeTurns: true } })}\n`);
+      } else if (message.id === 2) {
+        probe.kill();
+        resolve(line);
+      }
+    });
+    probe.stdin!.write(`${JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: { clientInfo: { name: "writer-lock-wording-probe", version: "1" } } })}\n`);
+  });
+}
+
+function assertCodexLockWordingRecognised(codex: string, reply: string, threadId: string, cwd: string): void {
+  const signals = codexAdapter({ cwd, resumeThreadId: threadId }).parseLine(reply);
+  const recognised = signals.some(signal => signal.kind === "flag" && signal.detail === THREAD_WRITER_LOCKED_RETRYING_DETAIL);
+  assert.ok(recognised, [
+    `Codex changed its thread-lock error, so Honeybee would hang in booting on a held thread. ${execFileSync(codex, ["--version"], { encoding: "utf8" }).trim()} answered thread/resume with: ${reply}`,
+    "To fix: update CODEX_ACTIVE_WRITER in v2/adapters/src/codex.ts to match this error, run `npm run v2:codex:writer-lock` until it passes, land that change, then rerun the release.",
+  ].join("\n"));
+}
 
 interface Sample { atMs: number; generation: number | null; state: string | null; flags: string[]; spawnFailures: number; detail: string | null }
 
@@ -84,6 +113,7 @@ supports_websockets = false
   holder.stdin!.write(JSON.stringify({ jsonrpc: "2.0", method: "initialized" }) + "\n");
   const held = await call(2, "thread/resume", { threadId, cwd: root, approvalPolicy: "never", sandbox: "read-only", excludeTurns: true });
   assert.ok("result" in held, `stand-in app holds the thread: ${JSON.stringify(held)}`);
+  assertCodexLockWordingRecognised(codex, await resumeReplyWhileHeld(codex, { ...process.env, ...nativeEnv }, threadId, root), threadId, root);
 
   const startedAt = Date.now();
   const timeline: Sample[] = [];
