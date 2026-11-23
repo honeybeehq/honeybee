@@ -121,6 +121,8 @@ export const LOGIN_FLOW_ERROR_CODES = [
   "identity_unverified",
   /** The central credential could not take the new login (busy, Keychain, publication); retry. */
   "credential_unavailable",
+  /** The sign-in on this computer is expired or was just rejected; nothing changed. */
+  "credential_stale",
 ] as const;
 export type LoginFlowErrorCode = (typeof LOGIN_FLOW_ERROR_CODES)[number];
 

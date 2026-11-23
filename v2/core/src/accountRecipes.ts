@@ -1036,6 +1036,9 @@ export function cursorRecoveryHint(accountId: string, recapture?: string): strin
   if (recapture === "different_account") {
     return `Cursor on this computer is signed in as a different user than ${accountId}; sign in to Cursor as this account's user, then capture it: hive account capture ${accountId}`;
   }
+  if (recapture === "unchanged" || recapture === "absent") {
+    return `Cursor on this computer has no newer sign-in for this account; log in: hive account login ${accountId}`;
+  }
   return `capture again if Cursor on this computer is signed in as this account's user: hive account capture ${accountId}; else log in: hive account login ${accountId}`;
 }
 

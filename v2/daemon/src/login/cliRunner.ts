@@ -264,7 +264,7 @@ export class CliRunner implements LoginRunner {
     }
     if (!host.stillActive()) return false;
     const captured = host.accounts.persistCredentialCapture(account, primaryFile, primaryRaw, overrides, { allowDifferentAccount: host.replaceAccount() });
-    if (!captured.ok && (captured.reason === "different_account" || captured.reason === "identity_unverified")) {
+    if (!captured.ok && (captured.reason === "different_account" || captured.reason === "identity_unverified" || captured.reason === "credential_stale" && final)) {
       // Someone else's sign-in: fail now with the reason instead of waiting out the flow.
       host.log(`account.login.rejected flow=${host.flowId} account=${account.id} by=${detectedBy} reason=${captured.reason}`);
       host.release(this);

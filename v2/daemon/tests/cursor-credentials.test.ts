@@ -4,7 +4,7 @@
  *  - a cached token near its JWT exp is re-captured before a probe / spawn;
  *    a fresh one costs no store read
  *  - a 401 triggers one forced re-capture and a second probe before
- *    auth_needed; with nothing newer the reason offers "capture again"
+ *    auth_needed; with nothing newer the reason says log in
  *  - the authority node leases access-only tokens; a leased (satellite)
  *    account never reads its own machine's Cursor login
  *  - capture refuses a login that belongs to another Cursor user
@@ -177,7 +177,7 @@ test("cursor refresh-before-expiry: a token near its exp is re-captured from Cur
   }
 });
 
-test("cursor 401: one forced re-capture and a second probe keep the account ok; with nothing newer, auth_needed offers capture again before login", async () => {
+test("cursor 401: one forced re-capture and a second probe keep the account ok; with nothing newer, auth_needed says log in", async () => {
   const r = rig("401");
   try {
     const cursor = fakeCursorStore();
@@ -201,7 +201,7 @@ test("cursor 401: one forced re-capture and a second probe keep the account ok; 
     assert.ok(r.log.some((line) => line === `account.cursor.probe_auth_failed account=${account.id} recapture=recaptured`));
     assert.equal(homeToken(account), fresh);
 
-    // Cursor's login holds nothing newer: auth_needed, and the reason says capture first.
+    // Cursor's login holds nothing newer: auth_needed, and the reason says log in.
     const second = addCursor(r, "b", authDoc(fakeJwt("auth0|user_b", r.now() + 6 * HOUR, "b-revoked")));
     cursor.state.raw = authDoc(fakeJwt("auth0|user_b", r.now() + 6 * HOUR, "b-revoked"));
     await svc.refreshLimits([second.id]);
@@ -209,10 +209,10 @@ test("cursor 401: one forced re-capture and a second probe keep the account ok; 
     assert.equal(after.status, "auth_needed");
     assert.ok(!(after.statusReason ?? "").includes("secret-body"), "no response body in the status reason");
     assert.ok(!r.log.join("\n").includes("secret-body"), "no response body in the log");
-    assert.match(after.statusReason ?? "", /^limits probe: Cursor usage probe: HTTP 401; capture again if Cursor on this computer is signed in as this account's user: hive account capture cursor-b; else log in: hive account login cursor-b$/);
+    assert.match(after.statusReason ?? "", /^limits probe: Cursor usage probe: HTTP 401; Cursor on this computer has no newer sign-in for this account; log in: hive account login cursor-b$/);
     const readiness = svc.credentialReadiness(after);
     assert.equal(readiness.ready, false);
-    assert.match(readiness.ready ? "" : readiness.message, /hive account capture cursor-b; else log in: hive account login cursor-b/);
+    assert.match(readiness.ready ? "" : readiness.message, /log in: hive account login cursor-b/);
   } finally {
     r.cleanup();
   }
@@ -255,7 +255,7 @@ test("cursor lease: the authority re-captures and leases an access-only token; t
     // A dying token with nothing newer in Cursor's login is refused, never shipped.
     const dying = addCursor(authority, "dying", authDoc(fakeJwt("auth0|user_c", authority.now() + 2 * MIN, "dying")));
     cursor.state.raw = null;
-    await assert.rejects(service(authority, cursor).mintLease(dying), /expired or near expiry.*hive account capture cursor-dying/);
+    await assert.rejects(service(authority, cursor).mintLease(dying), /expired or near expiry.*hive account login cursor-dying/);
   } finally {
     authority.cleanup();
     satellite.cleanup();
@@ -581,6 +581,48 @@ test("cursor foreign home: re-capture and repair never write a home outside Hone
     assert.deepEqual(JSON.parse(Buffer.from(lease.files[0]!.contentB64, "base64").toString("utf8")), { accessToken: fresh });
     assert.equal(readFileSync(join(externalHome, "auth.json"), "utf8"), homeBytes, "the foreign home is untouched by repair");
     assert.ok(!r.log.some((line) => line.startsWith(`account.cursor.repaired account=${account.id} copies=home`)));
+  } finally {
+    r.cleanup();
+  }
+});
+
+test("cursor stale sign-in: capture and login refuse an expired token or the token that just got a 401, and the hint says log in", async () => {
+  const r = rig("stale");
+  try {
+    const cursor = fakeCursorStore();
+    const held = fakeJwt("auth0|user_a", r.now() + 6 * HOUR, "held");
+    const account = addCursor(r, "a", authDoc(held));
+    const svc = service(r, cursor, { postJson: async () => { throw new ProviderHttpError("/usage: HTTP 401", 401); } });
+
+    const expired = fakeJwt("auth0|user_a", r.now() - MIN, "expired");
+    cursor.state.raw = authDoc(expired);
+    await assert.rejects(svc.captureAccount(account), (error: unknown) => error instanceof CredentialAuthorityError && error.reason === "credential_stale" && /expired/.test(error.message) && /hive account login cursor-a/.test(error.message));
+    await assert.rejects(svc.captureAccount(account, { replaceAccount: true }), (error: unknown) => error instanceof CredentialAuthorityError && error.reason === "credential_stale");
+    assert.equal(homeToken(account), held);
+    assert.equal(vaultToken(r, account), held);
+    const atExp = fakeJwt("auth0|user_a", r.now(), "at-exp");
+    assert.deepEqual((({ ok, reason }) => ({ ok, reason }))(svc.persistCredentialCapture(account, "auth.json", authDoc(atExp), {}) as { ok: boolean; reason: string }), { ok: false, reason: "credential_stale" });
+
+    cursor.state.raw = authDoc(held);
+    await svc.refreshLimits([account.id]);
+    const failed = r.store.getAccount(account.id)!;
+    assert.equal(failed.status, "auth_needed");
+    assert.match(failed.statusReason ?? "", /log in: hive account login cursor-a/);
+    assert.doesNotMatch(failed.statusReason ?? "", /capture again/);
+    await assert.rejects(svc.captureAccount(failed), (error: unknown) => error instanceof CredentialAuthorityError && error.reason === "credential_stale" && /just rejected/.test(error.message));
+    assert.equal(r.store.getAccount(account.id)!.status, "auth_needed", "a refused capture does not report the account healthy");
+
+    const fresh = fakeJwt("auth0|user_a", r.now() + 8 * HOUR, "fresh");
+    cursor.state.raw = authDoc(fresh);
+    const captured = await svc.captureAccount(failed);
+    assert.equal(captured.account.status, "ok");
+    assert.equal(homeToken(account), fresh);
+
+    const absent = addCursor(r, "b", authDoc(fakeJwt("auth0|user_b", r.now() + 6 * HOUR, "b")));
+    cursor.state.raw = null;
+    await svc.refreshLimits([absent.id]);
+    assert.match(r.store.getAccount(absent.id)!.statusReason ?? "", /log in: hive account login cursor-b/);
+    assert.doesNotMatch(r.store.getAccount(absent.id)!.statusReason ?? "", /capture again/);
   } finally {
     r.cleanup();
   }

@@ -1074,6 +1074,25 @@ test("flows.cursor-already-signed-in: a clean cursor-agent exit with an unchange
   }
 });
 
+test("flows.cursor-stale-sign-in: a clean cursor-agent exit with an expired machine-wide login fails with what to do instead of reporting success", async () => {
+  const r = rig({ agents: fakeCliAgent("cursor", "CURSOR_CONFIG_DIR", "cli-config.json", { FAKE_CLI_EXIT_NO_CRED_MS: "100" }) });
+  try {
+    const expired = fakeCursorJwt("auth0|user_a", r.now() - 60_000, "expired");
+    const { flows } = services(r, { cursorAuthReader: async () => parseCursorAuth(JSON.stringify({ accessToken: expired }), "keychain") });
+    const acct = cursorAccountHolding(r, "a", expired);
+    const { flow } = await flows.start(acct);
+    const done = await waitFor(() => {
+      const f = r.store.getLoginFlow(flow.id) as LoginFlowRow;
+      return f.phase === "succeeded" || f.phase === "failed" ? f : null;
+    }, "settled", 5000, 20);
+    assert.equal(done.phase, "failed");
+    assert.equal(done.error?.code, "credential_stale");
+    assert.match(done.error?.message ?? "", /has expired; nothing was changed\. Sign in to Cursor again, then: hive account login cursor-a/);
+  } finally {
+    r.cleanup();
+  }
+});
+
 test("flows.cursor-identity: a login that lands as another Cursor user fails at once with different_account and changes nothing; --replace-account takes it", async () => {
   const r = rig({ agents: fakeCliAgent("cursor", "CURSOR_CONFIG_DIR", "cli-config.json", { FAKE_CLI_URL: "https://cursor.com/loginDeepControl?mode=login", FAKE_CLI_HANG: "1" }) });
   try {

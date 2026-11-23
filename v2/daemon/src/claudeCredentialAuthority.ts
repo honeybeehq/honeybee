@@ -86,7 +86,7 @@ const RELOGIN_PHASES: ReadonlySet<AccountCredentialAuthority["phase"]> = new Set
  * `login_required`: only a new login recovers the account. `operation_in_progress`:
  * another credential operation holds the account's lane; retry shortly.
  */
-export type CredentialUnavailableReason = "login_required" | "operation_in_progress" | "unavailable" | "different_account" | "identity_unverified";
+export type CredentialUnavailableReason = "login_required" | "operation_in_progress" | "unavailable" | "different_account" | "identity_unverified" | "credential_stale";
 export type CredentialFailureReceipt = Pick<CredentialRefreshFailure, "outcome" | "httpStatus" | "error">;
 export class CredentialAuthorityError extends Error {
   readonly code = "account_unavailable";

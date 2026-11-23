@@ -4832,7 +4832,7 @@ export class AccountsService {
   ):
     | { ok: true; account: AccountRow; captured: string[]; at: number }
     | { ok: false; reason: "invalid_primary" | "primary_not_captured" }
-    | { ok: false; reason: "different_account" | "identity_unverified"; message: string } {
+    | { ok: false; reason: "different_account" | "identity_unverified" | "credential_stale"; message: string } {
     this.assertLocalAccount(account);
     const foreign = this.foreignHomeRefusal(account, "captures credentials from");
     if (foreign) throw new Error(foreign);
@@ -4849,6 +4849,8 @@ export class AccountsService {
       const accessToken = parseCursorAuth(primaryRaw)?.accessToken;
       if (!accessToken) return { ok: false, reason: "invalid_primary" };
       const bytes = cursorLoginDocument({ accessToken });
+      const stale = this.cursorStaleRefusal(account, accessToken);
+      if (stale) return { ok: false, ...stale };
       // Cursor has one machine-wide login slot: whoever signed in last, by any
       // means, is what a login or capture sees. Refuse a credential for a
       // different Cursor user than the one this account holds.
@@ -4873,6 +4875,20 @@ export class AccountsService {
     const refreshTokenExpiresAt = account.harness === "claude" ? parseClaudeCredentials(primaryRaw)?.refreshTokenExpiresAt ?? null : null;
     const updated = this.store.setAccountRefreshTokenExpiry(account.id, refreshTokenExpiresAt, "credential captured").account;
     return { ok: true, account: updated, captured, at };
+  }
+
+  private cursorStaleRefusal(account: AccountRow, accessToken: string): { reason: "credential_stale"; message: string } | null {
+    const signInAgain = `Sign in to Cursor again, then: hive account login ${account.id}`;
+    const claims = cursorTokenClaims(accessToken);
+    if (claims && claims.expiresAt <= this.now()) {
+      this.log(`account.capture.refused account=${account.id} reason=credential_expired`);
+      return { reason: "credential_stale", message: `The Cursor sign-in on this computer has expired; nothing was changed. ${signInAgain}` };
+    }
+    const current = this.store.getAccount(account.id) ?? account;
+    const justRejected = current.status === "auth_needed" && (current.statusReason ?? "").includes("HTTP 401") && this.cursorSelection(current).selected?.auth.accessToken === accessToken;
+    if (!justRejected) return null;
+    this.log(`account.capture.refused account=${account.id} reason=credential_rejected`);
+    return { reason: "credential_stale", message: `Cursor just rejected this same sign-in (HTTP 401); nothing was changed. ${signInAgain}` };
   }
 
   /** Why a Cursor credential must not be captured into this account (identity mismatch), or null. */
@@ -4926,7 +4942,7 @@ export class AccountsService {
     const overrides = externalRaw === null ? {} : { [primaryFile]: externalRaw };
     const result = this.persistCredentialCapture(account, primaryFile, primaryRaw, overrides, { allowDifferentAccount: opts.replaceAccount === true });
     if (!result.ok) {
-      if (result.reason === "different_account" || result.reason === "identity_unverified") throw new CredentialAuthorityError(result.message, result.reason);
+      if (result.reason === "different_account" || result.reason === "identity_unverified" || result.reason === "credential_stale") throw new CredentialAuthorityError(result.message, result.reason);
       if (result.reason === "invalid_primary") {
         throw new Error(`no valid ${account.harness} credential found for ${account.id}; complete a provider login first`);
       }
