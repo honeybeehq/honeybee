@@ -3758,6 +3758,22 @@ export class CoreStore {
     return Math.max(lockRetry, bootFailure ?? 0);
   }
 
+  private freshMailWakeNotBefore(bee: BeeRow, current: RuntimeRow | null): number | undefined {
+    if (!current) return undefined;
+    const bootFailure = bee.spawnFailures > 0 ? current.updatedAt + this.backoffBaseMs * 2 ** (bee.spawnFailures - 1) : undefined;
+    if (!this.threadWriterLockEpisode(bee.id, current)?.stoppedByLock) return bootFailure;
+    return Math.max(current.updatedAt + THREAD_WRITER_LOCKED_RETRY_MIN_MS, bootFailure ?? 0);
+  }
+
+  private expediteLockRetryForFreshMail(bee: BeeRow, current: RuntimeRow | null, pending: CommandRow): CommandRow {
+    if (pending.verb !== "send_wake" || pending.status !== "queued" || !this.threadWriterLockEpisode(bee.id, current)?.stoppedByLock) return pending;
+    const nextAttemptAt = Math.max(this.now(), this.freshMailWakeNotBefore(bee, current) ?? 0);
+    if (nextAttemptAt >= pending.nextAttemptAt) return pending;
+    this.stmt("UPDATE commands SET next_attempt_at = ? WHERE id = ?").run(nextAttemptAt, pending.id);
+    this.audit("command.requeued", bee.id, { commandId: pending.id, attempts: pending.attempts, nextAttemptAt, cause: "thread_writer_locked_fresh_mail", detail: null });
+    return { ...pending, nextAttemptAt };
+  }
+
   private threadWriterLockEpisode(beeId: string, current: RuntimeRow | null): { stops: number; startedAt: number; stoppedByLock: boolean; lastStop: boolean } | null {
     const row = this.stmt(
       `SELECT COUNT(*) AS stops, MIN(enqueued_at) AS started_at, MAX(target_generation) AS last_generation FROM commands
@@ -3874,7 +3890,10 @@ export class CoreStore {
          AND status IN ('queued','running') AND target_generation = ? LIMIT 1`,
       )
       .get(beeId, targetGeneration) as Row | undefined;
-    if (dupe) return { command: mapCommand(dupe), outcome: "pending" };
+    if (dupe) {
+      const pending = mapCommand(dupe);
+      return { command: opts.freshMail === true ? this.expediteLockRetryForFreshMail(bee, current, pending) : pending, outcome: "pending" };
+    }
     const flagged = this.db
       .prepare("SELECT id FROM flags WHERE bee_id = ? AND flag = 'spawn_failed' AND cleared_at IS NULL")
       .get(beeId) as Row | undefined;
@@ -3897,9 +3916,10 @@ export class CoreStore {
         this.audit("wake.suppressed", beeId, { beeId, targetGeneration, reason: THREAD_WRITER_LOCKED_STOP_REASON });
         return { command: null, outcome: "suppressed" };
       }
-      return { command: this.applyEnqueue("send_wake", beeId, {}, targetGeneration, null, this.wakeNotBefore(bee, current)), outcome: "enqueued" };
+      return { command: this.applyEnqueue("send_wake", beeId, {}, targetGeneration, null, this.freshMailWakeNotBefore(bee, current)), outcome: "enqueued" };
     }
-    const command = this.applyEnqueue("send_wake", beeId, {}, targetGeneration, null, this.wakeNotBefore(bee, current));
+    const notBefore = opts.freshMail === true ? this.freshMailWakeNotBefore(bee, current) : this.wakeNotBefore(bee, current);
+    const command = this.applyEnqueue("send_wake", beeId, {}, targetGeneration, null, notBefore);
     return { command, outcome: "enqueued" };
   }
 

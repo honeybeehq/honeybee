@@ -270,3 +270,33 @@ test("lock-mail.8: lock evidence that schedules no stop never raises the retryin
     }
   }
 });
+
+test("lock-mail.9: fresh mail pulls a long lock back-off in to the minimum gap, and never closer", () => {
+  const rig = setup();
+  try {
+    raiseLockOnEveryBoot(rig);
+    lock(rig);
+    for (let i = 0; i < 3; i++) {
+      rig.clock.now = queuedWake(rig)!.nextAttemptAt;
+      rig.core.step();
+      rig.core.step();
+      rig.core.step();
+    }
+    const stoppedAt = rig.store.currentRuntime("b")!.updatedAt;
+    const wake = queuedWake(rig)!;
+    assert.ok(wake.nextAttemptAt - stoppedAt >= 120_000, "the back-off has grown");
+    rig.clock.now = stoppedAt + 1_000;
+    rig.store.send("b", "closed the app, trying again", { sender: "bee-x" });
+    assert.equal(queuedWake(rig)!.id, wake.id, "the same wake moves");
+    assert.equal(queuedWake(rig)!.nextAttemptAt, stoppedAt + 15_000, "not before the minimum gap");
+    const starts = rig.driver.starts.length;
+    rig.clock.now = stoppedAt + 14_999;
+    rig.core.step();
+    assert.equal(rig.driver.starts.length, starts);
+    rig.clock.now = stoppedAt + 15_000;
+    rig.core.step();
+    assert.equal(rig.driver.starts.length, starts + 1);
+  } finally {
+    rig.cleanup();
+  }
+});
