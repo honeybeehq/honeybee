@@ -3753,12 +3753,12 @@ export class CoreStore {
     if (!current) return undefined;
     const bootFailure = bee.spawnFailures > 0 ? current.updatedAt + this.backoffBaseMs * 2 ** (bee.spawnFailures - 1) : undefined;
     const lock = this.threadWriterLockEpisode(bee.id, current);
-    if (!lock?.lastStop) return bootFailure;
+    if (!lock?.stoppedByLock) return bootFailure;
     const lockRetry = current.updatedAt + Math.min(THREAD_WRITER_LOCKED_RETRY_MAX_MS, THREAD_WRITER_LOCKED_RETRY_MIN_MS * 2 ** (lock.stops - 1));
     return Math.max(lockRetry, bootFailure ?? 0);
   }
 
-  private threadWriterLockEpisode(beeId: string, current: RuntimeRow | null): { stops: number; startedAt: number; lastStop: boolean } | null {
+  private threadWriterLockEpisode(beeId: string, current: RuntimeRow | null): { stops: number; startedAt: number; stoppedByLock: boolean; lastStop: boolean } | null {
     const row = this.stmt(
       `SELECT COUNT(*) AS stops, MIN(enqueued_at) AS started_at, MAX(target_generation) AS last_generation FROM commands
        WHERE bee_id = ? AND verb = 'stop' AND status != 'failed' AND json_extract(args, '$.reason') = ?
@@ -3766,9 +3766,9 @@ export class CoreStore {
     ).get(beeId, THREAD_WRITER_LOCKED_STOP_REASON, beeId) as Row | undefined;
     const stops = Number(row?.stops ?? 0);
     if (stops === 0) return null;
-    const lastStop = current?.state === "stopped" && Number(row!.last_generation) === current.generation
-      && current.exitCause !== "stopped_by_user" && !this.hasUserStop(beeId, current.generation);
-    return { stops, startedAt: Number(row!.started_at), lastStop };
+    const stoppedByLock = current?.state === "stopped" && Number(row!.last_generation) === current.generation;
+    const lastStop = stoppedByLock && current.exitCause !== "stopped_by_user" && !this.hasUserStop(beeId, current.generation);
+    return { stops, startedAt: Number(row!.started_at), stoppedByLock, lastStop };
   }
 
   private threadWriterLockWindowExpired(lock: { startedAt: number } | null, at: number): boolean {

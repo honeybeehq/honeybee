@@ -181,3 +181,67 @@ test("lock-mail.5: a boot failing for another reason after an expired lock windo
     rig.cleanup();
   }
 });
+
+const raiseLockOnEveryBoot = (rig: Rig): void => {
+  const start = rig.driver.start.bind(rig.driver);
+  rig.driver.start = (beeId, generation) => {
+    start(beeId, generation);
+    rig.driver.evidence.push({ beeId, generation, flag: "resource_blocked", action: "set", detail: D });
+  };
+};
+const queuedWake = (rig: Rig) => rig.store.listCommands({ beeId: "b", status: "queued" }).find((command) => command.verb === "send_wake");
+
+test("lock-mail.6: a user stop of a lock-blocked bee with queued mail waits out the back-off when the lock is still held", () => {
+  const rig = setup();
+  try {
+    rig.store.send("b", "queued before the stop", { sender: "bee-x" });
+    rig.core.step();
+    raiseLockOnEveryBoot(rig);
+    lock(rig);
+    const starts = rig.driver.starts.length;
+    const stoppedAt = rig.clock.now;
+    stopUser(rig);
+    assert.equal(rig.driver.starts.length, starts, "no restart at once");
+    const wake = queuedWake(rig);
+    assert.ok(wake, "the held mail keeps a wake");
+    assert.ok(wake.nextAttemptAt >= stoppedAt + 15_000, "the wake respects the lock back-off");
+    rig.clock.now = wake.nextAttemptAt;
+    rig.core.step();
+    rig.core.step();
+    rig.core.step();
+    assert.equal(rig.driver.starts.length, starts + 1);
+    assert.equal(rig.store.currentRuntime("b")!.state, "stopped", "the lock is raised again and stops the retry");
+    assert.equal(rig.store.view("b").threadWriterLock, "retrying");
+  } finally {
+    rig.cleanup();
+  }
+});
+
+test("lock-mail.7: the same user stop after the window still gives held mail one back-off-respecting wake", () => {
+  const rig = setup();
+  try {
+    rig.store.send("b", "queued before the stop", { sender: "bee-x" });
+    rig.core.step();
+    raiseLockOnEveryBoot(rig);
+    lock(rig);
+    for (let i = 0; i < 12 && rig.store.view("b").threadWriterLock !== "retries_stopped"; i++) {
+      const wake = queuedWake(rig);
+      if (!wake) break;
+      rig.clock.now = wake.nextAttemptAt;
+      rig.core.step();
+      rig.core.step();
+      rig.core.step();
+    }
+    assert.equal(rig.store.view("b").threadWriterLock, "retries_stopped");
+    assert.equal(queuedWake(rig), undefined);
+    const stoppedAt = rig.clock.now;
+    const starts = rig.driver.starts.length;
+    stopUser(rig);
+    assert.equal(rig.driver.starts.length, starts, "no restart at once");
+    const wake = queuedWake(rig);
+    assert.ok(wake, "the stop is not suppressed after the window");
+    assert.ok(wake.nextAttemptAt >= stoppedAt + 15_000, "the wake respects the lock back-off");
+  } finally {
+    rig.cleanup();
+  }
+});
