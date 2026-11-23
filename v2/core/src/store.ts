@@ -3774,6 +3774,25 @@ export class CoreStore {
     return lock !== null && at - Math.min(lock.startedAt, at) >= this.threadWriterLockRetryWindowMs;
   }
 
+  private threadWriterLockRetriesEnded(bee: BeeRow, current: RuntimeRow | null): boolean {
+    if (!current || !this.threadWriterLockEpisode(bee.id, current)?.lastStop) return false;
+    return bee.lifecycle === "archived" || current.exitCause === "stopped_by_user" || this.hasUserStop(bee.id, current.generation);
+  }
+
+  hasUserStop(beeId: string, generation: number): boolean {
+    return this.stmt(
+      "SELECT 1 FROM commands WHERE bee_id = ? AND verb = 'stop' AND status != 'failed' AND target_generation = ? AND json_extract(args, '$.cause') = 'stopped_by_user' LIMIT 1",
+    ).get(beeId, generation) !== undefined;
+  }
+
+  endThreadWriterLock(beeId: string, reason: string): void {
+    this.tx(() => this.applyClearThreadWriterLocked(beeId, reason));
+  }
+
+  markThreadWriterLockRetriesStopped(beeId: string): void {
+    this.tx(() => this.applyThreadWriterLockRetriesStopped(beeId));
+  }
+
   threadWriterLockDetail(beeId: string, at: number): string {
     return this.threadWriterLockRetriesExhausted(beeId, this.currentRuntime(beeId), at) ? THREAD_WRITER_LOCKED_STOPPED_DETAIL : THREAD_WRITER_LOCKED_RETRYING_DETAIL;
   }
@@ -3790,6 +3809,14 @@ export class CoreStore {
       .get(beeId) as Row | undefined;
     const flag = row ? mapFlag(row) : null;
     return flag && isThreadWriterLockedDetail(flag.detail) ? flag : null;
+  }
+
+  private applyRaiseThreadWriterLockBehind(beeId: string, at: number): void {
+    const bee = this.getBee(beeId);
+    const current = this.currentRuntime(beeId);
+    if (!bee || !current || current.state !== "stopped" || !this.threadWriterLockEpisode(beeId, current)?.lastStop || this.threadWriterLockRetriesEnded(bee, current)) return;
+    const detail = this.threadWriterLockRetriesExhausted(beeId, current, at) ? THREAD_WRITER_LOCKED_STOPPED_DETAIL : THREAD_WRITER_LOCKED_RETRYING_DETAIL;
+    this.applySetFlag(beeId, "resource_blocked", detail);
   }
 
   private applyThreadWriterLockRetriesStopped(beeId: string): void {
@@ -3853,6 +3880,10 @@ export class CoreStore {
         flag: "spawn_failed",
         spawnFailures: bee.spawnFailures,
       });
+      return { command: null, outcome: "suppressed" };
+    }
+    if (opts.freshMail !== true && this.threadWriterLockRetriesEnded(bee, current)) {
+      this.audit("wake.suppressed", beeId, { beeId, targetGeneration, reason: THREAD_WRITER_LOCKED_STOP_REASON });
       return { command: null, outcome: "suppressed" };
     }
     if (current && this.threadWriterLockRetriesExhausted(beeId, current, current.updatedAt)) {
@@ -4254,6 +4285,7 @@ export class CoreStore {
   }
 
   private applySetFlag(beeId: string, flag: Flag, detail: string, resetsAt: number | null = null): FlagRow {
+    if (flag === "spawn_failed") this.applyClearThreadWriterLocked(beeId, "start failed for another reason");
     const existing = this.db
       .prepare("SELECT * FROM flags WHERE bee_id = ? AND flag = ? AND cleared_at IS NULL")
       .get(beeId, flag) as Row | undefined;
@@ -4294,7 +4326,7 @@ export class CoreStore {
     detail: string | null,
   ): { applied: boolean } {
     const existing = this.db
-      .prepare("SELECT id FROM flags WHERE bee_id = ? AND flag = ? AND cleared_at IS NULL")
+      .prepare("SELECT id, detail FROM flags WHERE bee_id = ? AND flag = ? AND cleared_at IS NULL")
       .get(beeId, flag) as Row | undefined;
     if (!existing) return { applied: false };
     const at = this.now();
@@ -4306,6 +4338,7 @@ export class CoreStore {
       clearedAt: at,
       detail,
     });
+    if (flag === "resource_blocked" && !isThreadWriterLockedDetail(String(existing.detail ?? ""))) this.applyRaiseThreadWriterLockBehind(beeId, at);
     return { applied: true };
   }
 
@@ -5903,6 +5936,15 @@ export class CoreStore {
       }
       const isRuntimeVerb = RUNTIME_VERBS.includes(verb as Verb);
       const targetGeneration = isRuntimeVerb ? (this.currentRuntime(beeId)?.generation ?? 0) : null;
+      if (verb === "archive" && this.threadWriterLockEpisode(beeId, this.currentRuntime(beeId))?.lastStop) {
+        const finishedAt = this.now();
+        for (const row of this.stmt("SELECT * FROM commands WHERE bee_id = ? AND status = 'queued' AND verb = 'send_wake' ORDER BY id").all(beeId) as Row[]) {
+          const pending = mapCommand(row);
+          this.stmt("UPDATE commands SET status = 'done', finished_at = ? WHERE id = ?").run(finishedAt, pending.id);
+          this.audit("command.moot", beeId, { commandId: pending.id, verb: pending.verb, targetGeneration: pending.targetGeneration, finishedAt, reason: "superseded_by_archive" });
+        }
+      }
+      if (verb === "archive" || verb === "stop" && args.cause === "stopped_by_user") this.applyClearThreadWriterLocked(beeId, `operator ${verb}`);
       if (verb === "stop" && args.cause === "stopped_by_user") {
         const pendingStarts = this.stmt(
           `SELECT * FROM commands

@@ -1783,6 +1783,136 @@ test("budget.7d: a thread lock keeps an open usage-limit flag and its reset, and
   }
 });
 
+function lockRig(): Rig {
+  const rig = makeRig({ i1DeadlineSteps: 10_000_000, bootHangTimeoutSteps: 60 * 60_000 });
+  rig.driver.autoBoot = false;
+  rig.store.createBee({ id: "bee-1", name: "bee-1", agent: "stub", substrate: "hsr", cwd: "/tmp" });
+  rig.store.enqueueCommand("spawn", "bee-1");
+  rig.core.step();
+  return rig;
+}
+
+function lockBoot(rig: Rig): void {
+  const generation = rig.store.currentRuntime("bee-1")!.generation;
+  rig.driver.evidence.push({ beeId: "bee-1", generation, flag: "resource_blocked", action: "set", detail: THREAD_WRITER_LOCKED_RETRYING_DETAIL });
+  rig.core.step();
+  rig.core.step();
+}
+
+function queuedWake(rig: Rig) {
+  return rig.store.listCommands({ beeId: "bee-1", status: "queued" }).find((command) => command.verb === "send_wake");
+}
+
+function lockUntilRetriesStop(rig: Rig): number {
+  let retries = 0;
+  for (let wake = queuedWake(rig); wake; wake = queuedWake(rig), retries++) {
+    rig.clock.now = wake.nextAttemptAt;
+    rig.core.step();
+    lockBoot(rig);
+  }
+  return retries;
+}
+
+test("budget.7e: archiving a bee in thread-lock back-off moots the queued retry; it stays archived and stopped", () => {
+  const rig = lockRig();
+  try {
+    lockBoot(rig);
+    const wake = queuedWake(rig)!;
+    rig.store.enqueueCommand("archive", "bee-1");
+    rig.core.step();
+    const starts = rig.driver.starts.length;
+    rig.clock.now = wake.nextAttemptAt + 1;
+    rig.core.step();
+    rig.core.step();
+    assert.equal(rig.store.getBee("bee-1")!.lifecycle, "archived");
+    assert.equal(rig.driver.starts.length, starts);
+    assert.equal(rig.store.currentRuntime("bee-1")!.state, "stopped");
+    assert.deepEqual(rig.store.activeFlags("bee-1"), []);
+  } finally {
+    rig.cleanup();
+  }
+});
+
+test("budget.7f: a user stop in thread-lock back-off ends the retries and the reason", () => {
+  const rig = lockRig();
+  try {
+    lockBoot(rig);
+    const wake = queuedWake(rig)!;
+    rig.store.enqueueCommand("stop", "bee-1", { cause: "stopped_by_user" });
+    rig.core.step();
+    const starts = rig.driver.starts.length;
+    rig.clock.now = wake.nextAttemptAt + 1;
+    rig.core.step();
+    rig.clock.now += 2 * 60 * 60_000;
+    rig.core.step();
+    assert.equal(rig.driver.starts.length, starts);
+    assert.deepEqual(rig.store.activeFlags("bee-1"), []);
+    assert.equal(rig.store.view("bee-1").threadWriterLock, undefined);
+  } finally {
+    rig.cleanup();
+  }
+});
+
+test("budget.7g: a user stop that wins the exit race against the lock stop is not retried", () => {
+  const rig = lockRig();
+  try {
+    const stop = rig.driver.stop.bind(rig.driver);
+    rig.driver.stop = () => ({ hadProcess: true });
+    lockBoot(rig);
+    rig.store.enqueueCommand("stop", "bee-1", { cause: "stopped_by_user" });
+    rig.core.step();
+    rig.driver.stop = stop;
+    rig.driver.procs.delete("bee-1");
+    rig.driver.events.push({ beeId: "bee-1", generation: 1, kind: "exited", exitCause: "stopped_by_user" });
+    rig.core.step();
+    rig.core.step();
+    assert.equal(queuedWake(rig), undefined);
+    rig.clock.now += 60 * 60_000;
+    rig.core.step();
+    assert.equal(rig.driver.starts.length, 1);
+    assert.equal(rig.store.currentRuntime("bee-1")!.state, "stopped");
+    assert.deepEqual(rig.store.activeFlags("bee-1"), []);
+  } finally {
+    rig.cleanup();
+  }
+});
+
+test("budget.7h: when a usage limit outlasts the lock window, its clearing raises the lock reason as retries stopped instead of stranding mail", () => {
+  const rig = lockRig();
+  try {
+    rig.store.setFlag("bee-1", "resource_blocked", "codex usage limit exceeded", { resetsAt: rig.clock.now + 40 * 60_000 });
+    const message = rig.store.send("bee-1", "queued before the lock").message;
+    rig.core.step();
+    lockBoot(rig);
+    assert.ok(lockUntilRetriesStop(rig) > 5);
+    assert.deepEqual(rig.store.activeFlags("bee-1").map((flag) => flag.detail), ["codex usage limit exceeded"]);
+    rig.store.clearFlag("bee-1", "resource_blocked", "limit reset");
+    const view = rig.store.view("bee-1");
+    assert.deepEqual(rig.store.activeFlags("bee-1").map((flag) => flag.detail), [THREAD_WRITER_LOCKED_STOPPED_DETAIL]);
+    assert.equal(view.threadWriterLock, "retries_stopped");
+    assert.equal(view.waitingForYou, true);
+    assert.equal(rig.driver.deliveredIds.includes(message.id), false, "the mail waits visibly for the user");
+  } finally {
+    rig.cleanup();
+  }
+});
+
+test("budget.7i: a start that fails for another reason during lock back-off replaces the lock reason with spawn_failed", () => {
+  const rig = lockRig();
+  try {
+    lockBoot(rig);
+    const wake = queuedWake(rig)!;
+    rig.driver.start = () => { throw Object.assign(new Error("partial clone missing objects"), { retryable: false }); };
+    rig.clock.now = wake.nextAttemptAt;
+    rig.core.step();
+    rig.core.step();
+    assert.deepEqual(rig.store.activeFlags("bee-1").map((flag) => flag.flag), ["spawn_failed"]);
+    assert.equal(rig.store.view("bee-1").threadWriterLock, undefined);
+  } finally {
+    rig.cleanup();
+  }
+});
+
 test("budget.7b: repeated boot hangs exhaust one budget and issue one stop per generation", () => {
   const rig = makeRig({ i1DeadlineSteps: 10_000 });
   try {

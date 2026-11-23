@@ -841,7 +841,8 @@ export class DaemonCore {
       // (I1) — on the boot-failure backoff table, and never while spawn_failed
       // is set (visibly blocked; the operator's revive is the way back).
       this.ensureWake(obs.beeId);
-      if (bootRetryNeeded || this.store.wasThreadWriterLockStop(obs.beeId, obs.generation)) this.ensureBootRetry(obs.beeId);
+      if (bootRetryNeeded) this.ensureBootRetry(obs.beeId);
+      else if (this.store.wasThreadWriterLockStop(obs.beeId, obs.generation)) this.retryThreadWriterLockedBoot(obs.beeId, obs.generation, obs.exitCause);
       this.reviveAfterStopIfRequested(obs.beeId, obs.generation);
       this.releaseBeeTmp(obs.beeId);
     } else if (obs.kind === "booted") {
@@ -1120,6 +1121,21 @@ export class DaemonCore {
     if (this.store.hasPendingStopCommand(beeId, generation)) return;
     this.store.enqueueCommand("stop", beeId, { cause: "stopped_by_system", reason: THREAD_WRITER_LOCKED_STOP_REASON });
     this.log(`policy.thread_writer_locked_stop bee=${beeId} gen=${generation}`);
+  }
+
+  private retryThreadWriterLockedBoot(beeId: string, generation: number, exitCause: string | undefined): void {
+    if (exitCause === "stopped_by_user" || this.store.hasUserStop(beeId, generation) || this.store.getBee(beeId)?.lifecycle === "archived") {
+      this.store.endThreadWriterLock(beeId, exitCause === "stopped_by_user" ? "stopped by user" : "operator ended the retries");
+      this.log(`thread_writer_locked.retry_ended bee=${beeId} gen=${generation}`);
+      return;
+    }
+    const { command, outcome } = this.store.enqueueBootRetry(beeId);
+    if (outcome === "enqueued" || outcome === "pending" || outcome === "live") {
+      if (command && outcome === "enqueued") this.log(`boot_retry.enqueued bee=${beeId} gen=${command.targetGeneration ?? 0} notBefore=${command.nextAttemptAt} reason=thread_writer_locked`);
+      return;
+    }
+    this.store.markThreadWriterLockRetriesStopped(beeId);
+    this.log(`thread_writer_locked.retries_stopped bee=${beeId} gen=${generation} outcome=${outcome}`);
   }
 
   private bootHangDeadline(rt: {beeId: string; generation: number; startedAt: number}): number {
