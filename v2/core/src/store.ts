@@ -8,7 +8,7 @@ import { HUMAN_FIRST_SQL, MAIL_BATCHING_SQL } from "./schema.ts";
 import { createHash } from "node:crypto";
 import { DELIVERY_CONFIRMATION_SQL, publicDeliveryConfirmation, readDeliveryConfirmations } from "./deliveryConfirmation.ts";
 import { DELIVERY_CONFIRMATION_MAX_WIRE_BYTES, DELIVERY_CONFIRMATION_AUDIT_RESERVE_BYTES, deliveryConfirmationIntentFits, MAX_DELIVERY_CONFIRMATION_BYTES, type NeverWrittenDeliveryHoldReason, DELIVERY_CONFIRMATION_REASONS, type DeliveryConfirmation, type DeliveryHoldCounts, type DeliveryConfirmationIntent, type KnownDeliveryConfirmationIntent, type PrepareDeliveryConfirmationIntent, type PrepareUnknownDeliveryConfirmationIntent, type DeliveryConfirmationReason, type ResolveDeliveryConfirmation, type DeliveryConfirmationResolution, type DeliveryConfirmationDecision } from "./deliveryConfirmationTypes.ts";
-import { DeliveryNotHeldError } from "./types.ts";
+import { DeliveryNotHeldError, THREAD_WRITER_LOCKED_RETRY_MAX_MS, THREAD_WRITER_LOCKED_RETRY_MIN_MS, isThreadWriterLockedDetail } from "./types.ts";
 import type { TranscriptSegmentReadyReason } from "./types.ts";
 import type { Lifecycle, QuotaRecoveryRow, QuotaRecoveryReasonDetail } from "./types.ts";
 import { QUOTA_RECOVERIES_TABLE_SQL } from "./schema.ts";
@@ -3646,6 +3646,7 @@ export class CoreStore {
         );
       } else if (current.state === "booting" && state === "running" && bootEvidence === "real") {
         this.applySpawnFailuresReset(beeId, `runtime booted (generation ${generation})`);
+        this.applyClearThreadWriterLocked(beeId, `runtime booted (generation ${generation})`);
       }
       return { applied: true };
     });
@@ -3745,8 +3746,25 @@ export class CoreStore {
    * Undefined = no boot failures, wake immediately.
    */
   private wakeNotBefore(bee: BeeRow, current: RuntimeRow | null): number | undefined {
-    if (bee.spawnFailures <= 0 || !current) return undefined;
-    return current.updatedAt + this.backoffBaseMs * 2 ** (bee.spawnFailures - 1);
+    if (!current) return undefined;
+    const bootFailure = bee.spawnFailures > 0 ? current.updatedAt + this.backoffBaseMs * 2 ** (bee.spawnFailures - 1) : undefined;
+    const lock = this.threadWriterLockedFlag(bee.id);
+    if (!lock) return bootFailure;
+    const heldFor = Math.max(0, current.updatedAt - lock.setAt);
+    const lockRetry = current.updatedAt + Math.min(THREAD_WRITER_LOCKED_RETRY_MAX_MS, Math.max(THREAD_WRITER_LOCKED_RETRY_MIN_MS, Math.floor(heldFor / 2)));
+    return Math.max(lockRetry, bootFailure ?? 0);
+  }
+
+  private threadWriterLockedFlag(beeId: string): FlagRow | null {
+    const row = this.db
+      .prepare("SELECT * FROM flags WHERE bee_id = ? AND flag = 'resource_blocked' AND cleared_at IS NULL")
+      .get(beeId) as Row | undefined;
+    const flag = row ? mapFlag(row) : null;
+    return flag && isThreadWriterLockedDetail(flag.detail) ? flag : null;
+  }
+
+  private applyClearThreadWriterLocked(beeId: string, reason: string): void {
+    if (this.threadWriterLockedFlag(beeId)) this.applyClearFlag(beeId, "resource_blocked", reason);
   }
 
   /**

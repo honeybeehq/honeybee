@@ -407,3 +407,17 @@ test("codex: fresh delivery starts a turn and refuses every known active turn", 
   assert.equal(request.params.expectedTurnId, undefined);
   assert.ok(adapter.parseLine(JSON.stringify({id: request.id, error: {message: "active turn"}})).some(signal => signal.kind === "delivery_refused" && signal.messageId === 41));
 });
+
+test("codex: a thread/resume refused for another active writer is a thread-lock reason, not silence", async () => {
+  const { THREAD_WRITER_LOCKED_DETAIL_PREFIX } = await import("../../core/src/types.ts");
+  const refusal = JSON.stringify({ error: { code: -32600, message: "thread 01a1f446 already has an active writer" }, id: 2 });
+  const resumed = codexAdapter({ cwd: "/tmp/w", resumeThreadId: "01a1f446" }).parseLine(refusal);
+  assert.equal(resumed.length, 1);
+  const [signal] = resumed;
+  assert.equal(signal?.kind, "flag");
+  assert.ok(signal?.kind === "flag" && signal.flag === "resource_blocked" && signal.action === "set");
+  assert.ok(signal.detail.startsWith(THREAD_WRITER_LOCKED_DETAIL_PREFIX));
+  assert.match(signal.detail, /thread is open in ChatGPT\/Codex app — close it there/);
+  assert.match(signal.detail, /already has an active writer/);
+  assert.deepEqual(codexAdapter({ cwd: "/tmp/w" }).parseLine(refusal), [], "a fresh thread/start never owns this reason");
+});

@@ -38,6 +38,14 @@ export const FLAGS = [
 ] as const;
 export type Flag = (typeof FLAGS)[number];
 
+export const THREAD_WRITER_LOCKED_DETAIL_PREFIX = "thread_writer_locked:";
+export const THREAD_WRITER_LOCKED_RETRY_MIN_MS = 15_000;
+export const THREAD_WRITER_LOCKED_RETRY_MAX_MS = 5 * 60_000;
+
+export function isThreadWriterLockedDetail(detail: string | null | undefined): boolean {
+  return typeof detail === "string" && detail.startsWith(THREAD_WRITER_LOCKED_DETAIL_PREFIX);
+}
+
 /**
  * Mailbox-only bees: a built-in agent with an identity and a mailbox but no
  * model process, account, or wake. Mail stays durable and unread until a

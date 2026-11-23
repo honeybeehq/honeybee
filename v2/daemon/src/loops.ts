@@ -59,6 +59,7 @@ import {
   actionPredecessor,
   buildExtractiveHandoffContext,
   handoffFencesSource,
+  isThreadWriterLockedDetail,
   placementContextText,
   prefixPlacementDelivery,
   type ActionRow,
@@ -978,6 +979,7 @@ export class DaemonCore {
           this.log(
             `flag.set bee=${ev.beeId} flag=${ev.flag} gen=${ev.generation}${ev.resetsAt != null ? ` resetsAt=${new Date(ev.resetsAt).toISOString()}` : ""}`,
           );
+          if (ev.flag === "resource_blocked" && isThreadWriterLockedDetail(ev.detail)) this.stopThreadWriterLockedBoot(ev.beeId, ev.generation);
         } else {
           // Every clean turn re-emits contrary evidence; clearing an unset flag
           // is a store no-op — logging it too was pure noise (soak day-2).
@@ -1101,6 +1103,14 @@ export class DaemonCore {
       this.store.enqueueCommand("stop", rt.beeId, { cause: "stopped_by_system", reason: "hang_policy" });
       this.log(`policy.hang_stop bee=${rt.beeId} gen=${rt.generation} state=${rt.state}`);
     }
+  }
+
+  private stopThreadWriterLockedBoot(beeId: string, generation: number): void {
+    const rt = this.store.currentRuntime(beeId);
+    if (!rt || rt.generation !== generation || rt.state !== "booting") return;
+    if (this.store.hasPendingStopCommand(beeId, generation)) return;
+    this.store.enqueueCommand("stop", beeId, { cause: "stopped_by_system", reason: "thread_writer_locked" });
+    this.log(`policy.thread_writer_locked_stop bee=${beeId} gen=${generation}`);
   }
 
   private bootHangDeadline(rt: {beeId: string; generation: number; startedAt: number}): number {

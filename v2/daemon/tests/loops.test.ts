@@ -1692,6 +1692,52 @@ test("budget.7: a runtime that reached running/idle and then crashed is not a sp
   }
 });
 
+test("budget.7c: a thread held by another writer stops the boot at once, never spends the budget, backs off, and clears on a real boot", () => {
+  const rig = makeRig({ i1DeadlineSteps: 10_000 });
+  try {
+    rig.driver.autoBoot = false;
+    rig.store.createBee({ id: "bee-1", name: "bee-1", agent: "stub", substrate: "hsr", cwd: "/tmp" });
+    rig.store.enqueueCommand("spawn", "bee-1");
+    const message = rig.store.send("bee-1", "remain durable").message;
+    rig.core.step();
+
+    const lockedDetail = "thread_writer_locked: thread is open in ChatGPT/Codex app — close it there (codex: thread t-1 already has an active writer)";
+    const delays: number[] = [];
+    for (let generation = 1; generation <= 6; generation++) {
+      const runtime = rig.store.currentRuntime("bee-1")!;
+      assert.equal(runtime.generation, generation);
+      assert.equal(runtime.state, "booting");
+      rig.driver.evidence.push({ beeId: "bee-1", generation, flag: "resource_blocked", action: "set", detail: lockedDetail });
+      rig.core.step();
+      rig.core.step();
+      assert.equal(rig.store.currentRuntime("bee-1")!.state, "stopped", `generation ${generation} stops without waiting for the boot deadline`);
+      assert.ok(rig.clock.now < runtime.startedAt + 50, "the stop beats the hang policy");
+      assert.equal(rig.store.getBee("bee-1")?.spawnFailures, 0);
+      assert.deepEqual(rig.store.activeFlags("bee-1").map((flag) => [flag.flag, flag.detail]), [["resource_blocked", lockedDetail]]);
+      const wake = rig.store.listCommands({ beeId: "bee-1", status: "queued" }).find((command) => command.verb === "send_wake");
+      assert.ok(wake, "the held mail keeps a wake");
+      delays.push(wake.nextAttemptAt - rig.clock.now);
+      rig.core.step();
+      assert.equal(rig.driver.starts.length, generation, "no retry before the backoff");
+      rig.clock.now = wake.nextAttemptAt;
+      rig.core.step();
+    }
+    assert.ok(delays.every((delay) => delay >= 15_000), `retry waits at least 15s: ${delays}`);
+    assert.ok(delays.at(-1)! > delays[0]!, `retry backs off while the lock stands: ${delays}`);
+    assert.ok(!rig.store.activeFlags("bee-1").some((flag) => flag.flag === "spawn_failed"));
+
+    const generation = rig.store.currentRuntime("bee-1")!.generation;
+    rig.driver.events.push({ beeId: "bee-1", generation, kind: "booted", pid: rig.driver.procs.get("bee-1")!.pid, pidStartedAt: rig.clock.now });
+    rig.driver.events.push({ beeId: "bee-1", generation, kind: "turn_ended" });
+    rig.core.step();
+    rig.core.step();
+    assert.deepEqual(rig.store.activeFlags("bee-1"), [], "a real boot clears the lock reason");
+    assert.ok(rig.driver.deliveredIds.includes(message.id), "the held mail goes out once the lock clears");
+  } finally {
+    rig.cleanup();
+  }
+});
+
 test("budget.7b: repeated boot hangs exhaust one budget and issue one stop per generation", () => {
   const rig = makeRig({ i1DeadlineSteps: 10_000 });
   try {
