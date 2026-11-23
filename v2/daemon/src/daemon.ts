@@ -6,7 +6,7 @@ import { admitSecretExecution } from "./secretExecution.ts";
 import type { BeeTellParams, BeeReactParams, HumanOutputMode, BeeTellResult, BeeReactResult, SetHumanOutputModeResult } from "../../core/src/humanOutputTypes.ts";
 import type { AutomationKind, HumanChatAdmission } from "../../core/src/types.ts";
 import { isQuotaTextFallback } from "../../adapters/src/quota.ts";
-import { isFableModel, autoswapDisabled } from "../../core/src/index.ts";
+import { isFableModel, autoswapDisabled, isThreadWriterLockedDetail } from "../../core/src/index.ts";
 export { autoswapDisabled } from "../../core/src/index.ts";
 import {IdentityRecovery} from "./identityRecovery.ts";
 import {inspectProcess, sameProcess, type ProcessInspection} from "../../harness/src/processIdentity.ts";
@@ -984,6 +984,7 @@ export class HiveDaemon {
       buildIdentity: JSON.stringify(BUILD_IDENTITY),
       maxAttempts: this.cfg.maxAttempts,
       backoffBaseMs: this.cfg.backoffBaseMs,
+      threadWriterLockRetryWindowMs: this.cfg.threadLockWindowMs,
     });
     this.store = store;
     store.onChange(change => this.noteChange(change));
@@ -8708,6 +8709,7 @@ export class HiveDaemon {
       return;
     }
     if (ev.flag !== "resource_blocked") return;
+    if (isThreadWriterLockedDetail(ev.detail)) return;
     if (ev.action === "clear") {
       if (account.exhaustedAt != null) store.recordAccountExhaustion(account.id, null);
       return;

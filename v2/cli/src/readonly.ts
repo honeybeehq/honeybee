@@ -11,6 +11,7 @@ import { readAccountLease, presentAccountLease } from "../../core/src/accountLea
 import { DatabaseSync } from "node:sqlite";
 import {
   deriveBeeView,
+  threadWriterLockState,
   readDeliveryConfirmations,
   automaticQuotaRecovery,
   type QuotaRecoveryRow,
@@ -380,7 +381,7 @@ export class ReadOnlyStore {
         bee,
         runtime,
         bee ? facts.filter(row => row.flag !== null).map(row => row.flag as Flag) : [],
-        { runtimeStartHeld: facts.some(row => row.flag === "resource_blocked" && typeof row.detail === "string" && row.detail.startsWith("runtime_start_held:")), automaticQuotaRecovery: automaticQuotaRecovery(bee, runtime, recoveries), deliveryConfirmations: readDeliveryConfirmations({ prepare: sql => this.stmt(sql) }, beeId, runtime?.generation ?? null) },
+        { threadWriterLock: facts.map(row => row.flag === null ? null : threadWriterLockState({ flag: String(row.flag), detail: typeof row.detail === "string" ? row.detail : null })).find(state => state !== null) ?? null, runtimeStartHeld: facts.some(row => row.flag === "resource_blocked" && typeof row.detail === "string" && row.detail.startsWith("runtime_start_held:")), automaticQuotaRecovery: automaticQuotaRecovery(bee, runtime, recoveries), deliveryConfirmations: readDeliveryConfirmations({ prepare: sql => this.stmt(sql) }, beeId, runtime?.generation ?? null) },
       ),
       bee: mirrorBeeRow(bee),
       runtime,

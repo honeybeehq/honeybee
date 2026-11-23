@@ -1,5 +1,5 @@
 import { codexQuotaBoundary } from "./quota.ts";
-import { THREAD_WRITER_LOCKED_DETAIL_PREFIX } from "../../core/src/types.ts";
+import { THREAD_WRITER_LOCKED_RETRYING_DETAIL } from "../../core/src/types.ts";
 /**
  * Codex harness adapter (WP3) — normalizes the `codex app-server` JSON-RPC 2.0
  * stdio stream.
@@ -162,13 +162,8 @@ function errorSignals(message: string, codexErrorInfo?: unknown): AdapterSignal[
 
 const CODEX_ACTIVE_WRITER = /already has an active writer/i;
 
-function threadWriterLockedSignals(message: string): AdapterSignal[] {
-  return [{
-    kind: "flag",
-    flag: "resource_blocked",
-    action: "set",
-    detail: `${THREAD_WRITER_LOCKED_DETAIL_PREFIX} thread is open in ChatGPT/Codex app — close it there (codex: ${message})`.slice(0, 500),
-  }];
+function threadWriterLockedSignals(): AdapterSignal[] {
+  return [{ kind: "flag", flag: "resource_blocked", action: "set", detail: THREAD_WRITER_LOCKED_RETRYING_DETAIL }];
 }
 
 // Server→client request methods that expect a response; with
@@ -238,7 +233,7 @@ export function codexAdapter(opts: CodexAdapterOptions): HarnessAdapter {
       const err = asObject(msg.error);
       if (err) {
         const message = String(err.message ?? `codex ${threadRequest.method} failed`);
-        if (threadRequest.method === "thread/resume" && CODEX_ACTIVE_WRITER.test(message)) return threadWriterLockedSignals(message);
+        if (CODEX_ACTIVE_WRITER.test(message)) return threadRequest.method === "thread/resume" ? threadWriterLockedSignals() : [];
         return errorSignals(message);
       }
       return [];

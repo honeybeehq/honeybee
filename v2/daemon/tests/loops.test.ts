@@ -13,7 +13,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { beeTaskList, hashBeeMoveRequest, openCoreStore, PLACEMENT_PREFIX_MARKER, type CoreStore } from "../../core/src/index.ts";
+import { beeTaskList, hashBeeMoveRequest, openCoreStore, PLACEMENT_PREFIX_MARKER, THREAD_WRITER_LOCKED_RETRYING_DETAIL, THREAD_WRITER_LOCKED_STOPPED_DETAIL, type CoreStore } from "../../core/src/index.ts";
 import { DaemonCore, type DaemonCoreOptions, type DaemonPolicy, type I1ViolationEvent } from "../src/loops.ts";
 import type { PerformanceRecorder } from "../src/performance.ts";
 import { RuntimeHost } from "../../driver-hsr/src/index.ts";
@@ -1692,47 +1692,92 @@ test("budget.7: a runtime that reached running/idle and then crashed is not a sp
   }
 });
 
-test("budget.7c: a thread held by another writer stops the boot at once, never spends the budget, backs off, and clears on a real boot", () => {
-  const rig = makeRig({ i1DeadlineSteps: 10_000 });
+test("budget.7c: a thread held by another writer stops each boot at once, retries without mail on a doubling back-off, stops retrying after the window, and wakes again on fresh mail or try again", () => {
+  const rig = makeRig({ i1DeadlineSteps: 10_000_000 });
   try {
     rig.driver.autoBoot = false;
     rig.store.createBee({ id: "bee-1", name: "bee-1", agent: "stub", substrate: "hsr", cwd: "/tmp" });
     rig.store.enqueueCommand("spawn", "bee-1");
-    const message = rig.store.send("bee-1", "remain durable").message;
     rig.core.step();
-
-    const lockedDetail = "thread_writer_locked: thread is open in ChatGPT/Codex app — close it there (codex: thread t-1 already has an active writer)";
-    const delays: number[] = [];
-    for (let generation = 1; generation <= 6; generation++) {
-      const runtime = rig.store.currentRuntime("bee-1")!;
-      assert.equal(runtime.generation, generation);
-      assert.equal(runtime.state, "booting");
-      rig.driver.evidence.push({ beeId: "bee-1", generation, flag: "resource_blocked", action: "set", detail: lockedDetail });
+    const locked = () => {
+      const generation = rig.store.currentRuntime("bee-1")!.generation;
+      assert.equal(rig.store.currentRuntime("bee-1")!.state, "booting");
+      rig.driver.evidence.push({ beeId: "bee-1", generation, flag: "resource_blocked", action: "set", detail: THREAD_WRITER_LOCKED_RETRYING_DETAIL });
       rig.core.step();
       rig.core.step();
       assert.equal(rig.store.currentRuntime("bee-1")!.state, "stopped", `generation ${generation} stops without waiting for the boot deadline`);
-      assert.ok(rig.clock.now < runtime.startedAt + 50, "the stop beats the hang policy");
       assert.equal(rig.store.getBee("bee-1")?.spawnFailures, 0);
-      assert.deepEqual(rig.store.activeFlags("bee-1").map((flag) => [flag.flag, flag.detail]), [["resource_blocked", lockedDetail]]);
+    };
+    const firstLockAt = rig.clock.now;
+    const delays: number[] = [];
+    for (;;) {
+      locked();
       const wake = rig.store.listCommands({ beeId: "bee-1", status: "queued" }).find((command) => command.verb === "send_wake");
-      assert.ok(wake, "the held mail keeps a wake");
+      if (!wake) break;
+      assert.equal(rig.store.activeFlags("bee-1")[0]?.detail, THREAD_WRITER_LOCKED_RETRYING_DETAIL);
+      assert.equal(rig.store.view("bee-1").threadWriterLock, "retrying");
       delays.push(wake.nextAttemptAt - rig.clock.now);
+      rig.clock.now = wake.nextAttemptAt - 1;
       rig.core.step();
-      assert.equal(rig.driver.starts.length, generation, "no retry before the backoff");
+      const starts = rig.driver.starts.length;
       rig.clock.now = wake.nextAttemptAt;
       rig.core.step();
+      assert.equal(rig.driver.starts.length, starts + 1, "a retry boots without any pending mail");
     }
-    assert.ok(delays.every((delay) => delay >= 15_000), `retry waits at least 15s: ${delays}`);
-    assert.ok(delays.at(-1)! > delays[0]!, `retry backs off while the lock stands: ${delays}`);
-    assert.ok(!rig.store.activeFlags("bee-1").some((flag) => flag.flag === "spawn_failed"));
+    assert.deepEqual(delays.slice(0, 7), [15_000, 30_000, 60_000, 120_000, 240_000, 300_000, 300_000]);
+    assert.ok(rig.clock.now - firstLockAt >= 30 * 60_000 && rig.clock.now - firstLockAt < 36 * 60_000, "automatic retries end after the window");
+    assert.deepEqual(rig.store.activeFlags("bee-1").map((flag) => [flag.flag, flag.detail]), [["resource_blocked", THREAD_WRITER_LOCKED_STOPPED_DETAIL]]);
+    const stoppedView = rig.store.view("bee-1");
+    assert.equal(stoppedView.threadWriterLock, "retries_stopped");
+    assert.equal(stoppedView.waitingForYou, true);
+    const startsAtCeiling = rig.driver.starts.length;
+    rig.clock.now += 24 * 60 * 60_000;
+    rig.core.step();
+    rig.core.step();
+    assert.equal(rig.driver.starts.length, startsAtCeiling, "no automatic boots after the window");
 
+    const message = rig.store.send("bee-1", "fresh mail retries once").message;
+    rig.core.step();
+    assert.equal(rig.driver.starts.length, startsAtCeiling + 1, "fresh mail wakes immediately");
+    locked();
+    assert.equal(rig.store.activeFlags("bee-1")[0]?.detail, THREAD_WRITER_LOCKED_STOPPED_DETAIL, "the reason stays retries-stopped");
+    rig.clock.now += 60 * 60_000;
+    rig.core.step();
+    assert.equal(rig.driver.starts.length, startsAtCeiling + 1, "held mail does not restart the automatic loop");
+
+    rig.store.enqueueCommand("revive", "bee-1");
+    rig.core.step();
     const generation = rig.store.currentRuntime("bee-1")!.generation;
+    assert.equal(rig.store.currentRuntime("bee-1")!.state, "booting", "try again boots at once");
     rig.driver.events.push({ beeId: "bee-1", generation, kind: "booted", pid: rig.driver.procs.get("bee-1")!.pid, pidStartedAt: rig.clock.now });
     rig.driver.events.push({ beeId: "bee-1", generation, kind: "turn_ended" });
     rig.core.step();
     rig.core.step();
-    assert.deepEqual(rig.store.activeFlags("bee-1"), [], "a real boot clears the lock reason");
+    assert.deepEqual(rig.store.activeFlags("bee-1"), [], "a real boot clears the reason");
+    assert.equal(rig.store.view("bee-1").threadWriterLock, undefined);
     assert.ok(rig.driver.deliveredIds.includes(message.id), "the held mail goes out once the lock clears");
+  } finally {
+    rig.cleanup();
+  }
+});
+
+test("budget.7d: a thread lock keeps an open usage-limit flag and its reset, and times its back-off from its own first stop", () => {
+  const rig = makeRig({ i1DeadlineSteps: 10_000_000, bootHangTimeoutSteps: 60 * 60_000 });
+  try {
+    rig.driver.autoBoot = false;
+    rig.store.createBee({ id: "bee-1", name: "bee-1", agent: "stub", substrate: "hsr", cwd: "/tmp" });
+    rig.store.setFlag("bee-1", "resource_blocked", "codex usage limit exceeded", { resetsAt: 9_999_999 });
+    rig.clock.now += 20 * 60_000;
+    rig.store.enqueueCommand("spawn", "bee-1");
+    rig.core.step();
+    rig.driver.evidence.push({ beeId: "bee-1", generation: 1, flag: "resource_blocked", action: "set", detail: THREAD_WRITER_LOCKED_RETRYING_DETAIL });
+    rig.core.step();
+    rig.core.step();
+    assert.equal(rig.store.currentRuntime("bee-1")!.state, "stopped");
+    assert.deepEqual(rig.store.activeFlags("bee-1").map((flag) => [flag.detail, flag.resetsAt]), [["codex usage limit exceeded", 9_999_999]]);
+    const wake = rig.store.listCommands({ beeId: "bee-1", status: "queued" }).find((command) => command.verb === "send_wake");
+    assert.equal(wake!.nextAttemptAt - rig.clock.now, 15_000);
+    assert.equal(rig.store.getBee("bee-1")?.spawnFailures, 0);
   } finally {
     rig.cleanup();
   }

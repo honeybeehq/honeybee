@@ -7,13 +7,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { makeDaemonDir, startDaemon, waitFor } from "./helpers.ts";
+import { THREAD_WRITER_LOCKED_RETRYING_DETAIL } from "../../core/src/index.ts";
 import type { AuditTailResult, SpawnResult, ViewResult } from "../src/protocol.ts";
 
 interface Sample { atMs: number; generation: number | null; state: string | null; flags: string[]; spawnFailures: number; detail: string | null }
 
-// Real owner, detached runner host and two installed Codex app-servers; only
-// inference is a fixture. The second app-server stands in for the ChatGPT
-// desktop app: it resumes the bee's thread and holds its single-writer lock.
 test("real Codex thread held by another app-server surfaces a lock reason at once and never exhausts the spawn budget", {
   skip: process.env.HONEYBEE_REAL_CODEX_WRITER_LOCK !== "1",
   timeout: 240_000,
@@ -113,7 +111,8 @@ supports_websockets = false
 
   assert.ok(settled.atMs < 8_000, `the reason lands before the boot-hang deadline: ${settled.atMs}ms`);
   assert.deepEqual(settled.flags, ["resource_blocked"]);
-  assert.match(settled.detail ?? "", /^thread_writer_locked: thread is open in ChatGPT\/Codex app — close it there/);
+  assert.equal(settled.detail, THREAD_WRITER_LOCKED_RETRYING_DETAIL);
+  assert.ok(!(settled.detail ?? "").includes(threadId), "the reason carries no thread id");
   assert.ok(timeline.every(point => !point.flags.includes("spawn_failed") && point.spawnFailures === 0), "no spawn-budget charge");
 
   holder.kill();

@@ -321,7 +321,7 @@ export interface NodeConfigFile {
   /** Executor budget per tick. */
   commandsPerTick?: number;
   /** B5 retry table. */
-  retry?: { maxAttempts?: number; backoffBaseMs?: number };
+  retry?: { maxAttempts?: number; backoffBaseMs?: number; threadLockWindowMs?: number };
   /** TERM→KILL escalation grace for stops. */
   stopKillGraceMs?: number;
   /** Start-time tolerance for cross-restart re-adoption. */
@@ -516,6 +516,7 @@ export interface ResolvedNodeConfig {
   commandsPerTick: number;
   maxAttempts: number;
   backoffBaseMs: number;
+  threadLockWindowMs: number;
   stopKillGraceMs: number;
   adoptToleranceMs: number;
   watchMaxBatch: number;
@@ -598,6 +599,7 @@ export const DEFAULTS = {
   commandsPerTick: 8,
   maxAttempts: 5,
   backoffBaseMs: 30_000,
+  threadLockWindowMs: 30 * 60_000,
   stopKillGraceMs: 5000,
   adoptToleranceMs: 5000,
   watchMaxBatch: 256,
@@ -1320,6 +1322,7 @@ export function loadNodeConfig(dataDir: string, configPath?: string): ResolvedNo
     commandsPerTick: num(raw, "commandsPerTick", DEFAULTS.commandsPerTick),
     maxAttempts: num(retryRaw, "maxAttempts", DEFAULTS.maxAttempts),
     backoffBaseMs: num(retryRaw, "backoffBaseMs", DEFAULTS.backoffBaseMs),
+    threadLockWindowMs: num(retryRaw, "threadLockWindowMs", DEFAULTS.threadLockWindowMs),
     stopKillGraceMs: num(raw, "stopKillGraceMs", DEFAULTS.stopKillGraceMs),
     adoptToleranceMs: num(raw, "adoptToleranceMs", DEFAULTS.adoptToleranceMs),
     watchMaxBatch: num(raw, "watchMaxBatch", DEFAULTS.watchMaxBatch),

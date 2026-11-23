@@ -8,7 +8,7 @@ import { HUMAN_FIRST_SQL, MAIL_BATCHING_SQL } from "./schema.ts";
 import { createHash } from "node:crypto";
 import { DELIVERY_CONFIRMATION_SQL, publicDeliveryConfirmation, readDeliveryConfirmations } from "./deliveryConfirmation.ts";
 import { DELIVERY_CONFIRMATION_MAX_WIRE_BYTES, DELIVERY_CONFIRMATION_AUDIT_RESERVE_BYTES, deliveryConfirmationIntentFits, MAX_DELIVERY_CONFIRMATION_BYTES, type NeverWrittenDeliveryHoldReason, DELIVERY_CONFIRMATION_REASONS, type DeliveryConfirmation, type DeliveryHoldCounts, type DeliveryConfirmationIntent, type KnownDeliveryConfirmationIntent, type PrepareDeliveryConfirmationIntent, type PrepareUnknownDeliveryConfirmationIntent, type DeliveryConfirmationReason, type ResolveDeliveryConfirmation, type DeliveryConfirmationResolution, type DeliveryConfirmationDecision } from "./deliveryConfirmationTypes.ts";
-import { DeliveryNotHeldError, THREAD_WRITER_LOCKED_RETRY_MAX_MS, THREAD_WRITER_LOCKED_RETRY_MIN_MS, isThreadWriterLockedDetail } from "./types.ts";
+import { DeliveryNotHeldError, THREAD_WRITER_LOCKED_AUTO_RETRY_WINDOW_MS, THREAD_WRITER_LOCKED_RETRYING_DETAIL, THREAD_WRITER_LOCKED_RETRY_MAX_MS, THREAD_WRITER_LOCKED_RETRY_MIN_MS, THREAD_WRITER_LOCKED_STOPPED_DETAIL, THREAD_WRITER_LOCKED_STOP_REASON, isThreadWriterLockedDetail, threadWriterLockState } from "./types.ts";
 import type { TranscriptSegmentReadyReason } from "./types.ts";
 import type { Lifecycle, QuotaRecoveryRow, QuotaRecoveryReasonDetail } from "./types.ts";
 import { QUOTA_RECOVERIES_TABLE_SQL } from "./schema.ts";
@@ -207,6 +207,7 @@ import {
   type TaskStatus,
   type TaskSupplyRow,
   type TaskTransitionAction,
+  type ThreadWriterLockState,
 } from "./types.ts";
 import {
   beeTaskList,
@@ -296,6 +297,7 @@ export interface CoreStoreOptions {
    * table schedules the next wake after a boot failure. Default 30s.
    */
   backoffBaseMs?: number;
+  threadWriterLockRetryWindowMs?: number;
   /**
    * Retention bound for the rpc_idempotency table (spec 06 §4.2): the newest N
    * recorded mutation results are kept; the oldest beyond N are evicted on
@@ -1818,6 +1820,7 @@ export class CoreStore {
   private readonly random: () => number;
   private readonly maxAttempts: number;
   private readonly backoffBaseMs: number;
+  private readonly threadWriterLockRetryWindowMs: number;
   private readonly maxRpcIdempotencyRows: number;
   private readonly multilineUnsupportedActive = new Map<number, { beeId: string; generation: number }>();
   private readonly stmts = new Map<string, ReturnType<DatabaseSync["prepare"]>>();
@@ -1840,6 +1843,7 @@ export class CoreStore {
     this.random = opts.random ?? Math.random;
     this.maxAttempts = opts.maxAttempts ?? 5;
     this.backoffBaseMs = opts.backoffBaseMs ?? 30_000;
+    this.threadWriterLockRetryWindowMs = opts.threadWriterLockRetryWindowMs ?? THREAD_WRITER_LOCKED_AUTO_RETRY_WINDOW_MS;
     this.maxRpcIdempotencyRows = opts.maxRpcIdempotencyRows ?? 10_000;
     this.db = new DatabaseSync(path);
     this.effectLedger = new EffectLedger(this.db, this.now);
@@ -3748,11 +3752,36 @@ export class CoreStore {
   private wakeNotBefore(bee: BeeRow, current: RuntimeRow | null): number | undefined {
     if (!current) return undefined;
     const bootFailure = bee.spawnFailures > 0 ? current.updatedAt + this.backoffBaseMs * 2 ** (bee.spawnFailures - 1) : undefined;
-    const lock = this.threadWriterLockedFlag(bee.id);
-    if (!lock) return bootFailure;
-    const heldFor = Math.max(0, current.updatedAt - lock.setAt);
-    const lockRetry = current.updatedAt + Math.min(THREAD_WRITER_LOCKED_RETRY_MAX_MS, Math.max(THREAD_WRITER_LOCKED_RETRY_MIN_MS, Math.floor(heldFor / 2)));
+    const lock = this.threadWriterLockEpisode(bee.id, current);
+    if (!lock?.lastStop) return bootFailure;
+    const lockRetry = current.updatedAt + Math.min(THREAD_WRITER_LOCKED_RETRY_MAX_MS, THREAD_WRITER_LOCKED_RETRY_MIN_MS * 2 ** (lock.stops - 1));
     return Math.max(lockRetry, bootFailure ?? 0);
+  }
+
+  private threadWriterLockEpisode(beeId: string, current: RuntimeRow | null): { stops: number; startedAt: number; lastStop: boolean } | null {
+    const row = this.stmt(
+      `SELECT COUNT(*) AS stops, MIN(enqueued_at) AS started_at, MAX(target_generation) AS last_generation FROM commands
+       WHERE bee_id = ? AND verb = 'stop' AND status != 'failed' AND json_extract(args, '$.reason') = ?
+         AND target_generation > COALESCE((SELECT MAX(generation) FROM runtimes WHERE bee_id = ? AND boot_evidence = 'real'), 0)`,
+    ).get(beeId, THREAD_WRITER_LOCKED_STOP_REASON, beeId) as Row | undefined;
+    const stops = Number(row?.stops ?? 0);
+    if (stops === 0) return null;
+    return { stops, startedAt: Number(row!.started_at), lastStop: current?.state === "stopped" && Number(row!.last_generation) === current.generation };
+  }
+
+  private threadWriterLockRetriesExhausted(beeId: string, current: RuntimeRow | null, at: number): boolean {
+    const lock = this.threadWriterLockEpisode(beeId, current);
+    return lock !== null && at - Math.min(lock.startedAt, at) >= this.threadWriterLockRetryWindowMs;
+  }
+
+  threadWriterLockDetail(beeId: string, at: number): string {
+    return this.threadWriterLockRetriesExhausted(beeId, this.currentRuntime(beeId), at) ? THREAD_WRITER_LOCKED_STOPPED_DETAIL : THREAD_WRITER_LOCKED_RETRYING_DETAIL;
+  }
+
+  wasThreadWriterLockStop(beeId: string, generation: number): boolean {
+    return this.stmt(
+      "SELECT 1 FROM commands WHERE bee_id = ? AND verb = 'stop' AND status != 'failed' AND target_generation = ? AND json_extract(args, '$.reason') = ? LIMIT 1",
+    ).get(beeId, generation, THREAD_WRITER_LOCKED_STOP_REASON) !== undefined;
   }
 
   private threadWriterLockedFlag(beeId: string): FlagRow | null {
@@ -3761,6 +3790,11 @@ export class CoreStore {
       .get(beeId) as Row | undefined;
     const flag = row ? mapFlag(row) : null;
     return flag && isThreadWriterLockedDetail(flag.detail) ? flag : null;
+  }
+
+  private applyThreadWriterLockRetriesStopped(beeId: string): void {
+    const flag = this.threadWriterLockedFlag(beeId);
+    if (flag && flag.detail !== THREAD_WRITER_LOCKED_STOPPED_DETAIL) this.applySetFlag(beeId, "resource_blocked", THREAD_WRITER_LOCKED_STOPPED_DETAIL);
   }
 
   private applyClearThreadWriterLocked(beeId: string, reason: string): void {
@@ -3775,7 +3809,7 @@ export class CoreStore {
    * mail stays durable; the operator's revive is the way back. Deferred by the
    * B5 backoff table when the bee has consecutive boot failures.
    */
-  private applyWakeIfNeeded(beeId: string): WakeResult {
+  private applyWakeIfNeeded(beeId: string, opts: { freshMail?: boolean } = {}): WakeResult {
     const bee = this.mustGetBee(beeId);
     if (isInboxAgent(bee.agent)) return { command: null, outcome: "mailbox_only" };
     if (!this.batchingWakeEligible(beeId)) return { command: null, outcome: "no_mail" };
@@ -3820,6 +3854,14 @@ export class CoreStore {
         spawnFailures: bee.spawnFailures,
       });
       return { command: null, outcome: "suppressed" };
+    }
+    if (current && this.threadWriterLockRetriesExhausted(beeId, current, current.updatedAt)) {
+      this.applyThreadWriterLockRetriesStopped(beeId);
+      if (opts.freshMail !== true) {
+        this.audit("wake.suppressed", beeId, { beeId, targetGeneration, reason: THREAD_WRITER_LOCKED_STOP_REASON });
+        return { command: null, outcome: "suppressed" };
+      }
+      return { command: this.applyEnqueue("send_wake", beeId, {}, targetGeneration, null, undefined), outcome: "enqueued" };
     }
     const command = this.applyEnqueue("send_wake", beeId, {}, targetGeneration, null, this.wakeNotBefore(bee, current));
     return { command, outcome: "enqueued" };
@@ -5249,7 +5291,7 @@ export class CoreStore {
       if (sender !== TASK_SUPPLY_SENDER_NAME) {
         this.applyResetTaskSupplyFeeds(beeId);
       }
-      const wakeCommand = this.applyWakeIfNeeded(beeId).command;
+      const wakeCommand = this.applyWakeIfNeeded(beeId, { freshMail: true }).command;
       return { message, wakeCommand, unarchived };
     });
   }
@@ -7066,7 +7108,7 @@ export class CoreStore {
       bee,
       runtime,
       flags.map((f) => f.flag),
-      { ...opts, runtimeStartHeld: flags.some(row => row.flag === "resource_blocked" && row.detail.startsWith("runtime_start_held:")), deliveryConfirmations: this.deliveryConfirmations(beeId), automaticQuotaRecovery: automaticQuotaRecovery(bee, runtime, this.liveQuotaRecoveries(beeId)) },
+      { ...opts, threadWriterLock: flags.map(threadWriterLockState).find(state => state !== null) ?? null, runtimeStartHeld: flags.some(row => row.flag === "resource_blocked" && row.detail.startsWith("runtime_start_held:")), deliveryConfirmations: this.deliveryConfirmations(beeId), automaticQuotaRecovery: automaticQuotaRecovery(bee, runtime, this.liveQuotaRecoveries(beeId)) },
     );
   }
 
@@ -7148,6 +7190,7 @@ export class CoreStore {
 
     const flagsByBee = new Map<string, Flag[]>();
     const runtimeStartHeld = new Set<string>();
+    const threadWriterLocks = new Map<string, ThreadWriterLockState>();
     const activeFlagRows = this.stmt(
       "SELECT * FROM flags WHERE cleared_at IS NULL ORDER BY bee_id, id",
     ).all() as Row[];
@@ -7156,6 +7199,8 @@ export class CoreStore {
       if (!selected.has(row.beeId)) continue;
       flagsByBee.set(row.beeId, [...(flagsByBee.get(row.beeId) ?? []), row.flag]);
       if (row.flag === "resource_blocked" && row.detail.startsWith("runtime_start_held:")) runtimeStartHeld.add(row.beeId);
+      const lockState = threadWriterLockState(row);
+      if (lockState) threadWriterLocks.set(row.beeId, lockState);
     }
 
     const recoveriesByBee = new Map<string, QuotaRecoveryRow[]>();
@@ -7215,7 +7260,7 @@ export class CoreStore {
       return {
         bee,
         runtime,
-        view: deriveBeeView(bee.id, bee, runtime, flagsByBee.get(bee.id) ?? [], { runtimeStartHeld: runtimeStartHeld.has(bee.id), deliveryConfirmations: confirmationsByBee.get(bee.id), automaticQuotaRecovery: automaticQuotaRecovery(bee, runtime, recoveriesByBee.get(bee.id) ?? []) }),
+        view: deriveBeeView(bee.id, bee, runtime, flagsByBee.get(bee.id) ?? [], { runtimeStartHeld: runtimeStartHeld.has(bee.id), threadWriterLock: threadWriterLocks.get(bee.id) ?? null, deliveryConfirmations: confirmationsByBee.get(bee.id), automaticQuotaRecovery: automaticQuotaRecovery(bee, runtime, recoveriesByBee.get(bee.id) ?? []) }),
         move: move ? toBeeMoveView(mapBeeMove(move)) : null,
         cell: bee.cellId ? (cellsById.get(bee.cellId) ?? null) : null,
         handoff: handoff ? toBeeHandoffView(handoff) : null,

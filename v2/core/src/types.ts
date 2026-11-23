@@ -39,11 +39,21 @@ export const FLAGS = [
 export type Flag = (typeof FLAGS)[number];
 
 export const THREAD_WRITER_LOCKED_DETAIL_PREFIX = "thread_writer_locked:";
+export const THREAD_WRITER_LOCKED_RETRYING_DETAIL = `${THREAD_WRITER_LOCKED_DETAIL_PREFIX} retrying: thread is open in another Codex app or process — close it there`;
+export const THREAD_WRITER_LOCKED_STOPPED_DETAIL = `${THREAD_WRITER_LOCKED_DETAIL_PREFIX} retries_stopped: thread is open in another Codex app or process — close it there, then send a message or try again`;
+export const THREAD_WRITER_LOCKED_STOP_REASON = "thread_writer_locked";
 export const THREAD_WRITER_LOCKED_RETRY_MIN_MS = 15_000;
 export const THREAD_WRITER_LOCKED_RETRY_MAX_MS = 5 * 60_000;
+export const THREAD_WRITER_LOCKED_AUTO_RETRY_WINDOW_MS = 30 * 60_000;
+export type ThreadWriterLockState = "retrying" | "retries_stopped";
 
 export function isThreadWriterLockedDetail(detail: string | null | undefined): boolean {
   return typeof detail === "string" && detail.startsWith(THREAD_WRITER_LOCKED_DETAIL_PREFIX);
+}
+
+export function threadWriterLockState(flag: { flag: string; detail: string | null }): ThreadWriterLockState | null {
+  if (flag.flag !== "resource_blocked" || !isThreadWriterLockedDetail(flag.detail)) return null;
+  return flag.detail === THREAD_WRITER_LOCKED_STOPPED_DETAIL ? "retries_stopped" : "retrying";
 }
 
 /**
@@ -1034,6 +1044,7 @@ export interface TaskSupplyRow {
 /** B8 — the derived read model. Computed, never stored. */
 export interface BeeView extends Partial<HumanOutputFacts> {
   deliveryConfirmations?: DeliveryConfirmation[];
+  threadWriterLock?: ThreadWriterLockState;
   beeId: string;
   exists: boolean;
   lifecycle: Lifecycle | null;

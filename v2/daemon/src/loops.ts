@@ -60,6 +60,7 @@ import {
   buildExtractiveHandoffContext,
   handoffFencesSource,
   isThreadWriterLockedDetail,
+  THREAD_WRITER_LOCKED_STOP_REASON,
   placementContextText,
   prefixPlacementDelivery,
   type ActionRow,
@@ -840,7 +841,7 @@ export class DaemonCore {
       // (I1) — on the boot-failure backoff table, and never while spawn_failed
       // is set (visibly blocked; the operator's revive is the way back).
       this.ensureWake(obs.beeId);
-      if (bootRetryNeeded) this.ensureBootRetry(obs.beeId);
+      if (bootRetryNeeded || this.store.wasThreadWriterLockStop(obs.beeId, obs.generation)) this.ensureBootRetry(obs.beeId);
       this.reviveAfterStopIfRequested(obs.beeId, obs.generation);
       this.releaseBeeTmp(obs.beeId);
     } else if (obs.kind === "booted") {
@@ -892,7 +893,7 @@ export class DaemonCore {
   private ensureWake(beeId: string): boolean {
     const { command, outcome } = this.store.enqueueWake(beeId);
     if (outcome === "suppressed") {
-      this.log(`wake.suppressed bee=${beeId} flag=spawn_failed`);
+      this.log(`wake.suppressed bee=${beeId}`);
       return false;
     }
     if (outcome !== "enqueued" || !command) return false;
@@ -974,12 +975,13 @@ export class DaemonCore {
       }
       this.store.transact(() => {
         if (ev.quota && ev.eventId) this.store.recordQuotaEvidence({ eventId: ev.eventId, ...(ev.sourceId ? { sourceId: ev.sourceId } : {}), beeId: ev.beeId, generation: ev.generation, quota: ev.quota, turn: ev.turn ?? { messageIds: [], progress: "unknown" } });
-        if (ev.action === "set") {
+        if (ev.action === "set" && ev.flag === "resource_blocked" && isThreadWriterLockedDetail(ev.detail)) {
+          this.applyThreadWriterLockEvidence(ev.beeId, ev.generation);
+        } else if (ev.action === "set") {
           this.store.setFlag(ev.beeId, ev.flag, ev.detail, { resetsAt: ev.resetsAt ?? null });
           this.log(
             `flag.set bee=${ev.beeId} flag=${ev.flag} gen=${ev.generation}${ev.resetsAt != null ? ` resetsAt=${new Date(ev.resetsAt).toISOString()}` : ""}`,
           );
-          if (ev.flag === "resource_blocked" && isThreadWriterLockedDetail(ev.detail)) this.stopThreadWriterLockedBoot(ev.beeId, ev.generation);
         } else {
           // Every clean turn re-emits contrary evidence; clearing an unset flag
           // is a store no-op — logging it too was pure noise (soak day-2).
@@ -1105,11 +1107,18 @@ export class DaemonCore {
     }
   }
 
-  private stopThreadWriterLockedBoot(beeId: string, generation: number): void {
+  private applyThreadWriterLockEvidence(beeId: string, generation: number): void {
+    const other = this.store.activeFlags(beeId).find((flag) => flag.flag === "resource_blocked" && !isThreadWriterLockedDetail(flag.detail));
+    if (other) {
+      this.log(`flag.kept bee=${beeId} flag=resource_blocked gen=${generation} reason=thread_writer_locked`);
+    } else {
+      this.store.setFlag(beeId, "resource_blocked", this.store.threadWriterLockDetail(beeId, this.now()));
+      this.log(`flag.set bee=${beeId} flag=resource_blocked gen=${generation} reason=thread_writer_locked`);
+    }
     const rt = this.store.currentRuntime(beeId);
     if (!rt || rt.generation !== generation || rt.state !== "booting") return;
     if (this.store.hasPendingStopCommand(beeId, generation)) return;
-    this.store.enqueueCommand("stop", beeId, { cause: "stopped_by_system", reason: "thread_writer_locked" });
+    this.store.enqueueCommand("stop", beeId, { cause: "stopped_by_system", reason: THREAD_WRITER_LOCKED_STOP_REASON });
     this.log(`policy.thread_writer_locked_stop bee=${beeId} gen=${generation}`);
   }
 

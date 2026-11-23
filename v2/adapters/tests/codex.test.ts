@@ -408,16 +408,13 @@ test("codex: fresh delivery starts a turn and refuses every known active turn", 
   assert.ok(adapter.parseLine(JSON.stringify({id: request.id, error: {message: "active turn"}})).some(signal => signal.kind === "delivery_refused" && signal.messageId === 41));
 });
 
-test("codex: a thread/resume refused for another active writer is a thread-lock reason, not silence", async () => {
-  const { THREAD_WRITER_LOCKED_DETAIL_PREFIX } = await import("../../core/src/types.ts");
-  const refusal = JSON.stringify({ error: { code: -32600, message: "thread 01a1f446 already has an active writer" }, id: 2 });
-  const resumed = codexAdapter({ cwd: "/tmp/w", resumeThreadId: "01a1f446" }).parseLine(refusal);
-  assert.equal(resumed.length, 1);
-  const [signal] = resumed;
-  assert.equal(signal?.kind, "flag");
-  assert.ok(signal?.kind === "flag" && signal.flag === "resource_blocked" && signal.action === "set");
-  assert.ok(signal.detail.startsWith(THREAD_WRITER_LOCKED_DETAIL_PREFIX));
-  assert.match(signal.detail, /thread is open in ChatGPT\/Codex app — close it there/);
-  assert.match(signal.detail, /already has an active writer/);
+test("codex: a thread/resume refused for another active writer is a thread-lock reason without the thread id", async () => {
+  const { THREAD_WRITER_LOCKED_RETRYING_DETAIL } = await import("../../core/src/types.ts");
+  const { isQuotaTextFallback } = await import("../src/quota.ts");
+  const refusal = JSON.stringify({ error: { code: -32600, message: "thread 01a1f446-4290-7429-a429-000000000429 already has an active writer" }, id: 2 });
+  const resumed = codexAdapter({ cwd: "/tmp/w", resumeThreadId: "01a1f446-4290-7429-a429-000000000429" }).parseLine(refusal);
+  assert.deepEqual(resumed, [{ kind: "flag", flag: "resource_blocked", action: "set", detail: THREAD_WRITER_LOCKED_RETRYING_DETAIL }]);
+  assert.match(THREAD_WRITER_LOCKED_RETRYING_DETAIL, /another Codex app or process — close it there/);
+  assert.equal(isQuotaTextFallback(THREAD_WRITER_LOCKED_RETRYING_DETAIL), false);
   assert.deepEqual(codexAdapter({ cwd: "/tmp/w" }).parseLine(refusal), [], "a fresh thread/start never owns this reason");
 });
