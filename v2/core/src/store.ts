@@ -3766,7 +3766,9 @@ export class CoreStore {
     ).get(beeId, THREAD_WRITER_LOCKED_STOP_REASON, beeId) as Row | undefined;
     const stops = Number(row?.stops ?? 0);
     if (stops === 0) return null;
-    return { stops, startedAt: Number(row!.started_at), lastStop: current?.state === "stopped" && Number(row!.last_generation) === current.generation };
+    const lastStop = current?.state === "stopped" && Number(row!.last_generation) === current.generation
+      && current.exitCause !== "stopped_by_user" && !this.hasUserStop(beeId, current.generation);
+    return { stops, startedAt: Number(row!.started_at), lastStop };
   }
 
   private threadWriterLockRetriesExhausted(beeId: string, current: RuntimeRow | null, at: number): boolean {
@@ -3775,8 +3777,7 @@ export class CoreStore {
   }
 
   private threadWriterLockRetriesEnded(bee: BeeRow, current: RuntimeRow | null): boolean {
-    if (!current || !this.threadWriterLockEpisode(bee.id, current)?.lastStop) return false;
-    return bee.lifecycle === "archived" || current.exitCause === "stopped_by_user" || this.hasUserStop(bee.id, current.generation);
+    return bee.lifecycle === "archived" && current !== null && this.threadWriterLockEpisode(bee.id, current)?.lastStop === true;
   }
 
   hasUserStop(beeId: string, generation: number): boolean {
@@ -5969,6 +5970,10 @@ export class CoreStore {
       }
       const command = this.applyEnqueue(verb as Verb, beeId, args, targetGeneration, key ?? null, opts.notBefore);
       if (superseded && verb !== "delete" && this.undeliveredMessages(beeId).some(message => message.deliveryHold?.stage !== "held")) {
+        this.applyWakeIfNeeded(beeId);
+      }
+      const stopped = this.currentRuntime(beeId);
+      if (verb === "stop" && args.cause === "stopped_by_user" && stopped?.state === "stopped" && this.wasThreadWriterLockStop(beeId, stopped.generation) && this.undeliveredMessages(beeId).some(message => message.deliveryHold?.stage !== "held")) {
         this.applyWakeIfNeeded(beeId);
       }
       return { ...command, deduped: false };

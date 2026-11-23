@@ -1,0 +1,162 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { openCoreStore, THREAD_WRITER_LOCKED_RETRYING_DETAIL, type CoreStore } from "../../core/src/index.ts";
+import { DaemonCore, type DaemonPolicy, type I1ViolationEvent } from "../src/loops.ts";
+import { FakeDriver } from "./helpers.ts";
+
+interface Rig {
+  dir: string;
+  store: CoreStore;
+  driver: FakeDriver;
+  core: DaemonCore;
+  clock: { now: number };
+  violations: I1ViolationEvent[];
+  ops: string[];
+  cleanup: () => void;
+}
+
+function makeRig(policy: Partial<DaemonPolicy> = {}): Rig {
+  const dir = mkdtempSync(join(tmpdir(), "hb-v2-loops-"));
+  const clock = { now: 1000 };
+  const now = (): number => clock.now;
+  const store = openCoreStore(join(dir, "core.sqlite3"), { now, maxAttempts: 3, backoffBaseMs: 1, ephemeral: true });
+  const driver = new FakeDriver(now);
+  const violations: I1ViolationEvent[] = [];
+  const ops: string[] = [];
+  const core = new DaemonCore({
+    store,
+    driver,
+    policy: {
+      bootHangTimeoutSteps: 50,
+      commandsPerStep: 8,
+      ...policy,
+    },
+    now,
+    log: (op) => ops.push(op),
+    onI1Violation: (v) => violations.push(v),
+  });
+  core.boot();
+  return {
+    dir,
+    store,
+    driver,
+    core,
+    clock,
+    violations,
+    ops,
+    cleanup: () => {
+      store.close();
+      rmSync(dir, { recursive: true, force: true });
+    },
+  };
+}
+
+const D = THREAD_WRITER_LOCKED_RETRYING_DETAIL;
+const setup = (): Rig => { const rig = makeRig({ i1DeadlineSteps: 10_000_000, bootHangTimeoutSteps: 60 * 60_000 }); rig.driver.autoBoot = false; rig.store.createBee({ id: "b", name: "b", agent: "stub", substrate: "hsr", cwd: "/tmp" }); rig.store.enqueueCommand("spawn", "b"); rig.core.step(); return rig; };
+const lock = (rig: Rig): void => { const generation = rig.store.currentRuntime("b")!.generation; rig.driver.evidence.push({ beeId: "b", generation, flag: "resource_blocked", action: "set", detail: D }); rig.core.step(); rig.core.step(); };
+const human = (rig: Rig, body: string) => rig.store.send("b", body, { humanChat: { version: 1, authorityId: "apiary", admissionId: body, beeId: "b", bodySha256: createHash("sha256").update(body).digest("hex"), idempotencyKey: body } } as never).message;
+const stopUser = (rig: Rig): void => { rig.store.enqueueCommand("stop", "b", { cause: "stopped_by_user" }); rig.core.step(); rig.core.step(); };
+const batchedAfterHumanTurn = (): Rig => {
+  const rig = makeRig({ i1DeadlineSteps: 10_000_000, bootHangTimeoutSteps: 60 * 60_000, idleWindowSteps: null } as Partial<DaemonPolicy>);
+  rig.store.createBee({ id: "b", name: "b", agent: "stub", substrate: "hsr", cwd: "/tmp" });
+  rig.store.enqueueCommand("spawn", "b");
+  for (let i = 0; i < 4; i++) rig.core.step();
+  rig.store.setMailBatchingPolicy("b", true);
+  human(rig, "h1");
+  rig.core.step();
+  const generation = rig.store.currentRuntime("b")!.generation;
+  rig.driver.events.push({ beeId: "b", generation, kind: "turn_started" });
+  rig.driver.events.push({ beeId: "b", generation, kind: "turn_ended" });
+  rig.core.step();
+  rig.core.step();
+  stopUser(rig);
+  rig.driver.autoBoot = false;
+  rig.store.enqueueCommand("revive", "b");
+  rig.core.step();
+  rig.core.step();
+  return rig;
+};
+
+for (const withLock of [true, false]) test(`lock-mail.1: mail released from batching after a user stop wakes the bee the same way with lock=${withLock}`, () => {
+  const rig = batchedAfterHumanTurn();
+  try {
+    if (withLock) lock(rig);
+    stopUser(rig);
+    const starts = rig.driver.starts.length;
+    rig.store.send("b", "peer during window", { sender: "bee-x" });
+    for (let i = 0; i < 8; i++) { rig.clock.now += 120_001; rig.core.step(); rig.core.step(); }
+    assert.equal(rig.driver.starts.length - starts, 1);
+    assert.equal(rig.store.auditRows().filter((row) => row.kind === "wake.suppressed").length, 0);
+    assert.deepEqual(rig.store.activeFlags("b"), []);
+  } finally {
+    rig.cleanup();
+  }
+});
+
+for (const withLock of [true, false]) test(`lock-mail.2: accepted mail still gets a wake after a user stop with lock=${withLock}`, () => {
+  const rig = setup();
+  try {
+    rig.store.send("b", "queued before the stop", { sender: "bee-x" });
+    rig.core.step();
+    if (withLock) lock(rig);
+    const starts = rig.driver.starts.length;
+    rig.store.enqueueCommand("stop", "b", { cause: "stopped_by_user" });
+    for (let i = 0; i < 3; i++) rig.core.step();
+    for (let i = 0; i < 6; i++) { rig.clock.now += 10 * 60_000; rig.core.step(); rig.core.step(); }
+    assert.equal(rig.driver.starts.length - starts, 1, "one wake for the held mail, as without a lock");
+    assert.equal(rig.store.getBee("b")!.lifecycle, "active");
+  } finally {
+    rig.cleanup();
+  }
+});
+
+test("lock-mail.3: an archived bee in lock back-off stays archived with held mail until fresh mail arrives", () => {
+  const rig = setup();
+  try {
+    rig.store.send("b", "queued before the archive", { sender: "bee-x" });
+    rig.core.step();
+    lock(rig);
+    const starts = rig.driver.starts.length;
+    rig.store.enqueueCommand("archive", "b");
+    for (let i = 0; i < 3; i++) rig.core.step();
+    for (let i = 0; i < 6; i++) { rig.clock.now += 10 * 60_000; rig.core.step(); rig.core.step(); }
+    assert.equal(rig.store.getBee("b")!.lifecycle, "archived");
+    assert.equal(rig.driver.starts.length, starts);
+    rig.store.send("b", "fresh mail", { sender: "bee-x" });
+    rig.core.step();
+    rig.core.step();
+    assert.equal(rig.driver.starts.length - starts, 1);
+  } finally {
+    rig.cleanup();
+  }
+});
+
+test("lock-mail.4: lock evidence arriving after a pending user stop ends in a quiet stopped bee", () => {
+  const rig = setup();
+  try {
+    const stop = rig.driver.stop.bind(rig.driver);
+    rig.driver.stop = () => ({ hadProcess: true });
+    rig.store.enqueueCommand("stop", "b", { cause: "stopped_by_user" });
+    rig.core.step();
+    rig.driver.evidence.push({ beeId: "b", generation: 1, flag: "resource_blocked", action: "set", detail: D });
+    rig.core.step();
+    rig.driver.stop = stop;
+    rig.driver.procs.delete("b");
+    rig.driver.events.push({ beeId: "b", generation: 1, kind: "exited", exitCause: "stopped_by_user" });
+    rig.core.step();
+    rig.core.step();
+    const starts = rig.driver.starts.length;
+    rig.clock.now += 2 * 60 * 60_000;
+    rig.core.step();
+    rig.core.step();
+    assert.equal(rig.driver.starts.length, starts);
+    assert.equal(rig.store.view("b").threadWriterLock, undefined);
+    assert.deepEqual(rig.store.activeFlags("b"), []);
+  } finally {
+    rig.cleanup();
+  }
+});
