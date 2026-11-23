@@ -1110,6 +1110,11 @@ export class DaemonCore {
   }
 
   private applyThreadWriterLockEvidence(beeId: string, generation: number): void {
+    const rt = this.store.currentRuntime(beeId);
+    if (!rt || rt.generation !== generation || rt.state !== "booting" || this.store.hasPendingStopCommand(beeId, generation)) {
+      this.log(`thread_writer_locked.no_retry bee=${beeId} gen=${generation}`);
+      return;
+    }
     const other = this.store.activeFlags(beeId).find((flag) => flag.flag === "resource_blocked" && !isThreadWriterLockedDetail(flag.detail));
     if (other) {
       this.log(`flag.kept bee=${beeId} flag=resource_blocked gen=${generation} reason=thread_writer_locked`);
@@ -1117,9 +1122,6 @@ export class DaemonCore {
       this.store.setFlag(beeId, "resource_blocked", this.store.threadWriterLockDetail(beeId, this.now()));
       this.log(`flag.set bee=${beeId} flag=resource_blocked gen=${generation} reason=thread_writer_locked`);
     }
-    const rt = this.store.currentRuntime(beeId);
-    if (!rt || rt.generation !== generation || rt.state !== "booting") return;
-    if (this.store.hasPendingStopCommand(beeId, generation)) return;
     this.store.enqueueCommand("stop", beeId, { cause: "stopped_by_system", reason: THREAD_WRITER_LOCKED_STOP_REASON });
     this.log(`policy.thread_writer_locked_stop bee=${beeId} gen=${generation}`);
   }

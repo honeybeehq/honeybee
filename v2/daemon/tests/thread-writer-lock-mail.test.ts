@@ -245,3 +245,28 @@ test("lock-mail.7: the same user stop after the window still gives held mail one
     rig.cleanup();
   }
 });
+
+test("lock-mail.8: lock evidence that schedules no stop never raises the retrying flag", () => {
+  for (const shape of ["pending_stop", "stale_generation", "not_booting"] as const) {
+    const rig = setup();
+    try {
+      const generation = rig.store.currentRuntime("b")!.generation;
+      if (shape === "pending_stop") {
+        rig.driver.stop = () => ({ hadProcess: true });
+        rig.store.enqueueCommand("stop", "b", { cause: "stopped_by_system", reason: "hang_policy" });
+        rig.core.step();
+      }
+      if (shape === "not_booting") {
+        rig.driver.events.push({ beeId: "b", generation, kind: "booted", pid: rig.driver.procs.get("b")!.pid, pidStartedAt: rig.clock.now });
+        rig.driver.events.push({ beeId: "b", generation, kind: "turn_ended" });
+        rig.core.step();
+      }
+      const evidenceGeneration = shape === "stale_generation" ? generation + 1 : generation;
+      rig.store.transact(() => (rig.core as unknown as { applyThreadWriterLockEvidence(beeId: string, generation: number): void }).applyThreadWriterLockEvidence("b", evidenceGeneration));
+      assert.equal(rig.store.view("b").threadWriterLock, undefined, shape);
+      assert.deepEqual(rig.store.activeFlags("b"), [], shape);
+    } finally {
+      rig.cleanup();
+    }
+  }
+});
