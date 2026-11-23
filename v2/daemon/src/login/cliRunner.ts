@@ -9,6 +9,7 @@
  * Events are bound to THIS runner: a superseded worker (cancel → retry,
  * method switch) whose exit lands late is dropped by the host.
  */
+import { firstRunnableCommand, withPathDir } from "./runnableCommand.ts";
 import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { recipeFor, resolveSpawnCommand, safeAuthorizationUrl, type LoginCliSpec, type LoginFieldDescriptor, type LoginFlowRow } from "../../../core/src/index.ts";
@@ -96,10 +97,18 @@ export class CliRunner implements LoginRunner {
     // F8 — same one resolution rule as agent spawns: the worker's minimal
     // env has a minimal PATH, so a bare vendor CLI name must resolve through
     // core (PATH + fallback dirs) or fail with an honest ENOENT.
-    const { command } = resolveSpawnCommand(launch.command, { env });
+    const candidates = launch === recipe.login && recipe.login.fallbackCommands ? [recipe.login.command, ...recipe.login.fallbackCommands] : null;
+    const runnable = candidates ? await firstRunnableCommand(candidates, env) : null;
+    if (!host.isCurrent(this) || !host.stillActive()) return host.flow() as LoginFlowRow;
+    if (candidates && runnable === null) {
+      return host.fail(err("cli_missing", `The ${account.harness} CLI could not run on this node (tried ${candidates.join(", ")}). ${recipe.login.unrunnableHint ?? "Install it, then retry."}`), true);
+    }
+    const command = runnable?.path ?? resolveSpawnCommand(launch.command, { env }).command;
+    if (runnable?.ideBinDir) host.log(`account.login.cursor_ide_path flow=${host.flowId} dir=${runnable.ideBinDir}`);
+    const workerEnv = runnable?.ideBinDir ? withPathDir(env, runnable.ideBinDir) : env;
     const worker = new LoginWorker({
       spawner,
-      launch: { command, args: [...(launch.args ?? [])], cwd: account.homePath, env },
+      launch: { command, args: [...(launch.args ?? [])], cwd: account.homePath, env: workerEnv },
       cues: this.spec.cues,
       now: host.now,
       killGraceMs: host.workerKillGraceMs,

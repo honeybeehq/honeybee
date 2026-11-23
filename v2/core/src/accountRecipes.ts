@@ -62,7 +62,7 @@ export interface IdentityRecipe {
    * TUIs are reserved for tools whose login still lives in the TUI. Node
    * config `agents.<a>.login` overrides it.
    */
-  login: { command: string; args: string[] };
+  login: { command: string; args: string[]; fallbackCommands?: string[]; unrunnableHint?: string };
   /**
    * The tmux-independent login contract (2026-08-28): the methods the
    * account can be logged in with, how each one runs, and how the daemon
@@ -825,7 +825,7 @@ export const ACCOUNT_RECIPES: Readonly<Record<string, IdentityRecipe>> = {
     // The machine-global credential store (Keychain / global auth.json) is
     // read by the daemon's Cursor bridge; only cli-config.json is home-relative.
     vendorHome: { dir: ".cursor" },
-    login: { command: "agent", args: ["login"] },
+    login: { command: "agent", args: ["login"], fallbackCommands: ["cursor-agent"], unrunnableHint: "Install the Cursor IDE and put its `cursor` command on PATH, then retry." },
     loginFlow: {
       defaultMethodId: "cursor-browser",
       methods: [

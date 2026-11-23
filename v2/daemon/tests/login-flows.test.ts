@@ -30,6 +30,7 @@ import { loadNodeConfig, type NodeConfigFile, type ResolvedNodeConfig } from "..
 import { LoginFlowService, LoginFlowRefusal, MUSE_OAUTH_CLIENT_ID, WORKER_ENV_ALLOWLIST, claudeAuthorizeUrl, legacyLoginSeatName, museDeviceAuthorize, museDeviceToken, plausibleApiKey, splitClaudeCode, workerBaseEnv, type LoginTransports } from "../src/loginFlows.ts";
 import { DENIED, DROP, EXPIRED, PENDING, SLOW_DOWN, deviceAuthorization, granted, startFakeMetaDevice, type FakeMetaDevice } from "./fixtures/fake-meta-device.ts";
 import { pipeSpawner } from "../src/loginWorker.ts";
+import { cursorIdeBinDirs } from "../src/login/runnableCommand.ts";
 import { parseCursorAuth, type CursorAuthSnapshot } from "../src/cursorAuth.ts";
 import { waitFor } from "./helpers.ts";
 
@@ -1089,6 +1090,82 @@ test("flows.cursor-stale-sign-in: a clean cursor-agent exit with an expired mach
     assert.equal(done.error?.code, "credential_stale");
     assert.match(done.error?.message ?? "", /has expired; nothing was changed\. Sign in to Cursor again, then: hive account login cursor-a/);
   } finally {
+    r.cleanup();
+  }
+});
+
+function cursorCommandBin(r: Rig, scripts: Record<string, string>): string {
+  const bin = join(r.dir, "cursor-bin");
+  mkdirSync(bin, { recursive: true });
+  for (const [name, body] of Object.entries(scripts)) writeFileSync(join(bin, name), `#!/bin/sh\n${body}\n`, { mode: 0o755 });
+  return bin;
+}
+
+test("flows.cursor-command: a login falls back to cursor-agent when agent resolves but cannot run", async () => {
+  const r = rig();
+  try {
+    const live = fakeCursorJwt("auth0|user_a", r.now() + 3_600_000, "live");
+    const bin = cursorCommandBin(r, {
+      agent: "echo 'Error: No Cursor IDE installation found.' >&2; exit 1",
+      "cursor-agent": `if [ "$1" = "--version" ]; then echo 1.0; exit 0; fi; exec "${process.execPath}" "${FAKE_CLI}" "$@"`,
+    });
+    r.cfg.agents.cursor = { command: process.execPath, args: [], adapter: "cursor", env: { PATH: `${bin}:/usr/bin:/bin`, FAKE_LOGIN_HOME_ENV: "CURSOR_CONFIG_DIR", FAKE_LOGIN_FILE: "cli-config.json", FAKE_CLI_EXIT_NO_CRED_MS: "100" } } as never;
+    const { flows } = services(r, { cursorAuthReader: async () => parseCursorAuth(JSON.stringify({ accessToken: live }), "keychain") });
+    const acct = cursorAccountHolding(r, "a", fakeCursorJwt("auth0|user_a", r.now() - 60_000, "old"));
+    const { flow } = await flows.start(acct);
+    const done = await waitFor(() => {
+      const f = r.store.getLoginFlow(flow.id) as LoginFlowRow;
+      return f.phase === "succeeded" || f.phase === "failed" ? f : null;
+    }, "settled", 8000, 20);
+    assert.equal(done.phase, "succeeded", JSON.stringify(done.error));
+  } finally {
+    r.cleanup();
+  }
+});
+
+test("flows.cursor-command: when no Cursor command runs, the login says the Cursor IDE and its cursor command are needed", async () => {
+  const r = rig();
+  try {
+    const bin = cursorCommandBin(r, { agent: "exit 1", "cursor-agent": "exit 1" });
+    r.cfg.agents.cursor = { command: process.execPath, args: [], adapter: "cursor", env: { PATH: `${bin}:/usr/bin:/bin` } } as never;
+    const { flows } = services(r, { cursorAuthReader: async () => null });
+    const acct = cursorAccountHolding(r, "a", fakeCursorJwt("auth0|user_a", r.now() + 3_600_000, "held"));
+    const { flow } = await flows.start(acct);
+    const done = await waitFor(() => {
+      const f = r.store.getLoginFlow(flow.id) as LoginFlowRow;
+      return f.phase === "failed" ? f : null;
+    }, "failed", 8000, 20);
+    assert.equal(done.error?.code, "cli_missing");
+    assert.match(done.error?.message ?? "", /tried agent, cursor-agent.*Install the Cursor IDE and put its `cursor` command on PATH/);
+  } finally {
+    r.cleanup();
+  }
+});
+
+test("flows.cursor-command: Cursor installed in a standard location off the daemon PATH is used, and the log says so", async () => {
+  const r = rig();
+  const savedHome = process.env.HOME;
+  try {
+    const home = join(r.dir, "user-home");
+    process.env.HOME = home;
+    const ideBin = cursorIdeBinDirs(process.platform, home).find((dir) => dir.startsWith(home))!;
+    mkdirSync(ideBin, { recursive: true });
+    writeFileSync(join(ideBin, "cursor"), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+    const live = fakeCursorJwt("auth0|user_a", r.now() + 3_600_000, "live");
+    const needsCursor = `command -v cursor >/dev/null || { echo 'Error: No Cursor IDE installation found.' >&2; exit 1; }; if [ "$1" = "--version" ]; then echo 1.0; exit 0; fi; exec "${process.execPath}" "${FAKE_CLI}" "$@"`;
+    const bin = cursorCommandBin(r, { agent: needsCursor, "cursor-agent": needsCursor });
+    r.cfg.agents.cursor = { command: process.execPath, args: [], adapter: "cursor", env: { PATH: `${bin}:/usr/bin:/bin`, FAKE_LOGIN_HOME_ENV: "CURSOR_CONFIG_DIR", FAKE_LOGIN_FILE: "cli-config.json", FAKE_CLI_EXIT_NO_CRED_MS: "100" } } as never;
+    const { flows } = services(r, { cursorAuthReader: async () => parseCursorAuth(JSON.stringify({ accessToken: live }), "keychain") });
+    const acct = cursorAccountHolding(r, "a", fakeCursorJwt("auth0|user_a", r.now() - 60_000, "old"));
+    const { flow } = await flows.start(acct);
+    const done = await waitFor(() => {
+      const f = r.store.getLoginFlow(flow.id) as LoginFlowRow;
+      return f.phase === "succeeded" || f.phase === "failed" ? f : null;
+    }, "settled", 8000, 20);
+    assert.equal(done.phase, "succeeded", JSON.stringify(done.error));
+    assert.ok(r.log.includes(`account.login.cursor_ide_path flow=${flow.id} dir=${ideBin}`));
+  } finally {
+    process.env.HOME = savedHome;
     r.cleanup();
   }
 });
