@@ -827,6 +827,7 @@ export class DaemonCore {
         // stops on one per-bee budget across wake-driven revives.
         const failures = this.store.getBee(obs.beeId)?.spawnFailures ?? 0;
         if (failures > failuresBefore) {
+          if (!this.store.wasThreadWriterLockStop(obs.beeId, obs.generation)) this.store.endThreadWriterLock(obs.beeId, "boot failed for another reason");
           const flagged = this.store.activeFlags(obs.beeId).some((f) => f.flag === "spawn_failed");
           this.log(`spawn.failure bee=${obs.beeId} gen=${obs.generation} failures=${failures} flagged=${flagged}`);
           try {

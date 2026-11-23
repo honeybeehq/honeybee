@@ -3771,9 +3771,13 @@ export class CoreStore {
     return { stops, startedAt: Number(row!.started_at), lastStop };
   }
 
+  private threadWriterLockWindowExpired(lock: { startedAt: number } | null, at: number): boolean {
+    return lock !== null && at - Math.min(lock.startedAt, at) >= this.threadWriterLockRetryWindowMs;
+  }
+
   private threadWriterLockRetriesExhausted(beeId: string, current: RuntimeRow | null, at: number): boolean {
     const lock = this.threadWriterLockEpisode(beeId, current);
-    return lock !== null && at - Math.min(lock.startedAt, at) >= this.threadWriterLockRetryWindowMs;
+    return lock?.lastStop === true && this.threadWriterLockWindowExpired(lock, at);
   }
 
   private threadWriterLockRetriesEnded(bee: BeeRow, current: RuntimeRow | null): boolean {
@@ -3795,7 +3799,7 @@ export class CoreStore {
   }
 
   threadWriterLockDetail(beeId: string, at: number): string {
-    return this.threadWriterLockRetriesExhausted(beeId, this.currentRuntime(beeId), at) ? THREAD_WRITER_LOCKED_STOPPED_DETAIL : THREAD_WRITER_LOCKED_RETRYING_DETAIL;
+    return this.threadWriterLockWindowExpired(this.threadWriterLockEpisode(beeId, this.currentRuntime(beeId)), at) ? THREAD_WRITER_LOCKED_STOPPED_DETAIL : THREAD_WRITER_LOCKED_RETRYING_DETAIL;
   }
 
   wasThreadWriterLockStop(beeId: string, generation: number): boolean {
@@ -3893,7 +3897,7 @@ export class CoreStore {
         this.audit("wake.suppressed", beeId, { beeId, targetGeneration, reason: THREAD_WRITER_LOCKED_STOP_REASON });
         return { command: null, outcome: "suppressed" };
       }
-      return { command: this.applyEnqueue("send_wake", beeId, {}, targetGeneration, null, undefined), outcome: "enqueued" };
+      return { command: this.applyEnqueue("send_wake", beeId, {}, targetGeneration, null, this.wakeNotBefore(bee, current)), outcome: "enqueued" };
     }
     const command = this.applyEnqueue("send_wake", beeId, {}, targetGeneration, null, this.wakeNotBefore(bee, current));
     return { command, outcome: "enqueued" };

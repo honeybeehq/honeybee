@@ -160,3 +160,24 @@ test("lock-mail.4: lock evidence arriving after a pending user stop ends in a qu
     rig.cleanup();
   }
 });
+
+test("lock-mail.5: a boot failing for another reason after an expired lock window keeps its full retry budget and drops the stale lock flag", () => {
+  const rig = setup();
+  try {
+    lock(rig);
+    rig.clock.now += 31 * 60_000;
+    rig.core.step();
+    lock(rig);
+    assert.equal(rig.store.view("b").threadWriterLock, "retries_stopped");
+    rig.clock.now += 90 * 60_000;
+    rig.driver.bootCrash = true;
+    const starts = rig.driver.starts.length;
+    rig.store.send("b", "after the lock episode", { sender: "bee-x" });
+    for (let i = 0; i < 12; i++) { rig.core.step(); rig.core.step(); rig.clock.now += 60_000; }
+    assert.equal(rig.driver.starts.length - starts, 3, "the whole boot budget is used");
+    assert.deepEqual(rig.store.activeFlags("b").map((flag) => flag.flag), ["spawn_failed"]);
+    assert.equal(rig.store.view("b").threadWriterLock, undefined);
+  } finally {
+    rig.cleanup();
+  }
+});
