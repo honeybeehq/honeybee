@@ -1,5 +1,9 @@
 # Hive CLI Reference
 
+> **Historical.** This describes the removed v1 CLI (`src/cli.ts`, swarms, colonies,
+> frames, flows, the file-backed buz store). The current surface is the v2 CLI under
+> `v2/cli`; run `hive --help` for it.
+
 This is a synthesized reference for the `hive` CLI surface in this repository.
 It is based on the TypeScript command handlers in `src/cli.ts` plus the modules
 that define agents, selectors, frames, flows, loops, accounts, seals, state, and
