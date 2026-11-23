@@ -3553,6 +3553,7 @@ export class CoreStore {
     opts: {
       exitCause?: ExitCause;
       exitDetail?: string;
+      exhaustSpawnBudget?: boolean;
       pid?: number;
       pidStartedAt?: number;
       synthetic?: boolean;
@@ -3641,6 +3642,7 @@ export class CoreStore {
           generation,
           opts.exitCause!,
           opts.exitDetail ?? (executedHangStop ? "hang_policy" : undefined),
+          opts.exhaustSpawnBudget === true,
         );
       } else if (current.state === "booting" && state === "running" && bootEvidence === "real") {
         this.applySpawnFailuresReset(beeId, `runtime booted (generation ${generation})`);
@@ -3685,13 +3687,13 @@ export class CoreStore {
    * budget the `spawn_failed` flag is set — visibly blocked — and no further
    * wakes are enqueued until contrary evidence clears it.
    */
-  private applySpawnFailure(beeId: string, generation: number, exitCause: ExitCause, detail?: string): void {
-    const failures = this.mustGetBee(beeId).spawnFailures + 1;
+  private applySpawnFailure(beeId: string, generation: number, exitCause: ExitCause, detail?: string, exhaust = false): void {
+    const failures = exhaust ? Math.max(this.maxAttempts, this.mustGetBee(beeId).spawnFailures + 1) : this.mustGetBee(beeId).spawnFailures + 1;
     this.stmt("UPDATE bees SET spawn_failures = ? WHERE id = ?").run(failures, beeId);
     this.audit("bee.spawn_failures", beeId, {
       beeId,
       spawnFailures: failures,
-      reason: "boot_exit",
+      reason: exhaust ? "boot_exit_not_retryable" : "boot_exit",
       generation,
       exitCause,
       budget: this.maxAttempts,
@@ -3701,7 +3703,9 @@ export class CoreStore {
       this.applySetFlag(
         beeId,
         "spawn_failed",
-        `runtime exited during boot ${failures} times in a row (generation ${generation}, ${exitCause}` +
+        (exhaust
+          ? `runtime failed to start with an error a retry cannot fix (generation ${generation}, ${exitCause}`
+          : `runtime exited during boot ${failures} times in a row (generation ${generation}, ${exitCause}`) +
           `${detail ? `: ${detail}` : ""}); ` +
           "not reviving again until it boots or an operator revives it",
       );
@@ -6329,6 +6333,7 @@ export class CoreStore {
     id: number,
     cause: string,
     detail?: string,
+    opts: { retryable?: boolean } = {},
   ): { status: "queued" | "failed"; attempts: number; nextAttemptAt: number | null } {
     if (!(FLAGS as readonly string[]).includes(cause)) throw new UnknownFailureCauseError(cause);
     return this.tx(() => {
@@ -6339,7 +6344,7 @@ export class CoreStore {
       }
       const attempts = command.attempts + 1;
       const at = this.now();
-      if (attempts >= this.maxAttempts) {
+      if (attempts >= this.maxAttempts || opts.retryable === false) {
         this.db
           .prepare("UPDATE commands SET status = 'failed', attempts = ?, finished_at = ?, failure_cause = ? WHERE id = ?")
           .run(attempts, at, cause, id);

@@ -815,6 +815,7 @@ export class DaemonCore {
       this.store.updateRuntimeState(obs.beeId, obs.generation, "stopped", {
         exitCause: obs.exitCause ?? "crashed",
         exitDetail: obs.detail,
+        ...(obs.retryable === false ? { exhaustSpawnBudget: true } : {}),
       });
       this.log(
         `obs.exited bee=${obs.beeId} gen=${obs.generation} cause=${obs.exitCause}${obs.detail ? ` detail=${obs.detail}` : ""}`,
@@ -1202,7 +1203,8 @@ export class DaemonCore {
     } catch (err) {
       if (err instanceof CoreError) throw err; // contract rejections keep their moot path
       const detail = err instanceof Error ? err.message : String(err);
-      const res = this.store.reportCommandFailure(cmd.id, "spawn_failed", `driver start failed: ${detail}`);
+      const retryable = (err as { retryable?: unknown } | null)?.retryable !== false;
+      const res = this.store.reportCommandFailure(cmd.id, "spawn_failed", `driver start failed: ${detail}`, { retryable });
       this.log(`cmd.${cmd.verb} id=${cmd.id} bee=${cmd.beeId} gen=${generation} start_failed status=${res.status} attempts=${res.attempts} err=${JSON.stringify(detail)}`);
       return false;
     }

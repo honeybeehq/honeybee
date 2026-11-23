@@ -4,6 +4,7 @@ import { cellPaths } from "./layout.ts";
 import { readLedger } from "./ledger.ts";
 import { provisionCell, restoreWipAfterProvision, type ProvisionedCell, type ProvisionRequest } from "./provision.ts";
 import type { WorkRestoreOutcome } from "./work.ts";
+import { isNonRetryableProvisionError } from "./partialClone.ts";
 import { claimFromPool } from "./warmPool.ts";
 
 interface ProvisionWorkerData {
@@ -19,6 +20,7 @@ interface ProvisionWorkerData {
 interface ProvisionWorkerResult {
   ok: boolean;
   error?: string;
+  retryable?: boolean;
   wipRestore?: { restored: boolean; reason: string | null };
   workRestore?: WorkRestoreOutcome;
 }
@@ -79,6 +81,7 @@ try {
   parentPort?.postMessage({
     ok: false,
     error: error instanceof Error ? error.message : String(error),
+    ...(isNonRetryableProvisionError(error) ? { retryable: false } : {}),
   } satisfies ProvisionWorkerResult);
   process.exitCode = 1;
 }

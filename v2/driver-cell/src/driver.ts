@@ -9,6 +9,7 @@ import type { FlagEvidence, PreparedStart, SpawnSpec } from "../../driver-hsr/sr
 import { captureWork, type CaptureMode, type CaptureReport } from "./capture.ts";
 import { cellPaths, looksLikeCellWrapper, type CellPaths } from "./layout.ts";
 import { isProvisioned, readLedger, type CellLedger } from "./ledger.ts";
+import { isNonRetryableProvisionError } from "./partialClone.ts";
 import { provisionCell, type ProvisionedCell, type ProvisionRequest, restoreWipAfterProvision } from "./provision.ts";
 import type { WorkRestoreOutcome } from "./work.ts";
 import { describeSandboxTmpfs, SandboxTmpWatch, sandboxTmpfsCap, type SandboxTmpfsCap } from "./sandboxTmp.ts";
@@ -104,12 +105,13 @@ interface PendingProvision {
   generation: number;
   worker: Worker;
   settled: boolean;
-  done: (failure?: string) => void;
+  done: (failure?: string, retryable?: boolean) => void;
 }
 
 interface ProvisionWorkerResult {
   ok: boolean;
   error?: string;
+  retryable?: boolean;
   wipRestore?: { restored: boolean; reason: string | null; branches?: string[] };
   workRestore?: WorkRestoreOutcome;
 }
@@ -143,7 +145,7 @@ export class CellService {
     this.upstreamPolicy = cfg.upstreamRefresh == null ? null : { ...DEFAULT_UPSTREAM_REFRESH, ...cfg.upstreamRefresh };
   }
 
-  prepare(beeId: string, generation: number, execution: ExecutionStart | null, done: (failure?: string) => void): PreparedStart | null {
+  prepare(beeId: string, generation: number, execution: ExecutionStart | null, done: (failure?: string, retryable?: boolean) => void): PreparedStart | null {
     if (execution) throw new ExecutionFenceError("rpc_execution_fence_unsupported", "Fenced Cell preparation is NOT_COVERED until descendant containment is reviewed and proven");
     const opId = `start-${beeId}-g${generation}`;
     if (this.cfg.backgroundProvisioning !== true) {
@@ -185,7 +187,7 @@ export class CellService {
         worker.unref();
         this.finishProvision(pending);
       }
-      else this.failProvision(pending, message.error ?? "cell provisioning failed");
+      else this.failProvision(pending, message.error ?? "cell provisioning failed", message.retryable !== false);
     });
     worker.once("error", (error) => this.failProvision(
       pending,
@@ -392,17 +394,17 @@ export class CellService {
       this.ensureCell(pending.beeId, `start-${pending.beeId}-g${pending.generation}`);
       this.cfg.onCellMaterialized?.(pending.beeId);
     } catch (error) {
-      pending.done(error instanceof Error ? error.message : String(error));
+      pending.done(error instanceof Error ? error.message : String(error), !isNonRetryableProvisionError(error));
       return;
     }
     pending.done();
   }
 
-  private failProvision(pending: PendingProvision, detail: string): void {
+  private failProvision(pending: PendingProvision, detail: string, retryable = true): void {
     if (pending.settled || this.pending.get(pending.beeId) !== pending) return;
     pending.settled = true;
     this.pending.delete(pending.beeId);
-    pending.done(detail);
+    pending.done(detail, retryable);
   }
 
   private cancelPending(): void {

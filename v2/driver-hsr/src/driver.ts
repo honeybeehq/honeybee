@@ -67,7 +67,7 @@ export interface RuntimeHostConfig {
   executionHostFor?(start: ExecutionStart): ExecutionProcess | null;
   resolveExecutionAdapter?(beeId: string): HarnessAdapter;
   resolve(beeId: string, generation?: number): SpawnSpec;
-  prepare?(beeId: string, generation: number, execution: ExecutionStart | null, done: (failure?: string) => void): PreparedStart | null;
+  prepare?(beeId: string, generation: number, execution: ExecutionStart | null, done: (failure?: string, retryable?: boolean) => void): PreparedStart | null;
   onObserved?(event: DriverObservation): void;
   extraEvidence?(live: () => LiveProcess[], clearedBeeIds: string[]): FlagEvidence[];
   sessionLogDir: string;
@@ -505,7 +505,7 @@ export class RuntimeHost implements RuntimeDriver {
         `runtime host: bee ${beeId} already has a live process (generation ${existing.generation}, pid ${existing.pid})`,
       );
     }
-    const prepared = this.cfg.prepare?.(beeId, generation, start, failure => this.prepared(beeId, generation, failure)) ?? null;
+    const prepared = this.cfg.prepare?.(beeId, generation, start, (failure, retryable) => this.prepared(beeId, generation, failure, retryable)) ?? null;
     if (prepared) {
       this.pendingStarts.set(beeId, { generation, execution: start, cancel: prepared.cancel });
       return;
@@ -513,12 +513,12 @@ export class RuntimeHost implements RuntimeDriver {
     this.launch(beeId, generation, start);
   }
 
-  private prepared(beeId: string, generation: number, failure?: string): void {
+  private prepared(beeId: string, generation: number, failure?: string, retryable = true): void {
     const pending = this.pendingStarts.get(beeId);
     if (!pending || pending.generation !== generation || !pending.cancel) return;
     this.pendingStarts.delete(beeId);
     if (failure !== undefined) {
-      this.events.push({ beeId, generation, kind: "exited", exitCause: "crashed", detail: `cell provisioning failed: ${failure}` });
+      this.events.push({ beeId, generation, kind: "exited", exitCause: "crashed", detail: `cell provisioning failed: ${failure}`, ...(retryable ? {} : { retryable: false }) });
     } else {
       try {
         this.launch(beeId, generation, pending.execution ?? null);

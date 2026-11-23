@@ -1585,6 +1585,50 @@ test("budget.5b: a driver that THROWS from start (cell provisioning failed) is a
   }
 });
 
+test("budget.5c: a start error marked not retryable (partial-clone Cell source) fails the command at the first attempt with spawn_failed, then an operator revive retries", () => {
+  const rig = makeRig();
+  try {
+    rig.driver.startError = "source /src is a partial clone (promisor remote origin) and is missing 1 object(s)";
+    rig.driver.startErrorRetryable = false;
+    rig.store.createBee({ id: "bee-1", name: "bee-1", agent: "stub", substrate: "cell", cwd: "/cells/w/repo-space-1" });
+    const cmd = rig.store.enqueueCommand("spawn", "bee-1");
+    stepUntilQuiet(rig, 40);
+    const settled = rig.store.getCommand(cmd.id)!;
+    assert.equal(settled.status, "failed");
+    assert.equal(settled.attempts, 1);
+    assert.equal(rig.driver.starts.length, 1, "no retry of a failure a retry cannot fix");
+    assert.deepEqual(rig.store.activeFlags("bee-1").map((f) => f.flag), ["spawn_failed"]);
+    assert.match(rig.store.activeFlags("bee-1")[0]?.detail ?? "", /partial clone/);
+    rig.driver.startError = null;
+    rig.store.enqueueCommand("revive", "bee-1");
+    stepUntilQuiet(rig, 20);
+    assert.equal(rig.store.currentRuntime("bee-1")?.state, "idle");
+    assert.deepEqual(rig.store.activeFlags("bee-1"), []);
+  } finally {
+    rig.cleanup();
+  }
+});
+
+test("budget.5d: an exited observation marked not retryable during boot exhausts the spawn budget at once; the flag names the cause", () => {
+  const rig = makeRig();
+  try {
+    rig.driver.autoBoot = false;
+    rig.store.createBee({ id: "bee-1", name: "bee-1", agent: "stub", substrate: "cell", cwd: "/cells/w/repo-space-1" });
+    rig.store.enqueueCommand("spawn", "bee-1");
+    rig.core.step();
+    assert.equal(rig.store.currentRuntime("bee-1")?.state, "booting");
+    rig.driver.events.push({ beeId: "bee-1", generation: 1, kind: "exited", exitCause: "crashed", detail: "cell provisioning failed: partial clone", retryable: false });
+    stepUntilQuiet(rig, 40);
+    assert.equal(rig.driver.starts.length, 1, "no boot retry");
+    assert.equal(rig.store.getBee("bee-1")?.spawnFailures, 3, "budget (3 in the rig) exhausted");
+    const flag = rig.store.activeFlags("bee-1")[0];
+    assert.equal(flag?.flag, "spawn_failed");
+    assert.match(flag?.detail ?? "", /a retry cannot fix .*partial clone/);
+  } finally {
+    rig.cleanup();
+  }
+});
+
 test("budget.6: an explicit operator revive retries regardless of spawn_failed and clears it on success; the mail then flows", () => {
   const rig = makeRig();
   try {

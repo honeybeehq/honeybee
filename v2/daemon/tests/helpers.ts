@@ -101,6 +101,7 @@ export class FakeDriver implements RuntimeDriver {
    * whose provisioning failed, an unresolvable spawn spec). Wins over both.
    */
   startError: string | null = null;
+  startErrorRetryable = true;
   /** Every start() call, in order (bee, generation) — how many revives happened. */
   readonly starts: Array<{ beeId: string; generation: number }> = [];
   private nextPid = 100;
@@ -113,7 +114,7 @@ export class FakeDriver implements RuntimeDriver {
   start(beeId: string, generation: number): void {
     if (this.procs.has(beeId)) throw new Error(`fake driver: ${beeId} already live`);
     this.starts.push({ beeId, generation });
-    if (this.startError != null) throw new Error(this.startError);
+    if (this.startError != null) throw Object.assign(new Error(this.startError), this.startErrorRetryable ? {} : { retryable: false });
     const pid = this.nextPid++;
     const proc: FakeProc = { generation, pid, pidStartedAt: this.now(), degraded: false };
     this.procs.set(beeId, proc);

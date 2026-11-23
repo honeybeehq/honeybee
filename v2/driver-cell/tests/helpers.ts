@@ -50,6 +50,24 @@ export function commitOn(repo: string, file: string, content: string, message: s
   return g(repo, ["rev-parse", "HEAD"]);
 }
 
+export interface PartialCloneFixture {
+  repo: string;
+  head: string;
+  older: string;
+}
+
+export function makePartialClone(root: string, origin: FixtureOrigin, name = "partial"): PartialCloneFixture {
+  g(origin.repo, ["config", "uploadpack.allowFilter", "true"]);
+  g(origin.repo, ["config", "uploadpack.allowAnySHA1InWant", "true"]);
+  writeFileSync(join(origin.repo, "src", "app.ts"), "export const version = 2;\n");
+  const head = commitOn(origin.repo, "later.txt", "later\n", "later commit");
+  const repo = join(root, name);
+  const { GIT_NO_LAZY_FETCH: _lazyFetchOff, ...env } = gitEnv();
+  const clone = spawnSync("git", ["clone", "--quiet", "--filter=blob:none", `file://${origin.repo}`, repo], { cwd: root, encoding: "utf8", env });
+  if (clone.status !== 0) throw new Error(`partial clone failed: ${clone.stderr}`);
+  return { repo, head, older: origin.sha };
+}
+
 /** Commit inside a cell space (detached HEAD) — the "agent did work" fixture. */
 export function commitInCell(spaceDir: string, file: string, content: string, message: string): string {
   writeFileSync(join(spaceDir, file), content);

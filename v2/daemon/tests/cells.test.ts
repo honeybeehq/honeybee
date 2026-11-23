@@ -30,7 +30,7 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { pidAlive } from "../../driver-hsr/src/psutil.ts";
-import { commitOn, fingerprintOrigin, g, makeOrigin, type FixtureOrigin } from "../../driver-cell/tests/helpers.ts";
+import { commitOn, fingerprintOrigin, g, makeOrigin, makePartialClone, type FixtureOrigin } from "../../driver-cell/tests/helpers.ts";
 import { CELL_SPACE_DIRECTORY, readLedger } from "../../driver-cell/src/index.ts";
 import {
   RPC_ERROR_CODES,
@@ -656,6 +656,39 @@ test("cells.4: spawn param validation (typed invalid_request), explicit sha/warm
     }
     const health = await client.request<HealthResult>("health");
     assert.equal(health.tickErrors, 0, "a driver start failure is never a tick error");
+    client.close();
+  } finally {
+    await daemon?.stop().catch(() => {});
+    rig.cleanup();
+  }
+});
+
+test("cells.4b: a source partial clone missing the pinned commit's blobs fails provisioning once — spawn_failed with the remediation at the first attempt, not after the retry budget", async () => {
+  const rig = makeCellRig({ retry: { maxAttempts: 5, backoffBaseMs: 30 } });
+  let daemon: DaemonHandle | null = null;
+  try {
+    const partial = makePartialClone(dirname(rig.origin.repo), rig.origin);
+    daemon = await startDaemon(rig.dir);
+    const client = await daemon.client();
+    const spawned = await client.request<SpawnResult>("spawn", {
+      name: "partial",
+      agent: "cellstub",
+      substrate: "cell",
+      cell: { originRepo: partial.repo, sha: partial.older },
+    });
+    const view = await waitFor(async () => {
+      const v = await client.request<ViewResult>("view", { beeId: spawned.beeId });
+      return v.view.flags.includes("spawn_failed") && v.view.runtimeState === "stopped" ? v : null;
+    }, "partial clone spawn_failed", 30_000);
+    assert.equal(view.bee?.spawnFailures, 5, "the budget is exhausted at once");
+    await new Promise((r) => setTimeout(r, 300));
+    const log = readFileSync(join(rig.dir, "hived.log"), "utf8").split("\n");
+    const failures = log.filter((line) => line.includes(`obs.exited bee=${spawned.beeId}`) && line.includes("cell provisioning failed"));
+    assert.equal(failures.length, 1, "provisioning ran exactly once");
+    assert.match(failures[0] as string, /partial clone \(promisor remote origin\)/);
+    assert.match(failures[0] as string, /backfill/);
+    const health = await client.request<HealthResult>("health");
+    assert.equal(health.tickErrors, 0);
     client.close();
   } finally {
     await daemon?.stop().catch(() => {});

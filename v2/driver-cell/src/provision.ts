@@ -34,6 +34,7 @@ import { performance } from "node:perf_hooks";
 import { join } from "node:path";
 import { cowCopy, cowPlatform, probeCow, type CowPlatform } from "./cow.ts";
 import { adoptOriginRemote, git } from "./git.ts";
+import { assertSourceHasCommitObjects } from "./partialClone.ts";
 import {
   gitImagesRootForCells,
   refreshGitImage,
@@ -382,6 +383,7 @@ function runProvisionOperation(
   if (!existsSync(originGitDir)) {
     throw new Error(`provision: origin ${req.originRepo} has no .git`);
   }
+  if (op.steps.checkout == null) assertSourceHasCommitObjects(req.originRepo, req.sha);
 
   // ---- step 1: place a .git in the space --------------------------------
   if (op.steps.git_placed == null) {

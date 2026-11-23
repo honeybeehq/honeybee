@@ -13,7 +13,8 @@ import { provisionCell, provisionRequestOf, reserveCell } from "../src/provision
 import { isProvisioned, readLedger, writeLedger, newLedger } from "../src/ledger.ts";
 import { cellPaths, parseSpaceName } from "../src/layout.ts";
 import { probeCow } from "../src/cow.ts";
-import { fingerprintOrigin, g, makeRig } from "./helpers.ts";
+import { fingerprintOrigin, g, makePartialClone, makeRig } from "./helpers.ts";
+import { CellSourceRefusal } from "../src/partialClone.ts";
 
 const COW_AVAILABLE = (() => {
   if (platform() !== "darwin" && platform() !== "linux") return false;
@@ -292,6 +293,32 @@ test("provision.reserve: reserveCell writes the seed ledger (origin/sha/warm/san
     assert.equal(isProvisioned(done), true);
     assert.equal(done.sandbox, false, "seed fields survive provisioning");
     assert.deepEqual(done.warm, ["node_modules"]);
+  } finally {
+    rig.cleanup();
+  }
+});
+
+test("provision.partial_clone: a source partial clone missing the commit's blobs is refused once, not retryable, with remediation; a commit it holds provisions", () => {
+  const rig = makeRig();
+  try {
+    const partial = makePartialClone(rig.root, rig.origin);
+    const request = (sha: string, cellId: string) => ({ ...req(rig, { originRepo: partial.repo, sha, wrapper: `bee-${cellId}`, cellId, beeId: `bee-${cellId}` }) });
+    for (const disableCow of [true, false]) {
+      const id = disableCow ? "clone" : "cow";
+      let refusal: unknown;
+      assert.throws(() => provisionCell(rig.cellsRoot, request(partial.older, `old${id}`), "cmd-1", { disableCow, useGitImages: false }), (err) => (refusal = err, true));
+      assert.ok(refusal instanceof CellSourceRefusal);
+      assert.equal(refusal.retryable, false);
+      assert.match(refusal.message, /partial clone \(promisor remote origin\) and is missing 1 object\(s\)/);
+      assert.match(refusal.message, /backfill/);
+      assert.match(refusal.message, /fetch --refetch --no-filter origin/);
+      const paths = cellPaths(rig.cellsRoot, `bee-old${id}`, "fixture", `old${id}`);
+      assert.equal(existsSync(paths.spaceDir), false, "refused before any .git is placed");
+
+      const cell = provisionCell(rig.cellsRoot, request(partial.head, `head${id}`), "cmd-1", { disableCow, useGitImages: false });
+      assert.equal(g(cell.paths.spaceDir, ["rev-parse", "HEAD"]), partial.head);
+    }
+    assert.equal(g(partial.repo, ["config", "remote.origin.promisor"]), "true", "the source clone is left as it was");
   } finally {
     rig.cleanup();
   }

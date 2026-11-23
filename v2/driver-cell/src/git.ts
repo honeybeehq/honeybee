@@ -79,7 +79,7 @@ function readIfPresent(path: string): string | null {
   }
 }
 
-function repoLocalConfigText(cwd: string): string | null {
+export function repoLocalConfigText(cwd: string): string | null {
   const dotGit = join(cwd, ".git");
   let gitDir = dotGit;
   try {
