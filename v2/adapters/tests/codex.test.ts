@@ -418,3 +418,16 @@ test("codex: a thread/resume refused for another active writer is a thread-lock 
   assert.equal(isQuotaTextFallback(THREAD_WRITER_LOCKED_RETRYING_DETAIL), false);
   assert.deepEqual(codexAdapter({ cwd: "/tmp/w" }).parseLine(refusal), [], "a fresh thread/start never owns this reason");
 });
+
+test("codex: only an unrecognised thread/resume error logs a warning", (t) => {
+  const warn = t.mock.method(console, "warn", () => {});
+  const resume = () => codexAdapter({ cwd: "/tmp/w", resumeThreadId: "thread-1" });
+  const reply = (message: string) => JSON.stringify({ error: { code: -32600, message }, id: 2 });
+  resume().parseLine(reply("thread thread-1 already has an active writer"));
+  resume().parseLine(reply("You've hit your usage limit"));
+  codexAdapter({ cwd: "/tmp/w" }).parseLine(reply("thread/start failed for some reason"));
+  assert.equal(warn.mock.callCount(), 0);
+  assert.deepEqual(resume().parseLine(reply("thread is held by a different writer process")), []);
+  assert.equal(warn.mock.callCount(), 1);
+  assert.match(String(warn.mock.calls[0]!.arguments[0]), /thread\/resume error not recognised.*-32600.*held by a different writer/);
+});

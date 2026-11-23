@@ -234,7 +234,11 @@ export function codexAdapter(opts: CodexAdapterOptions): HarnessAdapter {
       if (err) {
         const message = String(err.message ?? `codex ${threadRequest.method} failed`);
         if (CODEX_ACTIVE_WRITER.test(message)) return threadRequest.method === "thread/resume" ? threadWriterLockedSignals() : [];
-        return errorSignals(message);
+        const signals = errorSignals(message);
+        if (threadRequest.method === "thread/resume" && signals.length === 0) {
+          console.warn(`codex thread/resume error not recognised (code ${String(err.code ?? "none")}); the boot waits for its deadline: ${message.slice(0, 300)}`);
+        }
+        return signals;
       }
       return [];
     }

@@ -90,7 +90,7 @@ export async function buildDeployArtifact(
     if (skipTests === true) {
       log("deploy: WARNING test gate skipped (--skip-tests) — this artifact is not release-grade");
     } else {
-      for (const script of release ? ["v2:test", "v2:daemon", "v2:driver", "v2:driver2", "v2:harness"] : ["v2:test", "v2:daemon", "v2:driver", "v2:harness"]) {
+      for (const script of release ? ["v2:test", "v2:daemon", "v2:driver", "v2:driver2", "v2:harness", "v2:codex:writer-lock"] : ["v2:test", "v2:daemon", "v2:driver", "v2:harness"]) {
         await runStep("npm", ["run", script], checkout, log, gate.env);
       }
     }

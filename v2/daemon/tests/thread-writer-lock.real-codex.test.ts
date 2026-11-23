@@ -52,7 +52,7 @@ supports_websockets = false
     bootHangTimeoutMs: 8_000,
     retry: { maxAttempts: 3, backoffBaseMs: 500 },
   });
-  const daemon = await startDaemon(rig.dir, { env: { ...nativeEnv, HIVE_STORE_ROOT: root } });
+  const daemon = await startDaemon(rig.dir, { platform: process.platform, env: { ...nativeEnv, HIVE_STORE_ROOT: root } });
   const client = await daemon.client();
   t.after(async () => { client.close(); await daemon.stop(); rig.cleanup(); rmSync(root, { recursive: true, force: true }); });
 
