@@ -335,7 +335,9 @@ export class RuntimeHost implements RuntimeDriver {
     if (this.cfg.socketDir !== undefined) return stateDirectory(this.cfg.socketDir, "socketDir");
     if (!this.fallbackSocketDir) {
       const sample = join(`hb-rh-${"0".repeat(16)}`, RUNNER_SOCKET_FILE);
-      if (socketPathFits(join(tmpdir(), sample))) this.fallbackSocketDir = tmpdir();
+      const besideRunners = join(dirname(this.runnersDir()), "run");
+      if (socketPathFits(join(besideRunners, sample))) this.fallbackSocketDir = besideRunners;
+      else if (socketPathFits(join(tmpdir(), sample))) this.fallbackSocketDir = tmpdir();
       else {
         mkdirSync(this.runnersDir(), { recursive: true });
         this.fallbackSocketDir = persistentSocketDir(this.runnersDir(), sample);
