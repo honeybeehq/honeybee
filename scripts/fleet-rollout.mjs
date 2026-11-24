@@ -486,7 +486,7 @@ async function waitForSuccessor(f, oldPid, sha) {
   const waitS = successorWaitSeconds(f);
   const r = await remote(`
 NODE=${q(f.interpreter)}; DATA=${q(f.dataDir)}; ENTRY=${q(entry)}; OLD=${q(String(oldPid))}; R=${q(f.runtimeRoot)}; TARGET=${q(sha)}
-i=0; PID=-; RUNNING=-; BOOTING=0
+START=$(date +%s); i=0; PID=-; RUNNING=-; BOOTING=0
 while [ $i -lt ${waitS} ]; do
   P=$(sed -n 's/.*"pid":\\([0-9]*\\).*/\\1/p' "$DATA/hived.endpoint.json" 2>/dev/null)
   if [ -n "$P" ] && [ "$P" != "$OLD" ] && kill -0 "$P" 2>/dev/null; then
@@ -500,7 +500,7 @@ while [ $i -lt ${waitS} ]; do
       if [ "$CUR" != "$TARGET" ] || [ -f "$R/rollback.json" ]; then echo WAITED=$i; echo NEW_PID=$PID; echo RUNNING=-; echo BOOTING=$BOOTING; echo REVERTED=yes; exit 0; fi
     fi
   fi
-  i=$((i+1)); sleep 1
+  sleep 1; i=$(( $(date +%s) - START ))
 done
 echo WAITED=$i; echo NEW_PID=$PID; echo RUNNING=$RUNNING; echo BOOTING=$BOOTING
 echo MARKER=$(cat "$R/handover.json" 2>/dev/null | tr -d '\\n' || echo -)

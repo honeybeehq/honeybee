@@ -1,6 +1,6 @@
 import { DatabaseSync, backup } from "node:sqlite";
 import { createHash, randomUUID } from "node:crypto";
-import { chmodSync, closeSync, copyFileSync, existsSync, fsync, fsyncSync, linkSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, closeSync, copyFileSync, existsSync, fsync, fsyncSync, linkSync, mkdirSync, openSync, readFileSync, readSync, lstatSync, readdirSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { CoreError } from "./types.ts";
 
@@ -185,22 +185,53 @@ export interface AbandonedBackupPartial {
   bytes: number;
 }
 
+export interface SkippedBackupPartial {
+  name: string;
+  reason: string;
+}
+
+export interface AbandonedBackupCleanup {
+  removed: AbandonedBackupPartial[];
+  skipped: SkippedBackupPartial[];
+}
+
 const ABANDONED_PARTIAL = /^\d+-[0-9a-f-]{36}\.(json\.)?partial(-journal|-wal|-shm)?$/;
 
-export function removeAbandonedBackupPartials(storePath: string): AbandonedBackupPartial[] {
-  if (storePath === ":memory:") return [];
+function failureReason(error: unknown): string {
+  const code = (error as NodeJS.ErrnoException | null)?.code;
+  return code ?? (error instanceof Error ? error.message : String(error));
+}
+
+export function removeAbandonedBackupPartials(storePath: string): AbandonedBackupCleanup {
+  const cleanup: AbandonedBackupCleanup = { removed: [], skipped: [] };
+  if (storePath === ":memory:") return cleanup;
   const directory = `${resolve(storePath)}.backups`;
-  if (!existsSync(directory)) return [];
-  const removed: AbandonedBackupPartial[] = [];
-  for (const name of readdirSync(directory)) {
+  let names: string[];
+  try { names = readdirSync(directory); }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") cleanup.skipped.push({ name: ".", reason: failureReason(error) });
+    return cleanup;
+  }
+  for (const name of names) {
     if (!ABANDONED_PARTIAL.test(name)) continue;
     const path = join(directory, name);
-    const bytes = statSync(path).size;
-    unlinkIfPresent(path);
-    removed.push({ name, bytes });
+    try {
+      const entry = lstatSync(path);
+      if (!entry.isFile()) {
+        cleanup.skipped.push({ name, reason: "not_a_file" });
+        continue;
+      }
+      unlinkSync(path);
+      cleanup.removed.push({ name, bytes: entry.size });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
+      cleanup.skipped.push({ name, reason: failureReason(error) });
+    }
   }
-  if (removed.length) sync(directory);
-  return removed;
+  if (cleanup.removed.length) {
+    try { sync(directory); } catch {}
+  }
+  return cleanup;
 }
 
 function unlinkIfPresent(path: string): void {
@@ -227,15 +258,27 @@ function prune(directory: string): void {
     const newest = !schemas.has(item.receipt.schemaVersion);
     schemas.add(item.receipt.schemaVersion);
     if (index < 10 || newest) continue;
-    unlinkIfPresent(item.path);
-    unlinkIfPresent(item.receipt.backupPath);
+    retireBackupFile(item.path);
+    retireBackupFile(item.receipt.backupPath);
   }
   for (const name of readdirSync(directory)) {
     if (!/^\d+-[0-9a-f-]{36}\.(sqlite3|partial|json\.partial)$/.test(name)) continue;
     const base = name.replace(/\.(sqlite3|partial|json\.partial)$/, "");
-    if (!existsSync(join(directory, `${base}.json`))) unlinkIfPresent(join(directory, name));
+    if (!existsSync(join(directory, `${base}.json`))) retireBackupFile(join(directory, name));
   }
   sync(directory);
+}
+
+function retireBackupFile(path: string): void {
+  try {
+    if (!lstatSync(path).isFile()) {
+      process.emitWarning(`Store backup retention skipped ${path}: not_a_file`);
+      return;
+    }
+    unlinkSync(path);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") process.emitWarning(`Store backup retention skipped ${path}: ${failureReason(error)}`);
+  }
 }
 
 export function backupStoreOffline(storePath: string, sourceBuild: string): StoreBackupReceipt {

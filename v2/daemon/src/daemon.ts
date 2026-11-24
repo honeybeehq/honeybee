@@ -1065,8 +1065,9 @@ export class HiveDaemon {
         this.log(`boot.store_locked upgrade=${upgrade ? `${upgrade.schemaFrom}->${upgrade.schemaTo}` : "none"}`);
         await this.listenRpc();
       },
-      abandonedPartialsRemoved: (removed) => {
-        for (const partial of removed) this.log(`store.backup.partial_removed name=${partial.name} bytes=${partial.bytes}`);
+      abandonedPartials: (cleanup) => {
+        for (const partial of cleanup.removed) this.log(`store.backup.partial_removed name=${partial.name} bytes=${partial.bytes}`);
+        for (const partial of cleanup.skipped) this.log(`store.backup.partial_skipped name=${partial.name} reason=${JSON.stringify(partial.reason)}`);
       },
       progress: (progress) => this.noteStoreUpgrade(progress),
       verify: async (path) => {

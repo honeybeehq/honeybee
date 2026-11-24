@@ -1,7 +1,9 @@
 import { DatabaseSync } from "node:sqlite";
 import { SCHEMA_VERSION } from "./schema.ts";
 import { CoreStore, storeSourceBuild, type CoreStoreOptions } from "./store.ts";
-import { backupStoreOnline, removeAbandonedBackupPartials, verifyStoreBackupFile, type AbandonedBackupPartial, type StoreBackupVerification } from "./storeBackup.ts";
+import { backupStoreOnline, removeAbandonedBackupPartials, verifyStoreBackupFile, type AbandonedBackupCleanup, type StoreBackupVerification } from "./storeBackup.ts";
+
+export type { AbandonedBackupCleanup } from "./storeBackup.ts";
 import { SecondWriterError } from "./types.ts";
 
 export type StoreUpgradePhase = "store_backup" | "store_backup_verify" | "store_migrate";
@@ -19,7 +21,7 @@ export interface StoreUpgradeProgress extends StoreSchemaUpgrade {
 
 export interface StoreUpgradeHooks {
   locked?: (upgrade: StoreSchemaUpgrade | null) => Promise<void> | void;
-  abandonedPartialsRemoved?: (removed: AbandonedBackupPartial[]) => void;
+  abandonedPartials?: (cleanup: AbandonedBackupCleanup) => void;
   progress?: (progress: StoreUpgradeProgress) => void;
   verify?: (path: string) => Promise<StoreBackupVerification>;
   signal?: AbortSignal;
@@ -50,8 +52,8 @@ export async function openCoreStoreUpgrading(path: string, opts: CoreStoreOption
   try {
     try { db.exec("PRAGMA busy_timeout = 0; PRAGMA locking_mode = EXCLUSIVE; PRAGMA journal_mode = WAL; BEGIN EXCLUSIVE; COMMIT"); }
     catch (error) { throw new SecondWriterError(path, error); }
-    const removed = removeAbandonedBackupPartials(path);
-    if (removed.length) hooks.abandonedPartialsRemoved?.(removed);
+    const cleanup = removeAbandonedBackupPartials(path);
+    if (cleanup.removed.length || cleanup.skipped.length) hooks.abandonedPartials?.(cleanup);
     const upgrade = pendingSchemaUpgrade(db, path);
     await hooks.locked?.(upgrade);
     hooks.signal?.throwIfAborted();

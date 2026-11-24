@@ -564,6 +564,7 @@ function withDaemonTarget(ctx: CliContext, value: unknown): unknown {
 }
 
 const STARTING_HOLD_MS = 15_000;
+const HEALTH_EXIT_STARTING = 75;
 const STARTING_NOTICE_EVERY_MS = 5_000;
 
 interface DaemonConnectOptions extends Pick<ConnectOptions, "legacyProtocolVerbs"> {
@@ -3891,7 +3892,7 @@ async function cmdHealth(ctx: CliContext): Promise<number> {
   const response = await withClient(ctx, (c) => c.request<HealthResponse>("health"), { acceptStarting: true });
   if (isStartingHealth(response)) {
     emit(ctx, [startingLine(response)], response, false);
-    return 0;
+    return HEALTH_EXIT_STARTING;
   }
   const result = response;
   emit(ctx, () => [...renderHealth(result), ...(result.cellDisk ? [cellDiskLine(result.cellDisk)] : []), ...(result.capacity ? [capacityLine(result.capacity)] : [])], result, false);
