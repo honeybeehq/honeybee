@@ -1,0 +1,43 @@
+forage: host trmd-metal-2 (linux/x86_64, 48 cores, load 13.06, 1 forage jobs)
+forage: synced honeybee-bf9ebc3f @ c6aa794e5c in 3,013,051µs
+forage: lane honeybee-bf9ebc3f.1 · scratch /home/trmd/.cache/fj/osF1DY · network isolated · scope forage-osF1DY-3942914
+
+== the unit (ExecStart and schedule only)
+# /home/trmd/.config/systemd/user/apiary-tmp-sweep.timer
+Description=Apiary: hourly sweep of stale apiary-* temporary directories
+OnCalendar=hourly
+# /home/trmd/.config/systemd/user/apiary-tmp-sweep.service
+Description=Apiary: remove stale apiary-* temporary directories
+ExecStart="/usr/bin/python3" -I "/home/trmd/.local/share/apiary-satellite/tmp_sweep.py" sweep --max-age 3600
+program: /usr/bin/python3
+26955 /usr/bin/python3
+argv: /usr/bin/python3 -I /home/trmd/.local/share/apiary-satellite/tmp_sweep.py sweep --max-age 3600 
+--- /home/trmd/.local/share/apiary-satellite/tmp_sweep.py
+235 /home/trmd/.local/share/apiary-satellite/tmp_sweep.py
+grep: /usr/bin/python3: binary file matches
+9:import stat
+24:    roots = ['/tmp']
+25:    if sys.platform == 'darwin':
+32:    if sys.platform != 'linux':
+44:            info = os.lstat(os.path.join(directory, name))
+47:            if info.st_dev != device or info.st_mtime > cutoff or stat.S_ISSOCK(info.st_mode):
+61:    if started is None or sys.platform != 'linux':
+64:        with open(f'/proc/{pid}/stat', encoding='ascii') as handle:
+89:            info = os.lstat(path)
+94:        if not stat.S_ISDIR(info.st_mode) or info.st_uid != uid or os.path.realpath(os.path.dirname(path)) not in roots:
+119:            device = os.stat(root).st_dev
+129:                    info = entry.stat(follow_symlinks=False)
+130:                    if (not stat.S_ISDIR(info.st_mode) or info.st_uid != uid
+131:                            or info.st_dev != device or info.st_mtime > cutoff):
+150:    script = home / '.local/share/apiary-satellite/tmp_sweep.py'
+175:    stopgap = home / '.local/share/apiary/tmp-sweep'
+192:    if sys.platform != 'linux':
+193:        return {'status': 'unsupported'}
+200:        return {'status': 'current', **retire_stopgap(Path.home(), apply)}
+203:        return {'status': 'would-install' if fresh else 'would-update', **retire_stopgap(Path.home(), False)}
+214:    return {'status': 'installed' if fresh else 'updated', **retire_stopgap(Path.home(), apply)}
+
+== reproduction: an empty old directory that something lists once before the cleaner runs (rule age 3 s)
+left after the cleaner: ./listed-empty ./listed-tree 
+forage: reaped 0 leftover job processes
+forage: exit 0 · run 5,673,106µs · trmd-metal-2

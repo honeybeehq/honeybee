@@ -1,0 +1,31 @@
+
+== host
+ProductName:		macOS ProductVersion:		26.6.2 BuildVersion:		25G83 
+System Integrity Protection status: enabled.
+
+== 1. Seatbelt can refuse a literal /tmp write; it cannot redirect it
+sh says: /bin/sh: /tmp/hb-lab-ss-probe-8021: Operation not permitted
+python says: [Errno 1] Operation not permitted: '/tmp/hb-lab-ss-probe-8021'
+python tempfile.gettempdir() with TMPDIR set -> /Users/trmd/.hive/v2/tmp/28561f38-25e8-4aa9-bd86-1d406d61034f
+created in shared folder? no
+
+== 2. DYLD_INSERT_LIBRARIES path rewrite: works for unprotected binaries only
+node (/Users/trmd/.local/share/mise/installs/node/lts/bin/node): captured=yes leaked=no
+/bin/sh (SIP-protected, what every harness shell tool runs): captured=no leaked=yes
+node -> sh -> touch: captured=no leaked=yes
+
+== 3. per-session sparse disk image with a hard size (64 MB), no admin
+create+attach: 1222 ms
+/dev/disk10s1    64Mi    20Ki    63Mi     1%       0  647k    0%   /Users/trmd/.hive/v2/tmp/28561f38-25e8-4aa9-bd86-1d406d61034f/ss-mac.8021/mnt
+inodes: used=0 free=646960
+dd: /Users/trmd/.hive/v2/tmp/28561f38-25e8-4aa9-bd86-1d406d61034f/ss-mac.8021/mnt/big: No space left on device
+63963136 bytes transferred in 0.056299 secs (1136132720 bytes/sec)
+empty files created before any error: 3000 (APFS has no fixed inode table)
+backing file on the real disk:  64M for a 64 MB cap
+detach: 10468 ms
+
+== 4. per-session APFS volume with a quota in the boot container
+container: disk3
+you must be root to specify a custom mount point
+exit=1
+addVolume: 39 ms

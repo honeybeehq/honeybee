@@ -1,0 +1,28 @@
+forage: host trmd-metal-2 (linux/x86_64, 48 cores, load 7.67, 1 forage jobs)
+forage: synced honeybee-bf9ebc3f @ 2fb19dad1e in 3,389,610µs
+forage: lane honeybee-bf9ebc3f.1 · scratch /home/trmd/.cache/fj/m8Ev2E · network isolated · scope forage-m8Ev2E-3983497
+
+== 1. where harness binaries are on this host (names only)
+claude: not found
+codex: not found
+cursor-agent: not found
+grok: not found
+opencode: not found
+kimi: not found
+agy: not found
+muse: not found
+
+== 2. each found harness starts inside both shapes (lab HOME, no login; --version only)
+entries the harness left in the session's /tmp: 
+
+== 3. privilege inside a user namespace
+sudo inside:   sudo: /etc/sudo.conf is owned by uid 65534, should be 0
+docker inside: server 29.8.0
+root-owned files look like: nobody:nogroup
+ssh client config: Bad owner or permissions on /etc/ssh/ssh_config.d/20-systemd-ssh-proxy.conf
+
+== 4. add a share to a running session: enter its user+mount namespaces and bind (python, no root)
+bind added from outside by the session's owner
+running session now sees in /tmp/shared: f 
+forage: reaped 0 leftover job processes
+forage: exit 0 · run 5,626,944µs · trmd-metal-2

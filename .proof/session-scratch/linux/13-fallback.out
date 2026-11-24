@@ -1,0 +1,16 @@
+forage: host trmd-metal-2 (linux/x86_64, 48 cores, load 9.49, 1 forage jobs)
+forage: synced honeybee-bf9ebc3f @ 65694e26de in 2,999,867µs
+forage: lane honeybee-bf9ebc3f.1 · scratch /home/trmd/.cache/fj/fJSdsX · network isolated · scope forage-fJSdsX-4004226
+
+== host as it is
+probe: capture=mount
+
+== inside a namespace whose user-namespace limit is 0 (stands for a host with unprivileged user namespaces off)
+limit now: 0
+bwrap: Creating new namespace failed: Operation not permitted
+probe: capture=env (TMPDIR only); reported as a fact of the computer
+
+== bwrap installed setuid? (the one case that works without user namespaces)
+-rwxr-xr-x
+forage: reaped 0 leftover job processes
+forage: exit 0 · run 1,429,529µs · trmd-metal-2

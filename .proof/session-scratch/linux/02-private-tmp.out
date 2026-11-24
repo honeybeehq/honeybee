@@ -1,0 +1,45 @@
+forage: host trmd-metal-2 (linux/x86_64, 48 cores, load 2.88, 1 forage jobs)
+forage: synced honeybee-bf9ebc3f @ a277a1dc79 in 3,461,022µs
+forage: lane honeybee-bf9ebc3f.1 · scratch /home/trmd/.cache/fj/aFqceg · network isolated · scope forage-aFqceg-3910511
+
+== A. literal /tmp is captured (open root, like a workstation Cell today)
+/tmp/tmp.wMd1d66Ger
+os.tmpdir()=/tmp
+py gettempdir=/tmp
+inside sees: clone literal-A.txt tmp.wMd1d66Ger 
+pid inside: 2
+processes visible inside: 5
+host /tmp/literal-A.txt exists? no
+host /dev/shm/shm.txt exists? no
+owner-side view: . ./tmp ./tmp/clone ./tmp/literal-A.txt ./tmp/tmp.wMd1d66Ger ./vartmp ./vartmp/v.txt 
+owner-side cost: 208 inodes, 28K
+file owner uid on host: 1001 (me=1001)
+
+== B. two sessions do not see each other's /tmp
+beeB sees entries in its /tmp: 0
+beeA again sees: clone literal-A.txt tmp.wMd1d66Ger 
+
+== C. same under the existing confinement shape (--ro-bind / /)
+write /tmp ok
+sh: 1: cannot create /etc/x: Read-only file system
+sh: 1: cannot create /home/trmd/.cache/fj/aFqceg/h/x-ssx: Read-only file system
+c.txt
+
+== D. processes: control WITHOUT a pid namespace (what the code does today: kill the process group)
+started, alive: 5
+.proof/session-scratch/linux/02-private-tmp.sh: line 36: 3910729 Killed                  setsid sh -c "sleep 9${TAG#ssx}1 & setsid nohup sleep 9${TAG#ssx}2 >/dev/null 2>&1 & (setsid sh -c 'sleep 9${TAG#ssx}3 &' &) ; sleep 9${TAG#ssx}0"
+after kill(-pgid): survivors=2  <- these are the 51
+cleaned: 0
+
+== E. processes: WITH the session pid namespace; kill only the wrapper (as stop does)
+started, alive: 8
+.proof/session-scratch/linux/02-private-tmp.sh: line 43: 3910815 Killed                  setsid bash -c "$(declare -f session); POOL='$POOL' LAB='$LAB'; session beeE open -- sh -c \"sleep 9${TAG#ssx}1 & setsid nohup sleep 9${TAG#ssx}2 >/dev/null 2>&1 & (setsid sh -c 'sleep 9${TAG#ssx}3 &' &) ; sleep 9${TAG#ssx}0\""
+after kill(-pgid) of the wrapper: survivors=0
+
+== F. hard limit: bytes AND inodes on a per-session tmpfs, no root (unshare + nested bwrap)
+uid inside: 1001
+scratch          32M     0   32M   0% /tmp
+scratch          1000     1   999    1% /tmp
+host /tmp/big exists? no
+forage: reaped 0 leftover job processes
+forage: exit 0 · run 8,641,005µs · trmd-metal-2

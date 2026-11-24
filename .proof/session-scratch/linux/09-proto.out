@@ -1,0 +1,28 @@
+forage: host trmd-metal-2 (linux/x86_64, 48 cores, load 9.43, 1 forage jobs)
+forage: synced honeybee-bf9ebc3f @ bcb53ff601 in 3,511,480µs
+forage: lane honeybee-bf9ebc3f.1 · scratch /home/trmd/.cache/fj/aJeZyp · network isolated · scope forage-aJeZyp-3978052
+peer credential bridge linux-x64 (145 C lines)
+node v24.18.0; bwrap bubblewrap 0.12.0
+[today] turn: booted,turn_ended,turn_started,turn_ended
+[today] file on the owner's side: <lab>/today/tmp/bee-1/literal.txt
+[today] the session saw: TMPDIR=<lab>/today/tmp/bee-1 HIVE_SCRATCH=<lab>/today/tmp/bee-1 pid=3978301
+[today] runner socket lives in: <lab>/today/run/hb-rh-7f9b4cb631a0c385 (daemon reaches it; it is not in any /tmp)
+[today] processes alive before stop: 3
+[today] after driver.stop(): exited=true survivors=2
+[today] left behind in the socket dir after a clean stop: hb-rh-7f9b4cb631a0c385/ (0 entries)
+[open] turn: booted,turn_ended,turn_started,turn_ended
+[open] file on the owner's side: <lab>/open/tmp/bee-1/literal.txt
+[open] the session saw: TMPDIR=/tmp HIVE_SCRATCH=/tmp pid=9
+[open] runner socket lives in: <lab>/open/run/hb-rh-9ab38fb9b4b88162 (daemon reaches it; it is not in any /tmp)
+[open] processes alive before stop: 3
+[open] after driver.stop(): exited=true survivors=0
+[open] left behind in the socket dir after a clean stop: hb-rh-9ab38fb9b4b88162/ (0 entries)
+[confined] turn: booted,turn_ended,turn_started,turn_ended
+[confined] file on the owner's side: <lab>/confined/tmp/bee-1/literal.txt
+[confined] the session saw: TMPDIR=/tmp HIVE_SCRATCH=/tmp pid=9
+[confined] runner socket lives in: <lab>/confined/run/hb-rh-cf71187effa2fb6e (daemon reaches it; it is not in any /tmp)
+[confined] processes alive before stop: 3
+[confined] after driver.stop(): exited=true survivors=0
+[confined] left behind in the socket dir after a clean stop: hb-rh-cf71187effa2fb6e/ (0 entries)
+forage: reaped 0 leftover job processes
+forage: exit 0 · run 7,439,413µs · trmd-metal-2

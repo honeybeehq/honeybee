@@ -1,0 +1,31 @@
+forage: host trmd-metal-2 (linux/x86_64, 48 cores, load 11.78, 1 forage jobs)
+forage: synced honeybee-bf9ebc3f @ a8560a14de in 3,011,944µs
+forage: lane honeybee-bf9ebc3f.1 · scratch /home/trmd/.cache/fj/4ZHmPn · network isolated · scope forage-4ZHmPn-3927546
+
+== atime of top-level dirs whose mtime is older than 10 days, by clock hour of last read
+      1 11-04 11:00
+  10995 11-24 08:00
+     10 11-24 09:00
+
+== the same for regular files directly in /tmp with mtime older than 10 days
+
+== one level down (stat only): in 300 old dirs, children by kind and whether all three clocks are older than 10 d
+kind d: 6 children; all three clocks old=0; atime fresh=6; ctime fresh but mtime old=2
+
+== empty old directories at top level (nothing inside for the cleaner to judge but the directory itself)
+9770
+
+== who else walks /tmp: mount options, and timers of this user and the system
+rw,nosuid,nodev,size=132001124k,nr_inodes=1048576,inode64
+NEXT                                  LEFT LAST                              PASSED UNIT                         ACTIVATES
+Tue 2026-11-24 11:47:23 CET       2h 42min Mon 2026-11-23 11:47:23 CET      21h ago systemd-tmpfiles-clean.timer systemd-tmpfiles-clean.service
+Tue 2026-11-24 16:28:55 CET             7h Mon 2026-11-23 23:15:41 CET       9h ago apt-daily.timer              apt-daily.service
+Wed 2026-11-25 00:00:00 CET            14h Tue 2026-11-24 00:00:10 CET       9h ago dpkg-db-backup.timer         dpkg-db-backup.service
+Wed 2026-11-25 06:22:50 CET            21h Tue 2026-11-24 06:00:32 CET  3h 3min ago apt-daily-upgrade.timer      apt-daily-upgrade.service
+NEXT                         LEFT LAST                              PASSED UNIT                   ACTIVATES
+Tue 2026-11-24 10:03:34 CET 59min Tue 2026-11-24 09:00:41 CET 3min 43s ago apiary-tmp-sweep.timer apiary-tmp-sweep.service
+
+1 timers listed.
+user crontab lines: 0
+forage: reaped 0 leftover job processes
+forage: exit 0 · run 25,950,009µs · trmd-metal-2

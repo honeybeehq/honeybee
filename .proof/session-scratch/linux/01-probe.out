@@ -1,0 +1,87 @@
+forage: host trmd-metal-2 (linux/x86_64, 48 cores, load 8.75, 1 forage jobs)
+forage: synced honeybee-bf9ebc3f @ 976df2acf8 in 28,633,717µs
+forage: lane honeybee-bf9ebc3f.1 · scratch /home/trmd/.cache/fj/VILXkN · network isolated · scope forage-VILXkN-3905456
+
+== host
+trmd-metal-2
+6.12.94+deb13-amd64
+Debian GNU/Linux 13 (trixie)
+trmd
+ 08:57:27 up 70 days, 21:32,  5 users,  load average: 7.39, 10.42, 10.88
+
+== tools
+bwrap: /usr/bin/bwrap
+unshare: /usr/bin/unshare
+nsenter: /usr/bin/nsenter
+systemd-run: /usr/bin/systemd-run
+systemctl: /usr/bin/systemctl
+docker: /usr/bin/docker
+podman: MISSING
+setfacl: /usr/bin/setfacl
+quota: MISSING
+xfs_quota: MISSING
+node: /usr/local/bin/node
+git: /usr/bin/git
+pnpm: /home/trmd/.local/bin/pnpm
+tmux: /usr/bin/tmux
+fuse-overlayfs: MISSING
+bubblewrap 0.12.0
+
+== userns
+1
+2147483647
+cat: /proc/sys/kernel/apparmor_restrict_unprivileged_userns: No such file or directory
+unshare -Urm OK
+
+== /tmp mount
+tmpfs tmpfs rw,nosuid,nodev,size=132001124k,nr_inodes=1048576,inode64
+tmpfs           126G   33G   94G  26% /tmp
+tmpfs          1048576 615464 433112   59% /tmp
+
+== home fs
+/dev/md2 ext4 rw,relatime,stripe=256
+/dev/md2        1.8T  1.2T  466G  72% /
+/dev/md2       116539392 27464867 89074525   24% /
+
+== dev/shm, run/user
+tmpfs tmpfs rw,nosuid,nodev,inode64
+tmpfs tmpfs rw,nosuid,nodev,relatime,size=26400224k,nr_inodes=6600056,mode=700,uid=1001,gid=1001,inode64
+
+== cgroup
+cgroup2fs
+0::/user.slice/user-1001.slice/user@1001.service/app.slice/forage-VILXkN-3905456.scope
+Failed to connect to user scope bus via local transport: No such file or directory
+XDG_RUNTIME_DIR=/home/trmd/.cache/fj/VILXkN/r
+Linger=yes
+
+== delegated controllers for user slice
+cpu memory pids
+
+== mem
+               total        used        free      shared  buff/cache   available
+Mem:             251         112          13          34         163         138
+
+== tmpfiles
+186:x /tmp/ssh-*
+189:x /tmp/sshauth.*
+354:x /tmp/systemd-private-%b-*
+355:X /tmp/systemd-private-%b-*/tmp
+356:x /var/tmp/systemd-private-%b-*
+357:X /var/tmp/systemd-private-%b-*/tmp
+360:R! /tmp/systemd-private-*
+361:R! /var/tmp/systemd-private-*
+423:q /tmp 1777 root root 10d
+424:q /var/tmp 1777 root root 30d
+427:x /tmp/tmux-*
+479:D! /tmp/.X11-unix 1777 root root 10d
+480:D! /tmp/.ICE-unix 1777 root root 10d
+481:D! /tmp/.XIM-unix 1777 root root 10d
+482:D! /tmp/.font-unix 1777 root root 10d
+485:r! /tmp/.X[0-9]*-lock
+● systemd-tmpfiles-clean.timer - Daily Cleanup of Temporary Directories
+     Loaded: loaded (/usr/lib/systemd/system/systemd-tmpfiles-clean.timer; static)
+     Active: active (waiting) since Mon 2026-09-14 12:24:32 CEST; 2 months 10 days ago
+ Invocation: cfcef6e7d7d14ba9b1286ff20d4707c8
+    Trigger: Tue 2026-11-24 11:47:23 CET; 2h 49min left
+forage: reaped 0 leftover job processes
+forage: exit 0 · run 2,845,987µs · trmd-metal-2

@@ -1,0 +1,24 @@
+forage: host trmd-metal-2 (linux/x86_64, 48 cores, load 5.99, 1 forage jobs)
+forage: synced honeybee-bf9ebc3f @ 2384ce4d57 in 3,460,571µs
+forage: lane honeybee-bf9ebc3f · scratch /home/trmd/.cache/fj/m1whqL · network shared · scope forage-m1whqL-4011727
+This project is configured to use npm because /home/trmd/.forage/work/honeybee-bf9ebc3f/package.json has a "packageManager" field
+pnpm 
+
+== A. /tmp is a RAM filesystem of its own (today's shared /tmp, and today's sandbox): where does the store go?
+store: /home/trmd/.local/share/pnpm/store/v11
+session /tmp holds 2385 inodes, 59M; hard links into a store outside /tmp: 0 (other filesystem)
+
+== B. /tmp is the session's folder on the same filesystem as the home (the design's default)
+store: /home/trmd/.local/share/pnpm/store/v11
+session b1: 798 ms; node_modules files=1607, of which hard links to the shared store=0; inodes that are the session's own=2385
+store: /home/trmd/.local/share/pnpm/store/v11
+session b2: 755 ms; node_modules files=1607, of which hard links to the shared store=0; inodes that are the session's own=2385
+shared store (in the lab home):  inodes, , paid once
+
+== C. git: clone of this repository, plain vs --reference to a mirror the computer keeps
+source is shallow: false
+mirror: 91M
+plain clone: 3464 ms, .git 91M, 34 inodes
+ref clone: 32 ms, .git 136K, 32 inodes
+forage: reaped 0 leftover job processes
+forage: exit 0 · run 12,164,595µs · trmd-metal-2

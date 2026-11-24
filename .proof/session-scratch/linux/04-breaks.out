@@ -1,0 +1,56 @@
+forage: host trmd-metal-2 (linux/x86_64, 48 cores, load 10.85, 1 forage jobs)
+forage: synced honeybee-bf9ebc3f @ 15fbd146c2 in 2,941,583µs
+forage: lane honeybee-bf9ebc3f.1 · scratch /home/trmd/.cache/fj/cOnXlP · network isolated · scope forage-cOnXlP-3980487
+
+== 1. harness binaries start inside (no login: HOME is the lab folder)
+claude                             not installed on this host
+codex                              not installed on this host
+cursor-agent                       not installed on this host
+agent                              not installed on this host
+grok                               not installed on this host
+opencode                           not installed on this host
+kimi                               not installed on this host
+gemini                             not installed on this host
+
+== 2. terminal and multiplexer
+pty (script) open                  pty-ok 
+pty (script) confined              pty-ok 
+tmux server inside                 lab: 1 windows (created Tue Nov 24 09:13:05 2026) /tmp/tmux-1001 
+tmux server after the session ended: 0 (it lived in the session's pid namespace)
+
+== 3. ssh
+ControlMaster path in /tmp         Bad owner or permissions on /etc/ssh/ssh_config.d/20-systemd-ssh-proxy.conf 
+no SSH_AUTH_SOCK in this lane; an agent socket under the shared /tmp needs a passthrough bind (tested in 6)
+
+== 4. debuggers and profilers
+strace own child                   strace not installed 
+gdb own child                      gdb not installed 
+node --inspect port                Debugger listening on ws://127.0.0.1:33469/490b9552-abc3-435d-baa2-bdc3d9c82414 
+from outside: the session's process is visible to the person as host pid 3980746; its /tmp is /proc/<pid>/root/tmp -> /proc/3980746/root/tmp
+
+== 5. nested sandboxes (a harness that sandboxes its own tools) and browsers
+bwrap inside the session           nested-ok 
+unshare -Urm inside                nested-userns-ok 
+no chromium on this host
+
+== 6. things that live in the host's shared /tmp, simulated: an outer namespace plays the host, sessions nest inside
+without passthrough: ls: cannot access '/tmp/ssh-AAAA/agent.1': No such file or directory
+with    passthrough: agent-reply X11 dir visible: True 
+
+== 7. two sessions share a folder on purpose (explicit share), and a parent hands a file to a child
+A says: my file for you is /home/trmd/.cache/fj/cOnXlP/h/.cache/hb-session-scratch-lab/run.AFjJZv/scratch/A/report.html
+B reads A's /tmp/report.html by the literal path: cat: /tmp/report.html: No such file or directory
+B reads it by the host path A gave: report
+B sees the share: joined
+
+== 8. add a share to a session that is already running (the daemon enters its namespaces)
+mount: /tmp/shared: must be superuser to use mount.
+       dmesg(1) may have more information after failed mount system call.
+nsenter bind: done as the same user, no root
+running session now sees: 
+
+== 9. docker
+srw-rw---- nobody nogroup /var/run/docker.sock
+the docker socket is not under /tmp, so the CLI works; 'docker run -v /tmp/x:/x' resolves /tmp on the HOST daemon (not run here: it would write into the shared /tmp as root)
+forage: reaped 0 leftover job processes
+forage: exit 0 · run 12,014,573µs · trmd-metal-2

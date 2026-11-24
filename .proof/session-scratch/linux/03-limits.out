@@ -1,0 +1,32 @@
+forage: host trmd-metal-2 (linux/x86_64, 48 cores, load 4.12, 1 forage jobs)
+forage: synced honeybee-bf9ebc3f @ 35e4d66325 in 2,979,857µs
+forage: lane honeybee-bf9ebc3f.1 · scratch /home/trmd/.cache/fj/VnV605 · network isolated · scope forage-VnV605-3912178
+
+== F. hard limit: bytes AND inodes on a per-session tmpfs, no root (unshare, then nested bwrap restores the uid)
+uid inside: 1001
+scratch          32M     0   32M   0% /tmp
+scratch          1000     1   999    1% /tmp
+created 0 files, then touch says: 
+dd: error writing '/tmp/big': No space left on device
+33550336 bytes (34 MB, 32 MiB) copied, 0.0410089 s, 818 MB/s
+/home/trmd/.forage/work/honeybee-bf9ebc3f.1/.proof/session-scratch/linux/03-inner-limits.sh: 10: cannot create g968: No space left on device
+git work tree stopped at 968 files
+fatal: Unable to create '/tmp/repo/.git/index.lock': No space left on device
+host /tmp/big exists? no
+
+== G. bwrap --size alone (bytes only; bwrap has no nr_inodes flag)
+tmpfs            32M     0   32M   0% /tmp
+tmpfs          33000280     1 33000279    1% /tmp
+
+== H. cost of the wrapper per spawn (50 runs each)
+plain: 1762 us/spawn   wrapped: 17310 us/spawn
+
+== I. cgroup scope as the second fence (systemd-run --user --scope), with the real runtime dir
+0::/user.slice/user-1001.slice/user@1001.service/app.slice/hb-lab-ss-3912267.scope
+scope cgroup: /sys/fs/cgroup/user.slice/user-1001.slice/user@1001.service/app.slice/hb-lab-ss-3912267.scope
+procs left in scope after the main process exited: 2
+pids.max=64 memory.max=536870912
+wrote cgroup.kill
+survivors: 0
+forage: reaped 0 leftover job processes
+forage: exit 0 · run 4,081,265µs · trmd-metal-2

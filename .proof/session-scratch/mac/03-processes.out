@@ -1,0 +1,23 @@
+
+== A. today's rule: kill the process group
+alive: 3
+.proof/session-scratch/mac/03-processes.sh: line 17: 21849 Killed: 9                  HIVE_BEE_ID="lab-ss-$T" /usr/bin/python3 -c 'import os,sys; os.setsid(); os.execvp("/bin/sh",["/bin/sh","-c",sys.argv[1]])' "$tree"
+after kill(-pgid): survivors=1
+
+== B. census by the bee's environment marker finds the escaped one (same user, no root)
+ps: option requires an argument -- p
+usage: ps [-AaCcEefhjlMmrSTvwXx] [-O fmt | -o fmt] [-G gid[,gid...]]
+          [-g grp[,grp...]] [-u [uid,uid...]]
+          [-p pid[,pid...]] [-t tty[,tty...]] [-U user[,user...]]
+       ps [-L]
+found pids: 0 (ppid of first: ) in 115 ms over 1648 processes
+after killing the census: survivors=1
+
+== C. the marker is gone if the process cleans its environment
+alive: 2; census finds: 0
+
+== D. a lab launchd job per session: does bootout end the escaped process?
+alive under the job: 3
+after bootout: survivors=1
+cleaned: 0
+lab job gone

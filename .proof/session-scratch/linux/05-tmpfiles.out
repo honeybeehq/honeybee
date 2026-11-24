@@ -1,0 +1,57 @@
+forage: host trmd-metal-2 (linux/x86_64, 48 cores, load 11.15, 1 forage jobs)
+forage: synced honeybee-bf9ebc3f @ f5a78992b1 in 3,591,250µs
+forage: lane honeybee-bf9ebc3f.1 · scratch /home/trmd/.cache/fj/TnhCxE · network isolated · scope forage-TnhCxE-3923140
+
+== 1a. the cleaner's last runs (read-only)
+Result=success
+ExecMainStartTimestamp=Mon 2026-11-23 11:47:23 CET
+ExecMainExitTimestamp=Mon 2026-11-23 11:47:37 CET
+ExecMainStatus=0
+Hint: You are currently not seeing messages from other users and the system.
+      Users in groups '4294967295', 'systemd-journal' can see all messages.
+      Pass -q to turn off this notice.
+-- No entries --
+Type=oneshot
+ExecStart=systemd-tmpfiles --clean
+IOSchedulingClass=idle
+systemd 257 (257.13-1~deb13u1)
+
+== 1b. shared /tmp: top-level entries by age of mtime (counts only; names not printed)
+entries=11530  mtime>10d=11115  all three times>10d=75  mtime>10d but atime fresh=11040  owned by another user=8
+  type s: 9
+  type f: 252
+  type d: 11269
+
+== 1c. ten oldest directories: their own a/m/c age in days, and whether any process has its cwd or an open file below
+dir#ce20a7 age days: atime=0 mtime=113 ctime=29  procs with cwd below=0  entries inside=4
+dir#21ecae age days: atime=0 mtime=89 ctime=22  procs with cwd below=0  entries inside=4
+dir#23a7c5 age days: atime=0 mtime=61 ctime=61  procs with cwd below=0  entries inside=4
+dir#69e3be age days: atime=0 mtime=48 ctime=37  procs with cwd below=0  entries inside=2
+dir#bed271 age days: atime=0 mtime=48 ctime=37  procs with cwd below=0  entries inside=5
+dir#4f1032 age days: atime=0 mtime=46 ctime=46  procs with cwd below=0  entries inside=1
+dir#3df135 age days: atime=0 mtime=41 ctime=41  procs with cwd below=0  entries inside=2
+dir#3ccf40 age days: atime=0 mtime=41 ctime=30  procs with cwd below=0  entries inside=5
+dir#9f01c2 age days: atime=0 mtime=40 ctime=30  procs with cwd below=0  entries inside=0
+dir#32eef5 age days: atime=0 mtime=40 ctime=30  procs with cwd below=0  entries inside=1
+
+== 2. reproduction: rule 'q <lab>/t 1777 - - 3s' (the same line type as /tmp's, age 3 s instead of 10 d)
+before: 35 entries
+Opening file "/home/trmd/.cache/fj/TnhCxE/h/.cache/hb-session-scratch-lab/run.1Ootpq/t/sock-tree/dead.sock" failed, proceeding without lock: No such device or address
+Failed to remove "/home/trmd/.cache/fj/TnhCxE/h/.cache/hb-session-scratch-lab/run.1Ootpq/t/ro-tree/sub/f3", ignoring: Permission denied
+Failed to remove "/home/trmd/.cache/fj/TnhCxE/h/.cache/hb-session-scratch-lab/run.1Ootpq/t/ro-tree/sub/f1", ignoring: Permission denied
+Failed to remove "/home/trmd/.cache/fj/TnhCxE/h/.cache/hb-session-scratch-lab/run.1Ootpq/t/ro-tree/sub/f2", ignoring: Permission denied
+plain-tree       left: ./sub 
+cwd-tree         left: ./sub 
+read-tree        left: 
+cat: /home/trmd/.cache/fj/TnhCxE/h/.cache/hb-session-scratch-lab/run.1Ootpq/t/read-tree/f1: No such file or directory
+written-tree     left: ./sub ./sub/f1 
+locked-tree      left: ./f1 ./f2 ./f3 
+open-file-tree   left: 
+sock-tree        left: ./live.sock 
+ro-tree          left: ./sub ./sub/f1 ./sub/f2 ./sub/f3 
+Opening file "/home/trmd/.cache/fj/TnhCxE/h/.cache/hb-session-scratch-lab/run.1Ootpq/t/sock-tree/live.sock" failed, proceeding without lock: No such device or address
+Failed to remove "/home/trmd/.cache/fj/TnhCxE/h/.cache/hb-session-scratch-lab/run.1Ootpq/t/ro-tree/sub/f3", ignoring: Permission denied
+Failed to remove "/home/trmd/.cache/fj/TnhCxE/h/.cache/hb-session-scratch-lab/run.1Ootpq/t/ro-tree/sub/f1", ignoring: Permission denied
+second pass, 4 s after the holders exited: 9 entries left: ./locked-tree ./locked-tree/f1 ./locked-tree/f2 ./locked-tree/f3 ./ro-tree ./ro-tree/sub ./ro-tree/sub/f1 ./ro-tree/sub/f2 ./ro-tree/sub/f3 
+forage: reaped 1 leftover job processes
+forage: exit 0 · run 12,927,013µs · trmd-metal-2
