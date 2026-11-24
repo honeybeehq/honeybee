@@ -1,3 +1,4 @@
+import "../../core/tests/hostBeeEnv.ts";
 /** Spec 04 behavior 5: the i1_violations table — durable, deduped, ledger-shaped. */
 import { test } from "node:test";
 import assert from "node:assert/strict";

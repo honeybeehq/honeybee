@@ -1,3 +1,4 @@
+import "../../core/tests/hostBeeEnv.ts";
 import assert from "node:assert/strict";
 import { mock, test } from "node:test";
 import { spawn } from "node:child_process";

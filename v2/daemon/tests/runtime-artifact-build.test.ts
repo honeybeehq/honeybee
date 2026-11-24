@@ -1,3 +1,4 @@
+import "../../core/tests/hostBeeEnv.ts";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import { cpSync, mkdtempSync, readdirSync, rmSync } from "node:fs";

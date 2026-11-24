@@ -1,3 +1,4 @@
+import "../../core/tests/hostBeeEnv.ts";
 /**
  * Spec 05 test tier 1 — sandbox matrix (A4): node-kind defaults + per-cell
  * override, Seatbelt profile generation + real `sandbox-exec` confinement

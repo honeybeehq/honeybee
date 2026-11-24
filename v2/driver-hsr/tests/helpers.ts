@@ -1,3 +1,4 @@
+import "../../core/tests/hostBeeEnv.ts";
 /**
  * Integration-test helpers: everything runs against fresh OS temp dirs
  * (mkdtemp) — session logs, stores, all of it. Never ~/.hive, never the repo.

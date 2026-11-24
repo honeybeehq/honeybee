@@ -1,3 +1,4 @@
+import { labInheritedEnv } from "../../core/tests/hostBeeEnv.ts";
 import { NonRetryableStartError } from "../../harness/src/driver.ts";
 import { inspectProcess, exactProcessBirth } from "../../harness/src/processIdentity.ts";
 /**
@@ -11,7 +12,7 @@ import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSyn
 import { readLiveEndpointRecord } from "../src/endpointRecord.ts";
 import { socketPathFits } from "../src/socketPath.ts";
 import { tmpdir, userInfo } from "node:os";
-import { dirname, join, resolve, sep } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { scaledMs } from "../../core/tests/timeScale.ts";
 import type { DriverObservation, InterruptOutcome, LiveProcess, RuntimeDriver, StopCause } from "../../harness/src/driver.ts";
@@ -19,6 +20,8 @@ import type { FlagEvidenceLike, ObservationCursorEvidenceLike, SessionEvidenceLi
 import type { NodeConfigFile } from "../src/config.ts";
 import { RpcClient } from "../../cli/src/client.ts";
 import type { ListResult } from "../src/protocol.ts";
+
+export { labInheritedEnv };
 
 const here = dirname(fileURLToPath(import.meta.url));
 export const AGENT_PATH = join(here, "..", "..", "driver-hsr", "test-agent", "agent.mjs");
@@ -332,31 +335,13 @@ export function ownerBoundEnv(nodeOptions = ""): { HIVE_TEST_OWNER_PID: string; 
   return { HIVE_TEST_OWNER_PID: String(process.pid), HIVE_TEST_OWNER_BIRTH: ownerBirth, NODE_OPTIONS: `${nodeOptions} --import=${join(here, "fixtures", "owner-bound.mjs")}`.trim() };
 }
 
-const HOST_BEE_TMP_KEYS = ["TMPDIR", "CLAUDE_CODE_TMPDIR"] as const;
-
-function isWithinDirectory(path: string, directory: string): boolean {
-  const root = resolve(directory);
-  const candidate = resolve(path);
-  return candidate === root || candidate.startsWith(root + sep);
-}
-
-export function labDaemonInheritedEnv(hostEnv: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
-  const { HIVE_SCRATCH: hostBeeScratch, ...inherited } = hostEnv;
-  if (!hostBeeScratch) return inherited;
-  for (const key of HOST_BEE_TMP_KEYS) {
-    const value = inherited[key];
-    if (value !== undefined && isWithinDirectory(value, hostBeeScratch)) delete inherited[key];
-  }
-  return inherited;
-}
-
 /** `platform` makes the daemon process report that OS (default linux, so a suite run on a Mac never trips platform guards). */
 export async function startDaemon(dir: string, opts: { env?: Record<string, string>; platform?: string; stopTimeoutMs?: number; ownershipTimeoutMs?: number; socketPath?: string } = {}): Promise<DaemonHandle> {
   let socketPath = opts.socketPath ?? join(dir, "hived.sock");
   const storePath = join(dir, "core.sqlite3");
   const isolatedHome = mkdtempSync(join(dir, "test-home-"));
   const defaults = { HOME: isolatedHome, XDG_CONFIG_HOME: join(isolatedHome, "config"), XDG_DATA_HOME: join(isolatedHome, "data"), XDG_CACHE_HOME: join(isolatedHome, "cache"), XDG_STATE_HOME: join(isolatedHome, "state"), HIVE_GATEWAYS_DISABLE: "1" };
-  const childEnv: NodeJS.ProcessEnv = { ...labDaemonInheritedEnv(), ...defaults, ...(opts.env ?? {}) };
+  const childEnv: NodeJS.ProcessEnv = { ...labInheritedEnv(), ...defaults, ...(opts.env ?? {}) };
   if (opts.env?.HOME !== undefined) for (const key of ["XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME", "XDG_STATE_HOME"]) if (opts.env[key] === undefined) delete childEnv[key];
   if (resolve(childEnv.HOME!) === resolve(userInfo().homedir) || resolve(childEnv.HOME!) === resolve(process.env.HOME ?? userInfo().homedir)) throw new Error("Test daemon HOME must differ from the invoking user's home");
   for (const path of [childEnv.HOME, childEnv.XDG_CONFIG_HOME, childEnv.XDG_DATA_HOME, childEnv.XDG_CACHE_HOME, childEnv.XDG_STATE_HOME]) if (path !== undefined) mkdirSync(path, { recursive: true });

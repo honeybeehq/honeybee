@@ -1,3 +1,4 @@
+import "../../core/tests/hostBeeEnv.ts";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";

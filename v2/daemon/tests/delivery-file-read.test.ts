@@ -1,3 +1,4 @@
+import "../../core/tests/hostBeeEnv.ts";
 import { before, test } from "node:test";
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";

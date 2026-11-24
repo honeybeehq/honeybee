@@ -1,3 +1,4 @@
+import "./hostBeeEnv.ts";
 // Redistributable runtime artifact (v2/core/src/release/runtimeArtifact.ts, driven by
 // scripts/build-runtime-artifact.mjs). Exercises the manifest / hash / tar
 // layout over a fake stage directory: no git, npm, or build ever runs here.

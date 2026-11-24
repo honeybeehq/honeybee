@@ -1,3 +1,4 @@
+import "../../core/tests/hostBeeEnv.ts";
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawn, spawnSync } from "node:child_process";

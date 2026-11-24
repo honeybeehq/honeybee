@@ -1,3 +1,4 @@
+import "../../core/tests/hostBeeEnv.ts";
 import assert from "node:assert/strict";
 import {test} from "node:test";
 import {DatabaseSync} from "node:sqlite";

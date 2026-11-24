@@ -1,3 +1,4 @@
+import "../../core/tests/hostBeeEnv.ts";
 /**
  * Cell-driver test helpers. Everything runs in fresh OS temp dirs (mkdtemp)
  * — origin repos, cells roots, all of it. Never ~/.hive, never the repo, and

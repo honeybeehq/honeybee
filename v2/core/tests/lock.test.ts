@@ -1,3 +1,4 @@
+import "./hostBeeEnv.ts";
 import assert from "node:assert/strict";
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { promisify } from "node:util";

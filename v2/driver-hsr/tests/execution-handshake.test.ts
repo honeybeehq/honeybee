@@ -1,3 +1,4 @@
+import "../../core/tests/hostBeeEnv.ts";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync,writeFileSync,readFileSync,existsSync,rmSync,readdirSync } from "node:fs";
