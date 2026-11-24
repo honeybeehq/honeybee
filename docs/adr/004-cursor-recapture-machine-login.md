@@ -38,6 +38,10 @@ Login and `hive account capture` refuse a credential whose identity differs from
 the account's held identity. The refusal reasons are `different_account` and
 `identity_unverified`. `--replace-account` overrides the refusal on purpose.
 
+They also refuse, with `credential_stale`, a sign-in whose token is past its
+`exp` or is the same token that just got an HTTP 401. Nothing changes, and the
+message says to sign in to Cursor again and run `hive account login`.
+
 ## Threat model
 
 Anyone who can write the user's own Cursor store, or an account home or vault,
@@ -58,7 +62,9 @@ writing an older token over a newer one.
   signature; under the threat model that is out of scope.
 - **First capture.** A capture counts as the account's first only when the account
   holds no credential at all. An existing credential without an identity needs
-  `--replace-account`.
+  `--replace-account`. A first capture is refused with `different_account` when
+  another local Cursor account already holds the same `iss` and `sub`;
+  `--replace-account` lets two accounts share that user on purpose.
 - **One selection.** The probe, the spawn and the lease use the same credential.
   The account's identity comes from its vault copy, else its home copy. Among
   copies with that identity, the latest `exp` wins. Before each probe, spawn and
@@ -72,7 +78,10 @@ writing an older token over a newer one.
   reading the store: the account row, any active login flow and the token's expiry.
   Just before writing, it checks once more: same identity, and a later `exp`.
 - **When the store is read.** Only when the selected token has a known `exp` within
-  15 minutes, or after an exact HTTP 401 status.
+  15 minutes, or after an exact HTTP 401 status. This background read gives the
+  Keychain two seconds; if it does not answer (it is locked), Honeybee keeps using
+  the cached token. Explicit login and capture wait up to 60 seconds, because a
+  person may be unlocking the Keychain.
 - **Errors.** Cursor probe errors carry the HTTP status only, never a response body.
 - **Leases.** A lease's `auth.json` is exactly `{accessToken}`. Mint and install
   both enforce this.
