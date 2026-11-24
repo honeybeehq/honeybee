@@ -26,7 +26,7 @@ import { loadNodeConfig } from "../src/config.ts";
 import type { HealthResult, MailboxResult, MutationResult, SendRpcResult, SpawnResult, ViewResult } from "../src/protocol.ts";
 import { makeOrigin } from "../../driver-cell/tests/helpers.ts";
 import { SANDBOX_TMPFS_PATHS } from "../../driver-cell/src/sandbox.ts";
-import { AGENT_PATH, makeDaemonDir, startDaemon, waitFor, type DaemonHandle } from "./helpers.ts";
+import { AGENT_PATH, labDaemonInheritedEnv, makeDaemonDir, startDaemon, waitFor, type DaemonHandle } from "./helpers.ts";
 
 const PROBE = join(dirname(fileURLToPath(import.meta.url)), "fixtures", "tmp-probe", "probe.mjs");
 
@@ -294,7 +294,7 @@ test("workstation daemon: bees.tmpRoot null keeps the inherited TMPDIR and compi
   const run = await runProbe({ bees: { tmpRoot: null }, env: { NODE_COMPILE_CACHE: inheritedCache }, inheritedTmp: inherited.dir });
   try {
     assert.equal(run.report.TMPDIR, inherited.dir);
-    assert.equal(run.report.CLAUDE_CODE_TMPDIR, process.env.CLAUDE_CODE_TMPDIR ?? null, "policy off leaves Claude Code's temp base alone");
+    assert.equal(run.report.CLAUDE_CODE_TMPDIR, labDaemonInheritedEnv().CLAUDE_CODE_TMPDIR ?? null, "policy off leaves Claude Code's temp base alone");
     assert.equal(run.report.NODE_COMPILE_CACHE, inheritedCache);
     assert.match(readFileSync(join(run.daemon.dir, "hived.log"), "utf8"), /tmp\.policy beeTmpRoot=off/);
   } finally {
