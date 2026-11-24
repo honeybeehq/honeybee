@@ -1158,7 +1158,7 @@ test("flows.cursor-command: when no candidate is Cursor's agent, the login says 
   try {
     const { flow } = await cursorLogin(r, { agent: IDE_VERSION, "cursor-agent": "exit 1" }, { live: null });
     assert.equal(flow.error?.code, "cli_missing");
-    assert.match(flow.error?.message ?? "", /tried agent, cursor-agent, .*cursor-agent\).*Install the Cursor IDE/);
+    assert.match(flow.error?.message ?? "", /tried agent \(printed "3\.31\.15", not a Cursor agent version\), cursor-agent \(did not run\), .*cursor-agent \(not found\)\)\..*Install the Cursor IDE/);
   } finally {
     process.env.HOME = savedHome;
     r.cleanup();

@@ -21,16 +21,33 @@ function versionOf(path: string, env: Record<string, string>, timeoutMs: number)
   });
 }
 
+export interface RunnableCommandSearch {
+  path: string | null;
+  tried: string[];
+}
+
 export async function firstRunnableCommand(
   candidates: readonly string[],
   env: Record<string, string>,
   opts: Pick<ResolveExecutableOptions, "fallbackDirs"> & { timeoutMs?: number; versionPattern?: RegExp } = {},
-): Promise<string | null> {
+): Promise<RunnableCommandSearch> {
+  const tried: string[] = [];
   for (const candidate of candidates) {
     const resolved = resolveExecutable(candidate, { env, ...(opts.fallbackDirs ? { fallbackDirs: opts.fallbackDirs } : {}) });
-    if (!resolved) continue;
+    if (!resolved) {
+      tried.push(`${candidate} (not found)`);
+      continue;
+    }
     const version = await versionOf(resolved.path, env, opts.timeoutMs ?? VERSION_PROBE_TIMEOUT_MS);
-    if (version !== null && (opts.versionPattern?.test(version) ?? true)) return resolved.path;
+    if (version === null) {
+      tried.push(`${candidate} (did not run)`);
+      continue;
+    }
+    if (opts.versionPattern && !opts.versionPattern.test(version)) {
+      tried.push(`${candidate} (printed ${JSON.stringify(version.slice(0, 80))}, not a Cursor agent version)`);
+      continue;
+    }
+    return { path: resolved.path, tried };
   }
-  return null;
+  return { path: null, tried };
 }

@@ -102,10 +102,11 @@ export class CliRunner implements LoginRunner {
     const candidates = launch === recipe.login && recipe.login.fallbackCommands
       ? [recipe.login.command, ...recipe.login.fallbackCommands, ...(cursorAgent ? cursorBundledAgentPaths(process.platform, homedir()) : [])]
       : null;
-    const runnable = candidates ? await firstRunnableCommand(candidates, env, cursorAgent ? { versionPattern: CURSOR_AGENT_VERSION } : {}) : null;
+    const search = candidates ? await firstRunnableCommand(candidates, env, cursorAgent ? { versionPattern: CURSOR_AGENT_VERSION } : {}) : null;
+    const runnable = search?.path ?? null;
     if (!host.isCurrent(this) || !host.stillActive()) return host.flow() as LoginFlowRow;
     if (candidates && runnable === null) {
-      return host.fail(err("cli_missing", `The ${account.harness} CLI could not run on this node (tried ${candidates.join(", ")}). ${recipe.login.unrunnableHint ?? "Install it, then retry."}`), true);
+      return host.fail(err("cli_missing", `The ${account.harness} CLI could not run on this node (tried ${search?.tried.join(", ")}). ${recipe.login.unrunnableHint ?? "Install it, then retry."}`), true);
     }
     if (cursorAgent && runnable) host.log(`account.login.cursor_command flow=${host.flowId} path=${runnable}`);
     const command = runnable ?? resolveSpawnCommand(launch.command, { env }).command;
