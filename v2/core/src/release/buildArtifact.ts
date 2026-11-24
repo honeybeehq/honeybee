@@ -1,7 +1,7 @@
 import { spawn, execFile } from "node:child_process";
 import { cp, mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { delimiter, join } from "node:path";
+import { homedir, tmpdir } from "node:os";
+import { delimiter, join, sep } from "node:path";
 import { promisify } from "node:util";
 import { collectBuildProvenance } from "./buildIdentityProducer.ts";
 import { hostGitEnv } from "../hostGit.ts";
@@ -25,6 +25,19 @@ export type BuildArtifactContext = {
   /** Explicit release target; omitted for native local deploy builds. */
   target?: string;
 };
+
+const CELL_SANDBOX_PRIVATE_MOUNTS = ["/tmp", "/var/tmp"];
+
+function insideCellSandboxPrivateMount(path: string): boolean {
+  return CELL_SANDBOX_PRIVATE_MOUNTS.some((mount) => path === mount || path.startsWith(`${mount}${sep}`));
+}
+
+export async function createBuildWorkDir(prefix: string): Promise<string> {
+  const temp = await realpath(tmpdir());
+  const root = insideCellSandboxPrivateMount(temp) ? join(homedir(), ".local", "state", "honeybee", "builds") : temp;
+  await mkdir(root, { recursive: true });
+  return mkdtemp(join(root, prefix));
+}
 
 const HARNESS_HOME_VARIABLES = new Set(Object.values(HARNESS_HOME_ENV));
 const RUNNER_HOST_SOCKET_SAMPLE = join("hc-XXXXXX", "s", `hb-rh-${"0".repeat(16)}`, "stdin.sock");

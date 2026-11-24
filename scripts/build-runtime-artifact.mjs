@@ -12,11 +12,10 @@
 // manifest/hash/tar logic in runtimeArtifact.ts. The committed sha is exported
 // with `git archive`; the working tree is only ever read.
 import { execFileSync } from "node:child_process";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { readFile, rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildDeployArtifact } from "../v2/core/src/release/buildArtifact.ts";
+import { buildDeployArtifact, createBuildWorkDir } from "../v2/core/src/release/buildArtifact.ts";
 import { packRuntimeArtifact } from "../v2/core/src/release/runtimeArtifact.ts";
 
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));
@@ -74,7 +73,7 @@ const sha = resolveCommit(options.ref);
 const log = (line) => console.log(line);
 log(`runtime-artifact: building ${sha} (${options.ref}) in a clean temp checkout${options.skipTests ? " [tests skipped]" : ""}`);
 
-const workDir = await mkdtemp(join(tmpdir(), "hive-runtime-artifact-"));
+const workDir = await createBuildWorkDir("hive-runtime-artifact-");
 try {
   const { artifactDir } = await buildDeployArtifact({
     repoRoot,

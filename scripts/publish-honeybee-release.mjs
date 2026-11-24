@@ -2,12 +2,11 @@
 // Production adapter only. Tests exercise allocation against bare Git and publication against an asset-store boundary.
 import { selectedDistribution } from "./release-distribution.mjs";
 import { execFileSync } from "node:child_process";
-import { appendFile, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { appendFile, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { canonicalDigest } from "../v2/core/src/canonical.ts";
-import { buildDeployArtifact } from "../v2/core/src/release/buildArtifact.ts";
+import { buildDeployArtifact, createBuildWorkDir } from "../v2/core/src/release/buildArtifact.ts";
 import { packRuntimeArtifact } from "../v2/core/src/release/runtimeArtifact.ts";
 import { prepareHoneybeeRelease } from "../v2/core/src/release/prepare.ts";
 import { publishHoneybeeRelease } from "../v2/core/src/release/publish.ts";
@@ -34,7 +33,7 @@ const store = new GitHubReleaseStore(`honeybee-v${reservation.version}-${target}
 await store.open();
 const result = await publishHoneybeeRelease({ reservation, profile, target, providerFingerprint: accepted.fingerprints.after, store,
   build: async () => {
-    const workDir = await mkdtemp(join(tmpdir(), "honeybee-release-build-"));
+    const workDir = await createBuildWorkDir("honeybee-release-build-");
     try {
       const { artifactDir } = await buildDeployArtifact({ repoRoot, sha: reservation.sourceRevision, workDir, release: true, target, log: console.log });
       const checkout = join(workDir, "checkout");
