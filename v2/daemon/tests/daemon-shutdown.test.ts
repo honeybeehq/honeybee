@@ -51,7 +51,14 @@ for (const mode of ["natural", "retention", "backstop"] as const) test(`daemon s
     children.push(child);
     return { child, output: () => output };
   };
-  const connect = () => waitFor(async () => { try { return await RpcClient.connect(join(rig.dir, "hived.sock")); } catch { return null; } }, "daemon socket", 15_000);
+  const connect = () => waitFor(async () => {
+    try {
+      const candidate = await RpcClient.connect(join(rig.dir, "hived.sock"));
+      if (candidate.boot === null) return candidate;
+      candidate.close();
+      return null;
+    } catch { return null; }
+  }, "daemon socket", 15_000);
   try {
     const first = launch(mode);
     client = await connect();

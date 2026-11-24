@@ -12,6 +12,7 @@ import {
   PROTOCOL,
   RpcError,
   type RpcVerb,
+  type DaemonStartingBoot,
   type RpcRequestContext,
   type RuntimeHandoverMarker,
   type WatchFrame,
@@ -45,6 +46,7 @@ export class HandoverStalledError extends Error {
 }
 
 const HANDOVER_RETRY_MS = 100;
+const STARTING_RETRY_MS = 250;
 const REFUSED_CODES = new Set(["ECONNREFUSED", "ENOENT"]);
 const sleep = (ms: number): Promise<void> => new Promise((resolveSleep) => setTimeout(resolveSleep, ms));
 
@@ -68,6 +70,7 @@ export interface ConnectOptions {
   caller?: { dataDir?: string; liveTarget?: boolean; expectedInstanceId: string | null; allowForeignDaemon?: boolean };
   verifyInstance?: (instance: DaemonInstance | null) => void;
   dataDir?: string;
+  waitWhileStarting?: { holdMs: number; onWaiting?: (boot: DaemonStartingBoot) => void };
 }
 
 interface Pending {
@@ -84,6 +87,7 @@ export class RpcClient {
   private legacyVerbs: readonly RpcVerb[] | null = null;
   capabilities: readonly string[] = [];
   instance: DaemonInstance | null = null;
+  boot: DaemonStartingBoot | null = null;
   /** Watch push frames (deltas/gaps) land here. */
   onEvent: ((frame: WatchFrame) => void) | null = null;
   onClose: (() => void) | null = null;
@@ -95,9 +99,14 @@ export class RpcClient {
   static async connect(socketPath: string, timeoutMs = 3000, clientLane?: "node_relay" | "remote", options: ConnectOptions = {}): Promise<RpcClient> {
     const root = runtimeRootOf(options.dataDir ?? dirname(socketPath));
     let bareRetry = true;
+    const holdUntil = options.waitWhileStarting ? Date.now() + options.waitWhileStarting.holdMs : 0;
     for (;;) {
       try {
-        return await RpcClient.connectOnce(socketPath, timeoutMs, clientLane, options);
+        const client = await RpcClient.connectOnce(socketPath, timeoutMs, clientLane, options);
+        if (!client.boot || Date.now() >= holdUntil) return client;
+        client.close();
+        options.waitWhileStarting!.onWaiting?.(client.boot);
+        await sleep(STARTING_RETRY_MS);
       } catch (err) {
         if (!(err instanceof DaemonDownError)) throw err;
         const marker = await readHandoverMarker(root);
@@ -164,6 +173,7 @@ export class RpcClient {
           }
           client.capabilities = Array.isArray(hello.capabilities) ? hello.capabilities.filter((value): value is string => typeof value === "string") : [];
           client.instance = instanceOf(hello.instance);
+          client.boot = startingBootOf(hello.boot);
           try {
             options.verifyInstance?.(client.instance);
           } catch (err) {
@@ -277,6 +287,11 @@ export class RpcClient {
     this.pending.clear();
     this.onClose?.();
   }
+}
+
+function startingBootOf(value: unknown): DaemonStartingBoot | null {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return null;
+  return (value as { state?: unknown }).state === "starting" ? value as DaemonStartingBoot : null;
 }
 
 function instanceOf(value: unknown): DaemonInstance | null {

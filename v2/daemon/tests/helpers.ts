@@ -462,7 +462,7 @@ export async function startDaemon(dir: string, opts: { env?: Record<string, stri
       }
     },
   };
-  // Ready when the socket accepts a hello.
+  // Ready when the socket accepts a hello from a daemon that has finished starting.
   try {
     await waitFor(
       async () => {
@@ -477,7 +477,7 @@ export async function startDaemon(dir: string, opts: { env?: Record<string, stri
         try {
           const c = await RpcClient.connect(socketPath, 500);
           c.close();
-          return true;
+          return c.boot === null;
         } catch {
           return false;
         }

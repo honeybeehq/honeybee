@@ -74,6 +74,7 @@ import {
 import {
   DAEMON_CAPABILITIES,
   PROTOCOL,
+  describeStartingBoot,
   RPC_VERBS,
   RpcError,
   LEASE_FENCE_FIELDS,
@@ -194,6 +195,7 @@ export interface RpcServerOptions {
   socketPath: string;
   log: (op: string) => void;
   dispatch: RpcDispatch;
+  starting?: () => import("./protocol.ts").StartingHealthResult | null;
   performance?: PerformanceRecorder;
 }
 
@@ -464,7 +466,8 @@ export class RpcServer {
     socket.setEncoding("utf8");
     // Versioned hello, server side (negotiated once). Capability tags are
     // additive: a pre-v16 client ignores the extra key.
-    conn.send({ protocol: PROTOCOL, capabilities: this.capabilities, identity: BUILD_IDENTITY, ...(this.opts.instance ? { instance: this.opts.instance } : {}) } satisfies HelloFrame);
+    const starting = this.opts.starting?.() ?? null;
+    conn.send({ protocol: PROTOCOL, capabilities: this.capabilities, identity: BUILD_IDENTITY, ...(this.opts.instance ? { instance: this.opts.instance } : {}), ...(starting ? { boot: starting.boot } : {}) } satisfies HelloFrame);
     socket.on("data", (chunk: string) => this.onData(conn, chunk));
     socket.on("error", () => socket.destroy());
     socket.on("close", () => { conn.peerConnection?.close(); this.trust.disconnect(conn); this.conns.delete(conn); });
@@ -537,6 +540,18 @@ export class RpcServer {
     if (decodedParams === null) {
       span.end("error");
       conn.send({ id, ok: false, error: { code: "invalid_request", message: "params must be an object" } });
+      return;
+    }
+    const starting = this.opts.starting?.() ?? null;
+    if (starting) {
+      if (verb === "health") {
+        span.end();
+        conn.send({ id, ok: true, result: publicBeeResponse(verb, projectQuestionDismissalResult(verb, projectAnswerTriggerResult(verb, projectMailDeliveryResult(verb, starting, conn.clientCapabilities), conn.clientCapabilities), conn.clientCapabilities), false) });
+      } else {
+        span.end("error");
+        const refusal = new RpcError("daemon_starting", describeStartingBoot(starting.boot), { boot: starting.boot });
+        conn.send({ id, ok: false, error: publicEnvRecords(projectQuestionDismissalError(toRpcError(refusal), conn.clientCapabilities)) });
+      }
       return;
     }
     let params: Record<string, unknown> = decodedParams;

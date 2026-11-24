@@ -366,6 +366,7 @@ export interface HelloFrame {
   instance?: { id: string; dataDir: string };
   protocol: string;
   capabilities: readonly DaemonCapability[];
+  boot?: DaemonStartingBoot;
 }
 
 /** Closed-list, typed errors — never fuzzy (spec 04). */
@@ -378,6 +379,7 @@ export const RPC_ERROR_CODES = [
   "batch_frozen",
   "mail_batching_unsupported",
   "store_backup_failed",
+  "daemon_starting",
   "rpc_execution_stale", "rpc_execution_busy", "rpc_execution_history_unknown", "rpc_execution_fence_unsupported",
   "rpc_effect_fenced", "rpc_effect_history_unknown", "rpc_effect_resolve_unsupported",
   "socket_mismatch",
@@ -2444,6 +2446,67 @@ export interface HealthResult {
   capacity?: NodeCapacity | null;
   scheduling?: import("../../core/src/processScheduling.ts").SchedulingStatus;
   processCpu?: import("./processCpu.ts").ProcessCpu | null;
+  boot: DaemonReadyBoot;
+}
+
+export type DaemonBootPhase = "store_backup" | "store_backup_verify" | "store_migrate" | "boot_reconcile";
+
+export interface DaemonBootProgress {
+  bytesDone: number;
+  bytesTotal: number;
+  fraction: number;
+}
+
+export interface DaemonStartingBoot {
+  state: "starting";
+  phase: DaemonBootPhase;
+  phaseStartedAt: number;
+  schemaFrom: number | null;
+  schemaTo: number | null;
+  progress: DaemonBootProgress | null;
+  etaMs: number | null;
+}
+
+export interface DaemonReadyBoot {
+  state: "ready";
+  readyAt: number;
+}
+
+export interface StartingHealthResult {
+  protocol: string;
+  pid: number;
+  startedAt: number;
+  uptimeMs: number;
+  boot: DaemonStartingBoot;
+}
+
+export type HealthResponse = HealthResult | StartingHealthResult;
+
+export function isStartingHealth(health: HealthResponse): health is StartingHealthResult {
+  return health.boot?.state === "starting";
+}
+
+function bootBytes(bytes: number): string {
+  return bytes >= 1e9 ? `${(bytes / 1e9).toFixed(1)} GB` : `${Math.round(bytes / 1e6)} MB`;
+}
+
+function bootDuration(ms: number): string {
+  const seconds = Math.max(1, Math.round(ms / 1000));
+  return seconds < 90 ? `${seconds}s` : `${Math.round(seconds / 60)} min`;
+}
+
+const BOOT_PHASE_WORDS: Record<DaemonBootPhase, string> = {
+  store_backup: "backing up the store",
+  store_backup_verify: "verifying the store backup",
+  store_migrate: "migrating the store",
+  boot_reconcile: "re-adopting sessions",
+};
+
+export function describeStartingBoot(boot: DaemonStartingBoot, now: number = Date.now()): string {
+  const upgrade = boot.schemaFrom !== null && boot.schemaTo !== null ? ` before the schema ${boot.schemaFrom}→${boot.schemaTo} upgrade` : "";
+  const progress = boot.progress ? `, ${bootBytes(boot.progress.bytesDone)} of ${bootBytes(boot.progress.bytesTotal)} (${Math.floor(boot.progress.fraction * 100)}%)` : "";
+  const eta = boot.etaMs !== null ? `, about ${bootDuration(boot.etaMs)} left` : "";
+  return `Honeybee is starting: ${BOOT_PHASE_WORDS[boot.phase]}${boot.phase === "boot_reconcile" ? "" : upgrade}${progress}${eta} (${bootDuration(now - boot.phaseStartedAt)} in this step). Sessions keep running.`;
 }
 
 export type NamingHealth = { state: "ok" | "off" } | { state: "disabled"; reason: string };

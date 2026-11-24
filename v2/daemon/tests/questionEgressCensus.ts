@@ -123,8 +123,8 @@ export function assertQuestionEgress(census: ReturnType<typeof questionEgressCen
     else assert.fail(`Uncovered RPC send boundary ${row.scope}`);
     return {file: row.file, line: row.line, scope: row.scope, coverage};
   });
-  assert.equal(boundaries.filter(row => row.coverage === "projected RPC result").length, 2);
+  assert.equal(boundaries.filter(row => row.coverage === "projected RPC result").length, 3);
   assert.equal(boundaries.filter(row => row.coverage === "projected delta").length, 1);
-  assert.equal(boundaries.filter(row => row.coverage === "projected RPC error").length, 2);
+  assert.equal(boundaries.filter(row => row.coverage === "projected RPC error").length, 3);
   return {productionFiles: census.productionFiles, consumers, boundaries};
 }

@@ -1,6 +1,6 @@
 import { DatabaseSync, backup } from "node:sqlite";
 import { createHash, randomUUID } from "node:crypto";
-import { chmodSync, closeSync, copyFileSync, existsSync, fsync, fsyncSync, linkSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, closeSync, copyFileSync, existsSync, fsync, fsyncSync, linkSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { CoreError } from "./types.ts";
 
@@ -133,17 +133,21 @@ export interface OnlineBackupOptions {
   verify?: (path: string) => Promise<StoreBackupVerification>;
   blocking?: (reason: string) => void;
   restarts?: () => number;
+  progress?: (pages: { totalPages: number; remainingPages: number }) => void;
+  signal?: AbortSignal;
 }
 
-async function copyStoreOnline(db: DatabaseSync, temporary: string, restarts: () => number): Promise<void> {
+async function copyStoreOnline(db: DatabaseSync, temporary: string, restarts: () => number, options: OnlineBackupOptions): Promise<void> {
   let steps = 0;
   let flush: Promise<void> | null = null;
   let fd: number | undefined;
   try {
     await backup(db, temporary, {
       rate: ONLINE_BACKUP_STEP_PAGES,
-      progress: () => {
+      progress: (pages) => {
+        options.signal?.throwIfAborted();
         if (restarts() > ONLINE_BACKUP_MAX_RESTARTS) throw new OnlineBackupRestarted();
+        options.progress?.(pages);
         if (++steps % ONLINE_BACKUP_SYNC_EVERY_STEPS !== 0 || flush) return;
         const open = fd ??= openSync(temporary, "r");
         flush = new Promise<void>((done) => fsync(open, () => { flush = null; done(); }));
@@ -159,7 +163,7 @@ export async function backupStoreOnline(db: DatabaseSync, storePath: string, sou
   let target: BackupTarget | undefined;
   try {
     target = backupTarget(storePath);
-    try { await copyStoreOnline(db, target.temporary, options.restarts ?? (() => 0)); }
+    try { await copyStoreOnline(db, target.temporary, options.restarts ?? (() => 0), options); }
     catch (error) {
       if (!(error instanceof OnlineBackupRestarted)) throw error;
       discardBackup(target);
@@ -168,11 +172,35 @@ export async function backupStoreOnline(db: DatabaseSync, storePath: string, sou
     }
     chmodSync(target.temporary, 0o600);
     const verified = await (options.verify ?? (async (path: string) => verifyStoreBackupFile(path)))(target.temporary);
+    options.signal?.throwIfAborted();
     return publishBackup(target, storePath, sourceBuild, verified);
   } catch (error) {
     discardBackup(target);
     throw refusedBackup(error);
   }
+}
+
+export interface AbandonedBackupPartial {
+  name: string;
+  bytes: number;
+}
+
+const ABANDONED_PARTIAL = /^\d+-[0-9a-f-]{36}\.(json\.)?partial(-journal|-wal|-shm)?$/;
+
+export function removeAbandonedBackupPartials(storePath: string): AbandonedBackupPartial[] {
+  if (storePath === ":memory:") return [];
+  const directory = `${resolve(storePath)}.backups`;
+  if (!existsSync(directory)) return [];
+  const removed: AbandonedBackupPartial[] = [];
+  for (const name of readdirSync(directory)) {
+    if (!ABANDONED_PARTIAL.test(name)) continue;
+    const path = join(directory, name);
+    const bytes = statSync(path).size;
+    unlinkIfPresent(path);
+    removed.push({ name, bytes });
+  }
+  if (removed.length) sync(directory);
+  return removed;
 }
 
 function unlinkIfPresent(path: string): void {

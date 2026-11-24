@@ -97,7 +97,8 @@ import {
   hashBeeMoveRequest,
   segmentSessionLogPath,
   hashCellOpRequest,
-  openCoreStore,
+  openCoreStoreUpgrading,
+  type StoreUpgradeProgress,
   STORE_RETENTION,
   placementContextText,
   toBeeHandoffView,
@@ -468,6 +469,7 @@ import { BEE_IMPORT_BUNDLE_BYTES_MAX,
 } from "./protocol.ts";
 import { archivedCursor, archivedCursorText, snapshotLifecycle } from "./rosterRead.ts";
 import { verifyStoreBackupOffLoop } from "./storeBackupWorker.ts";
+import { BootStatus } from "./bootStatus.ts";
 
 export const RUNTIME_PROBE_AGENT = "runtime-probe";
 const RUNTIME_PROBE_IDLE_MS = 60_000;
@@ -721,6 +723,7 @@ export interface HiveDaemonDeps {
   summarizeHandoff?: (input: { handoff: BeeHandoffRow; bee: BeeRow; base: HandoffContext }) => Promise<HandoffContext>;
   /** v31 tests: substitute the retention inspection worker entrypoint. */
   retentionWorkerUrl?: URL;
+  storeUpgradeGate?: (signal: AbortSignal) => Promise<void>;
   transcriptSweepDelayMs?: number;
   transcriptMaxWorkers?: number;
   championHomeMinIntervalMs?: number;
@@ -875,6 +878,8 @@ export class HiveDaemon {
   private threadOperationsLive = true;
   private quotaRecoveryLive = true;
   private lastBoot: BootReport | null = null;
+  private readonly bootStatus = new BootStatus(this.startedAt);
+  private readonly startAbort = new AbortController();
   private stopping = false;
   private readonly opLog: string[] = [];
   private accounts: AccountsService | null = null;
@@ -988,9 +993,52 @@ export class HiveDaemon {
       this.activeStartupPhase?.end("error");
       this.activeStartupPhase = null;
       startup.end("error");
+      await this.rpc?.close();
+      this.rpc = null;
+      removeEndpointRecord(this.cfg.dataDir, this.instanceId);
+      this.store?.close();
+      this.store = null;
+      this.telemetry?.close();
       this.performance.stop();
+      if (this.startAbort.signal.aborted) this.log(`daemon.start_aborted pid=${process.pid}`);
       throw error;
     }
+  }
+
+  private async listenRpc(): Promise<void> {
+    this.rpc = new RpcServer({
+      admitConfined: (verb, params, conn) => this.admitConfined(verb, params, conn),
+      classifyPeer: peer => classifyPeer(peer, {owner: () => this.peerOwner(peer)}),
+      peerConfinement: (peerClass, registered) => peerConfinement(peerClass, {strict: this.confinementReasons.size > 0, registered}),
+      assertServiceCaller: peerClass => {
+        if (peerOwner({peerClass})) throw new RpcError("caller_not_trusted", "A bee runtime cannot register as the Apiary service");
+      },
+      socketPath: this.cfg.socketPath,
+      dataDir: this.cfg.dataDir,
+      instance: { id: this.instanceId, dataDir: canonicalPath(this.cfg.dataDir) },
+      localTrust: this.cfg.rpcLocalTrust,
+      securityAudit: (kind, payload) => this.store?.recordLocalRpcEvent(kind as "rpc.peer_credentials_unavailable" | "rpc.local_refused" | "rpc.local_registered", payload),
+      log: (op) => this.log(op),
+      dispatch: (verb, params, conn) => this.dispatch(verb, params, conn),
+      starting: () => this.bootStatus.startingHealth(),
+      performance: this.performance,
+    });
+    try {
+      await this.rpc.listen(() => writeEndpointRecord(this.cfg.dataDir, { instanceId: this.instanceId, dataDir: canonicalPath(this.cfg.dataDir), socketPath: resolve(this.cfg.socketPath), pid: process.pid, startedAt: this.startedAt, ...this.daemonProcessIdentity() }));
+    } catch (error) {
+      removeEndpointRecord(this.cfg.dataDir, this.instanceId);
+      throw error;
+    }
+  }
+
+  private noteStoreUpgrade(progress: StoreUpgradeProgress): void {
+    const previous = this.bootStatus.starting()?.phase;
+    this.bootStatus.storeProgress(progress);
+    if (previous !== progress.phase) this.log(`boot.phase phase=${progress.phase} schema=${progress.schemaFrom}->${progress.schemaTo}${progress.bytesTotal !== null ? ` bytes=${progress.bytesTotal}` : ""}`);
+  }
+
+  abortStart(): void {
+    this.startAbort.abort();
   }
 
   private daemonProcessIdentity() {
@@ -1006,13 +1054,29 @@ export class HiveDaemon {
     this.telemetry = new TelemetryStore(this.cfg.telemetryPath);
     // Opening the store IS the single-daemon lock (B9): a second daemon on
     // this node dies right here with SecondWriterError.
-    const store = openCoreStore(this.cfg.storePath, {
+    const store = await openCoreStoreUpgrading(this.cfg.storePath, {
       buildIdentity: JSON.stringify(BUILD_IDENTITY),
       maxAttempts: this.cfg.maxAttempts,
       backoffBaseMs: this.cfg.backoffBaseMs,
       threadWriterLockRetryWindowMs: this.cfg.threadLockWindowMs,
+    }, {
+      signal: this.startAbort.signal,
+      locked: async (upgrade) => {
+        this.log(`boot.store_locked upgrade=${upgrade ? `${upgrade.schemaFrom}->${upgrade.schemaTo}` : "none"}`);
+        await this.listenRpc();
+      },
+      abandonedPartialsRemoved: (removed) => {
+        for (const partial of removed) this.log(`store.backup.partial_removed name=${partial.name} bytes=${partial.bytes}`);
+      },
+      progress: (progress) => this.noteStoreUpgrade(progress),
+      verify: async (path) => {
+        await this.deps.storeUpgradeGate?.(this.startAbort.signal);
+        return verifyStoreBackupOffLoop(path, undefined, this.startAbort.signal);
+      },
     });
     this.store = store;
+    this.bootStatus.reconciling();
+    this.log("boot.phase phase=boot_reconcile");
     store.onChange(change => this.noteChange(change));
     for (const candidate of store.listAutoTitleCandidates()) this.autoTitleCandidates.add(candidate.id);
     const redaction = store.rpcIdempotencyRedactionReceipt;
@@ -1342,28 +1406,8 @@ export class HiveDaemon {
     this.activeStartupPhase = null;
     const rpc = this.performance.startSpan("daemon.start.rpc");
     this.activeStartupPhase = rpc;
-    this.rpc = new RpcServer({
-      admitConfined: (verb, params, conn) => this.admitConfined(verb, params, conn),
-      classifyPeer: peer => classifyPeer(peer, {owner: () => this.peerOwner(peer)}),
-      peerConfinement: (peerClass, registered) => peerConfinement(peerClass, {strict: this.confinementReasons.size > 0, registered}),
-      assertServiceCaller: peerClass => {
-        if (peerOwner({peerClass})) throw new RpcError("caller_not_trusted", "A bee runtime cannot register as the Apiary service");
-      },
-      socketPath: this.cfg.socketPath,
-      dataDir: this.cfg.dataDir,
-      instance: { id: this.instanceId, dataDir: canonicalPath(this.cfg.dataDir) },
-      localTrust: this.cfg.rpcLocalTrust,
-      securityAudit: (kind, payload) => store.recordLocalRpcEvent(kind as "rpc.peer_credentials_unavailable" | "rpc.local_refused" | "rpc.local_registered", payload),
-      log: (op) => this.log(op),
-      dispatch: (verb, params, conn) => this.dispatch(verb, params, conn),
-      performance: this.performance,
-    });
-    try {
-      await this.rpc.listen(() => writeEndpointRecord(this.cfg.dataDir, { instanceId: this.instanceId, dataDir: canonicalPath(this.cfg.dataDir), socketPath: resolve(this.cfg.socketPath), pid: process.pid, startedAt: this.startedAt, ...this.daemonProcessIdentity() }));
-    } catch (error) {
-      removeEndpointRecord(this.cfg.dataDir, this.instanceId);
-      throw error;
-    }
+    this.bootStatus.ready();
+    this.log("boot.phase phase=ready");
     if (await removeHandoverMarker(this.runtimeUpdate().root)) this.log(`boot.handover_marker_removed root=${this.runtimeUpdate().root}`);
     cells.trackOrigins(this.recentCellOrigins(store));
     void this.accounts?.credentialHandoff.reconcileStartup().catch(() => this.log("account.credentials.handoff_reconcile_failed"));
@@ -7594,6 +7638,7 @@ export class HiveDaemon {
       capacity: this.freshCapacity(),
       ...(this.scheduling ? { scheduling: this.scheduling() } : {}),
       processCpu: this.processCpu.status(),
+      boot: this.bootStatus.readyBoot,
     };
   }
 

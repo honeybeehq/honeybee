@@ -75,6 +75,10 @@ import {
   type ActionCompleteResult,
   type ActionView,
   type HealthResult,
+  type HealthResponse,
+  type StartingHealthResult,
+  describeStartingBoot,
+  isStartingHealth,
   type NodeHarnessesResult,
   type InterruptResult,
   type ListResult,
@@ -559,10 +563,31 @@ function withDaemonTarget(ctx: CliContext, value: unknown): unknown {
   return { ...(value as object), daemonTarget: daemonTargetJson(ctx.target, ctx.daemon.instance, ctx.daemon.connected) };
 }
 
-async function connectDaemon(ctx: CliContext, options: Pick<ConnectOptions, "legacyProtocolVerbs"> = {}): Promise<RpcClient> {
+const STARTING_HOLD_MS = 15_000;
+const STARTING_NOTICE_EVERY_MS = 5_000;
+
+interface DaemonConnectOptions extends Pick<ConnectOptions, "legacyProtocolVerbs"> {
+  acceptStarting?: boolean;
+}
+
+function startingHold(ctx: CliContext): NonNullable<ConnectOptions["waitWhileStarting"]> {
+  let noticedAt = 0;
+  return {
+    holdMs: STARTING_HOLD_MS,
+    onWaiting: (boot) => {
+      if (Date.now() - noticedAt < STARTING_NOTICE_EVERY_MS) return;
+      noticedAt = Date.now();
+      ctx.io.err(`${describeStartingBoot(boot)} Waiting up to ${STARTING_HOLD_MS / 1000}s…`);
+    },
+  };
+}
+
+async function connectDaemon(ctx: CliContext, options: DaemonConnectOptions = {}): Promise<RpcClient> {
   assertSocketMatchesDataDir(ctx.target);
+  const { acceptStarting, ...connect } = options;
   const client = await RpcClient.connect(ctx.cfg.socketPath, 3000, undefined, {
-    ...options,
+    ...connect,
+    ...(acceptStarting ? {} : { waitWhileStarting: startingHold(ctx) }),
     dataDir: ctx.cfg.dataDir,
     capabilities: ["question.dismissed.v1", "mail.delivery.confirmation.v1"],
     caller: callerHelloFor(ctx.target, ctx.allowForeignDaemon),
@@ -680,7 +705,7 @@ function emit(ctx: CliContext, human: string[] | (() => string[]), jsonValue: un
 // RPC/fallback plumbing
 // ---------------------------------------------------------------------------
 
-async function withClient<T>(ctx: CliContext, fn: (client: RpcClient) => Promise<T>, options: Pick<ConnectOptions, "legacyProtocolVerbs"> = {}): Promise<T> {
+async function withClient<T>(ctx: CliContext, fn: (client: RpcClient) => Promise<T>, options: DaemonConnectOptions = {}): Promise<T> {
   const client = await connectDaemon(ctx, options);
   try {
     return await fn(client);
@@ -3129,7 +3154,7 @@ async function runCellGc(ctx: CliContext, client: RpcClient, params: { dryRun: b
   const poll = async (): Promise<void> => {
     try {
       poller ??= await connectDaemon(ctx);
-      const health = await poller.request<HealthResult>("health", {}, 5_000);
+      const health = await readyHealth(poller, {}, 5_000);
       const progress = health.cellDisk?.currentPass ?? null;
       if (progress == null) return;
       latest = progress;
@@ -3852,8 +3877,23 @@ async function cmdHumanRef(ctx: CliContext, parsed: Parsed): Promise<number> {
   throw new Error("usage: hive human-ref status | enroll <receipt.json> | registry init|status|reserve <installation-id>");
 }
 
+async function readyHealth(client: RpcClient, params: Record<string, unknown> = {}, timeoutMs?: number): Promise<HealthResult> {
+  const health = await client.request<HealthResponse>("health", params, timeoutMs);
+  if (isStartingHealth(health)) throw new RpcError("daemon_starting", describeStartingBoot(health.boot), { boot: health.boot });
+  return health;
+}
+
+function startingLine(health: StartingHealthResult): string {
+  return confirm("warn", "daemon:", `starting (pid ${health.pid}) — ${describeStartingBoot(health.boot)}`);
+}
+
 async function cmdHealth(ctx: CliContext): Promise<number> {
-  const result = await withClient(ctx, (c) => c.request<HealthResult>("health"));
+  const response = await withClient(ctx, (c) => c.request<HealthResponse>("health"), { acceptStarting: true });
+  if (isStartingHealth(response)) {
+    emit(ctx, [startingLine(response)], response, false);
+    return 0;
+  }
+  const result = response;
   emit(ctx, () => [...renderHealth(result), ...(result.cellDisk ? [cellDiskLine(result.cellDisk)] : []), ...(result.capacity ? [capacityLine(result.capacity)] : [])], result, false);
   return 0;
 }
@@ -5101,9 +5141,9 @@ const STORE_BACKUP_RPC_TIMEOUT_MS = 110_000;
 
 async function stopScratchDaemon(ctx: CliContext, scope: ServiceScope): Promise<number> {
   if (scope.socketOwned && isNodeDataDir(scope, ctx.cfg.dataDir)) throw refuseNodeDaemon(scope, ctx.target, "stop", ctx.cfg.dataDir);
-  let health: HealthResult;
+  let health: HealthResponse;
   try {
-    health = await withClient(ctx, (c) => c.request<HealthResult>("health"));
+    health = await withClient(ctx, (c) => c.request<HealthResponse>("health"), { acceptStarting: true });
   } catch (err) {
     if (!(err instanceof DaemonDownError)) throw err;
     emit(ctx, [confirm("ok", "not running", `no daemon at ${ctx.cfg.socketPath} (data dir ${ctx.cfg.dataDir}); the background service was not touched`)], { running: false, stopped: false, service: null }, false);
@@ -5192,7 +5232,12 @@ async function cmdDaemon(ctx: CliContext, parsed: Parsed): Promise<number> {
     case "status": {
       // The daemon's own word first; the service manager's second.
       try {
-        const health = await withClient(ctx, (c) => c.request<HealthResult>("health"));
+        const response = await withClient(ctx, (c) => c.request<HealthResponse>("health"), { acceptStarting: true });
+        if (isStartingHealth(response)) {
+          emit(ctx, [startingLine(response)], { running: true, starting: true, health: response }, false);
+          return 0;
+        }
+        const health = response;
         emit(
           ctx,
           [
@@ -5415,7 +5460,7 @@ export async function runV2Cli(argv: string[], io: CliIo = defaultIo): Promise<n
           return result.ok ? 0 : 1;
         }
 
-        const health = await withClient(ctx, client => client.request<HealthResult>("health", {includeDeliveryPrepareAuditUnknown: true}));
+        const health = await withClient(ctx, client => readyHealth(client, {includeDeliveryPrepareAuditUnknown: true}));
         const security = health.localSecurity;
         const childWarning = health.childHealth?.state === "warning";
         if (health.childHealth?.state === "warning") ctx.io.err(`warning: daemon zombie children count=${health.childHealth.zombies}`);

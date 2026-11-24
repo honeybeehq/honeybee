@@ -7,6 +7,7 @@ export type { QuotaBoundary, QuotaObservedEvent } from "./quota.ts";
  */
 export * from "./types.ts";
 export * from "./startFloor.ts";
+export * from "./storeUpgrade.ts";
 export {
   CoreStore,
   openCoreStore,

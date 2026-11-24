@@ -313,6 +313,8 @@ export interface CoreStoreOptions {
    */
   ephemeral?: boolean;
   buildIdentity?: string;
+  connection?: DatabaseSync;
+  upgradeBackupTaken?: boolean;
 }
 
 export interface CreateBeeInput {
@@ -1850,7 +1852,7 @@ export class CoreStore {
     this.backoffBaseMs = opts.backoffBaseMs ?? 30_000;
     this.threadWriterLockRetryWindowMs = opts.threadWriterLockRetryWindowMs ?? THREAD_WRITER_LOCKED_AUTO_RETRY_WINDOW_MS;
     this.maxRpcIdempotencyRows = opts.maxRpcIdempotencyRows ?? 10_000;
-    this.db = new DatabaseSync(path);
+    this.db = opts.connection ?? new DatabaseSync(path);
     this.effectLedger = new EffectLedger(this.db, this.now);
     this.executionLedger = new ExecutionLedger(this.db, this.now, () => this.effectCoverage(), (kind, beeId, data) => { this.audit(kind, beeId, data); }, claim => this.executionStarts.assertAdvance(claim));
     this.executionStarts = new ExecutionStarts(this.db, claim => this.executionLedger.validateCurrent(claim), (kind,beeId,data) => { this.audit(kind,beeId,data); }, key => this.executionLedger.spawnStarted(key), key => this.executionLedger.spawnUnknown(key));
@@ -1874,10 +1876,7 @@ export class CoreStore {
       const hasMeta = this.db.prepare("SELECT 1 FROM sqlite_master WHERE name='meta' AND type='table'").get();
       const stored = hasMeta ? this.readableStoredSchema().stored : 1;
       const existing = this.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' LIMIT 1").get();
-      if (existing && path !== ":memory:" && stored < SCHEMA_VERSION) {
-        const sourceBuild = hasMeta ? this.db.prepare("SELECT value FROM meta WHERE key='store_build_identity'").get()?.value : undefined;
-        this.backup(String(sourceBuild ?? "unknown: legacy store has no recorded build identity"));
-      }
+      if (existing && path !== ":memory:" && stored < SCHEMA_VERSION && !opts.upgradeBackupTaken) this.backup(storeSourceBuild(this.db));
       this.db.exec(SCHEMA_SQL);
       const questionsDdl = String((this.db.prepare("SELECT sql FROM sqlite_master WHERE name = 'questions'").get() as Row).sql);
       const rebuildQuestions = !questionsDdl.includes("'dismissed'") && /CHECK\s*\(\s*status\s+IN/i.test(questionsDdl);
@@ -12368,6 +12367,12 @@ function templateBindings(f: TemplateFields): Array<string | number | null> {
     f.yolo ? 1 : 0,
     JSON.stringify(f.tags),
   ];
+}
+
+export function storeSourceBuild(db: DatabaseSync): string {
+  const hasMeta = db.prepare("SELECT 1 FROM sqlite_master WHERE name='meta' AND type='table'").get();
+  const recorded = hasMeta ? db.prepare("SELECT value FROM meta WHERE key='store_build_identity'").get()?.value : undefined;
+  return String(recorded ?? "unknown: legacy store has no recorded build identity");
 }
 
 /** Open (or create) the node's core store. The returned object is the single writer (B9). */

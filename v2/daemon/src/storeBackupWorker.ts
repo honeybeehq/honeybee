@@ -2,7 +2,7 @@ import { Worker } from "node:worker_threads";
 import { StoreBackupError, type StoreBackupVerification } from "../../core/src/storeBackup.ts";
 import { transcriptSegmentWorkerUrl, type StoreBackupVerifyRequest, type StoreBackupVerifyResult } from "./transcriptSegmentWorker.ts";
 
-export function verifyStoreBackupOffLoop(path: string, workerUrl: URL = transcriptSegmentWorkerUrl()): Promise<StoreBackupVerification> {
+export function verifyStoreBackupOffLoop(path: string, workerUrl: URL = transcriptSegmentWorkerUrl(), signal?: AbortSignal): Promise<StoreBackupVerification> {
   return new Promise((resolve, reject) => {
     const worker = new Worker(workerUrl, { execArgv: [], workerData: { kind: "verifyStoreBackup", path } satisfies StoreBackupVerifyRequest });
     let settled = false;
@@ -17,5 +17,7 @@ export function verifyStoreBackupOffLoop(path: string, workerUrl: URL = transcri
     }));
     worker.once("error", (error) => settle(() => reject(error)));
     worker.once("exit", (code) => settle(() => reject(new StoreBackupError(`Backup verification worker exited with code ${code} without a result`))));
+    if (signal?.aborted) void worker.terminate();
+    else signal?.addEventListener("abort", () => void worker.terminate(), { once: true });
   });
 }

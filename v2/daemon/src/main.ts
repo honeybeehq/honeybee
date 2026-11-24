@@ -100,32 +100,49 @@ export async function runDaemon(argv: string[]): Promise<number> {
   }, SCHEDULING_RECHECK_MS);
   recheck.unref();
   daemon.scheduling = () => scheduling.current();
-  await daemon.start();
+  let signalled = false;
+  let started = false;
+  let stopped: Promise<void> | null = null;
+  const stop = (): Promise<void> => stopped ??= daemon.shutdown({ preserveRuntimes: !reapTestRuntimes }).then(() => {
+    setTimeout(() => {
+      const resources = process.getActiveResourcesInfo().reduce<Record<string, number>>((counts, name) => {
+        counts[name] = (counts[name] ?? 0) + 1;
+        return counts;
+      }, {});
+      process.stderr.write(`hived shutdown exit backstop pid=${process.pid} resources=${JSON.stringify(resources)}\n`);
+      process.exit(0);
+    }, 1000).unref();
+  }, error => {
+    // A rejected ephemeral disposal can retain a host socket. Preserve the
+    // failure even when that socket would otherwise pin the daemon alive.
+    setTimeout(() => process.exit(1), 1000).unref();
+    throw error;
+  });
+  let settle: { resolve: () => void; reject: (error: unknown) => void } | null = null;
+  const onSignal = (): void => {
+    if (signalled) return;
+    signalled = true;
+    process.off("SIGTERM", onSignal);
+    process.off("SIGINT", onSignal);
+    if (!started) {
+      daemon.abortStart();
+      return;
+    }
+    stop().then(() => settle?.resolve(), error => settle?.reject(error));
+  };
+  process.on("SIGTERM", onSignal);
+  process.on("SIGINT", onSignal);
+  try {
+    await daemon.start();
+  } catch (error) {
+    if (signalled) return 0;
+    throw error;
+  }
+  started = true;
   process.stdout.write(`hived v2 listening on ${daemon.cfg.socketPath} (store ${cfg.storePath})\n`);
   await new Promise<void>((resolve, reject) => {
-    let stopping = false;
-    const onSignal = (): void => {
-      if (stopping) return;
-      stopping = true;
-      void daemon.shutdown({ preserveRuntimes: !reapTestRuntimes }).then(() => {
-        setTimeout(() => {
-          const resources = process.getActiveResourcesInfo().reduce<Record<string, number>>((counts, name) => {
-            counts[name] = (counts[name] ?? 0) + 1;
-            return counts;
-          }, {});
-          process.stderr.write(`hived shutdown exit backstop pid=${process.pid} resources=${JSON.stringify(resources)}\n`);
-          process.exit(0);
-        }, 1000).unref();
-        resolve();
-      }, error => {
-        // A rejected ephemeral disposal can retain a host socket. Preserve the
-        // failure even when that socket would otherwise pin the daemon alive.
-        setTimeout(() => process.exit(1), 1000).unref();
-        reject(error);
-      });
-    };
-    process.once("SIGTERM", onSignal);
-    process.once("SIGINT", onSignal);
+    settle = { resolve, reject };
+    if (signalled) stop().then(resolve, reject);
   });
   return 0;
 }
