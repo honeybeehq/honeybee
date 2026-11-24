@@ -363,6 +363,16 @@ export class RuntimeHost implements RuntimeDriver {
     };
   }
 
+  private recordedRunnerPaths(beeId: string, generation: number): ReturnType<RuntimeHost["runnerPaths"]> {
+    const paths = this.runnerPaths(beeId, generation);
+    try {
+      const recorded = (JSON.parse(readFileSync(paths.config, "utf8")) as Partial<RunnerHostConfig>).socketPath;
+      return typeof recorded === "string" && recorded.length > 0 ? { ...paths, socket: recorded } : paths;
+    } catch {
+      return paths;
+    }
+  }
+
   private hostCommandFor(configPath: string): { command: string; args: string[] } {
     if (this.hostLaunch.kind === "override") return this.hostLaunch.commandFor(configPath);
     if (this.hostLaunch.kind === "source") {
@@ -1368,7 +1378,7 @@ export class RuntimeHost implements RuntimeDriver {
     const pendingStartIdentity = pendingStart && value.kind === "present" ? {pid, birth: value.birth, bootId: value.bootId} : undefined;
     let processIdentity: ProcessIdentity | undefined = storedIdentity.kind === "bound" ? storedIdentity.identity : undefined;
     if (processIdentity ? !verifyProcessIdentity(pid, processIdentity) : !legacyProcessCandidate(pid, pidStartedAt, value)) return false;
-    const paths = this.runnerPaths(beeId, generation);
+    const paths = this.recordedRunnerPaths(beeId, generation);
     const status = readRunnerStatus(paths.status);
     if (execution && (!status || status.hostBirth !== executionHost?.birth || status.executionIntentId !== execution.intentId || status.executionDigest !== canonicalDigest(execution as unknown as JsonValue))) return false;
     if (status && status.hostPid === pid && !status.exited) {
