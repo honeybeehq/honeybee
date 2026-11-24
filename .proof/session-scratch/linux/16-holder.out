@@ -1,0 +1,36 @@
+forage: host trmd-metal-2 (linux/x86_64, 48 cores, load 11.27, 0 forage jobs)
+forage: synced honeybee-bf9ebc3f @ b6207ec56f in 3,727,819µs
+forage: lane honeybee-bf9ebc3f · scratch /home/trmd/.cache/fj/K2Se9l · network isolated · scope forage-K2Se9l-231836
+
+== A. start the holder: detached, in its own cgroup slice, no --die-with-parent (it must outlive the daemon)
+holder: bwrap 231941 -> namespace init 231943 -> sleep 231944; parent of bwrap is now pid 1 (the starter has exited)
+idle cost: 5396 KiB resident over 3 processes; slice TasksMax via scope
+slice cgroup exists: yes
+
+== B. runtime generation 1 enters; it writes files, leaves one background process in its own session and one in its group
+uid=1001 pid=3 TMPDIR=/home/trmd/.cache/fj/K2Se9l/L/run.mBwgHv/tmp
+entries visible in the runner socket folder: 0
+alive during generation 1: 5
+note: env set by --setenv belongs to the holder; a runtime that enters gets its env from the runner, as today: TMPDIR must be set by the daemon to /tmp
+after the runtime's group is stopped (what driver.stop does): alive=1  <- the one that left the group, the 'dev server'
+
+== C. generation 2 enters the same namespaces
+sees gen 1 file: g1; /dev/shm kept: shm; processes it can see: bwrap sleep sleep sh sh ps tr 
+
+== D. what a person sees from outside, without entering
+  host pid 231943, 6s old, 1356 KiB: /usr/bin/bwrap --dev-bind
+  host pid 231944, 6s old, 2008 KiB: sleep infinity
+  host pid 231985, 4s old, 2160 KiB: sleep 579321
+slice: pids.current=4 (limit is per scope here: 40)
+
+== E. the process cap: set it on the slice, then try 60 processes in one runtime
+slice pids.max=30
+started 24 more processes, then: Resource temporarily unavailable
+
+== F. the session ends (archive, delete, a person's stop): kill the namespace init
+alive before: 1
+alive after: 0; holder processes left: 0
+scratch files are still there: from-gen1 
+slice gone: yes
+forage: reaped 0 leftover job processes
+forage: exit 0 · run 11,264,330µs · trmd-metal-2
