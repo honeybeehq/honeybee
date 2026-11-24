@@ -259,7 +259,9 @@ test("manifest parsing rejects malformed manifests", () => {
 
 test("the artifact script reuses buildDeployArtifact and packRuntimeArtifact instead of forking them", async () => {
   const source = await readFile(join(process.cwd(), "scripts", "build-runtime-artifact.mjs"), "utf8");
-  assert.match(source, /import \{ buildDeployArtifact \} from "\.\.\/v2\/core\/src\/release\/buildArtifact\.ts"/);
+  assert.match(source, /import \{ buildDeployArtifact, createBuildWorkDir \} from "\.\.\/v2\/core\/src\/release\/buildArtifact\.ts"/);
+  assert.match(source, /const workDir = await createBuildWorkDir\("hive-runtime-artifact-"\);/, "the work dir stays outside the Cell sandbox's private /tmp");
+  assert.doesNotMatch(source, /mkdtemp\(join\(tmpdir\(\)/, "the script must not build under tmpdir() directly");
   assert.match(source, /import \{ packRuntimeArtifact \} from "\.\.\/v2\/core\/src\/release\/runtimeArtifact\.ts"/);
   assert.match(source, /\["-C", repoRoot, "rev-parse", "--verify", `\$\{ref\}\^\{commit\}`\]/);
   assert.match(source, /gate: options\.skipTests \? "tests-skipped" : "full"/);
