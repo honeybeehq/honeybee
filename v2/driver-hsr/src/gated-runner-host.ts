@@ -6,7 +6,7 @@ import { dirname } from "node:path";
 import { exactProcessBirth } from "../../harness/src/processIdentity.ts";
 import { runnerStateFiles } from "../../harness/src/statePath.ts";
 import { canonicalDigest, type JsonValue } from "../../core/src/canonical.ts";
-import type { RunnerHostConfig, RunnerStatus } from "./runner-host.ts";
+import { removeRunnerSocket, type RunnerHostConfig, type RunnerStatus } from "./runner-host.ts";
 
 export function runGatedRunnerHost(cfg: RunnerHostConfig, sessionLogLine: (line: string) => string): void {
   runnerStateFiles(cfg);
@@ -23,7 +23,7 @@ export function runGatedRunnerHost(cfg: RunnerHostConfig, sessionLogLine: (line:
   const persist = (): void => { status.at = Date.now(); writeFileSync(cfg.statusPath, JSON.stringify(status)); };
   const finish = (patch: Partial<RunnerStatus>): void => {
     if (finished) return; finished = true;
-    Object.assign(status, patch); persist(); server.close(); rmSync(cfg.socketPath, { force: true }); process.exit(0);
+    Object.assign(status, patch); persist(); server.close(); removeRunnerSocket(cfg.socketPath); process.exit(0);
   };
   const write = (line: string): void => {
     if (!child || !consumed || !child.stdin?.writable) return;

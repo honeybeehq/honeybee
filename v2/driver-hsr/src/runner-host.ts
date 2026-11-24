@@ -7,9 +7,9 @@ import { nativeNodeEnv } from "../../core/src/runtimeEnvironment.ts";
 import { describeRepair, promoteScheduling } from "../../core/src/processScheduling.ts";
 import { spawn, type ChildProcess } from "node:child_process";
 import { createHash } from "node:crypto";
-import { appendFileSync, chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, chmodSync, existsSync, mkdirSync, readFileSync, rmdirSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type Server, type Socket } from "node:net";
-import { dirname } from "node:path";
+import { basename, dirname } from "node:path";
 
 /**
  * HSR runner host — the tiny process that makes daemon restarts invisible to
@@ -173,6 +173,18 @@ function bindToTestFixtureLease(lease: string | undefined): void {
   setInterval(check, 500).unref();
 }
 
+export const RUNNER_SOCKET_FILE = "stdin.sock";
+
+export function removeRunnerSocket(socketPath: string): void {
+  rmSync(socketPath, { force: true });
+  if (basename(socketPath) !== RUNNER_SOCKET_FILE) return;
+  try {
+    rmdirSync(dirname(socketPath));
+  } catch {
+    // Already gone, or something else still lives there.
+  }
+}
+
 export function runRunnerHost(configPath: string): void {
   stateFile(configPath, "runner configPath");
   const cfg = JSON.parse(readFileSync(configPath, "utf8")) as RunnerHostConfig;
@@ -231,7 +243,7 @@ export function runRunnerHost(configPath: string): void {
       // Already closed.
     }
     try {
-      rmSync(cfg.socketPath, { force: true });
+      removeRunnerSocket(cfg.socketPath);
     } catch {
       // Best effort; a stale socket path is re-unlinked on the next spawn.
     }

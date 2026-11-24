@@ -21,7 +21,7 @@ import { tmpdir } from "node:os";
 import { connect, type Socket } from "node:net";
 import { dirname, extname, join, resolve as resolvePath } from "node:path";
 import { fileURLToPath } from "node:url";
-import { readRunnerStatus, type RunnerHostConfig } from "./runner-host.ts";
+import { readRunnerStatus, removeRunnerSocket, RUNNER_SOCKET_FILE, type RunnerHostConfig } from "./runner-host.ts";
 import {legacyRunnerCommandProof} from "./legacyRunnerProof.ts";
 import type {
   DeliverOutcome,
@@ -334,7 +334,7 @@ export class RuntimeHost implements RuntimeDriver {
   private socketDir(): string {
     if (this.cfg.socketDir !== undefined) return stateDirectory(this.cfg.socketDir, "socketDir");
     if (!this.fallbackSocketDir) {
-      const sample = join(`hb-rh-${"0".repeat(16)}`, "stdin.sock");
+      const sample = join(`hb-rh-${"0".repeat(16)}`, RUNNER_SOCKET_FILE);
       if (socketPathFits(join(tmpdir(), sample))) this.fallbackSocketDir = tmpdir();
       else {
         mkdirSync(this.runnersDir(), { recursive: true });
@@ -357,7 +357,7 @@ export class RuntimeHost implements RuntimeDriver {
       config: `${base}.json`,
       socket: existsSync(join(this.socketDir(), `hb-rh-${digest}.sock`))
         ? join(this.socketDir(), `hb-rh-${digest}.sock`)
-        : join(this.socketDir(), `hb-rh-${digest}`, "stdin.sock"),
+        : join(this.socketDir(), `hb-rh-${digest}`, RUNNER_SOCKET_FILE),
       status: `${base}.status.json`,
       observations: `${base}.observations.jsonl`,
     };
@@ -1622,6 +1622,9 @@ export class RuntimeHost implements RuntimeDriver {
         if (p.stopCause == null) p.stopCause = "stopped_by_system";
         this.signalGroup(p, "SIGKILL");
       }
+      if (p.socketPath) {
+        try { removeRunnerSocket(p.socketPath); } catch {}
+      }
     }
     this.events = [];
     this.evidence = [];
@@ -1853,6 +1856,9 @@ export class RuntimeHost implements RuntimeDriver {
     }
     p.socket?.destroy();
     p.socket = null;
+    if (p.socketPath) {
+      try { removeRunnerSocket(p.socketPath); } catch {}
+    }
     this.dirty.delete(p);
     this.procs.delete(p.beeId);
     const cause = p.stopCause ?? (code === 0 ? "clean" : "crashed");
