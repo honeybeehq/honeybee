@@ -13,7 +13,7 @@ export function cursorBundledAgentPaths(platform: string, home: string): string[
   return [];
 }
 
-function versionOf(path: string, env: Record<string, string>, timeoutMs: number): Promise<string | null> {
+export function commandVersion(path: string, env: Record<string, string>, timeoutMs: number): Promise<string | null> {
   return new Promise((resolve) => {
     execFile(path, ["--version"], { env, timeout: timeoutMs, killSignal: "SIGKILL", maxBuffer: 64 * 1024 }, (error, stdout) => {
       resolve(error === null ? String(stdout).trim().split("\n")[0]!.trim() : null);
@@ -38,7 +38,7 @@ export async function firstRunnableCommand(
       tried.push(`${candidate} (not found)`);
       continue;
     }
-    const version = await versionOf(resolved.path, env, opts.timeoutMs ?? VERSION_PROBE_TIMEOUT_MS);
+    const version = await commandVersion(resolved.path, env, opts.timeoutMs ?? VERSION_PROBE_TIMEOUT_MS);
     if (version === null) {
       tried.push(`${candidate} (did not run)`);
       continue;

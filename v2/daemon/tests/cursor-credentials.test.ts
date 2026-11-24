@@ -799,3 +799,37 @@ test("cursor unreadable expiry: a token whose exp cannot be read never starts or
     }
   }
 });
+
+function cursorCli(r: Rig, versionLine: string): string {
+  const path = join(r.dir, `cursor-agent-${versionLine.replace(/[^0-9a-z]/gi, "")}`);
+  writeFileSync(path, `#!/bin/sh\nif [ "$1" = "--version" ]; then echo ${versionLine}; exit 0; fi\nexit 9\n`, { mode: 0o755 });
+  return path;
+}
+
+test("cursor credential store: every spawn that passes a token tells Cursor's CLI to keep credentials in memory, so the computer's own Cursor login is never rewritten or cleared", () => {
+  const r = rig("store-memory");
+  try {
+    const svc = service(r, fakeCursorStore());
+    const token = addCursor(r, "a", authDoc(fakeJwt("auth0|user_a", r.now() + 6 * HOUR, "a")));
+    assert.deepEqual(svc.credentialEnvOf(token), { CURSOR_AUTH_TOKEN: parseCursorAuth(authDoc(fakeJwt("auth0|user_a", r.now() + 6 * HOUR, "a")))!.accessToken, AGENT_CLI_CREDENTIAL_STORE: "memory" });
+    const keyed = addCursor(r, "k", JSON.stringify({ accessToken: fakeJwt("auth0|user_k", r.now() + 6 * HOUR, "k"), apiKey: "FAKE-KEY" }));
+    assert.equal(svc.credentialEnvOf(keyed).AGENT_CLI_CREDENTIAL_STORE, "memory");
+  } finally {
+    r.cleanup();
+  }
+});
+
+test("cursor CLI version: a spawn that passes a token is refused, and says why, unless the CLI reports a version known to honour the in-memory store", async () => {
+  const r = rig("cli-version");
+  try {
+    const svc = service(r, fakeCursorStore());
+    const account = addCursor(r, "a", authDoc(fakeJwt("auth0|user_a", r.now() + 6 * HOUR, "a")));
+    await svc.activateForSpawn(account, { cwd: r.dir, command: cursorCli(r, "2026.06.02-8c11d9f") });
+    await svc.activateForSpawn(account, { cwd: r.dir, command: cursorCli(r, "2026.11.22-e9042b2") });
+    await assert.rejects(svc.activateForSpawn(account, { cwd: r.dir, command: cursorCli(r, "2026.05.20-0abc123") }), /reports version 2026\.05\.20-0abc123; Honeybee needs 2026\.06\.02 or newer/);
+    await assert.rejects(svc.activateForSpawn(account, { cwd: r.dir, command: cursorCli(r, "3.31.15") }), /did not report a Cursor agent version \("3\.31\.15"\)/);
+    await assert.rejects(svc.activateForSpawn(account, { cwd: r.dir, command: join(r.dir, "missing-cursor-agent") }), /did not report a Cursor agent version/);
+  } finally {
+    r.cleanup();
+  }
+});

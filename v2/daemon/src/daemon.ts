@@ -1539,7 +1539,8 @@ export class HiveDaemon {
       const lease = execution ? hooks.begin(execution,"account_activation") : null;
       const task = Promise.resolve().then(() => {
         if (execution) hooks.check(execution,"account_activation");
-        return accounts.activateForSpawn(account,bee);
+        const spec = this.cfg.agents[bee.agent];
+        return accounts.activateForSpawn(account, { cwd: bee.cwd, ...(spec?.command ? { command: spec.command, env: { ...process.env, ...(spec.env ?? {}) } } : {}) });
       }).then(
         () => {
           if (execution && lease) { hooks.finish(execution,lease,true); hooks.check(execution,"account_activation_ready"); }

@@ -1,3 +1,4 @@
+import { cursorCliRefusal } from "./cursorCli.ts";
 import { LEASE_UNKNOWN_MESSAGE, accountLeaseUnknown, knownAccountLease, presentAccountLease } from "../../core/src/accountLease.ts";
 import { withoutRpcCaller } from "../../core/src/rpcAuditContext.ts";
 import { OBSERVATION_CODECS, OBSERVATION_HARNESSES, localObservationText } from "./limitsObservation.ts";
@@ -2072,8 +2073,8 @@ export class AccountsService {
     if (account.harness !== "cursor") return {};
     // The same identity-checked selection the probe and the lease use.
     const selected = this.cursorSelection(account).selected?.auth;
-    if (selected?.apiKey) return { CURSOR_API_KEY: selected.apiKey };
-    if (selected?.accessToken) return { CURSOR_AUTH_TOKEN: selected.accessToken };
+    if (selected?.apiKey) return { CURSOR_API_KEY: selected.apiKey, AGENT_CLI_CREDENTIAL_STORE: "memory" };
+    if (selected?.accessToken) return { CURSOR_AUTH_TOKEN: selected.accessToken, AGENT_CLI_CREDENTIAL_STORE: "memory" };
     return {};
   }
 
@@ -4796,7 +4797,7 @@ export class AccountsService {
     if (result.status !== "seeded") throw new Error(`Gateway config reconciliation refused: ${result.reason ?? "unknown"}`);
   }
 
-  async activateForSpawn(account: AccountRow, bee: { cwd: string }): Promise<ActivationResult> {
+  async activateForSpawn(account: AccountRow, bee: { cwd: string; command?: string; env?: Record<string, string | undefined> }): Promise<ActivationResult> {
     knownAccountLease(account);
     if (this.isNative(account)) {
       const moved = this.nativeHomeRefusal(account);
@@ -4811,6 +4812,10 @@ export class AccountsService {
       await this.recaptureCursor(account);
       const expired = this.refuseExpiredCursorSignIn(account);
       if (expired) throw new CredentialAuthorityError(expired, "login_required");
+      if (bee.command && Object.keys(this.credentialEnvOf(this.store.getAccount(account.id) ?? account)).length > 0) {
+        const outdated = await cursorCliRefusal(bee.command, bee.env ?? process.env);
+        if (outdated) throw new Error(outdated);
+      }
     }
     if (this.authorityFor(account)?.enabled(account)) {
       await this.authorityFor(account)!.ensure(account, account.harness === "codex" ? CODEX_MIN_SHIP_TTL_MS : CLAUDE_MIN_SHIP_TTL_MS);

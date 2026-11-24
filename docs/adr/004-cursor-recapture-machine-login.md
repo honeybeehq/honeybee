@@ -28,7 +28,9 @@ A 401 leads to one forced re-capture and one more probe before the account is ma
 `auth_needed`.
 
 Honeybee never calls a Cursor refresh endpoint. `cursor-agent` keeps its own login
-fresh, and Honeybee follows it.
+fresh, and Honeybee follows it. That holds only while Honeybee's own runtimes leave
+the login alone, so every runtime that gets a Honeybee token also gets
+`AGENT_CLI_CREDENTIAL_STORE=memory` (see "Runtime isolation").
 
 Satellites get access-only leases: the access token, never the refresh token.
 A leased account never reads the satellite's own Cursor login and cannot log in or
@@ -41,6 +43,33 @@ the account's held identity. The refusal reasons are `different_account` and
 They also refuse, with `credential_stale`, a sign-in whose token is past its
 `exp` or is the same token that just got an HTTP 401. Nothing changes, and the
 message says to sign in to Cursor again and run `hive account login`.
+
+## Runtime isolation
+
+Added 2026-11-24 after a real run on Tormod's Mac (HON-27). Cursor's CLI writes a
+`CURSOR_AUTH_TOKEN` it is started with into its credential store as both the access
+and the refresh token, replacing the machine's real `session_rt_` refresh token
+(`./src/api-key-auth.ts`, `setAuthentication(token, token)`). If the server rejects
+the token at startup, it then deletes every `cursor-*` credential
+(`clearAuthentication()`). One Honeybee spawn with an expired token removed the
+Mac's Cursor login this way, and earlier spawns with valid tokens had already
+replaced its refresh token, which is why that login had stopped refreshing.
+
+- **Memory store.** Every runtime that gets `CURSOR_AUTH_TOKEN` or `CURSOR_API_KEY`
+  also gets `AGENT_CLI_CREDENTIAL_STORE=memory`. The CLI then keeps credentials in
+  process memory, and neither the overwrite nor the clear reaches the machine's
+  login. In a lab file store on Linux with CLI 2026.11.22, the store was rewritten
+  and then cleared without the variable, and byte-identical with it, for a valid,
+  an expired and an unreadable token.
+- **CLI version.** Every installed CLI from 2026.06.02 to 2026.11.22 honours the
+  variable; older versions were not available to check. A spawn that passes a token
+  is refused, with the reason, unless the configured CLI reports a Cursor agent
+  version of 2026.06.02 or newer.
+- **Native accounts.** An account that uses the machine's own login passes no
+  token, so the CLI uses its normal store, unchanged.
+- **Expiry.** A spawn or probe with a token past its `exp`, or whose `exp` cannot be
+  read, is refused, the account goes to `auth_needed`, and the message says to log
+  in. The CLI treats an unreadable `exp` as expired.
 
 ## Threat model
 
@@ -80,7 +109,7 @@ writing an older token over a newer one.
 - **When the store is read.** Only when the selected token has a known `exp` within
   15 minutes, or after an exact HTTP 401 status. This background read gives the
   Keychain two seconds; if it does not answer (it is locked), Honeybee keeps using
-  the cached token. Explicit login and capture wait up to 60 seconds, because a
+  the cached token while that token has not expired. Explicit login and capture wait up to 60 seconds, because a
   person may be unlocking the Keychain.
 - **Errors.** Cursor probe errors carry the HTTP status only, never a response body.
 - **Leases.** A lease's `auth.json` is exactly `{accessToken}`. Mint and install
@@ -100,5 +129,5 @@ endpoint or whether it rotates refresh tokens. Reverse-engineering the client is
 brittle, and a wrong guess could invalidate the account's only refresh token.
 
 Re-reading the store works only on the computer where `cursor-agent` keeps the login
-fresh. That computer is the account's authority node. Other nodes depend on its
+fresh, and only while Honeybee's runtimes are kept off that login. That computer is the account's authority node. Other nodes depend on its
 leases.
