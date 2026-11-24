@@ -126,10 +126,28 @@ export const LOGIN_FLOW_ERROR_CODES = [
 ] as const;
 export type LoginFlowErrorCode = (typeof LOGIN_FLOW_ERROR_CODES)[number];
 
+export const LOGIN_CLI_REASONS = ["missing", "not_agent", "too_old"] as const;
+export type LoginCliReason = (typeof LOGIN_CLI_REASONS)[number];
+
+/** What Honeybee found when it looked for the vendor CLI (`cli_missing`); the same facts on a login flow and on a refused spawn. */
+export interface LoginCliFacts {
+  reason: LoginCliReason;
+  /** The resolved command Honeybee ran, or null when nothing ran. */
+  path: string | null;
+  /** The first line its `--version` printed (bounded), or null. */
+  version: string | null;
+  /** The oldest CLI version Honeybee accepts, or null when it has no floor. */
+  minVersion: string | null;
+  tried: string[];
+  /** A copyable shell command that fixes it, or null. */
+  fix: string | null;
+}
+
 export interface LoginFlowError {
   code: LoginFlowErrorCode;
   /** Safe, bounded, operator-facing message (no secrets, no raw output). */
   message: string;
+  cli?: LoginCliFacts;
 }
 
 /** The durable flow row (`login_flows`); mirrored verbatim as `hive_login_flows`. */

@@ -222,6 +222,11 @@ export type MirrorDelta = AuditRow;
  *                                                                        (informational: a stale/unauthorized/duplicate-
  *                                                                         conflicting report was refused; no row change)
  * bee.deleted cascades actions + action_queues for that beeId.
+ * v62 (typed start refusals) is additive inside existing payloads:
+ *   flag.set         → `flag.error`: LoginFlowError | null (null/absent on older rows)
+ *   command.requeued → may carry { error: LoginFlowError }
+ * A refused Cursor start carries login's `cli_missing` with
+ * `cli: { reason: missing|not_agent|too_old, path, version, minVersion, tried, fix }`.
  * Turn trigger (additive inside existing payloads, capability `bee.turn_trigger.v1`):
  *   mail.delivered  → may carry { turnTrigger: TurnTrigger }             (bee row: lastTurnTrigger)
  *   runtime.updated → may carry { turnTrigger: TurnTrigger }             (bee row: lastTurnTrigger)

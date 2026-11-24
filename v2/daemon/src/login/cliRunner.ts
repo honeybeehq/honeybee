@@ -11,6 +11,7 @@
  */
 import { homedir } from "node:os";
 import { CURSOR_AGENT_VERSION, cursorBundledAgentPaths, firstRunnableCommand } from "./runnableCommand.ts";
+import { CURSOR_CLI_MIN_VERSION, cursorCliFacts } from "../cursorCli.ts";
 import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { recipeFor, resolveSpawnCommand, safeAuthorizationUrl, type LoginCliSpec, type LoginFieldDescriptor, type LoginFlowRow } from "../../../core/src/index.ts";
@@ -105,8 +106,9 @@ export class CliRunner implements LoginRunner {
     const search = candidates ? await firstRunnableCommand(candidates, env, cursorAgent ? { versionPattern: CURSOR_AGENT_VERSION } : {}) : null;
     const runnable = search?.path ?? null;
     if (!host.isCurrent(this) || !host.stillActive()) return host.flow() as LoginFlowRow;
-    if (candidates && runnable === null) {
-      return host.fail(err("cli_missing", `The ${account.harness} CLI could not run on this node (tried ${search?.tried.join(", ")}). ${recipe.login.unrunnableHint ?? "Install it, then retry."}`), true);
+    if (search && runnable === null) {
+      const cli = cursorAgent ? cursorCliFacts(search, CURSOR_CLI_MIN_VERSION)! : { reason: "missing" as const, path: null, version: null, minVersion: null, tried: search.tried, fix: null };
+      return host.fail({ ...err("cli_missing", `The ${account.harness} CLI could not run on this node (tried ${search.tried.join(", ")}). ${recipe.login.unrunnableHint ?? "Install it, then retry."}`), cli }, true);
     }
     if (cursorAgent && runnable) host.log(`account.login.cursor_command flow=${host.flowId} path=${runnable}`);
     const command = runnable ?? resolveSpawnCommand(launch.command, { env }).command;

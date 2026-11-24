@@ -25,7 +25,7 @@ export interface RunnableCommandSearch {
   path: string | null;
   version: string | null;
   tried: string[];
-  otherPrograms: Array<{ candidate: string; version: string }>;
+  otherPrograms: Array<{ candidate: string; path: string; version: string }>;
 }
 
 export async function firstRunnableCommand(
@@ -34,7 +34,7 @@ export async function firstRunnableCommand(
   opts: Pick<ResolveExecutableOptions, "fallbackDirs"> & { timeoutMs?: number; versionPattern?: RegExp } = {},
 ): Promise<RunnableCommandSearch> {
   const tried: string[] = [];
-  const otherPrograms: Array<{ candidate: string; version: string }> = [];
+  const otherPrograms: RunnableCommandSearch["otherPrograms"] = [];
   for (const candidate of candidates) {
     const resolved = resolveExecutable(candidate, { env, ...(opts.fallbackDirs ? { fallbackDirs: opts.fallbackDirs } : {}) });
     if (!resolved) {
@@ -48,7 +48,7 @@ export async function firstRunnableCommand(
     }
     if (opts.versionPattern && !opts.versionPattern.test(version)) {
       tried.push(`${candidate} (printed ${JSON.stringify(version.slice(0, 80))}, not a Cursor agent version)`);
-      otherPrograms.push({ candidate, version: version.slice(0, 80) });
+      otherPrograms.push({ candidate, path: resolved.path, version: version.slice(0, 80) });
       continue;
     }
     return { path: resolved.path, version, tried, otherPrograms };

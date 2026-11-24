@@ -1603,6 +1603,7 @@ function mapFlag(r: Row): FlagRow {
     setAt: Number(r.set_at),
     clearedAt: r.cleared_at == null ? null : Number(r.cleared_at),
     resetsAt: r.resets_at == null ? null : Number(r.resets_at),
+    error: r.error == null ? null : JSON.parse(String(r.error)) as LoginFlowError,
   };
 }
 
@@ -2207,10 +2208,10 @@ export class CoreStore {
       const flagCols = new Set(
         (this.stmt("SELECT name FROM pragma_table_info('flags')").all() as Row[]).map((c) => String(c.name)),
       );
+      for (const [name, ddl] of FLAGS_ADDITIVE_COLUMNS) {
+        if (!flagCols.has(name)) this.db.exec(`ALTER TABLE flags ADD COLUMN ${ddl}`);
+      }
       if (!flagCols.has("resets_at")) {
-        for (const [name, ddl] of FLAGS_ADDITIVE_COLUMNS) {
-          if (!flagCols.has(name)) this.db.exec(`ALTER TABLE flags ADD COLUMN ${ddl}`);
-        }
         const open = this.stmt(
           "SELECT id, detail FROM flags WHERE cleared_at IS NULL AND flag = 'resource_blocked'",
         ).all() as Row[];
@@ -4317,21 +4318,22 @@ export class CoreStore {
     });
   }
 
-  private applySetFlag(beeId: string, flag: Flag, detail: string, resetsAt: number | null = null): FlagRow {
+  private applySetFlag(beeId: string, flag: Flag, detail: string, resetsAt: number | null = null, error: LoginFlowError | null = null): FlagRow {
     if (flag === "spawn_failed") this.applyClearThreadWriterLocked(beeId, "start failed for another reason");
     const existing = this.db
       .prepare("SELECT * FROM flags WHERE bee_id = ? AND flag = ? AND cleared_at IS NULL")
       .get(beeId, flag) as Row | undefined;
+    const errorJson = error ? JSON.stringify(error) : null;
     if (existing) {
-      this.stmt("UPDATE flags SET detail = ?, resets_at = ? WHERE id = ?").run(detail, resetsAt, Number(existing.id));
-      const row = mapFlag({ ...existing, detail, resets_at: resetsAt });
+      this.stmt("UPDATE flags SET detail = ?, resets_at = ?, error = ? WHERE id = ?").run(detail, resetsAt, errorJson, Number(existing.id));
+      const row = mapFlag({ ...existing, detail, resets_at: resetsAt, error: errorJson });
       this.audit("flag.set", beeId, { flag: row });
       return row;
     }
     const at = this.now();
     const res = this.db
-      .prepare("INSERT INTO flags(bee_id, flag, detail, set_at, cleared_at, resets_at) VALUES(?, ?, ?, ?, NULL, ?)")
-      .run(beeId, flag, detail, at, resetsAt);
+      .prepare("INSERT INTO flags(bee_id, flag, detail, set_at, cleared_at, resets_at, error) VALUES(?, ?, ?, ?, NULL, ?, ?)")
+      .run(beeId, flag, detail, at, resetsAt, errorJson);
     const row: FlagRow = {
       id: Number(res.lastInsertRowid),
       beeId,
@@ -4340,6 +4342,7 @@ export class CoreStore {
       setAt: at,
       clearedAt: null,
       resetsAt,
+      error,
     };
     this.audit("flag.set", beeId, { flag: row });
     return row;
@@ -6472,7 +6475,7 @@ export class CoreStore {
     id: number,
     cause: string,
     detail?: string,
-    opts: { retryable?: boolean } = {},
+    opts: { retryable?: boolean; error?: LoginFlowError } = {},
   ): { status: "queued" | "failed"; attempts: number; nextAttemptAt: number | null } {
     if (!(FLAGS as readonly string[]).includes(cause)) throw new UnknownFailureCauseError(cause);
     return this.tx(() => {
@@ -6499,6 +6502,8 @@ export class CoreStore {
             command.beeId,
             cause as FailureCause,
             detail ?? `${command.verb} failed after ${attempts} attempts: ${cause}`,
+            null,
+            opts.error ?? null,
           );
         }
         return { status: "failed" as const, attempts, nextAttemptAt: null };
@@ -6513,6 +6518,7 @@ export class CoreStore {
         nextAttemptAt,
         cause,
         detail: detail ?? null,
+        ...(opts.error ? { error: opts.error } : {}),
       });
       return { status: "queued" as const, attempts, nextAttemptAt };
     });

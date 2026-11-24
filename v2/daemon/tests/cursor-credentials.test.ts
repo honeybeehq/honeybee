@@ -24,6 +24,7 @@ import { CredentialAuthorityError } from "../src/claudeCredentialAuthority.ts";
 import { RpcError } from "../src/protocol.ts";
 import { ProviderHttpError } from "../src/providerLimits.ts";
 import { cursorBundledAgentPaths } from "../src/login/runnableCommand.ts";
+import { StartRefusedError } from "../../harness/src/driver.ts";
 import { dirname } from "node:path";
 
 const MIN = 60_000;
@@ -832,6 +833,50 @@ test("cursor CLI version: a spawn that passes a token is refused, and says why, 
     await assert.rejects(svc.activateForSpawn(account, { cwd: r.dir, command: cursorCli(r, "2026.05.20-0abc123"), env }), /reports version 2026\.05\.20-0abc123; Honeybee needs 2026\.06\.02 or newer/);
     await assert.rejects(svc.activateForSpawn(account, { cwd: r.dir, command: cursorCli(r, "3.31.15"), env }), /is the Cursor app's launcher \(it printed "3\.31\.15"\)/);
     await assert.rejects(svc.activateForSpawn(account, { cwd: r.dir, command: join(r.dir, "missing-cursor-agent"), env }), /No Cursor agent CLI was found/);
+  } finally {
+    r.cleanup();
+  }
+});
+
+test("cursor CLI refusal: a refused spawn carries login's cli_missing error with the reason, the resolved command, the version line it printed, the minimum and a copyable fix (HON-40)", async () => {
+  const r = rig("cli-refusal-facts");
+  try {
+    const svc = service(r, fakeCursorStore());
+    const env = { PATH: "/usr/bin:/bin", HOME: join(r.dir, "no-home") };
+    const account = addCursor(r, "a", authDoc(fakeJwt("auth0|user_a", r.now() + 6 * HOUR, "a")));
+    const refusal = async (command: string) => {
+      try {
+        await svc.activateForSpawn(account, { cwd: r.dir, command, env });
+      } catch (error) {
+        assert.ok(error instanceof StartRefusedError, `expected a StartRefusedError, got ${String(error)}`);
+        assert.equal(error.message, error.error.message);
+        return error.error;
+      }
+      return assert.fail("the spawn was not refused");
+    };
+    const install = "curl https://cursor.com/install -fsS | bash";
+
+    const old = cursorCli(r, "2026.05.20-0abc123");
+    const tooOld = await refusal(old);
+    assert.equal(tooOld.code, "cli_missing");
+    assert.match(tooOld.message, /reports version 2026\.05\.20-0abc123; Honeybee needs 2026\.06\.02 or newer/);
+    assert.deepEqual(tooOld.cli, { reason: "too_old", path: old, version: "2026.05.20-0abc123", minVersion: "2026.06.02", tried: [], fix: `'${old}' update` });
+
+    const launcher = cursorCli(r, "3.31.15");
+    const notAgent = await refusal(launcher);
+    assert.equal(notAgent.code, "cli_missing");
+    assert.match(notAgent.message, /is the Cursor app's launcher/);
+    assert.equal(notAgent.cli?.reason, "not_agent");
+    assert.equal(notAgent.cli?.path, launcher);
+    assert.equal(notAgent.cli?.version, "3.31.15");
+    assert.equal(notAgent.cli?.minVersion, "2026.06.02");
+    assert.equal(notAgent.cli?.fix, install);
+
+    const missing = await refusal(join(r.dir, "missing-cursor-agent"));
+    assert.equal(missing.code, "cli_missing");
+    assert.match(missing.message, /No Cursor agent CLI was found/);
+    assert.deepEqual({ ...missing.cli, tried: [] }, { reason: "missing", path: null, version: null, minVersion: "2026.06.02", tried: [], fix: install });
+    assert.ok(missing.cli?.tried.some((entry) => entry.includes("missing-cursor-agent (not found)")));
   } finally {
     r.cleanup();
   }

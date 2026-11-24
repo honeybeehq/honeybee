@@ -8,7 +8,7 @@ import type { ThreadOperationRow } from "./threadOperation.ts";
  * Closed vocabularies and row shapes for the v2 core store.
  * Spec: docs/design/specs/reset-01-core.md — the lists here are CLOSED (contract §4, invariant 4).
  */
-import type { LoginFlowRow } from "./loginFlow.ts";
+import type { LoginFlowError, LoginFlowRow } from "./loginFlow.ts";
 
 export const LIFECYCLES = ["active", "archived", "deleted"] as const;
 export type Lifecycle = (typeof LIFECYCLES)[number];
@@ -303,6 +303,8 @@ export interface FlagRow {
   clearedAt: number | null;
   /** Provider-declared instant (epoch ms) the block lifts; null = open-ended. */
   resetsAt: number | null;
+  /** v62: the typed refusal behind a `spawn_failed`, in the login flow's error shape; null when only prose is known. */
+  error: LoginFlowError | null;
 }
 
 /**

@@ -180,8 +180,10 @@
  * the turn-end transaction; additive; migration = ALTER TABLE ADD COLUMN.
  * v61 — Cell work bundles: `cells.work_bundle_at` / `work_bundle_sha` / `work_bundle_bytes` (the local
  * bundle saved at eviction) and `cells.hold_reason` / `hold_detail` (why retention holds the Cell);
- * additive; migration = ALTER TABLE ADD COLUMN ×5. */
-export const SCHEMA_VERSION = 61;
+ * additive; migration = ALTER TABLE ADD COLUMN ×5.
+ * v62 — `flags.error`: the typed refusal behind a `spawn_failed` (JSON, the login flow's error shape with
+ * its CLI facts); additive; migration = ALTER TABLE ADD COLUMN. */
+export const SCHEMA_VERSION = 62;
 export const MIN_READER_SCHEMA = 59;
 
 export const QUESTIONS_TABLE_SQL = `
@@ -495,7 +497,8 @@ CREATE TABLE IF NOT EXISTS flags (
   cleared_at INTEGER,
   -- v17: the provider-declared instant (epoch ms) the block lifts, e.g. a
   -- rate-limit resetsAt. NULL = open-ended; only contrary evidence clears it.
-  resets_at  INTEGER
+  resets_at  INTEGER,
+  error      TEXT
 ) STRICT;
 CREATE INDEX IF NOT EXISTS flags_active ON flags(bee_id, flag) WHERE cleared_at IS NULL;
 
@@ -1354,10 +1357,11 @@ export const MAILBOX_ADDITIVE_COLUMNS: ReadonlyArray<readonly [name: string, ddl
  * v9: boot_evidence.
  */
 /**
- * Additive `flags` columns (v17: resets_at — provider-declared expiry).
+ * Additive `flags` columns (v17: resets_at — provider-declared expiry; v62: error — typed refusal JSON).
  */
 export const FLAGS_ADDITIVE_COLUMNS: ReadonlyArray<readonly [name: string, ddl: string]> = [
   ["resets_at", "resets_at INTEGER"],
+  ["error", "error TEXT"],
 ];
 
 /** Installed after additive migration: pre-v17 flags have no resets_at column. */

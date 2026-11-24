@@ -18,7 +18,8 @@ import { DaemonCore, type DaemonCoreOptions, type DaemonPolicy, type I1Violation
 import type { PerformanceRecorder } from "../src/performance.ts";
 import { RuntimeHost } from "../../driver-hsr/src/index.ts";
 import { codexAdapter, stubAdapter, type AdapterSignal } from "../../adapters/src/index.ts";
-import { NonRetryableStartError } from "../../harness/src/driver.ts";
+import { NonRetryableStartError, StartRefusedError } from "../../harness/src/driver.ts";
+import { replayAudit } from "../../core/src/audit.ts";
 import { AGENT_PATH, FakeDriver, sleep, waitFor } from "./helpers.ts";
 import { BUZ_INJECTION_MARKER, DELIVERY_INTERRUPT_NOTICE } from "../src/envelope.ts";
 
@@ -130,6 +131,37 @@ test("account readiness blocks only affected starts; unrelated stop and mail pro
     blocked.delete(bee.id);
     rig.core.step();
     assert.equal(rig.driver.starts.some((start) => start.beeId === bee.id), false, "seed completion cannot resurrect a stopped bee");
+  } finally {
+    rig.cleanup();
+  }
+});
+
+test("a refused start carries the login path's typed error, with the CLI facts, into the requeue audit and the spawn_failed flag mirrors read (HON-40)", () => {
+  const error = {
+    code: "cli_missing" as const,
+    message: "Cursor's agent CLI /opt/old/cursor-agent reports version 2026.05.20-0abc123; Honeybee needs 2026.06.02 or newer.",
+    cli: { reason: "too_old" as const, path: "/opt/old/cursor-agent", version: "2026.05.20-0abc123", minVersion: "2026.06.02", tried: [], fix: "'/opt/old/cursor-agent' update" },
+  };
+  const rig = makeRig({}, {
+    assertRuntimeStartReady: () => { throw new StartRefusedError(error); },
+  });
+  try {
+    const { bee } = rig.store.createBee({ id: "refused", name: "refused", agent: "stub", substrate: "hsr", cwd: "/tmp" });
+    const command = rig.store.enqueueCommand("spawn", bee.id);
+    for (let i = 0; i < 3; i++) {
+      rig.core.step();
+      rig.clock.now = rig.store.getCommand(command.id)?.nextAttemptAt ?? rig.clock.now;
+    }
+    assert.equal(rig.store.getCommand(command.id)?.status, "failed");
+    assert.equal(rig.driver.starts.length, 0);
+    const [flag] = rig.store.activeFlags(bee.id);
+    assert.equal(flag?.flag, "spawn_failed");
+    assert.deepEqual(flag?.error, error);
+    assert.match(flag?.detail ?? "", /reports version 2026\.05\.20-0abc123/);
+    const rows = rig.store.auditRows();
+    const requeued = rows.find((row) => row.kind === "command.requeued");
+    assert.deepEqual((requeued?.payload as { error?: unknown }).error, error);
+    assert.deepEqual(replayAudit(rows).flags.find((row) => row.id === flag?.id)?.error, error);
   } finally {
     rig.cleanup();
   }

@@ -1,4 +1,5 @@
 import { cursorAgentForSpawn } from "./cursorCli.ts";
+import { StartRefusedError } from "../../harness/src/driver.ts";
 import { LEASE_UNKNOWN_MESSAGE, accountLeaseUnknown, knownAccountLease, presentAccountLease } from "../../core/src/accountLease.ts";
 import { withoutRpcCaller } from "../../core/src/rpcAuditContext.ts";
 import { OBSERVATION_CODECS, OBSERVATION_HARNESSES, localObservationText } from "./limitsObservation.ts";
@@ -4819,7 +4820,7 @@ export class AccountsService {
       if (expired) throw new CredentialAuthorityError(expired, "login_required");
       if (bee.command && Object.keys(this.credentialEnvOf(this.store.getAccount(account.id) ?? account)).length > 0) {
         const agent = await cursorAgentForSpawn(bee.command, bee.env ?? process.env);
-        if ("refusal" in agent) throw new Error(agent.refusal);
+        if ("refusal" in agent) throw new StartRefusedError(agent.refusal);
         this.cursorAgentCommands.set(bee.command, agent.path);
         this.log(`account.cursor.agent_command account=${account.id} configured=${bee.command} path=${agent.path}`);
       }

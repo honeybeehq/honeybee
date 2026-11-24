@@ -1,4 +1,5 @@
 import type { ExecutionStart } from "../../core/src/executionStart.ts";
+import type { LoginFlowError } from "../../core/src/loginFlow.ts";
 /**
  * RuntimeDriver — the substrate driver interface.
  *
@@ -175,3 +176,11 @@ export interface RuntimeDriver {
 }
 
 export class NonRetryableStartError extends Error {}
+
+export class StartRefusedError extends Error {
+  readonly error: LoginFlowError;
+  constructor(error: LoginFlowError, message = error.message) {
+    super(message);
+    this.error = error;
+  }
+}

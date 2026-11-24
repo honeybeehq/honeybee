@@ -378,7 +378,7 @@ export function replayAudit(rows: AuditRow[]): StateDump {
       }
       case "flag.set": {
         const flag = p.flag as FlagRow;
-        flags.set(flag.id, { ...flag });
+        flags.set(flag.id, { ...flag, error: flag.error ?? null });
         break;
       }
       case "flag.cleared": {

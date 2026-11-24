@@ -1,6 +1,7 @@
 import { ChildHealthMonitor } from "./childHealth.ts";
 import { PROCESS_CPU_SAMPLE_MS, ProcessCpuMeter } from "./processCpu.ts";
 import type { SchedulingStatus } from "../../core/src/processScheduling.ts";
+import type { LoginFlowError } from "../../core/src/loginFlow.ts";
 import { assertConfinedSpawn, ConfinedAdmission, assertConfinedVerb, bwrapMode, classifyPeer, peerConfinement, peerOwner, runtimeUserNamespace, strictConfinementReasons, type PeerOwner } from "./confinedPeer.ts";
 import { admitSecretExecution } from "./secretExecution.ts";
 import type { BeeTellParams, BeeReactParams, HumanOutputMode, BeeTellResult, BeeReactResult, SetHumanOutputModeResult } from "../../core/src/humanOutputTypes.ts";
@@ -59,7 +60,7 @@ import { threadOperationView, type ThreadOperationRow } from "../../core/src/thr
  */
 import { closeSync, copyFileSync, cpSync, existsSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, readlinkSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { execFile } from "node:child_process";
-import type { InterruptOutcome } from "../../harness/src/driver.ts";
+import { StartRefusedError, type InterruptOutcome } from "../../harness/src/driver.ts";
 import { appendFileSync } from "node:fs";
 import { homedir, tmpdir, hostname } from "node:os";
 import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path";
@@ -753,6 +754,7 @@ type AccountActivationState = {
   status: "pending" | "ready" | "failed";
   task: Promise<void>;
   error?: string;
+  refusal?: LoginFlowError;
 };
 
 
@@ -772,6 +774,7 @@ const SYSTEM_ERROR_CODES = new Set([...getSystemErrorMap().values()].map(([name]
 export function activationFailureName(error: unknown): string {
   if (error instanceof GatewayMcpSeedLockError) return error.diagnostic;
   if (error instanceof RpcError && error.code === "login_method_unsupported") return error.message;
+  if (error instanceof StartRefusedError) return error.error.cli ? `${error.error.code}(${error.error.cli.reason})` : error.error.code;
   if (!(error instanceof Error)) return "unknown_error";
   const code = (error as NodeJS.ErrnoException).code;
   // Both name and code are writable strings on arbitrary errors. Only emit
@@ -1596,6 +1599,7 @@ export class HiveDaemon {
           if (this.accountActivations.get(beeId) !== state) return;
           state.status = "failed";
           state.error = activationFailureName(error);
+          if (error instanceof StartRefusedError) state.refusal = error.error;
           this.log(`account.activate.gateways_failed bee=${beeId} account=${account.id} error=${state.error}`);
         },
       );
@@ -1795,6 +1799,7 @@ export class HiveDaemon {
     const key = this.accountActivationKey(bee, account, { commandId: command.id, attempts: command.attempts });
     if (state?.key === key && state.status === "ready") return;
     if (state?.key === key && state.status === "failed") {
+      if (state.refusal) throw new StartRefusedError(state.refusal, `account gateway activation failed: ${state.refusal.message}`);
       throw new Error(`account gateway activation failed: ${state.error ?? "unknown_error"}`);
     }
     throw new Error("account gateway activation is not ready");

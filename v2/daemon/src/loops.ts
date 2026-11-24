@@ -4,7 +4,7 @@ import type { QuotaBoundary } from "../../core/src/quota.ts";
 import { deliveryConfirmationIntentFits } from "../../core/src/deliveryConfirmationTypes.ts";
 import {ProcessIdentityUnavailableError} from "../../driver-hsr/src/psutil.ts";
 import { ExecutionFenceError } from "../../core/src/executionFence.ts";
-import { NonRetryableStartError } from "../../harness/src/driver.ts";
+import { NonRetryableStartError, StartRefusedError } from "../../harness/src/driver.ts";
 import type { ReconnectToolsReceipt } from "../../core/src/reconnectTools.ts";
 /**
  * DaemonCore — the daemon's loop cores (WP4 of the reset), extracted from the
@@ -1243,7 +1243,7 @@ export class DaemonCore {
       if (err instanceof CoreError) throw err; // contract rejections keep their moot path
       const detail = err instanceof Error ? err.message : String(err);
       const retryable = !(err instanceof NonRetryableStartError);
-      const res = this.store.reportCommandFailure(cmd.id, "spawn_failed", `driver start failed: ${detail}`, { retryable });
+      const res = this.store.reportCommandFailure(cmd.id, "spawn_failed", `driver start failed: ${detail}`, { retryable, ...(err instanceof StartRefusedError ? { error: err.error } : {}) });
       this.log(`cmd.${cmd.verb} id=${cmd.id} bee=${cmd.beeId} gen=${generation} start_failed status=${res.status} attempts=${res.attempts} err=${JSON.stringify(detail)}`);
       return false;
     }

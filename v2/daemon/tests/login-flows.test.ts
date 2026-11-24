@@ -1159,6 +1159,11 @@ test("flows.cursor-command: when no candidate is Cursor's agent, the login says 
     const { flow } = await cursorLogin(r, { agent: IDE_VERSION, "cursor-agent": "exit 1" }, { live: null });
     assert.equal(flow.error?.code, "cli_missing");
     assert.match(flow.error?.message ?? "", /tried agent \(printed "3\.31\.15", not a Cursor agent version\), cursor-agent \(did not run\), .*cursor-agent \(not found\)\)\..*Install the Cursor IDE/);
+    assert.equal(flow.error?.cli?.reason, "not_agent", "login carries the same CLI facts a refused spawn does (HON-40)");
+    assert.match(flow.error?.cli?.path ?? "", /\/agent$/);
+    assert.equal(flow.error?.cli?.version, "3.31.15");
+    assert.equal(flow.error?.cli?.minVersion, "2026.06.02");
+    assert.equal(flow.error?.cli?.fix, "curl https://cursor.com/install -fsS | bash");
   } finally {
     process.env.HOME = savedHome;
     r.cleanup();
