@@ -237,6 +237,13 @@ export type MirrorDelta = AuditRow;
  * Delivery markers (additive inside an existing payload, capabilities `mail.answer_marker.v1`, `mail.automation_marker.v1`):
  *   mail.delivered  → may carry { questionId: string }                   (the delivered message answers that question)
  *   mail.delivered  → may carry { senderKind: 'human'|'automation' }     (derived: deliveredSenderKind, automation for automation senders)
+ * Token totals (additive, schema v63, capability `bee.token_totals.v1`):
+ *   transcript.segment.ready → may carry { tokens: {input, output, cacheRead, cacheWrite}, turns: number,
+ *                               lastModel: string | null }            (bee row: tokens/turns/lastModel — the bee's
+ *                                                                         running totals after the cut; absent = unknown,
+ *                                                                         the row keeps its value. One per turn end, so
+ *                                                                         no delta is added for the totals.)
+ *   The three bee-record keys are MIRROR_BEE_RECORD_OPTIONAL_KEYS: absent on list/get/snapshot rows while unknown.
  * Delivery join (additive inside an existing payload, capability `mail.delivery_id.v1`):
  *   mail.delivered  → may carry { deliveryId: string }                   (equals deliveryId on the projected transcript user row: claude uuid / queued_command source_uuid, codex userMessage clientId)
  */
@@ -350,6 +357,8 @@ export const MIRROR_BEE_RECORD_KEYS = [
   "lastHumanOutputAt",
   "lastMessage",
 ] as const;
+/** v63 — record keys present only when known (never zero-filled). */
+export const MIRROR_BEE_RECORD_OPTIONAL_KEYS = ["tokens", "turns", "lastModel"] as const;
 export const MIRROR_RUNTIME_KEYS = [
   "beeId",
   "generation",

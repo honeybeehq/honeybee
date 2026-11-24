@@ -182,8 +182,11 @@
  * bundle saved at eviction) and `cells.hold_reason` / `hold_detail` (why retention holds the Cell);
  * additive; migration = ALTER TABLE ADD COLUMN ×5.
  * v62 — `flags.error`: the typed refusal behind a `spawn_failed` (JSON, the login flow's error shape with
- * its CLI facts); additive; migration = ALTER TABLE ADD COLUMN. */
-export const SCHEMA_VERSION = 62;
+ * its CLI facts); additive; migration = ALTER TABLE ADD COLUMN.
+ * v63 — per-bee running token totals: `bees.token_totals` (JSON tokens/turns/lastModel; NULL = unknown)
+ * and `transcript_segment_cursors.token_tally` (the tally state the next cut continues from), both
+ * written in the segment-cut transaction; additive; migration = ALTER TABLE ADD COLUMN ×2. */
+export const SCHEMA_VERSION = 63;
 export const MIN_READER_SCHEMA = 59;
 
 export const QUESTIONS_TABLE_SQL = `
@@ -437,6 +440,8 @@ CREATE TABLE IF NOT EXISTS bees (
   last_turn_trigger TEXT,
   last_human_output_at INTEGER,
   last_message     TEXT,
+  -- v63: running token totals from the transcript projection; NULL = unknown.
+  token_totals     TEXT,
   -- v58: the bee kind. agent is an ordinary bee; champion is the incarnation of a
   -- Champion identity (champions.current_bee_id), spawned only by champion.start.
   kind             TEXT NOT NULL DEFAULT 'agent' CHECK (kind IN ('agent','champion'))
@@ -931,6 +936,7 @@ export const BEES_ADDITIVE_COLUMNS: ReadonlyArray<readonly [name: string, ddl: s
   ["last_turn_trigger", "last_turn_trigger TEXT"],
   ["last_human_output_at", "last_human_output_at INTEGER"],
   ["last_message", "last_message TEXT"],
+  ["token_totals", "token_totals TEXT"],
   ["kind", "kind TEXT NOT NULL DEFAULT 'agent' CHECK (kind IN ('agent','champion'))"],
 ];
 
@@ -1174,6 +1180,11 @@ CREATE TABLE IF NOT EXISTS bee_epochs (
 ) STRICT;
 `;
 
+/** v63: additive `transcript_segment_cursors` columns. */
+export const TRANSCRIPT_SEGMENT_CURSOR_ADDITIVE_COLUMNS: ReadonlyArray<readonly [name: string, ddl: string]> = [
+  ["token_tally", "token_tally TEXT"],
+];
+
 export const TRANSCRIPT_SEGMENT_OBJECTS_SQL = `
 CREATE TABLE IF NOT EXISTS transcript_segment_objects (
   id                 TEXT PRIMARY KEY,
@@ -1206,7 +1217,8 @@ CREATE TABLE IF NOT EXISTS transcript_segment_cursors (
   byte_offset          INTEGER NOT NULL,
   epoch                TEXT,
   projector_checkpoint TEXT,
-  updated_at           INTEGER NOT NULL
+  updated_at           INTEGER NOT NULL,
+  token_tally          TEXT
 ) STRICT;
 `;
 

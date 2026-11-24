@@ -120,6 +120,8 @@ export const DAEMON_CAPABILITIES = [
   "turn-trigger.answer.v1",
   "bee.turn_quiet.v1",
   "bee.last_message.v1",
+  /** v63: bee rows carry running `tokens`/`turns`/`lastModel` from the transcript projection when known. */
+  "bee.token_totals.v1",
   "mail.answer_marker.v1",
   "mail.automation_marker.v1",
   "bee.reconnectTools.v1",

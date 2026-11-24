@@ -33,7 +33,7 @@ test("transcript.segments: last returns the newest rows ascending, beforeOrdinal
       store.updateRuntimeState(id, 1, "stopped", { exitCause: "clean" });
     }
     for (let ordinal = 0; ordinal < 7; ordinal++) {
-      store.putTranscriptSegmentObject(segment("long", ordinal), { path: "/logs/bee.jsonl", lineNo: ordinal * 3 + 7, byteOffset: ordinal * 30 + 70, epoch: null, projectorCheckpoint: null });
+      store.putTranscriptSegmentObject(segment("long", ordinal), { path: "/logs/bee.jsonl", lineNo: ordinal * 3 + 7, byteOffset: ordinal * 30 + 70, epoch: null, projectorCheckpoint: null, tokenTally: null });
     }
     store.close();
     daemon = await startDaemon(dir);

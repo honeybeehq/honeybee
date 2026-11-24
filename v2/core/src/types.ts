@@ -9,6 +9,7 @@ import type { ThreadOperationRow } from "./threadOperation.ts";
  * Spec: docs/design/specs/reset-01-core.md — the lists here are CLOSED (contract §4, invariant 4).
  */
 import type { LoginFlowError, LoginFlowRow } from "./loginFlow.ts";
+import type { TokenCounts, TokenTally } from "./tokenTally.ts";
 
 export const LIFECYCLES = ["active", "archived", "deleted"] as const;
 export type Lifecycle = (typeof LIFECYCLES)[number];
@@ -220,6 +221,14 @@ export interface BeeRow extends Partial<HumanOutputFacts> {
   lastTurnTrigger: TurnTrigger | null;
   lastHumanOutputAt: number | null;
   lastMessage: string | null;
+  /**
+   * v63 — running totals summed from the transcript projection (tokenTally.ts).
+   * All three are absent while unknown (a bee whose segmentation began before
+   * the tally existed, or that has not been cut yet); never zero-filled.
+   */
+  tokens?: TokenCounts;
+  turns?: number;
+  lastModel?: string | null;
 }
 
 export const TURN_TRIGGER_KINDS = ["human", "answer", "mail", "other"] as const;
@@ -1562,6 +1571,8 @@ export interface TranscriptSegmentCursorRow {
   byteOffset: number;
   epoch: string | null;
   projectorCheckpoint: unknown | null;
+  /** v63 — the bee's token tally through this cursor; null = unknown. */
+  tokenTally: TokenTally | null;
   updatedAt: number;
 }
 

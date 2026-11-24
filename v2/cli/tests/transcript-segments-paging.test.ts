@@ -25,7 +25,7 @@ test("hive transcript --segments and --from-objects read every segment row of a 
           beeId: "long", ordinal, firstLine: ordinal * 2 + 1, lastLine: ordinal * 2 + 2, byteStart: ordinal * 20, byteEnd: ordinal * 20 + 20, harness: "stub",
           rawRef: "a".repeat(64), rawSize: 100, rawBytes: 60, projectedRef: "b".repeat(64), projectedSize: 200, projectedBytes: 90,
           projectionVersion: 7, digest: "c".repeat(64), closedAt: 5, epoch: null, path: "/logs/bee.jsonl", logSegmentId: null,
-        }, { path: "/logs/bee.jsonl", lineNo: ordinal * 2 + 2, byteOffset: ordinal * 20 + 20, epoch: null, projectorCheckpoint: null });
+        }, { path: "/logs/bee.jsonl", lineNo: ordinal * 2 + 2, byteOffset: ordinal * 20 + 20, epoch: null, projectorCheckpoint: null, tokenTally: null });
       }
     });
     store.close();

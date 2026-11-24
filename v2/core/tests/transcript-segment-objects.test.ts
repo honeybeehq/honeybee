@@ -15,11 +15,11 @@ test("segment objects: pointer rows are dense per bee, land with their cursor, r
     const store = h.open();
     const { bee } = makeBee(store, "writer");
     assert.equal(store.getTranscriptSegmentCursor(bee.id), null);
-    const first = store.putTranscriptSegmentObject(segment(bee.id, 0, 1, 3), { path: "/logs/bee.jsonl", lineNo: 3, byteOffset: 30, epoch: null, projectorCheckpoint: { harness: "stub", state: 1 } });
+    const first = store.putTranscriptSegmentObject(segment(bee.id, 0, 1, 3), { path: "/logs/bee.jsonl", lineNo: 3, byteOffset: 30, epoch: null, projectorCheckpoint: { harness: "stub", state: 1 }, tokenTally: null });
     assert.equal(first.id, `${bee.id}:seg:0`);
-    assert.throws(() => store.putTranscriptSegmentObject(segment(bee.id, 2, 4, 6), { path: "/logs/bee.jsonl", lineNo: 6, byteOffset: 60, epoch: null, projectorCheckpoint: null }), TranscriptSegmentOrdinalError);
+    assert.throws(() => store.putTranscriptSegmentObject(segment(bee.id, 2, 4, 6), { path: "/logs/bee.jsonl", lineNo: 6, byteOffset: 60, epoch: null, projectorCheckpoint: null, tokenTally: null }), TranscriptSegmentOrdinalError);
     assert.equal(store.getTranscriptSegmentCursor(bee.id)?.lineNo, 3, "a refused row leaves the cursor alone");
-    store.putTranscriptSegmentObject(segment(bee.id, 1, 4, 6), { path: "/logs/bee.jsonl", lineNo: 6, byteOffset: 60, epoch: "e1", projectorCheckpoint: null });
+    store.putTranscriptSegmentObject(segment(bee.id, 1, 4, 6), { path: "/logs/bee.jsonl", lineNo: 6, byteOffset: 60, epoch: "e1", projectorCheckpoint: null, tokenTally: null });
     assert.deepEqual(store.listTranscriptSegmentObjects(bee.id).map((r) => [r.ordinal, r.firstLine, r.lastLine]), [[0, 1, 3], [1, 4, 6]]);
     assert.deepEqual(store.listTranscriptSegmentObjects(bee.id, { afterOrdinal: 0 }).map((r) => r.ordinal), [1]);
     assert.equal(store.lastTranscriptSegmentObject(bee.id)?.ordinal, 1);
@@ -47,9 +47,9 @@ test("segment objects: the newest rows read in ascending order without listing t
     assert.equal(store.transcriptSegmentHistoryStartLine(bee.id), null);
     assert.deepEqual(store.listTranscriptSegmentObjects(bee.id, { last: 3 }), []);
     for (let ordinal = 0; ordinal < 7; ordinal++) {
-      store.putTranscriptSegmentObject(segment(bee.id, ordinal, ordinal * 3 + 5, ordinal * 3 + 7), { path: "/logs/bee.jsonl", lineNo: ordinal * 3 + 7, byteOffset: ordinal * 30 + 70, epoch: null, projectorCheckpoint: null });
+      store.putTranscriptSegmentObject(segment(bee.id, ordinal, ordinal * 3 + 5, ordinal * 3 + 7), { path: "/logs/bee.jsonl", lineNo: ordinal * 3 + 7, byteOffset: ordinal * 30 + 70, epoch: null, projectorCheckpoint: null, tokenTally: null });
     }
-    store.putTranscriptSegmentObject(segment(other.id, 0, 1, 3), { path: "/logs/bee.jsonl", lineNo: 3, byteOffset: 30, epoch: null, projectorCheckpoint: null });
+    store.putTranscriptSegmentObject(segment(other.id, 0, 1, 3), { path: "/logs/bee.jsonl", lineNo: 3, byteOffset: 30, epoch: null, projectorCheckpoint: null, tokenTally: null });
     const all = store.listTranscriptSegmentObjects(bee.id);
     assert.deepEqual(store.listTranscriptSegmentObjects(bee.id, { last: 3 }), all.slice(-3));
     assert.deepEqual(store.listTranscriptSegmentObjects(bee.id, { last: 3 }).map((r) => r.ordinal), [4, 5, 6]);

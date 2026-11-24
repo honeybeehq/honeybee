@@ -231,7 +231,8 @@ import {
 } from "./tasks.ts";
 import { deliveredSenderKind } from "./automation.ts";
 import { lastMessageExcerpt } from "./lastMessage.ts";
-import { ACCOUNT_CREDENTIAL_ATTENTION_TABLE_SQL, QUESTIONS_TABLE_SQL, ACTIONS_TABLE_SQL, AUTH_INTERRUPTIONS_TABLE_SQL, ACCOUNT_ADMISSIONS_TABLE_SQL, ACCOUNT_CREDENTIAL_AUTHORITIES_TABLE_SQL, ACCOUNT_CREDENTIAL_AUTHORITIES_V27_COLUMNS, ACCOUNT_LIMITS_TABLE_SQL, ACCOUNTS_NATIVE_INDEX_SQL, BEES_ADDITIVE_COLUMNS, BEES_ACTIVE_MOVE_INDEX_SQL, BEES_ACTIVE_HANDOFF_INDEX_SQL, BEE_HANDOFFS_TABLE_SQL, TRANSCRIPT_SEGMENTS_TABLE_SQL, TRANSCRIPT_SEGMENT_OBJECTS_SQL, CHAMPIONS_SQL, GATEWAYS_SQL, BEE_RESUME_BUNDLES_SQL, MAILBOX_PENDING_METADATA_INDEX_SQL, BEE_MOVES_TABLE_SQL, CELLS_TABLE_SQL, CELLS_V22_COLUMNS, CELLS_ADDITIVE_COLUMNS, CELL_OPS_TABLE_SQL, FLAGS_ADDITIVE_COLUMNS, FLAGS_EXPIRY_INDEX_SQL, HANDLE_INDEX_SQL, IDEMPOTENCY_INDEX_SQL, MAILBOX_ADDITIVE_COLUMNS, MAIL_HISTORY_BEE_INDEX_SQL, MAIL_HISTORY_INDEX_SQL, MAIL_HISTORY_PROJECTION_SQL, RUNTIMES_ADDITIVE_COLUMNS, SCHEMA_SQL, SCHEMA_VERSION, MIN_READER_SCHEMA } from "./schema.ts";
+import { beeTokenTotals, parseBeeTokenTotals, parseTokenTally } from "./tokenTally.ts";
+import { ACCOUNT_CREDENTIAL_ATTENTION_TABLE_SQL, QUESTIONS_TABLE_SQL, ACTIONS_TABLE_SQL, AUTH_INTERRUPTIONS_TABLE_SQL, ACCOUNT_ADMISSIONS_TABLE_SQL, ACCOUNT_CREDENTIAL_AUTHORITIES_TABLE_SQL, ACCOUNT_CREDENTIAL_AUTHORITIES_V27_COLUMNS, ACCOUNT_LIMITS_TABLE_SQL, ACCOUNTS_NATIVE_INDEX_SQL, BEES_ADDITIVE_COLUMNS, BEES_ACTIVE_MOVE_INDEX_SQL, BEES_ACTIVE_HANDOFF_INDEX_SQL, BEE_HANDOFFS_TABLE_SQL, TRANSCRIPT_SEGMENTS_TABLE_SQL, TRANSCRIPT_SEGMENT_OBJECTS_SQL, TRANSCRIPT_SEGMENT_CURSOR_ADDITIVE_COLUMNS, CHAMPIONS_SQL, GATEWAYS_SQL, BEE_RESUME_BUNDLES_SQL, MAILBOX_PENDING_METADATA_INDEX_SQL, BEE_MOVES_TABLE_SQL, CELLS_TABLE_SQL, CELLS_V22_COLUMNS, CELLS_ADDITIVE_COLUMNS, CELL_OPS_TABLE_SQL, FLAGS_ADDITIVE_COLUMNS, FLAGS_EXPIRY_INDEX_SQL, HANDLE_INDEX_SQL, IDEMPOTENCY_INDEX_SQL, MAILBOX_ADDITIVE_COLUMNS, MAIL_HISTORY_BEE_INDEX_SQL, MAIL_HISTORY_INDEX_SQL, MAIL_HISTORY_PROJECTION_SQL, RUNTIMES_ADDITIVE_COLUMNS, SCHEMA_SQL, SCHEMA_VERSION, MIN_READER_SCHEMA } from "./schema.ts";
 import { beeMoveReviveKey, beeMoveStopKey, beeMoveTransitionLegal, toBeeMoveView } from "./cellMove.ts";
 import {
   ACTION_DISPATCH_SENDER,
@@ -795,7 +796,16 @@ function mapBee(r: Row): BeeRow {
     lastTurnTrigger: r.last_turn_trigger == null ? null : (JSON.parse(r.last_turn_trigger as string) as TurnTrigger),
     lastHumanOutputAt: r.last_human_output_at == null ? null : Number(r.last_human_output_at),
     lastMessage: (r.last_message as string | null) ?? null,
+    ...beeTokenTotalsOf(r.token_totals),
   };
+}
+
+/** v63 — the bee row's token fields, all absent when unknown. */
+function beeTokenTotalsOf(raw: unknown): Partial<Pick<BeeRow, "tokens" | "turns" | "lastModel">> {
+  if (raw == null) return {};
+  let parsed: unknown;
+  try { parsed = JSON.parse(String(raw)); } catch { return {}; }
+  return parseBeeTokenTotals(parsed) ?? {};
 }
 
 function mapChampion(r: Row): ChampionRow {
@@ -907,6 +917,7 @@ function mapTranscriptSegmentCursor(r: Row): TranscriptSegmentCursorRow {
     byteOffset: Number(r.byte_offset),
     epoch: (r.epoch as string | null) ?? null,
     projectorCheckpoint: r.projector_checkpoint == null ? null : JSON.parse(r.projector_checkpoint as string) as unknown,
+    tokenTally: r.token_tally == null ? null : parseTokenTally(JSON.parse(r.token_tally as string)),
     updatedAt: Number(r.updated_at),
   };
 }
@@ -2359,6 +2370,7 @@ export class CoreStore {
     this.db.exec(BEE_HANDOFFS_TABLE_SQL);
     this.db.exec(TRANSCRIPT_SEGMENTS_TABLE_SQL);
     this.db.exec(TRANSCRIPT_SEGMENT_OBJECTS_SQL);
+    this.addMissingColumns("transcript_segment_cursors", TRANSCRIPT_SEGMENT_CURSOR_ADDITIVE_COLUMNS);
     this.db.exec(CHAMPIONS_SQL);
     this.db.exec(GATEWAYS_SQL);
     this.db.exec(BEE_RESUME_BUNDLES_SQL);
@@ -2515,7 +2527,7 @@ export class CoreStore {
     return { schemaVersion: read("schema_version"), minReaderSchema: read("min_reader_schema") };
   }
 
-  private addMissingColumns(table: "bees" | "mailbox" | "cells", columns: ReadonlyArray<readonly [name: string, ddl: string]>): void {
+  private addMissingColumns(table: "bees" | "mailbox" | "cells" | "transcript_segment_cursors", columns: ReadonlyArray<readonly [name: string, ddl: string]>): void {
     const existing = new Set(
       (this.stmt(`SELECT name FROM pragma_table_info('${table}')`).all() as Row[]).map((c) => String(c.name)),
     );
@@ -10561,6 +10573,8 @@ export class CoreStore {
       this.audit("transcript.segment.ready", beeId, {
         reason: opts.reason, fromOrdinal: rows[0]!.ordinal, toOrdinal: rows[rows.length - 1]!.ordinal, segments: rows,
         cursor: { path: cursor.path, lineNo: cursor.lineNo, byteOffset: cursor.byteOffset, epoch: cursor.epoch },
+        // v63 — the bee row's token fields after this cut (absent while unknown).
+        ...(cursor.tokenTally ? beeTokenTotals(cursor.tokenTally) : {}),
       });
       return rows;
     });
@@ -10594,11 +10608,16 @@ export class CoreStore {
   }
 
   private putTranscriptSegmentCursorInTx(beeId: string, cursor: Omit<TranscriptSegmentCursorRow, "beeId" | "updatedAt">): void {
+    const tally = cursor.tokenTally ?? null;
     this.stmt(
-      `INSERT INTO transcript_segment_cursors(bee_id, path, line_no, byte_offset, epoch, projector_checkpoint, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO transcript_segment_cursors(bee_id, path, line_no, byte_offset, epoch, projector_checkpoint, token_tally, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(bee_id) DO UPDATE SET path = excluded.path, line_no = excluded.line_no, byte_offset = excluded.byte_offset, epoch = excluded.epoch,
-         projector_checkpoint = excluded.projector_checkpoint, updated_at = excluded.updated_at`,
-    ).run(beeId, cursor.path, cursor.lineNo, cursor.byteOffset, cursor.epoch, cursor.projectorCheckpoint == null ? null : JSON.stringify(cursor.projectorCheckpoint), this.now());
+         projector_checkpoint = excluded.projector_checkpoint, token_tally = excluded.token_tally, updated_at = excluded.updated_at`,
+    ).run(beeId, cursor.path, cursor.lineNo, cursor.byteOffset, cursor.epoch, cursor.projectorCheckpoint == null ? null : JSON.stringify(cursor.projectorCheckpoint),
+      tally === null ? null : JSON.stringify(tally), this.now());
+    // The bee row's totals move with the cursor, in its transaction: a line is counted once, and
+    // totals only ever grow. An unknown tally leaves the row's totals as they are.
+    if (tally !== null) this.stmt("UPDATE bees SET token_totals = ? WHERE id = ?").run(JSON.stringify(beeTokenTotals(tally)), beeId);
   }
 
   listTranscriptSegments(beeId?: string, lifecycle?: Lifecycle): TranscriptSegmentRow[] {

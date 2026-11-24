@@ -1,5 +1,6 @@
 import { mirrorBeeRow, type PublicBeeRow } from "../../core/src/envRedaction.ts";
 import { HumanOutputLedger } from "../../core/src/humanOutput.ts";
+import { parseBeeTokenTotals } from "../../core/src/tokenTally.ts";
 import { readAccountLease, presentAccountLease } from "../../core/src/accountLease.ts";
 /**
  * Read-only SQLite fallback for CLI reads when the daemon is down (spec 04
@@ -94,7 +95,14 @@ function mapBee(r: Row): BeeRow {
     lastTurnTrigger: r.last_turn_trigger == null ? null : JSON.parse(String(r.last_turn_trigger)) as BeeRow["lastTurnTrigger"],
     lastHumanOutputAt: r.last_human_output_at == null ? null : Number(r.last_human_output_at),
     lastMessage: (r.last_message as string | null | undefined) ?? null,
+    // v63 column; absent while unknown, and on older stores.
+    ...readTokenTotals(r.token_totals),
   };
+}
+
+function readTokenTotals(raw: unknown): Partial<Pick<PublicBeeRow, "tokens" | "turns" | "lastModel">> {
+  if (raw == null) return {};
+  try { return parseBeeTokenTotals(JSON.parse(String(raw))) ?? {}; } catch { return {}; }
 }
 
 function mapAccountRow(r: Row): ReturnType<typeof presentAccountLease> {

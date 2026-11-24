@@ -2,6 +2,7 @@ import { statSync } from "node:fs";
 import { Worker } from "node:worker_threads";
 import type { CoreStore, TranscriptSegmentReadyReason } from "../../core/src/index.ts";
 import { SEGMENT_MAX_LINES, SEGMENT_MAX_RAW_BYTES } from "../../core/src/transcriptSegment.ts";
+import { startTokenTally } from "../../core/src/tokenTally.ts";
 import type { TranscriptObjectStore } from "./transcriptObjectStore.ts";
 import { transcriptSegmentWorkerUrl, type SegmentCursor, type TranscriptCutRequest, type TranscriptCutResult, type TranscriptSweepRequest, type TranscriptSweepResult, type WorkerServerReply, type WorkerServerRequest, type WorkerServerStop } from "./transcriptSegmentWorker.ts";
 
@@ -166,12 +167,13 @@ export class TranscriptSegmenter {
     if (!bee || bee.lifecycle === "deleted") return { status: "no_bee", segments: 0, lines: 0 };
     const path = bee.sessionLogPath;
     if (!path) return { status: "no_log", segments: 0, lines: 0 };
-    let cursor: SegmentCursor = store.getTranscriptSegmentCursor(bee.id) ?? { path, lineNo: 0, byteOffset: 0, epoch: null, projectorCheckpoint: null };
+    // A bee cut from its first byte gets a token tally; one cut before tallies existed stays unknown.
+    let cursor: SegmentCursor = store.getTranscriptSegmentCursor(bee.id) ?? { path, lineNo: 0, byteOffset: 0, epoch: null, projectorCheckpoint: null, tokenTally: startTokenTally() };
     let total = { segments: 0, lines: 0 };
     if (cursor.path !== path) {
       const finished = await this.cutFile(bee.id, cursor, pending.reason);
       total = { segments: finished.segments, lines: finished.lines };
-      cursor = { path, lineNo: finished.cursor.lineNo, byteOffset: 0, epoch: finished.cursor.epoch, projectorCheckpoint: null };
+      cursor = { path, lineNo: finished.cursor.lineNo, byteOffset: 0, epoch: finished.cursor.epoch, projectorCheckpoint: null, tokenTally: finished.cursor.tokenTally };
       store.putTranscriptSegmentCursor(bee.id, cursor);
       this.deps.log(`transcripts.segment.rotated bee=${bee.id} from=${finished.cursor.path} to=${path} line=${cursor.lineNo}`);
     }
@@ -208,6 +210,7 @@ export class TranscriptSegmenter {
       maxChunkBytes: this.deps.maxChunkBytes ?? DEFAULT_MAX_CHUNK,
       replayLimitBytes: this.deps.replayLimitBytes ?? DEFAULT_REPLAY_LIMIT,
       observedAt: this.deps.now(),
+      rootThreadId: source.harness === "codex" ? bee.providerSessionId : null,
     };
     const result = await this.runWorker<TranscriptCutResult>(request);
     if (result.error != null) throw new Error(result.error);

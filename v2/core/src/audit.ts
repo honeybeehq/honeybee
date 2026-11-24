@@ -5,6 +5,7 @@ import { publicDeliveryConfirmation } from "./deliveryConfirmation.ts";
 import type { DeliveryConfirmationIntent, DeliveryConfirmationDecision } from "./deliveryConfirmationTypes.ts";
 import { deliveryHold, publicDeliveryFallback, type MultilineDeliveryRow } from "./multilineDelivery.ts";
 import type { ThreadOperationRow } from "./threadOperation.ts";
+import { parseBeeTokenTotals } from "./tokenTally.ts";
 /**
  * Audit replay — the audit table is a complete, ordered record of every write.
  * `replayAudit` folds the audit rows into a StateDump that must deep-equal the
@@ -698,8 +699,14 @@ export function replayAudit(rows: AuditRow[]): StateDump {
       case "cell.evicted":
       case "cell.parked":
       case "node.capacity":
+      case "transcript.segment.ready": {
+        // v63 — carries the bee row's token fields after the cut, when known.
+        const totals = parseBeeTokenTotals(p);
+        const bee = row.beeId ? bees.get(row.beeId) : undefined;
+        if (totals && bee) Object.assign(bee, totals);
+        break;
+      }
       case "transcript_segment_object.put":
-      case "transcript.segment.ready":
       case "cell.retention.pass":
       case "cell.pressure.floor_unmet":
       case "cell.retention.daily_cap":

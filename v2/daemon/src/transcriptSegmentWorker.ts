@@ -6,6 +6,7 @@ import type { TranscriptSegmentCursorRow, TranscriptSegmentObjectRow } from "../
 import { createTranscriptProjector, restoreTranscriptProjector } from "../../adapters/src/transcripts.ts";
 import { TRANSCRIPT_PROJECTION_VERSION, type TranscriptProjector } from "../../adapters/src/transcript.ts";
 import { compressSegment, encodeProjectedSegment, scanLogLines, segmentDigest, type ProjectedLine, type ScannedLine } from "../../core/src/transcriptSegment.ts";
+import { TokenTallyCounter } from "../../core/src/tokenTally.ts";
 import { TRANSCRIPT_OBJECT_DIR, createDirectoryTranscriptObjectStore } from "./transcriptObjectStore.ts";
 import { bundleChampionHome, type ChampionHomeBundle } from "./championHomes.ts";
 import { bundleResumeState, readResumeKey, rekeyRestoredState, restoreResumeState, type ResumeBundleOutcome, type ResumeState } from "./resumeBundles.ts";
@@ -25,6 +26,8 @@ export interface TranscriptCutRequest {
   maxChunkBytes: number;
   replayLimitBytes: number;
   observedAt: number;
+  /** Codex only: the root thread, so a sub-agent's turn_end is not counted as a bee turn. */
+  rootThreadId?: string | null;
 }
 
 export interface TranscriptCutResult {
@@ -202,9 +205,14 @@ export async function cutTranscript(request: TranscriptCutRequest): Promise<Tran
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return { ...result, missing: true };
     throw error;
   }
+  // Token totals ride on the projection below; an unknown tally (null) stays unknown.
+  const tally = cursor.tokenTally ? new TokenTallyCounter(cursor.tokenTally) : null;
+  const tallyContext = { rootThreadId: request.rootThreadId ?? null };
   if (size < cursor.byteOffset) {
     result.shrunk = true;
-    cursor = { ...cursor, byteOffset: 0, epoch: crypto.randomUUID(), projectorCheckpoint: null };
+    // The rewritten prefix was counted already: re-projecting it must not count it twice.
+    if (tally) tally.skipThrough = { path: cursor.path, byteOffset: cursor.byteOffset };
+    cursor = { ...cursor, byteOffset: 0, epoch: crypto.randomUUID(), projectorCheckpoint: null, tokenTally: tally?.snapshot() ?? null };
     result.cursor = cursor;
   }
   if (size === cursor.byteOffset) return result;
@@ -226,7 +234,7 @@ export async function cutTranscript(request: TranscriptCutRequest): Promise<Tran
       result.written.objects += 1;
       result.written.bytes += object.bytes;
     }
-    const next: SegmentCursor = { path: cursor.path, lineNo: last.lineNo, byteOffset: last.nextByteOffset, epoch: cursor.epoch, projectorCheckpoint: projector.checkpoint() };
+    const next: SegmentCursor = { path: cursor.path, lineNo: last.lineNo, byteOffset: last.nextByteOffset, epoch: cursor.epoch, projectorCheckpoint: projector.checkpoint(), tokenTally: tally?.snapshot() ?? null };
     result.segments.push({
       segment: {
         beeId: request.beeId, firstLine: first.lineNo, lastLine: last.lineNo, byteStart: first.byteOffset, byteEnd: last.nextByteOffset, harness: request.harness,
@@ -252,9 +260,19 @@ export async function cutTranscript(request: TranscriptCutRequest): Promise<Tran
         continue;
       }
       for (const line of scanned.lines) {
+        const events = projector.pushLine(line.text);
+        if (tally) {
+          const skip = tally.skipThrough;
+          if (skip && skip.path === cursor.path && line.nextByteOffset <= skip.byteOffset) {
+            // already counted before the log shrank
+          } else {
+            if (skip) tally.skipThrough = null;
+            tally.push(events, tallyContext);
+          }
+        }
         const projected: ProjectedLine = {
           line_no: line.lineNo, byte_offset: line.byteOffset, raw_bytes: line.rawBytes, raw_sha256: line.rawSha256, observed_at: request.observedAt, harness: request.harness,
-          events: JSON.stringify(projector.pushLine(line.text)),
+          events: JSON.stringify(events),
         };
         pending.push({ line, raw: Buffer.from(data.subarray(line.byteOffset - readPos, line.nextByteOffset - readPos)), projected });
         pendingBytes += line.nextByteOffset - line.byteOffset;

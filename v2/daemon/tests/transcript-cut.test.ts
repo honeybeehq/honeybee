@@ -24,7 +24,7 @@ test("cut: small chunks stream a log into dense byte-exact segments, a torn tail
   try {
     const lines = Array.from({ length: 10 }, (_, i) => r.line(i + 1));
     writeFileSync(r.path, `${lines.join("\n")}\n{"torn":`);
-    const first = await cutTranscript(r.request({ path: r.path, lineNo: 0, byteOffset: 0, epoch: null, projectorCheckpoint: null }));
+    const first = await cutTranscript(r.request({ path: r.path, lineNo: 0, byteOffset: 0, epoch: null, projectorCheckpoint: null, tokenTally: null }));
     assert.equal(first.error, null);
     assert.deepEqual(first.segments.map((s) => [s.segment.firstLine, s.segment.lastLine]), [[1, 4], [5, 8], [9, 10]]);
     const log = readFileSync(r.path);
@@ -56,7 +56,7 @@ test("cut: a line longer than the chunk grows the read window up to the cap; one
   const r = rig();
   try {
     writeFileSync(r.path, `${r.line(1, 500)}\n${r.line(2)}\n${r.line(3, 10_000)}\n`);
-    const result = await cutTranscript(r.request({ path: r.path, lineNo: 0, byteOffset: 0, epoch: null, projectorCheckpoint: null }));
+    const result = await cutTranscript(r.request({ path: r.path, lineNo: 0, byteOffset: 0, epoch: null, projectorCheckpoint: null, tokenTally: null }));
     assert.equal(result.error, null);
     assert.deepEqual(result.segments.map((s) => [s.segment.firstLine, s.segment.lastLine]), [[1, 2]]);
     assert.ok(result.cursor.byteOffset < readFileSync(r.path).length, "the oversized line stays uncut");
@@ -71,7 +71,7 @@ test("cut: a shrunk log starts a new epoch at byte 0 while line numbers keep cli
   const r = rig();
   try {
     writeFileSync(r.path, `${r.line(1)}\n${r.line(2)}\n`);
-    const first = await cutTranscript(r.request({ path: r.path, lineNo: 0, byteOffset: 0, epoch: null, projectorCheckpoint: null }));
+    const first = await cutTranscript(r.request({ path: r.path, lineNo: 0, byteOffset: 0, epoch: null, projectorCheckpoint: null, tokenTally: null }));
     assert.equal(first.cursor.lineNo, 2);
     truncateSync(r.path, 0);
     writeFileSync(r.path, `${r.line(3)}\n`);
@@ -93,9 +93,9 @@ test("cut: a rejected checkpoint replays the prefix in chunks and projects the s
   try {
     const lines = Array.from({ length: 9 }, (_, i) => r.line(i + 1, 40));
     writeFileSync(r.path, `${lines.join("\n")}\n`);
-    const whole = await cutTranscript(r.request({ path: r.path, lineNo: 0, byteOffset: 0, epoch: null, projectorCheckpoint: null }, { maxLines: 100 }));
+    const whole = await cutTranscript(r.request({ path: r.path, lineNo: 0, byteOffset: 0, epoch: null, projectorCheckpoint: null, tokenTally: null }, { maxLines: 100 }));
     const resumedAt = whole.segments[0]!.segment.byteEnd;
-    const partial = await cutTranscript(r.request({ path: r.path, lineNo: 0, byteOffset: 0, epoch: null, projectorCheckpoint: null }, { maxLines: 5 }));
+    const partial = await cutTranscript(r.request({ path: r.path, lineNo: 0, byteOffset: 0, epoch: null, projectorCheckpoint: null, tokenTally: null }, { maxLines: 5 }));
     const second = partial.segments[1]!;
     const resumed = await cutTranscript(r.request({ ...partial.segments[0]!.cursor, projectorCheckpoint: { bogus: true } }, { maxLines: 5 }));
     assert.equal(resumed.checkpointRejected, "invalid_checkpoint");
