@@ -62,7 +62,7 @@ export interface IdentityRecipe {
    * TUIs are reserved for tools whose login still lives in the TUI. Node
    * config `agents.<a>.login` overrides it.
    */
-  login: { command: string; args: string[]; fallbackCommands?: string[]; unrunnableHint?: string };
+  login: { command: string; args: string[]; fallbackCommands?: string[]; unrunnableHint?: string; install?: string };
   /**
    * The tmux-independent login contract (2026-08-28): the methods the
    * account can be logged in with, how each one runs, and how the daemon
@@ -601,7 +601,7 @@ export const ACCOUNT_RECIPES: Readonly<Record<string, IdentityRecipe>> = {
     credentialFiles: ["auth.json"],
     configFiles: ["config.toml"],
     vendorHome: { dir: ".grok" },
-    login: { command: "grok", args: [] },
+    login: { command: "grok", args: [], unrunnableHint: "Install xAI's Grok CLI from x.ai/cli, then start the sign-in again.", install: "curl -fsSL https://x.ai/cli/install.sh | bash" },
     loginFlow: {
       defaultMethodId: "grok-cli",
       methods: [

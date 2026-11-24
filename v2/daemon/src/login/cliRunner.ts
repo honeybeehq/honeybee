@@ -13,8 +13,8 @@ import { homedir } from "node:os";
 import { CURSOR_AGENT_VERSION, cursorBundledAgentPaths, firstRunnableCommand } from "./runnableCommand.ts";
 import { CURSOR_CLI_MIN_VERSION, cursorCliFacts } from "../cursorCli.ts";
 import { mkdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
-import { recipeFor, resolveSpawnCommand, safeAuthorizationUrl, type LoginCliSpec, type LoginFieldDescriptor, type LoginFlowRow } from "../../../core/src/index.ts";
+import { basename, join, sep } from "node:path";
+import { executableCandidatePaths, recipeFor, resolveExecutable, safeAuthorizationUrl, type LoginCliSpec, type LoginFieldDescriptor, type LoginFlowRow } from "../../../core/src/index.ts";
 import { primaryCredentialFile, primaryCredentialMtime } from "../activation.ts";
 import { credentialDigest } from "../keychain.ts";
 import { LoginWorker, pipeSpawner, type LoginWorkerEvent, type LoginWorkerStatus, type PtySpawner } from "../loginWorker.ts";
@@ -79,6 +79,8 @@ export class CliRunner implements LoginRunner {
     // the method's own command, else the recipe's login command.
     const configured = host.cfg.agents[account.harness]?.login;
     const launch = configured ?? this.spec.command ?? recipe.login;
+    const spawned = host.cfg.agents[account.harness]?.command;
+    const launchCommand = !configured && spawned?.includes(sep) && basename(spawned) === launch.command ? spawned : launch.command;
     // A minimal environment: the daemon's own provider keys / tokens must
     // never reach a vendor login CLI (some would silently use them instead
     // of signing in), and no worker inherits a tmux context.
@@ -111,7 +113,15 @@ export class CliRunner implements LoginRunner {
       return host.fail({ ...err("cli_missing", `The ${account.harness} CLI could not run on this node (tried ${search.tried.join(", ")}). ${recipe.login.unrunnableHint ?? "Install it, then retry."}`), cli }, true);
     }
     if (cursorAgent && runnable) host.log(`account.login.cursor_command flow=${host.flowId} path=${runnable}`);
-    const command = runnable ?? resolveSpawnCommand(launch.command, { env }).command;
+    const resolution = { env, ...(host.executableFallbackDirs ? { fallbackDirs: host.executableFallbackDirs } : {}) };
+    const command = runnable ?? resolveExecutable(launchCommand, resolution)?.path;
+    if (!command) {
+      const vendorDefault = launchCommand === recipe.login.command;
+      const fix = vendorDefault ? recipe.login.install ?? null : null;
+      const hint = vendorDefault ? recipe.login.unrunnableHint ?? "Install it, then start the sign-in again." : "Correct the configured command, then start the sign-in again.";
+      const cli = { reason: "missing" as const, path: null, version: null, minVersion: null, tried: executableCandidatePaths(launchCommand, resolution), fix };
+      return host.fail({ ...err("cli_missing", `The ${account.harness} CLI '${launchCommand}' was not found on this node. ${hint}`), cli }, false);
+    }
     const worker = new LoginWorker({
       spawner,
       launch: { command, args: [...(launch.args ?? [])], cwd: account.homePath, env },

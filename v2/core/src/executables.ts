@@ -34,6 +34,10 @@ export function executableFallbackDirs(home: string = homedir()): readonly strin
 
 export const EXECUTABLE_FALLBACK_DIRS: readonly string[] = executableFallbackDirs();
 
+const VENDOR_INSTALL_DIRS: Readonly<Record<string, readonly string[]>> = {
+  grok: [resolve(homedir(), ".grok", "bin")],
+};
+
 export function isExecutableFile(path: string): boolean {
   try {
     if (!statSync(path).isFile()) return false;
@@ -69,10 +73,24 @@ export interface ResolveExecutableOptions {
   fallbackDirs?: readonly string[];
 }
 
+function bareCandidates(command: string, opts: ResolveExecutableOptions): ResolvedExecutable[] {
+  const env = opts.env ?? process.env;
+  const fallbackDirs = opts.fallbackDirs ?? [...EXECUTABLE_FALLBACK_DIRS, ...(VENDOR_INSTALL_DIRS[command] ?? [])];
+  return [
+    ...(env.PATH ?? "").split(delimiter).filter(Boolean).map((dir) => ({ path: resolve(dir, command), source: "PATH" as const })),
+    ...fallbackDirs.map((dir) => ({ path: resolve(dir, command), source: "fallback" as const })),
+  ];
+}
+
+export function executableCandidatePaths(command: string, opts: ResolveExecutableOptions = {}): string[] {
+  if (command.includes(sep)) return [command];
+  return [...new Set(bareCandidates(command, opts).map((candidate) => candidate.path))];
+}
+
 /**
  * Resolve a bare executable name to an absolute path: PATH dirs in order,
- * then the fallback dirs in order. A command that already names a path is
- * honored verbatim when executable. Returns null when nothing runnable is
+ * then the fallback dirs in order, then the command's own vendor install dir.
+ * A command that already names a path is honored verbatim when executable. Returns null when nothing runnable is
  * found — the caller decides whether that is a refusal, a diagnostic fact,
  * or an honest unresolved spawn attempt.
  */
@@ -81,16 +99,7 @@ export function resolveExecutable(command: string, opts: ResolveExecutableOption
   if (command.includes(sep)) {
     return executable(resolve(command)) ? { path: command, source: "configured_path" } : null;
   }
-  const env = opts.env ?? process.env;
-  for (const dir of (env.PATH ?? "").split(delimiter).filter(Boolean)) {
-    const candidate = resolve(dir, command);
-    if (executable(candidate)) return { path: candidate, source: "PATH" };
-  }
-  for (const dir of opts.fallbackDirs ?? EXECUTABLE_FALLBACK_DIRS) {
-    const candidate = resolve(dir, command);
-    if (executable(candidate)) return { path: candidate, source: "fallback" };
-  }
-  return null;
+  return bareCandidates(command, opts).find((candidate) => executable(candidate.path)) ?? null;
 }
 
 /**

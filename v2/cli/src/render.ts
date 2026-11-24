@@ -385,6 +385,7 @@ export function renderLoginFlow(flow: LoginFlowRow): string[] {
     lines.push(`  ${dim("needs:")} ${field.label}${field.required ? "" : dim(" (optional)")}${field.help ? `  ${dim(field.help)}` : ""}`);
   }
   if (flow.error) lines.push(`  ${red(flow.error.code)}: ${flow.error.message}${flow.retryable ? dim("  (retry: hive account login <account>)") : ""}`);
+  if (flow.error?.cli?.fix) lines.push(`  ${dim("fix:")} ${flow.error.cli.fix}`);
   const others = flow.methods.filter((m) => m.id !== flow.methodId);
   if (others.length > 0 && flow.phase !== "succeeded") {
     lines.push(`  ${dim("other methods:")} ${others.map((m) => `${m.id} (${m.label})`).join(", ")}`);

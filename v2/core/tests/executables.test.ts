@@ -7,6 +7,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { homedir } from "node:os";
 import { delimiter, join, sep } from "node:path";
 import {
   executableFallbackDirs,
@@ -98,4 +99,13 @@ test("resolveSpawnCommand: a configured path is never rewritten, found or not", 
   const kept = resolveSpawnCommand(configured, { env: { PATH: "/p/one" }, fallbackDirs: FALLBACKS, isExecutable: () => false });
   assert.equal(kept.command, configured);
   assert.deepEqual(kept.resolution, { executable: configured, path: configured, source: "configured_path" });
+});
+
+test("executables: grok is found in its installer's own directory after every other candidate, and no other command is looked up there (APY-77)", () => {
+  const installed = join(homedir(), ".grok", "bin", "grok");
+  assert.deepEqual(resolveExecutable("grok", { env: { PATH: "/p/one" }, isExecutable: executableAt(installed) }), { path: installed, source: "fallback" });
+  const agent = join(homedir(), ".grok", "bin", "agent");
+  assert.equal(resolveExecutable("agent", { env: { PATH: "/p/one" }, isExecutable: executableAt(agent) }), null);
+  const onPath = resolveExecutable("grok", { env: { PATH: "/p/one" }, isExecutable: executableAt(installed, join("/p/one", "grok")) });
+  assert.deepEqual(onPath, { path: join("/p/one", "grok"), source: "PATH" });
 });

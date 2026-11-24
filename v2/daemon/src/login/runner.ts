@@ -60,6 +60,7 @@ export interface LoginRunnerHost {
   readonly now: () => number;
   readonly workerKillGraceMs: number;
   readonly workerSettleMs: number | undefined;
+  readonly executableFallbackDirs: readonly string[] | undefined;
   /** The flow row as it is now (null once removed). */
   flow(): LoginFlowRow | null;
   /** The operator allowed this login to replace a centrally managed account's chain with another Anthropic account's. */

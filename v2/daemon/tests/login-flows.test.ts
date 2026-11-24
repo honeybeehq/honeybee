@@ -135,6 +135,7 @@ interface Fakes {
   cursorAuthReader?: () => Promise<CursorAuthSnapshot | null>;
   spawner?: ReturnType<typeof pipeSpawner> | null;
   tmuxExec?: (args: string[]) => { status: number | null; stdout: string };
+  executableFallbackDirs?: readonly string[];
 }
 
 const created: LoginFlowService[] = [];
@@ -164,6 +165,7 @@ function services(r: Rig, fakes: Fakes = {}): { accounts: AccountsService; flows
     transports: fakes.transports ?? {},
     spawner: fakes.spawner === undefined ? pipeSpawner() : fakes.spawner,
     tmuxExec: fakes.tmuxExec ?? (() => ({ status: 1, stdout: "" })),
+    ...(fakes.executableFallbackDirs ? { executableFallbackDirs: fakes.executableFallbackDirs } : {}),
     onCompleted: (id) => completed.push(id),
     workerKillGraceMs: 500,
     workerSettleMs: 60,
@@ -1166,6 +1168,85 @@ test("flows.cursor-command: when no candidate is Cursor's agent, the login says 
     assert.equal(flow.error?.cli?.fix, "curl https://cursor.com/install -fsS | bash");
   } finally {
     process.env.HOME = savedHome;
+    r.cleanup();
+  }
+});
+
+function ptyThatExitsOneWhenTheCommandIsMissing() {
+  const launched: string[] = [];
+  const spawner: ReturnType<typeof pipeSpawner> = {
+    kind: "pty",
+    spawn: (launch) => {
+      launched.push(launch.command);
+      return { pid: -1, write: () => undefined, onData: () => undefined, onExit: (cb) => void setImmediate(() => cb(1, null)), kill: () => undefined };
+    },
+  };
+  return { spawner, launched };
+}
+
+test("flows.grok-missing: without a grok executable the login and its retry fail at once with cli_missing and the install command, and nothing is launched (APY-77)", async () => {
+  const r = rig();
+  const savedHome = process.env.HOME;
+  const home = join(r.dir, "user-home");
+  const emptyBin = join(r.dir, "empty-bin");
+  const fallback = join(home, ".local", "bin");
+  try {
+    process.env.HOME = home;
+    mkdirSync(emptyBin, { recursive: true });
+    r.cfg.agents.grok = { ...r.cfg.agents.grok!, env: { PATH: emptyBin } };
+    const { spawner, launched } = ptyThatExitsOneWhenTheCommandIsMissing();
+    const { flows } = services(r, { spawner, executableFallbackDirs: [fallback] });
+    const acct = account(r, "grok", "new");
+    const { flow } = await flows.start(acct);
+    const done = await waitFor(() => {
+      const f = r.store.getLoginFlow(flow.id) as LoginFlowRow;
+      return f.phase === "failed" ? f : null;
+    }, "failed", 5000, 20);
+    assert.equal(done.error?.code, "cli_missing");
+    assert.deepEqual(done.error?.cli, {
+      reason: "missing",
+      path: null,
+      version: null,
+      minVersion: null,
+      tried: [join(emptyBin, "grok"), join(fallback, "grok")],
+      fix: "curl -fsSL https://x.ai/cli/install.sh | bash",
+    });
+    assert.match(done.error?.message ?? "", /grok.*was not found.*Install xAI's Grok CLI from x\.ai\/cli/);
+    assert.equal(done.retryable, false);
+    const retried = await flows.retry(flow.id);
+    assert.equal(retried.error?.code, "cli_missing");
+    assert.equal(retried.retryable, false);
+    assert.deepEqual(launched, []);
+
+    mkdirSync(fallback, { recursive: true });
+    writeFileSync(join(fallback, "grok"), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+    await flows.start(acct);
+    assert.deepEqual(launched, [join(fallback, "grok")], "installing grok is seen by the next login");
+    await waitFor(() => r.log.some((op) => op.startsWith("account.login.exited")) || null, "worker exit settled", 5000, 20);
+  } finally {
+    process.env.HOME = savedHome;
+    r.cleanup();
+  }
+});
+
+test("flows.grok-missing: the login runs the grok path the agent config spawns, and names it when it is gone (APY-77)", async () => {
+  const r = rig();
+  try {
+    const configured = join(r.dir, "vendor", "grok");
+    r.cfg.agents.grok = { ...r.cfg.agents.grok!, command: configured, env: { PATH: "" } };
+    const { spawner, launched } = ptyThatExitsOneWhenTheCommandIsMissing();
+    const { flows } = services(r, { spawner, executableFallbackDirs: [] });
+    const acct = account(r, "grok", "configured");
+    const { flow } = await flows.start(acct);
+    assert.equal(flow.error?.code, "cli_missing");
+    assert.deepEqual(flow.error?.cli?.tried, [configured]);
+    assert.equal(flow.error?.cli?.fix, null);
+    mkdirSync(dirname(configured), { recursive: true });
+    writeFileSync(configured, "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+    await flows.start(acct);
+    assert.deepEqual(launched, [configured]);
+    await waitFor(() => r.log.some((op) => op.startsWith("account.login.exited")) || null, "worker exit settled", 5000, 20);
+  } finally {
     r.cleanup();
   }
 });

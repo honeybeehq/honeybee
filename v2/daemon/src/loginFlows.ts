@@ -97,6 +97,7 @@ export interface LoginFlowServiceOptions {
   workerKillGraceMs?: number;
   /** Parser settle window for the worker (tests shrink it). */
   workerSettleMs?: number;
+  executableFallbackDirs?: readonly string[];
 }
 
 type RecipeMethod = LoginRecipeMethod;
@@ -124,6 +125,7 @@ export class LoginFlowService {
   private readonly loadSpawner: () => Promise<PtySpawner | null>;
   private readonly workerKillGraceMs: number;
   private readonly workerSettleMs: number | undefined;
+  private readonly executableFallbackDirs: readonly string[] | undefined;
   private ticking = false;
   private stopping = false;
 
@@ -143,6 +145,7 @@ export class LoginFlowService {
     this.loadSpawner = opts.loadSpawner ?? (async () => (this.cfg.accounts.loginWorkerBackend === "pipe" ? null : loadNodePtySpawner()));
     this.workerKillGraceMs = opts.workerKillGraceMs ?? 1500;
     this.workerSettleMs = opts.workerSettleMs;
+    this.executableFallbackDirs = opts.executableFallbackDirs;
   }
 
   // -------------------------------------------------------------------------
@@ -528,6 +531,7 @@ export class LoginFlowService {
       now: this.now,
       workerKillGraceMs: this.workerKillGraceMs,
       workerSettleMs: this.workerSettleMs,
+      executableFallbackDirs: this.executableFallbackDirs,
       flow: () => this.store.getLoginFlow(flowId),
       replaceAccount: () => this.replacingAccount.has(flowId),
       stillActive: () => this.stillActive(flowId),
