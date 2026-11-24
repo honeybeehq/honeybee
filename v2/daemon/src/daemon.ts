@@ -8,7 +8,7 @@ import type { AutomationKind, HumanChatAdmission } from "../../core/src/types.ts
 import { isQuotaTextFallback } from "../../adapters/src/quota.ts";
 import { isFableModel, autoswapDisabled, isThreadWriterLockedDetail, beeFlagDetail, renderFlagDetail, startFloorFlagDetail, startFloorOfFlagDetail, START_FLOOR_FLAG_PREFIX } from "../../core/src/index.ts";
 import { StartFloor, hostTmpPath, type StartSubstrate, type StartVolumeRolePath, type StartVolumeStatfs } from "./startFloor.ts";
-import { sweepRunnerSockets } from "./runnerSocketSweep.ts";
+import { RUNNER_SOCKET_FILE_NAME, sweepRunnerSockets } from "./runnerSocketSweep.ts";
 export { autoswapDisabled } from "../../core/src/index.ts";
 import {IdentityRecovery} from "./identityRecovery.ts";
 import {inspectProcess, sameProcess, type ProcessInspection} from "../../harness/src/processIdentity.ts";
@@ -220,6 +220,7 @@ import {
   sandboxWritableDirectory,
   sandboxEnabled,
   DEFAULT_SANDBOX_TMPFS_BYTES,
+  SANDBOX_TMPFS_PATHS,
   runCellExec,
   sanitizeComponent,
   type CellSpec,
@@ -663,6 +664,7 @@ const ACCOUNTS_CENTRAL_KEY = "daemon:accounts.central";
 const KEYCHAIN_REPAIR_KEY = "daemon:accounts.keychain";
 const CREDENTIAL_HANDOFF_KEY = "daemon:accounts.handoff";
 const CREDENTIAL_HANDOFF_SWEEP_MS = 1000;
+const RUNNER_SOCKET_DIR_NAME = "run";
 const QUIET_DAEMON_CHANGE_PREFIXES = ["rpc.", "cell.retention.", "cell.pressure.", "cell.parked", "node.capacity", "login_flow.", "template.", "selection_cursor."];
 
 interface DaemonChanges {
@@ -914,6 +916,7 @@ export class HiveDaemon {
   private readonly beeTmp: BeeTmpPolicy | null;
   private runnerSocketDir: string;
   private readonly inheritedTmpDir: string;
+  private readonly legacyRunnerSocketDirs: string[] = [];
   private readonly beeTmpNoticeLogged = new Set<string>();
 
   constructor(cfg: ResolvedNodeConfig, deps: HiveDaemonDeps = {}) {
@@ -950,9 +953,17 @@ export class HiveDaemon {
     const runtimeTarget = `${process.platform}-${process.arch}`;
     if (BUILD_IDENTITY.target !== runtimeTarget) throw new Error(`daemon: build target ${BUILD_IDENTITY.target} differs from runtime target ${runtimeTarget}; install an artifact built for this node`);
     mkdirSync(this.cfg.dataDir, { recursive: true, mode: 0o700 });
-    const sockets = placeDaemonSockets(this.cfg.dataDir, this.cfg.socketPath, { runnerSocketDir: this.runnerSocketDir });
+    const privateRunnerSockets = process.platform !== "darwin";
+    const sockets = placeDaemonSockets(this.cfg.dataDir, this.cfg.socketPath, privateRunnerSockets
+      ? { runnerSocketDir: join(this.cfg.dataDir, RUNNER_SOCKET_DIR_NAME), runnerFallbackSubdir: RUNNER_SOCKET_DIR_NAME, runnerLastResortDir: this.inheritedTmpDir }
+      : { runnerSocketDir: this.inheritedTmpDir });
     this.cfg = { ...this.cfg, socketPath: sockets.socketPath };
     this.runnerSocketDir = sockets.runnerSocketDir;
+    if (sockets.socketDir) this.legacyRunnerSocketDirs.push(sockets.socketDir);
+    if (privateRunnerSockets) {
+      mkdirSync(this.runnerSocketDir, { recursive: true, mode: 0o700 });
+      this.log(`runner.sockets dir=${this.runnerSocketDir}`);
+    }
     if (sockets.socketDir) this.log(`socket.relocated dir=${sockets.socketDir} socket=${sockets.socketPath}`);
     mkdirSync(this.cfg.sessionLogDir, { recursive: true });
     mkdirSync(dirname(this.cfg.logPath), { recursive: true });
@@ -1075,6 +1086,7 @@ export class HiveDaemon {
       nodeKind: this.cfg.nodeKind,
       runtimeLive: (beeId: string) => this.cellRuntimeLive(beeId),
       sandboxKvm: this.cfg.cellKvm,
+      sandboxMasks: () => this.sandboxMasks(),
       resolveCell: (beeId: string) => this.resolveCellSpec(beeId),
       resolveSandboxWritablePaths: (beeId: string) => this.resolveCellSandboxWritablePaths(beeId),
       ...(this.cfg.beeSandboxTmpBytes !== undefined ? { sandboxTmpfsBytes: this.cfg.beeSandboxTmpBytes } : {}),
@@ -1662,11 +1674,27 @@ export class HiveDaemon {
   private sweepRunnerSocketsAtBoot(driver: RuntimeHost): void {
     const uid = process.getuid?.();
     if (uid === undefined) return;
-    void withoutRpcCaller(() => sweepRunnerSockets({ dirs: [this.runnerSocketDir, this.inheritedTmpDir], liveSocketPaths: new Set(driver.liveSocketPaths()), uid, now: Date.now() }))
+    void withoutRpcCaller(() => sweepRunnerSockets({ dirs: [this.runnerSocketDir, this.inheritedTmpDir, ...this.legacyRunnerSocketDirs, ...this.survivorSocketDirs(driver)], liveSocketPaths: new Set(driver.liveSocketPaths()), uid, now: Date.now() }))
       .then((results) => {
         for (const result of results) this.log(`runner.sockets.swept n=${result.removed} scanned=${result.scanned} dir=${result.dir}`);
       })
       .catch((err) => this.log(`runner.sockets.sweep_failed err=${JSON.stringify(err instanceof Error ? err.message : String(err))}`));
+  }
+
+  private sandboxMasks(): { paths: string[]; files: string[] } {
+    const within = (path: string, dir: string): boolean => path === dir || path.startsWith(`${dir}/`);
+    const paths = SANDBOX_TMPFS_PATHS.some((mount) => within(this.runnerSocketDir, mount)) ? [] : [this.runnerSocketDir];
+    const files: string[] = [];
+    for (const socket of this.driver?.liveSocketPaths() ?? []) {
+      if (within(socket, this.runnerSocketDir) || SANDBOX_TMPFS_PATHS.some((mount) => within(socket, mount))) continue;
+      if (basename(socket) === RUNNER_SOCKET_FILE_NAME) paths.push(dirname(socket));
+      else files.push(socket);
+    }
+    return { paths: [...new Set(paths)], files };
+  }
+
+  private survivorSocketDirs(driver: RuntimeHost): string[] {
+    return driver.liveSocketPaths().map((socket) => (basename(socket) === RUNNER_SOCKET_FILE_NAME ? dirname(dirname(socket)) : dirname(socket)));
   }
 
   private startVolumeRoles(): StartVolumeRolePath[] {
@@ -5660,6 +5688,7 @@ export class HiveDaemon {
           sandbox: cell.sandbox,
           nodeKind: this.cfg.nodeKind,
           kvm: this.cfg.cellKvm,
+          sandboxMasks: () => this.sandboxMasks(),
           ...(secret ? { secretEnv: secret.outputCapture ? undefined : secret.env, ...(secret.outputCapture ? { outputCapture: { maxBytes: secret.outputCapture.maxBytes, expiresAt: secret.outputCapture.expiresAt, receive: (bytes: Buffer) => captureSecretOutput?.(secret.outputCapture!.leaseId, bytes) } } : {}), signal: controller!.signal } : {}),
 
         },

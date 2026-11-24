@@ -48,6 +48,7 @@ export interface CellServiceConfig {
    */
   resolveSandboxWritablePaths?(beeId: string): readonly SandboxWritableDirectory[];
   sandboxTmpfsBytes?: number | null;
+  sandboxMasks?(): { paths: readonly string[]; files: readonly string[] };
   sandboxTmpSampleMs?: number;
   log?(op: string): void;
   /** Tests: force the clone fallback / cold cells. */
@@ -589,6 +590,7 @@ export class CellService {
           this.cfg.resolveSandboxWritablePaths?.(beeId) ?? [],
         ),
         tmpfsBytes: cap.kind === "capped" ? cap.bytes : null,
+        ...(this.cfg.sandboxMasks ? (({ paths, files }) => ({ maskedPaths: paths, maskedFiles: files }))(this.cfg.sandboxMasks()) : {}),
       },
       harness.command,
       harness.args,

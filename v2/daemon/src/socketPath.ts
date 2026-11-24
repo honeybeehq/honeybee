@@ -35,7 +35,7 @@ export function shortSocketDir(prefix: string, name: string, bases?: Array<strin
 export function placeDaemonSockets(
   dataDir: string,
   configuredSocketPath: string,
-  options: { runnerSocketDir?: string; bases?: Array<string | undefined> } = {},
+  options: { runnerSocketDir?: string; runnerFallbackSubdir?: string; runnerLastResortDir?: string; bases?: Array<string | undefined> } = {},
 ): SocketPlacement {
   const defaultSocket = join(dataDir, "hived.sock");
   const explicit = resolve(configuredSocketPath) !== resolve(defaultSocket);
@@ -46,10 +46,20 @@ export function placeDaemonSockets(
   if (socketFits && runnerFits) {
     return { socketPath: configuredSocketPath, runnerSocketDir: runnerDefault, socketDir: null };
   }
-  const dir = typed(() => persistentSocketDir(dataDir, RUNNER_SOCKET_SAMPLE, options.bases));
+  const subdir = options.runnerFallbackSubdir;
+  const lastResort = options.runnerLastResortDir;
+  let dir: string;
+  try {
+    dir = persistentSocketDir(dataDir, subdir ? join(subdir, RUNNER_SOCKET_SAMPLE) : RUNNER_SOCKET_SAMPLE, options.bases);
+  } catch (error) {
+    if (error instanceof SocketPathTooLongError && socketFits && lastResort && socketPathFits(join(lastResort, RUNNER_SOCKET_SAMPLE))) {
+      return { socketPath: configuredSocketPath, runnerSocketDir: lastResort, socketDir: null };
+    }
+    return typed(() => { throw error; });
+  }
   return {
     socketPath: socketFits ? configuredSocketPath : assertSocketPathFits(join(dir, "hived.sock"), "daemon"),
-    runnerSocketDir: runnerFits ? runnerDefault : dir,
+    runnerSocketDir: runnerFits ? runnerDefault : subdir ? join(dir, subdir) : dir,
     socketDir: dir,
   };
 }

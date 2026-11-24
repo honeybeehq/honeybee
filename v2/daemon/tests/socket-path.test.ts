@@ -162,3 +162,19 @@ test("a daemon refuses an explicit socket path past the platform limit and names
   assert.equal(readLiveEndpointRecord(d.dir), null);
   d.cleanup();
 });
+
+test("socket placement: when neither <dataDir>/run nor the private fallback can hold a runner socket, the inherited temp folder still can", () => {
+  const root = shortRoot("hb-sp-last-", "s");
+  try {
+    const dataDir = join(root, "d".repeat(80 - root.length - 1));
+    mkdirSync(dataDir, { recursive: true });
+    assert.equal(socketPathFits(join(dataDir, "hived.sock")), true, "the daemon socket itself fits");
+    assert.equal(socketPathFits(join(dataDir, "run", RUNNER_SOCKET_SAMPLE)), false, "<dataDir>/run does not");
+    const deepBase = join(root, "b".repeat(50), "c".repeat(40));
+    const placed = placeDaemonSockets(dataDir, join(dataDir, "hived.sock"), { runnerSocketDir: join(dataDir, "run"), runnerFallbackSubdir: "run", runnerLastResortDir: root, bases: [deepBase] });
+    assert.deepEqual(placed, { socketPath: join(dataDir, "hived.sock"), runnerSocketDir: root, socketDir: null });
+    assert.throws(() => placeDaemonSockets(dataDir, join(dataDir, "hived.sock"), { runnerSocketDir: join(dataDir, "run"), runnerFallbackSubdir: "run", bases: [deepBase] }), /socket/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

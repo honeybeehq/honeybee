@@ -11,7 +11,7 @@
  * OFF (the ephemeral VM is the boundary there). Per-cell override wins.
  */
 import { spawnSync } from "node:child_process";
-import { cpSync, lstatSync, mkdtempSync, realpathSync, rmSync, statSync } from "node:fs";
+import { cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, realpathSync, rmSync, statSync } from "node:fs";
 import { homedir, platform } from "node:os";
 import { dirname, isAbsolute, join, parse, relative, resolve as resolvePath, sep } from "node:path";
 
@@ -38,6 +38,8 @@ export interface SandboxPolicy {
   scratchPaths?: string[];
   tmpfsBytes?: number | null;
   kvm?: boolean;
+  maskedPaths?: readonly string[];
+  maskedFiles?: readonly string[];
 }
 
 export const DEFAULT_SANDBOX_TMPFS_BYTES = 1024 * 1024 * 1024;
@@ -329,6 +331,8 @@ export function bwrapArgs(policy: SandboxPolicy, command: string, args: string[]
     if (p === "/tmp" || p === "/var/tmp" || p === "/dev") continue; // already mounted above
     out.push("--bind-try", p, p);
   }
+  for (const p of policy.maskedPaths ?? []) out.push("--tmpfs", p);
+  for (const p of policy.maskedFiles ?? []) out.push("--ro-bind", "/dev/null", p);
   if (sshConfigView) out.push("--ro-bind", sshConfigView, sshConfigView, "--ro-bind", sshConfigView, "/etc/ssh/ssh_config.d");
   out.push("--share-net", "--die-with-parent", "--", command, ...args);
   return out;
@@ -361,7 +365,9 @@ export function wrapWithSandbox(
     };
   }
   if (osPlatform === "linux") {
-    return { command: "bwrap", args: bwrapArgs(policy, command, args, createSshConfigView(profilePath)) };
+    for (const p of policy.maskedPaths ?? []) mkdirSync(p, { recursive: true, mode: 0o700 });
+    const maskedFiles = (policy.maskedFiles ?? []).filter((p) => existsSync(p));
+    return { command: "bwrap", args: bwrapArgs({ ...policy, maskedFiles }, command, args, createSshConfigView(profilePath)) };
   }
   throw new Error(`cell sandbox: unsupported platform '${osPlatform}'`);
 }

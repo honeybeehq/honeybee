@@ -10,7 +10,8 @@ import { spawn, spawnSync } from "node:child_process";
 import { createServer } from "node:net";
 import { lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { homedir, platform, tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   bwrapArgs,
   createSshConfigView,
@@ -358,6 +359,57 @@ test("sandbox.bwrap: /tmp and /var/tmp are private tmpfs mounts, never host bind
   const lastTmpfs = args.lastIndexOf("--tmpfs");
   const firstBind = args.findIndex((arg) => arg === "--bind" || arg === "--bind-try");
   assert.ok(lastTmpfs < firstBind, "tmpfs mounts come before every bind so they never hide a grant under /tmp or /var/tmp");
+});
+
+test("sandbox.bwrap-mask: masked folders become an empty tmpfs after every writable bind", () => {
+  const args = bwrapArgs({ cellDir: "/cells/bee-1", writablePaths: ["/home/u/.hive"], maskedPaths: ["/home/u/.hive/v2/run"] }, "node", ["a.mjs"]);
+  const mask = args.findIndex((arg, i) => arg === "--tmpfs" && args[i + 1] === "/home/u/.hive/v2/run");
+  assert.ok(mask > 0, "the runner socket folder is masked");
+  assert.ok(mask > args.lastIndexOf("/home/u/.hive"), "the mask comes after the writable bind that contains it");
+  assert.ok(mask < args.indexOf("--"), "the mask comes before the command");
+  assert.equal(bwrapArgs({ cellDir: "/cells/bee-1", writablePaths: [] }, "node", []).includes("/home/u/.hive/v2/run"), false);
+});
+
+test("sandbox.wrap-mask: linux recreates a masked folder that was removed and hides only socket files that still exist", () => {
+  const box = mkdtempSync(join(tmpdir(), "hb-v2-wrap-mask-"));
+  try {
+    const runDir = join(box, "data", "run");
+    const liveFlat = join(box, "s", "hb-rh-0000000000000001.sock");
+    mkdirSync(dirname(liveFlat), { recursive: true });
+    writeFileSync(liveFlat, "");
+    const goneFlat = join(box, "s", "hb-rh-0000000000000002.sock");
+    const wrapped = wrapWithSandbox({ cellDir: "/c", writablePaths: [], maskedPaths: [runDir], maskedFiles: [liveFlat, goneFlat] }, "node", [], join(box, "p.sb"), "linux");
+    assert.ok(statSync(runDir).isDirectory(), "the removed folder exists again before bwrap needs it as a mount point");
+    assert.equal(statSync(runDir).mode & 0o777, 0o700);
+    const tmpfs = wrapped.args.findIndex((arg, i) => arg === "--tmpfs" && wrapped.args[i + 1] === runDir);
+    assert.ok(tmpfs > 0);
+    const bound = wrapped.args.findIndex((arg, i) => arg === "--ro-bind" && wrapped.args[i + 1] === "/dev/null" && wrapped.args[i + 2] === liveFlat);
+    assert.ok(bound > 0, "an existing legacy socket file is covered by /dev/null");
+    assert.equal(wrapped.args.includes(goneFlat), false, "a socket file that is gone is not a mount point");
+  } finally {
+    rmSync(box, { recursive: true, force: true });
+  }
+});
+
+test("sandbox.bwrap-mask-real: a socket in a masked folder cannot be reached from inside bwrap (linux)", { skip: !IS_LINUX }, async () => {
+  const outsideTmp = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", ".cache");
+  mkdirSync(outsideTmp, { recursive: true });
+  const root = mkdtempSync(join(realpathSync(outsideTmp), "hb-mask-"));
+  const socketDir = join(root, "run");
+  mkdirSync(socketDir, { mode: 0o700 });
+  const socketPath = join(socketDir, "s.sock");
+  const server = createServer((socket) => socket.destroy());
+  await new Promise<void>((resolve) => server.listen(socketPath, () => resolve()));
+  try {
+    const probe = `require("net").connect(${JSON.stringify(socketPath)}).on("connect",()=>{console.log("connected");process.exit(0)}).on("error",(e)=>{console.log(e.code);process.exit(0)})`;
+    const run = (maskedPaths: string[]) => spawnSync("bwrap", bwrapArgs({ cellDir: join(root, "cell"), writablePaths: [], maskedPaths }, process.execPath, ["-e", probe]), { encoding: "utf8" }).stdout.trim();
+    mkdirSync(join(root, "cell"));
+    assert.equal(run([]), "connected", "without the mask the sandbox reaches the socket");
+    assert.equal(run([socketDir]), "ENOENT", "with the mask the socket does not exist inside");
+  } finally {
+    server.close();
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("sandbox.bwrap-real: bwrap confines writes to the cell (linux — metal-3 gate)", { skip: !IS_LINUX }, () => {

@@ -122,6 +122,7 @@ export {
   bwrapArgs,
   darwinUserTempDir,
   DEFAULT_SANDBOX_TMPFS_BYTES,
+  SANDBOX_TMPFS_PATHS,
   defaultWritablePaths,
   mergeSandboxWritablePaths,
   NODE_KINDS,

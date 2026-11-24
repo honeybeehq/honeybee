@@ -276,8 +276,8 @@ function shortDaemonBase(): string {
   return tmpdir();
 }
 
-export function makeDaemonDir(overrides: DaemonConfigOverrides = {}): { dir: string; cleanup: () => void } {
-  const dir = mkdtempSync(join(shortDaemonBase(), "hb-v2-daemon-"));
+export function makeDaemonDir(overrides: DaemonConfigOverrides = {}, options: { base?: string } = {}): { dir: string; cleanup: () => void } {
+  const dir = mkdtempSync(join(options.base ?? shortDaemonBase(), "hb-v2-daemon-"));
   const { stubEnv, ...file } = overrides;
   const config: NodeConfigFile = {
     tickMs: 20,

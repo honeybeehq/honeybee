@@ -25,6 +25,7 @@ export interface CellExecSpec {
   sandbox: boolean | null;
   nodeKind: NodeKind;
   kvm?: boolean;
+  sandboxMasks?(): { paths: readonly string[]; files: readonly string[] };
   secretEnv?: Record<string, string>;
   signal?: AbortSignal;
   outputCapture?: { maxBytes: number; expiresAt: number; receive: (bytes: Buffer) => void };
@@ -287,7 +288,7 @@ export async function runCellExec(
   let wrappedArgs = args;
   if (sandboxEnabled(spec.nodeKind, spec.sandbox)) {
     const wrapped = wrapWithSandbox(
-      { cellDir: paths.wrapperDir, writablePaths: defaultWritablePaths(), kvm: spec.kvm },
+      { cellDir: paths.wrapperDir, writablePaths: defaultWritablePaths(), kvm: spec.kvm, ...(spec.sandboxMasks ? (({ paths, files }) => ({ maskedPaths: paths, maskedFiles: files }))(spec.sandboxMasks()) : {}) },
       command,
       args,
       paths.sandboxProfilePath,
