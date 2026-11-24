@@ -504,6 +504,7 @@ export interface ResolvedNodeConfig {
   cellWarmPoolMaxSize: number;
   /** v31 — Cell disk retention policy. */
   cellRetention: ResolvedCellRetention;
+  startFloor: ResolvedStartFloor;
   idleWindowMs: number;
   bootHangTimeoutMs: number;
   bootAllowanceMs: number;
@@ -1052,6 +1053,82 @@ function writeRawConfig(configPath: string, raw: Record<string, unknown>): void 
   renameSync(tmp, configPath);
 }
 
+export interface ResolvedStartFloor {
+  enabled: boolean;
+  minFreeBytes: number;
+  minFreeInodes: number;
+  warnings: string[];
+}
+
+export const START_FLOOR_CONFIG_KEYS = ["enabled", "minFreeBytes", "minFreeInodes"] as const;
+export type StartFloorConfigKey = (typeof START_FLOOR_CONFIG_KEYS)[number];
+
+export function defaultStartFloor(): ResolvedStartFloor {
+  return { enabled: true, minFreeBytes: 512 * 1024 ** 2, minFreeInodes: 20_000, warnings: [] };
+}
+
+export function startFloorOf(raw: unknown): ResolvedStartFloor {
+  const out = defaultStartFloor();
+  if (raw === undefined) return out;
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
+    out.warnings.push(`node.startFloor must be an object, got ${JSON.stringify(raw)}; using defaults`);
+    return out;
+  }
+  const c = raw as Record<string, unknown>;
+  for (const key of Object.keys(c)) {
+    if (!(START_FLOOR_CONFIG_KEYS as readonly string[]).includes(key)) out.warnings.push(`node.startFloor.${key} is not a start floor key; ignored`);
+  }
+  const nonNegativeInteger = (v: unknown) => typeof v === "number" && Number.isInteger(v) && v >= 0;
+  if (c.enabled !== undefined) {
+    if (typeof c.enabled === "boolean") out.enabled = c.enabled;
+    else out.warnings.push(`node.startFloor.enabled must be a boolean, got ${JSON.stringify(c.enabled)}; using ${out.enabled}`);
+  }
+  for (const key of ["minFreeBytes", "minFreeInodes"] as const) {
+    if (c[key] === undefined) continue;
+    if (nonNegativeInteger(c[key])) out[key] = c[key] as number;
+    else out.warnings.push(`node.startFloor.${key} must be a non-negative integer, got ${JSON.stringify(c[key])}; using ${out[key]}`);
+  }
+  return out;
+}
+
+function nodeSectionOf(raw: Record<string, unknown>): Record<string, unknown> {
+  const node = raw.node;
+  return node && typeof node === "object" && !Array.isArray(node) ? (node as Record<string, unknown>) : {};
+}
+
+export interface StartFloorConfigReading {
+  raw: Record<string, unknown> | null;
+  resolved: ResolvedStartFloor;
+}
+
+export function readStartFloorConfig(configPath: string): StartFloorConfigReading {
+  const section = nodeSectionOf(readRawConfig(configPath)).startFloor;
+  const startFloor = section && typeof section === "object" && !Array.isArray(section) ? (section as Record<string, unknown>) : null;
+  return { raw: startFloor, resolved: startFloorOf(startFloor ?? undefined) };
+}
+
+export function patchStartFloorConfig(configPath: string, patch: Record<string, unknown>): StartFloorConfigReading {
+  const raw = readRawConfig(configPath);
+  for (const key of Object.keys(patch)) {
+    if (!(START_FLOOR_CONFIG_KEYS as readonly string[]).includes(key)) throw new ConfigError(`config: node.startFloor.${key} is not a start floor key (known: ${START_FLOOR_CONFIG_KEYS.join(", ")})`);
+  }
+  const node = { ...nodeSectionOf(raw) };
+  const current = node.startFloor && typeof node.startFloor === "object" && !Array.isArray(node.startFloor) ? { ...(node.startFloor as Record<string, unknown>) } : {};
+  for (const [key, value] of Object.entries(patch)) {
+    if (value === undefined) delete current[key];
+    else current[key] = value;
+  }
+  const resolved = startFloorOf(current);
+  for (const key of Object.keys(patch)) {
+    const warning = resolved.warnings.find((w) => w.startsWith(`node.startFloor.${key} `));
+    if (warning) throw new ConfigError(`config: ${warning}`);
+  }
+  node.startFloor = current;
+  raw.node = node;
+  writeRawConfig(configPath, raw);
+  return { raw: current, resolved };
+}
+
 /** The `cells.retention` keys config.json may carry, as `cellRetentionOf` reads them. */
 export const RETENTION_CONFIG_KEYS = [
   "enabled", "archivedAfterDays", "stoppedAfterDays", "retainedAfterDays", "maxBytes", "intervalHours", "maxPerPass", "trimAfterHours", "trimPatterns", "leftoverPatterns",
@@ -1309,6 +1386,7 @@ export function loadNodeConfig(dataDir: string, configPath?: string): ResolvedNo
     cellWarmPoolFree: cells.warmPoolFree,
     cellWarmPoolMaxSize: cells.warmPoolMaxSize,
     cellRetention: cells.retention,
+    startFloor: startFloorOf(nodeSectionOf(raw).startFloor),
     transcriptSegments: transcriptSegmentsOf(raw.transcripts, dataDir),
     champions: championsOf(raw.champions, dataDir),
     durability: durabilityOf(raw.durability, dataDir),

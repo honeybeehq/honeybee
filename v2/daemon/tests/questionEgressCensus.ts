@@ -95,6 +95,7 @@ const policy: Readonly<Record<string, string>> = {
  'v2/cli/src/main.ts:readRows:publicAuditRow':'current CLI projected RPC or feature-aware stale local audit',
  'v2/cli/src/main.ts:cmdEvents:emit':'current CLI projected RPC or feature-aware stale local audit',
  'v2/cli/src/main.ts:cmdEvents:auditLine':'feature-aware CLI text',
+ 'v2/cli/src/render.ts:auditLine:displayPayload':'feature-aware CLI text; renders a start_floor flag detail as words',
  'v2/cli/src/main.ts:cmdEvents:withDaemonTarget':'feature-aware CLI JSON follow; projected RPC or stale local audit',
  'v2/harness/src/invariants.ts:checkStep:this.checkModel':'in-process harness invariant',
  'v2/harness/src/invariants.ts:checkStep:this.checkI1':'in-process harness invariant',

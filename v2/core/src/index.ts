@@ -6,6 +6,7 @@ export type { QuotaBoundary, QuotaObservedEvent } from "./quota.ts";
  * Pure library: no processes, no I/O beyond SQLite. Zero imports from old code.
  */
 export * from "./types.ts";
+export * from "./startFloor.ts";
 export {
   CoreStore,
   openCoreStore,

@@ -112,6 +112,7 @@ import {
   type CellParkResult,
 } from "./protocol.ts";
 import type { CellHoldDetail } from "../../core/src/index.ts";
+import type { StartFloorReading } from "./startFloor.ts";
 
 export interface CellRetentionDeps {
   cellsRoot: string;
@@ -147,6 +148,7 @@ export interface CellRetentionDeps {
   /** The bee's scratch dir (HIVE_SCRATCH) outside its Cell, measured beside the Cell in a census and removed with it on eviction. */
   scratchDirOf?: (beeId: string) => string | null;
   transcriptObjects?: () => NodeCapacity["transcriptObjects"];
+  startFloor?: () => StartFloorReading | null;
   wipBoxDir?: (cell: CellRow) => string;
   wipNode?: () => string;
   wipNodeScopes?: () => string[];
@@ -336,7 +338,7 @@ export class CellRetentionService {
   private lastCapAuditAt: number | null = null;
   private cappedInPlan = false;
   private blockedSince: number | null = null;
-  private announcedAdmission: { blocked: boolean; newCells: NodeCapacity["admission"]["newCells"] } | null = null;
+  private announcedAdmission: { blocked: boolean; reason: NodeCapacity["resourceBlocked"]["reason"]; newCells: NodeCapacity["admission"]["newCells"]; newSessions: NodeCapacity["admission"]["newSessions"] } | null = null;
   private warnedBelowFloorAt: number | null = null;
   private warnedPlanModeAt: number | null = null;
   private lastPresentBytes: number | null = null;
@@ -577,9 +579,19 @@ export class CellRetentionService {
     if (belowFloor) this.blockedSince ??= disk.at;
     else this.blockedSince = null;
     const wipSince = this.wipBlockedSince();
-    const blocked = belowFloor || wipSince != null;
     const enforce = this.deps.policy.budgetEnforce;
     const { cellCount, liveCells } = this.countCells(disk.at);
+    const start = this.deps.startFloor?.() ?? null;
+    const startBlocking = start?.blocksCells ?? null;
+    const resourceBlocked: NodeCapacity["resourceBlocked"] = startBlocking
+      ? { blocked: true, since: start!.since, reason: "start_floor" }
+      : { blocked: belowFloor || wipSince != null, since: belowFloor ? this.blockedSince : wipSince, reason: belowFloor ? "disk_floor" : wipSince != null ? "wip_unconfirmed" : null };
+    const admission: NodeCapacity["admission"] = { newCells: startBlocking || (belowFloor && enforce) ? "refuse" : "accept", enforce };
+    if (start) {
+      resourceBlocked.detail = startBlocking;
+      admission.newSessions = start.blocksSessions ? "refuse" : "accept";
+    }
+    const cellsVolume = start?.volumes.find((volume) => volume.roles.includes("cells"));
     return {
       schema: 1,
       checkedAt: disk.at,
@@ -587,6 +599,7 @@ export class CellRetentionService {
         root: disk.root,
         totalBytes: disk.totalBytes,
         freeBytes: disk.freeBytes,
+        ...(start ? { freeInodes: cellsVolume?.freeInodes ?? null } : {}),
         floorBytes: disk.floorBytes,
         targetBytes: disk.targetBytes,
         belowFloor,
@@ -596,19 +609,25 @@ export class CellRetentionService {
         cellBytes: this.lastPresentBytes,
         wipBlockedCells: this.wipBlocked.size,
       },
-      resourceBlocked: { blocked, since: belowFloor ? this.blockedSince : wipSince, reason: belowFloor ? "disk_floor" : wipSince != null ? "wip_unconfirmed" : null },
-      admission: { newCells: belowFloor && enforce ? "refuse" : "accept", enforce },
+      ...(start ? { volumes: start.volumes } : {}),
+      resourceBlocked,
+      admission,
       transcriptObjects: this.deps.transcriptObjects?.() ?? null,
     };
   }
 
+  announce(): void {
+    const capacity = this.capacity();
+    if (capacity) this.announceCapacity(capacity);
+  }
+
   private announceCapacity(capacity: NodeCapacity): void {
-    const current = { blocked: capacity.resourceBlocked.blocked, newCells: capacity.admission.newCells };
+    const current = { blocked: capacity.resourceBlocked.blocked, reason: capacity.resourceBlocked.reason, newCells: capacity.admission.newCells, newSessions: capacity.admission.newSessions };
     const previous = this.announcedAdmission;
-    if (previous != null && previous.blocked === current.blocked && previous.newCells === current.newCells) return;
+    if (previous != null && previous.blocked === current.blocked && previous.reason === current.reason && previous.newCells === current.newCells && previous.newSessions === current.newSessions) return;
     this.announcedAdmission = current;
     if (previous == null && !current.blocked) return;
-    this.deps.log(`node.capacity blocked=${current.blocked} new_cells=${current.newCells} free=${capacity.cells.freeBytes} floor=${capacity.cells.floorBytes ?? "-"} enforce=${capacity.admission.enforce}`);
+    this.deps.log(`node.capacity blocked=${current.blocked} reason=${current.reason ?? "-"} new_cells=${current.newCells} new_sessions=${current.newSessions ?? "-"} free=${capacity.cells.freeBytes} floor=${capacity.cells.floorBytes ?? "-"} enforce=${capacity.admission.enforce}`);
     try {
       this.deps.audit?.("node.capacity", { capacity });
     } catch (err) {

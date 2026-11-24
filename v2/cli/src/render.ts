@@ -8,6 +8,7 @@ import { authRecoveryHint } from "../../core/src/accountRecipes.ts";
  * (`stale:`, `id=`, `stopped(crashed)`, `deduped:`). Full argv lives on `view`, not `ls`.
  */
 import { CLAUDE_LOGIN_DUE_MS } from "../../core/src/mirror.ts";
+import { renderFlagDetail } from "../../core/src/startFloor.ts";
 import { INBOX_AGENT, isInboxAgent, type AccountCredentialAuthority, type AccountCredentialAuthorityStatus, type AuditRow } from "../../core/src/types.ts";
 import type { TranscriptTurn } from "../../adapters/src/transcript.ts";
 import type {
@@ -229,6 +230,7 @@ export function renderBeeView(v: ViewResult, stale: boolean): string[] {
   if (bee.lastOutputAt != null) details.push(["last out", `${formatRelativeTime(bee.lastOutputAt)} ago`]);
   if (bee.providerSessionId) details.push(["session", bee.providerSessionId]);
   if (bee.forkedFrom) details.push(["forked", bee.forkedFrom]);
+  for (const flag of v.flagDetails ?? []) details.push([flag.flag, renderFlagDetail(flag.detail)]);
   for (const hold of v.view.deliveryConfirmations ?? []) {
     details.push(["undelivered", `#${hold.messageId} ${hold.state} (${hold.reason}, current gen ${v.view.generation}, attempted gen ${hold.generation})`]);
   }
@@ -556,8 +558,18 @@ export function sessionLogBanner(path: string, harness: string, stale: boolean):
   return `${staleBit}${dim("#")} session log ${dim(tildify(path))} ${dim(`(${harness})`)}`;
 }
 
+function displayPayload(row: AuditRow): Record<string, unknown> {
+  if (row.kind !== "flag.set") return row.payload;
+  const flag = row.payload.flag as { detail?: unknown } | undefined;
+  if (!flag || typeof flag.detail !== "string") return row.payload;
+  const rendered = renderFlagDetail(flag.detail);
+  if (rendered === flag.detail) return row.payload;
+  const { startFloor: _structured, ...rest } = row.payload;
+  return { ...rest, flag: { ...flag, detail: rendered } };
+}
+
 export function auditLine(row: AuditRow, prefix: string): string {
-  const payload = JSON.stringify(row.payload);
+  const payload = JSON.stringify(displayPayload(row));
   const summary = payload.length > 160 ? `${payload.slice(0, 157)}…` : payload;
   const kind = row.kind.startsWith("runtime.")
     ? green(row.kind)

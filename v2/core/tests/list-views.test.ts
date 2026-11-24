@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { replayAudit } from "../src/index.ts";
+import { beeFlagDetail, replayAudit } from "../src/index.ts";
 import { bootToRunning, harness, makeBee } from "./helpers.ts";
 
 test("listBeeViewRows batches the same authoritative view, runtime, flags, and lifecycle filtering", (t) => {
@@ -64,7 +64,10 @@ test("list views preserve latest generations, flags, ordering and replay across 
     for (const lifecycle of [null, "active", "archived", "deleted", "unknown"]) {
       const expected = store.listBees()
         .filter(bee => lifecycle === null || bee.lifecycle === lifecycle)
-        .map(bee => ({ bee, runtime: store.currentRuntime(bee.id), view: store.view(bee.id), move: null, cell: null, handoff: null }));
+        .map(bee => {
+          const flags = store.activeFlags(bee.id);
+          return { bee, runtime: store.currentRuntime(bee.id), view: store.view(bee.id), move: null, cell: null, handoff: null, ...(flags.length > 0 ? { flagDetails: flags.map(beeFlagDetail) } : {}) };
+        });
       assert.deepEqual(store.listBeeViewRows(lifecycle), expected);
     }
     assert.equal(store.lastAuditSeq(), seq, "read projection never writes audit rows");

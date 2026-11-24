@@ -1354,6 +1354,38 @@ export interface CellHoldDetail {
   at: number;
 }
 
+export const START_VOLUME_ROLES = ["data", "sockets", "scratch", "hostTmp", "cells"] as const;
+export type StartVolumeRole = (typeof START_VOLUME_ROLES)[number];
+export type StartFloorMetric = "bytes" | "inodes";
+
+export interface NodeVolumeFacts {
+  roles: StartVolumeRole[];
+  path: string;
+  totalBytes: number;
+  freeBytes: number;
+  totalInodes: number | null;
+  freeInodes: number | null;
+  floorBytes: number | null;
+  floorInodes: number | null;
+  below: StartFloorMetric | null;
+}
+
+export interface StartFloorDetail {
+  role: StartVolumeRole;
+  path: string;
+  metric: StartFloorMetric;
+  free: number;
+  floor: number;
+}
+
+export interface BeeFlagDetail {
+  flag: Flag;
+  detail: string;
+  setAt: number;
+  resetsAt: number | null;
+  startFloor?: StartFloorDetail;
+}
+
 export interface NodeCapacity {
   schema: 1;
   checkedAt: number;
@@ -1361,6 +1393,7 @@ export interface NodeCapacity {
     root: string;
     totalBytes: number;
     freeBytes: number;
+    freeInodes?: number | null;
     floorBytes: number | null;
     targetBytes: number | null;
     belowFloor: boolean;
@@ -1370,8 +1403,14 @@ export interface NodeCapacity {
     liveCells: number;
     cellBytes: number | null;
   };
-  resourceBlocked: { blocked: boolean; since: number | null; reason: "disk_floor" | "wip_unconfirmed" | null };
-  admission: { newCells: "accept" | "refuse"; enforce: boolean };
+  volumes?: NodeVolumeFacts[];
+  resourceBlocked: {
+    blocked: boolean;
+    since: number | null;
+    reason: "start_floor" | "disk_floor" | "wip_unconfirmed" | null;
+    detail?: StartFloorDetail | null;
+  };
+  admission: { newCells: "accept" | "refuse"; enforce: boolean; newSessions?: "accept" | "refuse" };
   transcriptObjects?: { root: string; objects: number; bytes: number; orphansSwept: number; measuredAt: number } | null;
 }
 

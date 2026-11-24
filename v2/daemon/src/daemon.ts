@@ -6,7 +6,8 @@ import { admitSecretExecution } from "./secretExecution.ts";
 import type { BeeTellParams, BeeReactParams, HumanOutputMode, BeeTellResult, BeeReactResult, SetHumanOutputModeResult } from "../../core/src/humanOutputTypes.ts";
 import type { AutomationKind, HumanChatAdmission } from "../../core/src/types.ts";
 import { isQuotaTextFallback } from "../../adapters/src/quota.ts";
-import { isFableModel, autoswapDisabled, isThreadWriterLockedDetail } from "../../core/src/index.ts";
+import { isFableModel, autoswapDisabled, isThreadWriterLockedDetail, beeFlagDetail, renderFlagDetail, startFloorFlagDetail, startFloorOfFlagDetail, START_FLOOR_FLAG_PREFIX } from "../../core/src/index.ts";
+import { StartFloor, hostTmpPath, type StartSubstrate, type StartVolumeRolePath, type StartVolumeStatfs } from "./startFloor.ts";
 export { autoswapDisabled } from "../../core/src/index.ts";
 import {IdentityRecovery} from "./identityRecovery.ts";
 import {inspectProcess, sameProcess, type ProcessInspection} from "../../harness/src/processIdentity.ts";
@@ -148,6 +149,7 @@ import {
   type Scope,
   type Urgency,
   type SenderKind,
+  type NodeCapacity,
 } from "../../core/src/index.ts";
 import {
   AccountsService,
@@ -729,6 +731,9 @@ export interface HiveDaemonDeps {
   retentionPressureRetryMs?: number;
   /** P7 tests: substitute the Cells volume measurement. */
   retentionStatfs?: (path: string) => { totalBytes: number; freeBytes: number };
+  startFloorStatfs?: StartVolumeStatfs;
+  startFloorSampleMs?: number;
+  startFloorBelowSampleMs?: number;
   /**
    * Outbox forwarder hook for mailbox-only bees: called after a `send` to an
    * `inbox` bee commits. A future webhook or email push plugs in here; it runs
@@ -872,6 +877,8 @@ export class HiveDaemon {
   private authResume: AuthResume | null = null;
   /** v31 — Cell disk retention pass + `cell.gc` / `cell.evict`. */
   private retention: CellRetentionService | null = null;
+  private startFloor: StartFloor | null = null;
+  private readonly startFloorFlagged = new Set<string>();
   private segmenter: TranscriptSegmenter | null = null;
   private transcriptObjects: TranscriptObjectStore | null = null;
   /** Tracked filesystem readiness; no lock wait runs inside the core/store writer. */
@@ -1111,6 +1118,16 @@ export class HiveDaemon {
       extraEvidence: (live, cleared) => cells.evidence(live, cleared),
     });
     this.driver = driver;
+    for (const warning of this.cfg.startFloor.warnings) this.log(`config.start_floor.invalid ${warning}`);
+    this.startFloor = new StartFloor({
+      policy: this.cfg.startFloor,
+      roles: () => this.startVolumeRoles(),
+      now: () => Date.now(),
+      log: (op) => this.log(op),
+      ...(this.deps.startFloorStatfs ? { statfs: this.deps.startFloorStatfs } : {}),
+      ...(this.deps.startFloorSampleMs !== undefined ? { sampleMs: this.deps.startFloorSampleMs } : {}),
+      ...(this.deps.startFloorBelowSampleMs !== undefined ? { belowSampleMs: this.deps.startFloorBelowSampleMs } : {}),
+    });
     this.retention = new CellRetentionService({
       cellsRoot: this.cfg.cellsRoot,
       policy: this.cfg.cellRetention,
@@ -1137,6 +1154,7 @@ export class HiveDaemon {
       clearBeeTmp: (beeId) => this.removeBeeTmp(beeId),
       scratchDirOf: (beeId) => (this.beeTmp ? beeTmpDir(this.beeTmp, beeId) : null),
       transcriptObjects: () => this.segmenter?.objects() ?? null,
+      startFloor: () => this.startFloor?.current() ?? null,
       wipNode: () => this.wipNode(),
       wipNodeScopes: () => this.mustStore().wipNodeScopes(this.wipNode()),
       lastRecordedPass: (kind) => this.mustStore().latestCellRetentionPass(kind ?? null),
@@ -1274,10 +1292,15 @@ export class HiveDaemon {
     this.lastBoot = this.core.boot(unresolved);
     this.recordHandoverAtBoot(store, driver);
     for (const { view } of store.listBeeViewRows()) {
-      const flags = store.activeFlags(view.beeId).filter(row => row.detail.startsWith("account_credentials_unusable:") || row.detail.startsWith("runtime_start_held:"));
+      const flags = store.activeFlags(view.beeId).filter(row => row.detail.startsWith("account_credentials_unusable:") || row.detail.startsWith("runtime_start_held:") || row.detail.startsWith(START_FLOOR_FLAG_PREFIX));
       if (flags.length === 0) continue;
       const pending = store.listCommands({ beeId: view.beeId }).some(command => command.status === "queued" && ["spawn", "revive", "send_wake"].includes(command.verb));
-      if (!pending) this.clearRuntimeStartAttention(view.beeId);
+      if (!pending) {
+        this.clearRuntimeStartAttention(view.beeId);
+        this.clearStartFloorFlag(view.beeId, "No runtime start is pending");
+      } else if (flags.some(row => row.detail.startsWith(START_FLOOR_FLAG_PREFIX))) {
+        this.startFloorFlagged.add(view.beeId);
+      }
     }
     this.identityRecoveryTimer = setInterval(() => this.retryProcessIdentities(), 1000);
     this.identityRecoveryTimer.unref();
@@ -1573,7 +1596,7 @@ export class HiveDaemon {
   private prepareRuntimeStartCommands(): ReadonlySet<string> {
     this.authResume?.reconcile();
     this.refreshAccountActivations();
-    const blocked = new Set([...this.blockedRuntimeStartBeeIds(),...this.executionStartHolds]);
+    const blocked = new Set([...this.blockedRuntimeStartBeeIds(),...this.executionStartHolds,...this.startFloorHolds()]);
     for (const row of this.mustStore().listLiveAuthInterruptions()) if (this.authResume?.holdsStoppedRuntime(row)) {
       blocked.add(row.beeId);
       if (this.runtimeStartHolds.get(row.beeId) !== "account_auth_needed") {
@@ -1630,6 +1653,65 @@ export class HiveDaemon {
       if (!flag || (flag.detail.startsWith("account_credentials_unusable:") || flag.detail.startsWith("runtime_start_held:")) && flag.detail !== detail) this.mustStore().setFlag(bee.id, kind, detail);
     }
     return true;
+  }
+
+  private startVolumeRoles(): StartVolumeRolePath[] {
+    return [
+      { role: "data", path: this.cfg.dataDir },
+      { role: "sockets", path: this.runnerSocketDir },
+      ...(this.beeTmp ? [{ role: "scratch" as const, path: this.beeTmp.root }] : []),
+      { role: "hostTmp", path: hostTmpPath() },
+      { role: "cells", path: this.cfg.cellsRoot },
+    ];
+  }
+
+  private startSubstrateOf(bee: BeeRow): StartSubstrate {
+    return bee.substrate === "cell" ? "cell" : "hsr";
+  }
+
+  private startFloorHolds(): ReadonlySet<string> {
+    const floor = this.startFloor;
+    const store = this.store;
+    if (!floor || !store) return new Set();
+    const reading = floor.current();
+    if (reading.blocksCells == null && this.startFloorFlagged.size === 0) return new Set();
+    const held = new Set<string>();
+    if (reading.blocksCells != null) {
+      for (const command of store.listDueRuntimeStartCommands()) {
+        if (held.has(command.beeId)) continue;
+        const bee = store.getBee(command.beeId);
+        if (!bee) continue;
+        const blocking = floor.blocking(this.startSubstrateOf(bee), reading);
+        if (!blocking) continue;
+        held.add(bee.id);
+        this.setStartFloorFlag(bee.id, startFloorFlagDetail(blocking), command.id);
+      }
+    }
+    for (const beeId of [...this.startFloorFlagged]) {
+      if (held.has(beeId)) continue;
+      this.clearStartFloorFlag(beeId, "Start floor cleared");
+      this.log(`runtime.start.released bee=${beeId} code=start_floor`);
+    }
+    return held;
+  }
+
+  private setStartFloorFlag(beeId: string, detail: string, commandId: number): void {
+    const store = this.mustStore();
+    const open = store.activeFlags(beeId).find(row => row.flag === "resource_blocked");
+    const ours = open !== undefined && open.detail.startsWith(START_FLOOR_FLAG_PREFIX);
+    if (!this.startFloorFlagged.has(beeId)) this.log(`runtime.start.held bee=${beeId} command=${commandId} code=start_floor — ${renderFlagDetail(detail)}`);
+    this.startFloorFlagged.add(beeId);
+    if (open !== undefined && !ours) return;
+    if (ours && open.detail === detail) return;
+    store.setFlag(beeId, "resource_blocked", detail);
+  }
+
+  private clearStartFloorFlag(beeId: string, reason: string): void {
+    this.startFloorFlagged.delete(beeId);
+    const store = this.mustStore();
+    if (!store.getBee(beeId)) return;
+    const open = store.activeFlags(beeId).find(row => row.flag === "resource_blocked");
+    if (open?.detail.startsWith(START_FLOOR_FLAG_PREFIX)) store.clearFlag(beeId, "resource_blocked", reason);
   }
 
   private clearRuntimeStartAttention(beeId: string): void {
@@ -1730,6 +1812,10 @@ export class HiveDaemon {
       );
       // v31: at most one automatic retention pass per interval; the pass itself runs off-tick.
       this.retention?.tick();
+      if (this.startFloor?.tick()) {
+        this.retention?.announce();
+        this.requestTick();
+      }
       this.segmenterTick();
       // This span covers synchronous auto-title kickoff only; title generation
       // stays detached. Once a second keeps the roster scan off most ticks.
@@ -1823,6 +1909,11 @@ export class HiveDaemon {
     return rows.map((source) => {
       const row = this.publicConfirmationAudit(publicAuditRow(source, includeOperatorLocalHomes));
       if (row.kind === "thread_operation.put") return { ...row, payload: { operation: row.payload.operation } };
+      if (row.kind === "flag.set") {
+        const detail = (row.payload.flag as { detail?: unknown } | undefined)?.detail;
+        const startFloor = typeof detail === "string" ? startFloorOfFlagDetail(detail) : null;
+        if (startFloor) return { ...row, payload: { ...row.payload, startFloor } };
+      }
       if (!accounts) return row;
       if (row.kind !== "account.put") return row;
       const account = row.payload.account;
@@ -3038,7 +3129,7 @@ export class HiveDaemon {
     const idleAfterMs = Date.now() - started;
     if (!idle) {
       const rt = store.currentRuntime(beeId);
-      const flags = store.activeFlags(beeId).map((flag) => flag.detail);
+      const flags = store.activeFlags(beeId).map((flag) => renderFlagDetail(flag.detail));
       this.rpcEnqueue("delete", beeId, {}, {});
       this.requestTick();
       throw runtimeRefused("canary_failed", `canary bee ${beeId} did not reach idle within ${RUNTIME_PROBE_IDLE_MS} ms (state ${rt?.state ?? "none"})`, { beeId, cell, state: rt?.state ?? null, exitCause: rt?.exitCause ?? null, flags });
@@ -3936,7 +4027,7 @@ export class HiveDaemon {
     if (!agentSpec || !(ADAPTER_NAMES as readonly string[]).includes(adapterName)) {
       throw new RpcError("invalid_request", `unknown agent '${agent}' (no spawn spec/adapter configured)`);
     }
-    if (substrate === "cell") this.assertCellAdmission("spawn");
+    this.assertStartAdmission("spawn", substrate === "cell" ? "cell" : "hsr");
     const tags = Array.isArray(params.tags) && params.tags.every((t) => typeof t === "string")
       ? (params.tags as string[])
       : [];
@@ -4352,12 +4443,18 @@ export class HiveDaemon {
     return retention.run({ dryRun: params.dryRun !== false, ...(params.measure === undefined ? {} : { measure: params.measure }) });
   }
 
-  private assertCellAdmission(verb: string): void {
+  private assertStartAdmission(verb: string, substrate: StartSubstrate): void {
+    const refusal = this.startFloor?.refusal(verb, substrate);
+    if (refusal) {
+      this.retention?.announce();
+      throw new RpcError("resource_blocked", refusal.message, { ...refusal.details });
+    }
+    if (substrate !== "cell") return;
     const refusing = this.retention?.refusingNewCells();
     if (!refusing) return;
     const free = (refusing.cells.freeBytes / 1024 ** 3).toFixed(1);
     const floor = ((refusing.cells.floorBytes ?? 0) / 1024 ** 3).toFixed(1);
-    throw new RpcError("resource_blocked", `${verb}: this node is below its disk floor (${free} GiB free, floor ${floor} GiB); new Cells are refused until space is reclaimed (hive cell gc)`);
+    throw new RpcError("resource_blocked", `${verb}: this node is below its disk floor (${free} GiB free, floor ${floor} GiB); new Cells are refused until space is reclaimed (hive cell gc)`, { reason: "disk_floor" });
   }
 
   private async rpcCellPark(verb: RpcVerb, params: Record<string, unknown>): Promise<CellParkResult> {
@@ -6585,6 +6682,7 @@ export class HiveDaemon {
       move: bee ? (() => { const m = store.latestMoveOf(bee.id); return m ? toBeeMoveView(m) : null; })() : null,
       cell: bee?.cellId ? store.getCell(bee.cellId) : null,
       handoff: bee ? (() => { const h = store.latestHandoffOf(bee.id); return h ? toBeeHandoffView(h) : null; })() : null,
+      ...(() => { const flags = bee ? store.activeFlags(beeId) : []; return flags.length > 0 ? { flagDetails: flags.map(beeFlagDetail) } : {}; })(),
     };
   }
 
@@ -6757,7 +6855,7 @@ export class HiveDaemon {
     if (resume && resume.epoch < known.epoch) throw new RpcError("champion_fenced", `bee.import: resume epoch ${resume.epoch} is older than this node's epoch ${known.epoch} for ${descriptor.id}`);
     if (!resume && known.fencedAt != null) throw new RpcError("champion_fenced", `bee.import: bee ${descriptor.id} is fenced here at epoch ${known.epoch}; pass the handover epoch`);
     const substrate = descriptor.cell ? "cell" : "hsr";
-    if (substrate === "cell") this.assertCellAdmission("bee.import");
+    this.assertStartAdmission("bee.import", substrate === "cell" ? "cell" : "hsr");
     const { account, allocation, reservationId, claim } = this.resolveSpawnAccount("auto", descriptor.agent, params, key, "spawn", 0, null, descriptor.id);
     void allocation;
     const fenceRaw = params.fence;
@@ -7345,7 +7443,7 @@ export class HiveDaemon {
       storePath: this.cfg.storePath,
       localSecurity: this.rpc?.localSecurity,
       cellDisk: this.retention?.diskStatus() ?? null,
-      capacity: this.retention?.capacity(true) ?? null,
+      capacity: this.freshCapacity(),
       transcriptSegments: this.transcriptSegmentsStatus(),
       ...(this.resumeSync ? { resumeBundles: this.resumeSync.status() } : {}),
       champions: { enabled: true, homeSync: true, homes: this.championHomes?.status() ?? null },
@@ -7442,10 +7540,15 @@ export class HiveDaemon {
         ? { state: "disabled", reason: this.naming.disabledReason }
         : { state: this.naming.auto ? "ok" : "off" },
       cellDisk: this.retention?.diskStatus() ?? null,
-      capacity: this.retention?.capacity(true) ?? null,
+      capacity: this.freshCapacity(),
       ...(this.scheduling ? { scheduling: this.scheduling() } : {}),
       processCpu: this.processCpu.status(),
     };
+  }
+
+  private freshCapacity(): NodeCapacity | null {
+    this.startFloor?.sample();
+    return this.retention?.capacity(true) ?? null;
   }
 
   private readonly snapshots: { public?: { seq: number; stamp: string; snapshot: SnapshotResult }; operatorLocal?: { seq: number; stamp: string; snapshot: SnapshotResult } } = {};

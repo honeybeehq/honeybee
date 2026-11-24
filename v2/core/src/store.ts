@@ -26,6 +26,8 @@ import type { QuestionDismissedEvent } from "./mirror.ts";
 import type { AccountObservationMetadata, LimitsObserverProvenance } from "./types.ts";
 import { isAccountId } from "./accountRecipes.ts";
 import type { ReconnectToolsReceipt, ReconnectToolsError } from "./reconnectTools.ts";
+import { beeFlagDetail } from "./startFloor.ts";
+import type { BeeFlagDetail } from "./types.ts";
 import { threadOperationView, type ThreadOperationRow, type ThreadOperationPhase } from "./threadOperation.ts";
 import { THREAD_OPERATIONS_TABLE_SQL } from "./schema.ts";
 /**
@@ -376,6 +378,7 @@ export interface BeeViewRow {
   cell: CellRow | null;
   /** v23 — latest handoff receipt (in-flight, complete, or failed). Null only when the bee has never handed off. */
   handoff: BeeHandoffView | null;
+  flagDetails?: BeeFlagDetail[];
 }
 
 /** Body-free mailbox facts shared by daemon work and I1 telemetry. */
@@ -7265,6 +7268,7 @@ export class CoreStore {
     );
 
     const flagsByBee = new Map<string, Flag[]>();
+    const flagDetailsByBee = new Map<string, BeeFlagDetail[]>();
     const runtimeStartHeld = new Set<string>();
     const threadWriterLocks = new Map<string, ThreadWriterLockState>();
     const activeFlagRows = this.stmt(
@@ -7274,6 +7278,7 @@ export class CoreStore {
       const row = mapFlag(raw);
       if (!selected.has(row.beeId)) continue;
       flagsByBee.set(row.beeId, [...(flagsByBee.get(row.beeId) ?? []), row.flag]);
+      flagDetailsByBee.set(row.beeId, [...(flagDetailsByBee.get(row.beeId) ?? []), beeFlagDetail(row)]);
       if (row.flag === "resource_blocked" && row.detail.startsWith("runtime_start_held:")) runtimeStartHeld.add(row.beeId);
       const lockState = threadWriterLockState(row);
       if (lockState) threadWriterLocks.set(row.beeId, lockState);
@@ -7340,6 +7345,7 @@ export class CoreStore {
         move: move ? toBeeMoveView(mapBeeMove(move)) : null,
         cell: bee.cellId ? (cellsById.get(bee.cellId) ?? null) : null,
         handoff: handoff ? toBeeHandoffView(handoff) : null,
+        ...(flagDetailsByBee.has(bee.id) ? { flagDetails: flagDetailsByBee.get(bee.id)! } : {}),
       };
     });
   }

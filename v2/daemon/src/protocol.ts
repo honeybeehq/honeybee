@@ -127,6 +127,7 @@ export const DAEMON_CAPABILITIES = [
   "thread.handoff.codex.hsr.v1",
   /** Spawn may retain a parent owned outside this node via `{parentId, parentExternal:true}`. */
   "spawn.external_parent.v1",
+  "node.capacity.volumes.v1",
   /** Configuration-only onboarding preview/import; never imports harness authentication. */
   "account.config.import.v1",
   /** Typed, tmux-independent account login flows: account.login.* verbs + the login_flows snapshot table. */
@@ -2099,6 +2100,7 @@ export interface ViewResult {
   cell: CellRow | null;
   /** v23 — latest handoff receipt (in-flight, complete, or failed). */
   handoff: BeeHandoffView | null;
+  flagDetails?: import("../../core/src/types.ts").BeeFlagDetail[];
 }
 
 export const ROSTER_READ_CAPABILITY = "roster.read.v1" satisfies DaemonCapability;

@@ -21,7 +21,8 @@ import { homedir } from "node:os";
 import { createInterface } from "node:readline";
 import { closeSync, existsSync, openSync, readSync, statSync, fsyncSync, unlinkSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
-import { patchRetentionConfig, readRetentionConfig, RETENTION_CONFIG_KEYS, type ResolvedNodeConfig } from "../../daemon/src/config.ts";
+import { describeStartFloor } from "../../core/src/startFloor.ts";
+import { patchRetentionConfig, patchStartFloorConfig, readRetentionConfig, readStartFloorConfig, RETENTION_CONFIG_KEYS, START_FLOOR_CONFIG_KEYS, type ResolvedNodeConfig } from "../../daemon/src/config.ts";
 import {
   createServiceManager,
   explicitServiceEntry,
@@ -3205,7 +3206,9 @@ export function capacityLine(c: NodeCapacity): string {
     ? `resource-blocked since ${new Date(c.resourceBlocked.since ?? c.checkedAt).toISOString().slice(0, 16).replace("T", " ")}Z (${c.resourceBlocked.reason})`
     : "not blocked";
   const objects = c.transcriptObjects ? ` · transcript objects ${c.transcriptObjects.objects} (${gib(c.transcriptObjects.bytes)}${c.transcriptObjects.orphansSwept > 0 ? `, ${c.transcriptObjects.orphansSwept} orphans swept` : ""})` : "";
-  return `capacity: new Cells ${c.admission.newCells} (enforce ${c.admission.enforce ? "on" : "off, warn only"}) · ${block} · ${c.cells.cellCount} Cells, ${c.cells.liveCells} live${c.cells.cellBytes == null ? "" : `, ${gib(c.cells.cellBytes)} on disk`}${objects}`;
+  const sessions = c.admission.newSessions ? `new sessions ${c.admission.newSessions} · ` : "";
+  const why = c.resourceBlocked.detail ? ` · ${describeStartFloor(c.resourceBlocked.detail)}` : "";
+  return `capacity: ${sessions}new Cells ${c.admission.newCells} (enforce ${c.admission.enforce ? "on" : "off, warn only"}) · ${block}${why} · ${c.cells.cellCount} Cells, ${c.cells.liveCells} live${c.cells.cellBytes == null ? "" : `, ${gib(c.cells.cellBytes)} on disk`}${objects}`;
 }
 
 /** Why the dirty holds hold: tracked edits, untracked files, commits on no branch of the origin; and how many Cells the leftover rule released. */
@@ -3738,15 +3741,16 @@ async function cmdCommands(ctx: CliContext, parsed: Parsed): Promise<number> {
   return 0;
 }
 
-const CONFIG_USAGE = "usage: hive config get cells.retention[.<key>] [--effective] | hive config set cells.retention.<key> <value>   (value is json: plan, true, 7, null; --data-dir names the node; the daemon reads config.json at boot)";
+const CONFIG_USAGE = "usage: hive config get cells.retention[.<key>] | node.startFloor[.<key>] [--effective] | hive config set cells.retention.<key> | node.startFloor.<key> <value>   (value is json: plan, true, 7, null; --data-dir names the node; the daemon reads config.json at boot)";
 
 /** The retention section of this node's config.json, read or written through the daemon's own parser; the rest of the file is never printed. */
 function cmdConfig(ctx: CliContext, parsed: Parsed): number {
   const action = parsed.positional[1];
   const key = parsed.positional[2];
-  if ((action !== "get" && action !== "set") || !key || !/^cells\.retention(\.[A-Za-z]+)?$/.test(key)) throw new Error(CONFIG_USAGE);
+  if ((action !== "get" && action !== "set") || !key || !/^(cells\.retention|node\.startFloor)(\.[A-Za-z]+)?$/.test(key)) throw new Error(CONFIG_USAGE);
   const sub = key.split(".")[2];
   const configPath = ctx.cfg.configPath;
+  if (key.startsWith("node.startFloor")) return cmdStartFloorConfig(ctx, parsed, action, key, sub, configPath);
   const effectiveOf = (reading: ReturnType<typeof readRetentionConfig>): Record<string, unknown> => {
     const r = reading.resolved;
     const days = (ms: number | null) => (ms == null ? null : ms / 86_400_000);
@@ -3777,6 +3781,36 @@ function cmdConfig(ctx: CliContext, parsed: Parsed): number {
     value = rawValue;
   }
   const reading = patchRetentionConfig(configPath, { [sub]: rawValue === "unset" ? undefined : value });
+  const lines = [confirm("ok", `${key} = ${rawValue === "unset" ? "(unset)" : JSON.stringify(value)}`, `written to ${tildify(configPath)} (0600, other keys preserved); effective ${sub} is ${JSON.stringify(effectiveOf(reading)[sub])}; the daemon reads it at its next boot`)];
+  emit(ctx, lines, { key, value: value ?? null, effective: effectiveOf(reading)[sub] ?? null, configPath }, false);
+  return 0;
+}
+
+function cmdStartFloorConfig(ctx: CliContext, parsed: Parsed, action: "get" | "set", key: string, sub: string | undefined, configPath: string): number {
+  const effectiveOf = (reading: ReturnType<typeof readStartFloorConfig>): Record<string, unknown> => {
+    const { enabled, minFreeBytes, minFreeInodes, warnings } = reading.resolved;
+    return { enabled, minFreeBytes, minFreeInodes, warnings };
+  };
+  if (action === "get") {
+    const reading = readStartFloorConfig(configPath);
+    const effective = parsed.flags.get("--effective") === true;
+    const value = sub == null ? (effective ? effectiveOf(reading) : reading.raw) : effective ? effectiveOf(reading)[sub] : reading.raw?.[sub];
+    const lines = sub == null
+      ? [`node.startFloor (${effective ? "effective, defaults applied" : "as written"}) in ${tildify(configPath)}:`, JSON.stringify(value ?? null, null, 2)]
+      : [`${key} = ${value === undefined ? "(unset)" : JSON.stringify(value)}${effective ? " (effective)" : ""}`];
+    emit(ctx, lines, { key, effective, value: value ?? null, configPath }, false);
+    return 0;
+  }
+  const rawValue = parsed.positional[3];
+  if (sub == null || rawValue === undefined) throw new Error(CONFIG_USAGE);
+  if (!(START_FLOOR_CONFIG_KEYS as readonly string[]).includes(sub)) throw new Error(`hive config: ${key} is not a start floor key (known: ${START_FLOOR_CONFIG_KEYS.map((k) => `node.startFloor.${k}`).join(", ")})`);
+  let value: unknown;
+  try {
+    value = JSON.parse(rawValue);
+  } catch {
+    value = rawValue;
+  }
+  const reading = patchStartFloorConfig(configPath, { [sub]: rawValue === "unset" ? undefined : value });
   const lines = [confirm("ok", `${key} = ${rawValue === "unset" ? "(unset)" : JSON.stringify(value)}`, `written to ${tildify(configPath)} (0600, other keys preserved); effective ${sub} is ${JSON.stringify(effectiveOf(reading)[sub])}; the daemon reads it at its next boot`)];
   emit(ctx, lines, { key, value: value ?? null, effective: effectiveOf(reading)[sub] ?? null, configPath }, false);
   return 0;
