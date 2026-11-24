@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { SecretOutput, validateSecretEnv } from "../src/secretOutput.ts";
 import { runCellExec } from "../src/exec.ts";
 import { cellPaths } from "../src/layout.ts";
+import { secretExecutionUnsupported } from "./helpers.ts";
 
 const material = ["synthetic-credential-short", "synthetic-credential-short-long", "é😀synthetic"];
 
@@ -34,7 +35,7 @@ test("secret env rejects empty, oversized, nul and loader or parent environment 
   for (const env of [{}, { TOKEN: "" }, { TOKEN: "a\0b" }, { TOKEN: "x".repeat(16385) }, { NODE_OPTIONS: "x" }, { PATH: "x" }, { LD_PRELOAD: "x" }, { HIVE_CELL: "x" }]) assert.throws(() => validateSecretEnv(env), /secret_execution_invalid/);
 });
 
-test("child-only injection redacts stdout, stderr, EOF, nonzero, spawn failure and truncation before capture", async () => {
+test("child-only injection redacts stdout, stderr, EOF, nonzero, spawn failure and truncation before capture", { skip: secretExecutionUnsupported }, async () => {
   const root = mkdtempSync(join(tmpdir(), "secret-exec-"));
   const paths = cellPaths(root, "wrap", "repo", "c1");
   mkdirSync(paths.spaceDir, { recursive: true });
@@ -72,7 +73,7 @@ test("child-only injection redacts stdout, stderr, EOF, nonzero, spawn failure a
 });
 
 
-test("private stdout capture releases only bounded successful bytes and suppresses both ordinary streams", async () => {
+test("private stdout capture releases only bounded successful bytes and suppresses both ordinary streams", { skip: secretExecutionUnsupported }, async () => {
   const root = mkdtempSync(join(tmpdir(), "private-capture-"));
   const paths = cellPaths(root, "wrap", "repo", "c1");
   mkdirSync(paths.spaceDir, { recursive: true });
@@ -98,7 +99,7 @@ test("private stdout capture releases only bounded successful bytes and suppress
 });
 
 
-test("supervisor preserves command exit codes and fragmented unicode configuration", async () => {
+test("supervisor preserves command exit codes and fragmented unicode configuration", { skip: secretExecutionUnsupported }, async () => {
   const root = mkdtempSync(join(tmpdir(), "secret-config-"));
   const paths = cellPaths(root, "wrap", "repo", "c1");
   mkdirSync(paths.spaceDir, { recursive: true });
@@ -117,7 +118,7 @@ test("supervisor preserves command exit codes and fragmented unicode configurati
 });
 
 
-test("unavailable containment refuses before sending configuration or executing argv", async () => {
+test("unavailable containment refuses before sending configuration or executing argv", { skip: secretExecutionUnsupported }, async () => {
   const root = mkdtempSync(join(tmpdir(), "secret-unavailable-"));
   const paths = cellPaths(root, "wrap", "repo", "c1");
   mkdirSync(paths.spaceDir, { recursive: true });

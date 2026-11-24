@@ -5,6 +5,7 @@ import { mkdtempSync, mkdirSync, readFileSync, existsSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { cellPaths } from "../src/layout.ts";
+import { secretExecutionUnsupported } from "./helpers.ts";
 
 const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 async function until(check: () => boolean, bound = 3000) {
@@ -37,7 +38,7 @@ function hostPids(launcher: number, namespacePids: number[]): number[] {
   });
 }
 for (const sandbox of process.platform === "linux" ? [false, null] : [false]) for (const detached of process.platform === "linux" ? [false, true] : [false]) for (const mode of ["kill", "stop", "normal", "deadline", "cancel-frozen", "supervisor-kill", "supervisor-only-kill", "init-only-kill", "owner-and-init-kill"] as const) {
-  test(`secret runner lease kills child and grandchild on ${mode} (detached=${detached}, sandbox=${sandbox})`, async () => {
+  test(`secret runner lease kills child and grandchild on ${mode} (detached=${detached}, sandbox=${sandbox})`, { skip: secretExecutionUnsupported }, async () => {
     if ((mode === "init-only-kill" || mode === "owner-and-init-kill") && process.platform !== "linux") return;
     const root = mkdtempSync(join(tmpdir(), "secret-lease-"));
     const paths = cellPaths(root, "wrap", "repo", "c1");

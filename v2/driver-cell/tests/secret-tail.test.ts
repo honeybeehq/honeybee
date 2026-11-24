@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { SecretOutput } from "../src/secretOutput.ts";
 import { runCellExec } from "../src/exec.ts";
 import { cellPaths } from "../src/layout.ts";
+import { secretExecutionUnsupported } from "./helpers.ts";
 
 const tokens = ["SYNTHETIC-TAIL-CREDENTIAL-79426", "é😀SYNTHETIC-TAIL-79426"];
 for (const normal of [true, false]) {
@@ -37,7 +38,7 @@ for (const normal of [true, false]) {
 
 for (const sandbox of process.platform === "linux" ? [false, null] : [false]) {
   for (const mode of ["normal", "cancel", "timeout", "exit7", "signal", "supervisor-kill"] as const) {
-    test(`real runner mid-value ${mode} masks or drops both stream tails (sandbox=${sandbox})`, async () => {
+    test(`real runner mid-value ${mode} masks or drops both stream tails (sandbox=${sandbox})`, { skip: secretExecutionUnsupported }, async () => {
       const root = mkdtempSync(join(tmpdir(), "secret-tail-"));
       const paths = cellPaths(root, "wrap", "repo", "c1");
       mkdirSync(paths.spaceDir, { recursive: true });

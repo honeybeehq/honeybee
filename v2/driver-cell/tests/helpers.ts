@@ -11,6 +11,8 @@ import { gitEnv } from "../src/git.ts";
 import { RuntimeHost, type RuntimeHostConfig, type SpawnSpec } from "../../driver-hsr/src/index.ts";
 import { CellService, type CellServiceConfig } from "../src/driver.ts";
 
+export const secretExecutionUnsupported = process.platform !== "linux" && "secret execution is Linux-only; other platforms refuse it before spawning (secret-platform.test.ts)";
+
 export function sh(cwd: string, cmd: string, args: string[]): string {
   const res = spawnSync(cmd, args, { cwd, encoding: "utf8", env: gitEnv() });
   if (res.status !== 0) {

@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { SecretOutput } from "../src/secretOutput.ts";
 import { runCellExec } from "../src/exec.ts";
 import { cellPaths } from "../src/layout.ts";
+import { secretExecutionUnsupported } from "./helpers.ts";
 
 const fixtures = [
   { values: ["SYNTH-abcdef", "abcdef-TAIL"], text: "SYNTH-abcdef-TAIL" },
@@ -49,7 +50,7 @@ test("overlap coverage survives emitted matches while the raw tail remains held"
 });
 
 for (const sandbox of process.platform === "linux" ? [false, null] : [false]) {
-  test(`real runner masks overlapping synthetic values in both streams (sandbox=${sandbox})`, async () => {
+  test(`real runner masks overlapping synthetic values in both streams (sandbox=${sandbox})`, { skip: secretExecutionUnsupported }, async () => {
     const root = mkdtempSync(join(tmpdir(), "secret-overlap-"));
     const paths = cellPaths(root, "wrap", "repo", "c1");
     mkdirSync(paths.spaceDir, { recursive: true });
