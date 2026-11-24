@@ -746,3 +746,37 @@ test("cursor locked Keychain: the real reader stops a hung security process at i
     r.cleanup();
   }
 });
+
+test("cursor expired sign-in: no spawn or probe ever starts with an expired token, whether re-capture found nothing or the Keychain did not answer; the account says log in", async () => {
+  for (const shape of ["absent", "store_unavailable"] as const) {
+    const r = rig(`expired-${shape}`);
+    try {
+      const expired = fakeJwt("auth0|user_a", r.now() - MIN, "expired");
+      const account = addCursor(r, "a", authDoc(expired));
+      const seen: string[] = [];
+      const svc = new AccountsService({
+        store: r.store,
+        cfg: r.cfg,
+        log: (op) => r.log.push(op),
+        now: r.now,
+        platform: "linux",
+        keychainReader: async () => null,
+        keychainWriter: async () => false,
+        cursorAuthReader: shape === "absent" ? async () => null : () => new Promise(() => {}),
+        providerHttp: { getJson: async () => { throw new Error("unexpected GET"); }, postJson: async (_url, headers) => { seen.push(headers.Authorization!); return usage(r); } },
+      });
+      await assert.rejects(settlesWithin(svc.activateForSpawn(account, { cwd: r.dir }), 5_000), (error: unknown) => error instanceof Error && /has expired; log in: hive account login cursor-a/.test(error.message), shape);
+      const refused = r.store.getAccount(account.id)!;
+      assert.equal(refused.status, "auth_needed", shape);
+      assert.match(refused.statusReason ?? "", /log in: hive account login cursor-a/, shape);
+      r.store.setAccountStatus(account.id, "ok", "test reset");
+      const [row] = await settlesWithin(svc.refreshLimits([account.id]), 5_000);
+      assert.equal(row!.readable, false, shape);
+      assert.deepEqual(seen, [], `${shape}: the expired token never reaches Cursor`);
+      assert.equal(r.store.getAccount(account.id)!.status, "auth_needed", shape);
+      assert.match(r.store.getAccount(account.id)!.statusReason ?? "", /log in: hive account login cursor-a/, shape);
+    } finally {
+      r.cleanup();
+    }
+  }
+});

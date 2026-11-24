@@ -3462,6 +3462,8 @@ export class AccountsService {
   private async fetchCursorLimits(account: AccountRow): Promise<PutAccountLimitsInput> {
     await this.withCursorLock(account.id, async () => this.repairCursorCopies(this.store.getAccount(account.id) ?? account));
     await this.recaptureCursor(account);
+    const expired = this.refuseExpiredCursorSignIn(account);
+    if (expired) return { readable: false, unreadableReason: "auth_failed", error: expired };
     const first = await this.probeCursor(account);
     if (first.status !== 401) return first.result;
     const again = await this.recaptureCursor(account, { force: true });
@@ -3470,6 +3472,17 @@ export class AccountsService {
     return settled.status === 401
       ? { ...settled.result, error: `${settled.result.error}; ${cursorRecoveryHint(account.id, again)}` }
       : settled.result;
+  }
+
+  private refuseExpiredCursorSignIn(account: AccountRow): string | null {
+    const current = this.store.getAccount(account.id) ?? account;
+    if (current.source !== "local" || this.isNative(current)) return null;
+    const claims = this.cursorSelection(current).selected?.claims;
+    if (!claims || claims.expiresAt > this.now()) return null;
+    const message = `Cursor sign-in for ${current.id} has expired; log in: hive account login ${current.id}`;
+    this.store.setAccountStatus(current.id, "auth_needed", message);
+    this.log(`account.cursor.expired_refused account=${current.id}`);
+    return message;
   }
 
   private async probeCursor(account: AccountRow): Promise<{ result: PutAccountLimitsInput; status: number | null }> {
@@ -4792,6 +4805,8 @@ export class AccountsService {
     if (account.harness === "cursor") {
       await this.withCursorLock(account.id, async () => this.repairCursorCopies(this.store.getAccount(account.id) ?? account));
       await this.recaptureCursor(account);
+      const expired = this.refuseExpiredCursorSignIn(account);
+      if (expired) throw new CredentialAuthorityError(expired, "login_required");
     }
     if (this.authorityFor(account)?.enabled(account)) {
       await this.authorityFor(account)!.ensure(account, account.harness === "codex" ? CODEX_MIN_SHIP_TTL_MS : CLAUDE_MIN_SHIP_TTL_MS);
