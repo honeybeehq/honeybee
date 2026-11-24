@@ -3477,9 +3477,13 @@ export class AccountsService {
   private refuseExpiredCursorSignIn(account: AccountRow): string | null {
     const current = this.store.getAccount(account.id) ?? account;
     if (current.source !== "local" || this.isNative(current)) return null;
-    const claims = this.cursorSelection(current).selected?.claims;
-    if (!claims || claims.expiresAt > this.now()) return null;
-    const message = `Cursor sign-in for ${current.id} has expired; log in: hive account login ${current.id}`;
+    const selected = this.cursorSelection(current).selected;
+    if (!selected) return null;
+    const claims = selected.claims;
+    if (claims && claims.expiresAt > this.now()) return null;
+    const message = claims
+      ? `Cursor sign-in for ${current.id} has expired; log in: hive account login ${current.id}`
+      : `Cursor sign-in for ${current.id} has a token whose expiry cannot be read; log in: hive account login ${current.id}`;
     this.store.setAccountStatus(current.id, "auth_needed", message);
     this.log(`account.cursor.expired_refused account=${current.id}`);
     return message;

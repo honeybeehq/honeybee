@@ -1713,6 +1713,7 @@ test("limits.1c: Grok, Kimi, Cursor, MiniMax, and z.ai use their real provider w
   const r = rig();
   try {
     const calls: string[] = [];
+    const cursorToken = `${Buffer.from(JSON.stringify({ alg: "RS256" })).toString("base64url")}.${Buffer.from(JSON.stringify({ iss: "https://cursor.test", sub: "auth0|c", exp: Math.floor(r.now() / 1000) + 86_400 })).toString("base64url")}.sig`;
     const svc = service(r, {
       providerHttp: {
         postForm: async (url, _headers, form) => {
@@ -1749,7 +1750,7 @@ test("limits.1c: Grok, Kimi, Cursor, MiniMax, and z.ai use their real provider w
         postJson: async (url, headers) => {
           calls.push(`json:${url}`);
           assert.match(url, /api2\.cursor\.sh/);
-          assert.equal(headers.Authorization, "Bearer cursor-access");
+          assert.equal(headers.Authorization, `Bearer ${cursorToken}`);
           return {
             billingCycleStart: r.now(),
             billingCycleEnd: r.now() + 30 * DAY,
@@ -1769,7 +1770,7 @@ test("limits.1c: Grok, Kimi, Cursor, MiniMax, and z.ai use their real provider w
     const kimi = addAccount(r, "kimi", "k", {
       vault: { "credentials/kimi-code.json": JSON.stringify({ access_token: "kimi-old", refresh_token: "kimi-refresh", expires_at: Math.floor(r.now() / 1000) - 1, sibling: true }) },
     });
-    const cursor = addAccount(r, "cursor", "c", { vault: { "auth.json": JSON.stringify({ accessToken: "cursor-access" }) } });
+    const cursor = addAccount(r, "cursor", "c", { vault: { "auth.json": JSON.stringify({ accessToken: cursorToken }) } });
     const minimax = addAccount(r, "opencode", "minimax", { vault: { "xdg-data/opencode/auth.json": JSON.stringify({ "minimax-coding-plan": { type: "api", key: "mini-key" } }) } });
     const zai = addAccount(r, "opencode", "glm", { vault: { "xdg-data/opencode/auth.json": JSON.stringify({ "zai-coding-plan": { type: "api", key: "zai-key" } }) } });
 

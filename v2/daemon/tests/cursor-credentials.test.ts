@@ -306,7 +306,7 @@ test("cursor read gate: only a known exp within 15 minutes or an exact HTTP 401 
   try {
     const cursor = fakeCursorStore();
     cursor.state.raw = authDoc(fakeJwt("auth0|user_a", r.now() + 9 * HOUR, "live"));
-    // An opaque cached token has no known exp: spawns and probes never read the store for it.
+    // An opaque cached token has no known exp: a spawn is refused before the store is read.
     const opaque = addCursor(r, "opaque", authDoc("opaque-token"));
     const statuses: number[] = [403, 500];
     const svc = service(r, cursor, {
@@ -316,7 +316,7 @@ test("cursor read gate: only a known exp within 15 minutes or an exact HTTP 401 
         return usage(r);
       },
     });
-    await svc.activateForSpawn(opaque, { cwd: r.dir });
+    await assert.rejects(svc.activateForSpawn(opaque, { cwd: r.dir }), /expiry cannot be read/);
     assert.equal(cursor.state.reads, 0, "no read for an opaque token at spawn");
     // A 403 whose body says "unauthorized revoked" is not a 401: no re-capture, not auth_needed, no body kept.
     const fresh = addCursor(r, "a", authDoc(fakeJwt("auth0|user_a", r.now() + 6 * HOUR, "held")));
@@ -775,6 +775,25 @@ test("cursor expired sign-in: no spawn or probe ever starts with an expired toke
       assert.deepEqual(seen, [], `${shape}: the expired token never reaches Cursor`);
       assert.equal(r.store.getAccount(account.id)!.status, "auth_needed", shape);
       assert.match(r.store.getAccount(account.id)!.statusReason ?? "", /log in: hive account login cursor-a/, shape);
+    } finally {
+      r.cleanup();
+    }
+  }
+});
+
+test("cursor unreadable expiry: a token whose exp cannot be read never starts or probes Cursor, because the CLI treats it as expired", async () => {
+  for (const token of ["opaque-token", `${Buffer.from(JSON.stringify({ alg: "RS256" })).toString("base64url")}.${Buffer.from(JSON.stringify({ iss: ISS, sub: "auth0|user_a" })).toString("base64url")}.sig`]) {
+    const r = rig("unreadable");
+    try {
+      const account = addCursor(r, "a", authDoc(token));
+      const seen: string[] = [];
+      const svc = service(r, fakeCursorStore(), { postJson: async (_url, headers) => { seen.push(headers.Authorization!); return usage(r); } });
+      await assert.rejects(svc.activateForSpawn(account, { cwd: r.dir }), (error: unknown) => error instanceof Error && /expiry cannot be read; log in: hive account login cursor-a/.test(error.message));
+      assert.equal(r.store.getAccount(account.id)!.status, "auth_needed");
+      r.store.setAccountStatus(account.id, "ok", "test reset");
+      await svc.refreshLimits([account.id]);
+      assert.deepEqual(seen, [], "the token never reaches Cursor");
+      assert.match(r.store.getAccount(account.id)!.statusReason ?? "", /log in: hive account login cursor-a/);
     } finally {
       r.cleanup();
     }
