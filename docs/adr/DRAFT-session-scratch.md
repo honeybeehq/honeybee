@@ -658,11 +658,26 @@ The first draft's three were answered by his decisions. The three now:
 ## Appendix A. Step 1 as a buildable spec: never a black hole
 
 **Status.** This step is being built from this appendix by another bee. Nine points
-came back and were ruled (D1 to D9). I have seen one of them: D7, the runner socket
-folder is masked from sandboxed bees on Linux, and HON-36 records that macOS and
-unconfined bees stay open. A4 below now says so. I was not given the text of the
-other eight, so where they differ from this appendix, the rulings stand and this
-text is out of date.
+came back and were ruled. The rulings stand; the text below has been brought in line
+with them.
+
+| Ruling | What it settles |
+|---|---|
+| D1 | A held start uses the claim filter (`blockedRuntimeStartBeeIds`). No attempt is counted. |
+| D2 | The daemon itself sets and clears `resource_blocked` with detail `start_floor`, and clears it at boot when no start is pending. The detail is stored as the `start_floor` prefix plus compact JSON `{role, path, metric, free, floor}`; words are rendered from it. Snapshots gain optional `views[].flagDetails`, and `flag.set` rows carry `payload.startFloor`. |
+| D3 | R4 is three runs on one filled tmpfs: today's code (five `boot_exit`), defaults (refused, `start_floor`), and `node.startFloor.enabled=false` (boots, facts published, nothing refused). |
+| D4 | The `cells` folder is checked only for Cell starts. Admission reports `newSessions` and `newCells` separately. |
+| D5 | The boot sweep protects the socket paths of runtimes the driver holds after adoption and any socket that accepts a connection, with a 60 s age guard on empty folders. |
+| D6 | The driver's fallback when no `socketDir` is passed is `<runners parent>/run`, not `tmpdir()`. |
+| D7 | The runner socket folder is masked from sandboxed bees with an empty tmpfs. Linux only. |
+| D8 | A device no bigger than the bytes floor skips the bytes floor, logs once, and still checks inodes. `floorBytes` is `number | null`. |
+| D9 | A refused start's reason is in the RPC error's `details`, not `data`. |
+
+Also ruled: while a floor is tripped the sampler runs every 5 s; the socket move and
+the mask are Linux only in step 1. macOS is unchanged there (HON-36).
+
+None of these conflicts with the holder of section 4. Step 2's holder applies D7's
+mask to every bee on Linux, not only sandboxed ones.
 
 Written against main at c7188458. Goal: a computer that cannot start a session says
 so as a fact, refuses the start with a typed reason, and is not chosen. No session
@@ -679,10 +694,11 @@ folders on the same device are reported once.
 | `sockets` | the runner socket folder (A4) | the runner host makes a folder and a socket there |
 | `scratch` | the bee tmp root (`resolveBeeTmpPolicy`), when on | per-bee `TMPDIR` |
 | `hostTmp` | `/tmp` on Linux; `/private/tmp` on macOS | harnesses and agents write here until capture (step 2) |
-| `cells` | the Cells root | already measured for `disk_floor` |
+| `cells` | the Cells root | already measured for `disk_floor`; checked only for Cell starts (D4) |
 
 New module `v2/daemon/src/startFloor.ts`, independent of `CellRetention` so it also
-runs on a node with retention off. It samples on the existing 60 s disk check
+runs on a node with retention off. It samples on the existing 60 s disk check, every
+5 s while a floor is tripped,
 (`DEFAULT_DISK_CHECK_MS`, `cellRetention.ts:208`) and once more, synchronously,
 inside admission (A3); a `statfs` is one system call per folder.
 
@@ -703,7 +719,7 @@ export interface NodeVolumeFacts {
   path: string;                      // the first role's path
   totalBytes: number;  freeBytes: number;
   totalInodes: number | null;  freeInodes: number | null;
-  floorBytes: number;  floorInodes: number | null;
+  floorBytes: number | null;  floorInodes: number | null;   // null bytes floor: the device is no bigger than the floor (D8)
   below: "bytes" | "inodes" | null;  // which floor it is under, if any
 }
 export interface NodeCapacity {
@@ -723,7 +739,8 @@ export interface NodeCapacity {
 - `admission.newSessions` is `refuse` exactly when `reason === "start_floor"`. It
   ignores `enforce`: `disk_floor` is advice on a workstation (`budgetEnforce:
   false`, `config.ts:710`), but under the start floor a start cannot work on any
-  kind of node. `newCells` is also `refuse` then.
+  kind of node. `newCells` is reported separately: it is `refuse` when the `cells`
+  device is under the start floor or the `disk_floor` refuses (D4).
 - Carried where capacity already rides: `deployInfo`, `health`, the snapshot, and
   the `node.capacity` audit event. `announceCapacity` (`cellRetention.ts:604`) fires
   on a change of `blocked` or `newCells`; add `reason` and `newSessions` to that
@@ -765,24 +782,25 @@ Admission, replacing `assertCellAdmission` (`daemon.ts:4342`) with
 `assertStartAdmission(verb, substrate)`, called for **every** substrate at `spawn`
 (`daemon.ts:3932`) and `bee.import` (`:6747`):
 
-- Under the start floor: `RpcError("resource_blocked", message, data)`. The code
+- Under the start floor: `RpcError("resource_blocked", message, details)`. The code
   exists. Message: `spawn: this computer cannot start sessions: /tmp has 0 free
-  inodes (floor 20000)`. Data: `{ reason: "start_floor", role, path, metric, free,
+  inodes (floor 20000)`. Details (D9): `{ reason: "start_floor", role, path, metric, free,
   floor }`.
 - Otherwise, for Cells only, the existing `disk_floor` check and message, with
-  data `{ reason: "disk_floor" }` added.
+  details `{ reason: "disk_floor" }` added.
 
 A start for a bee that already exists (a wake after `send`, a revive) must not be
 refused at the RPC: mail is accepted whatever the process health. In the command
 loop, before `driver.start`, when the start floor is tripped:
 
-- defer the command without counting an attempt, the way `deferReconnect` is used
-  in `loops.ts`, and
-- set the bee's `resource_blocked` flag with owner `start_floor` (add it beside
-  `"sandbox_tmp"` in `FlagEvidence.owner`, `driver-hsr/src/driver.ts`) and detail
-  `start_floor: /tmp has 0 free inodes (floor 20000)`.
+- hold the start with the claim filter (`blockedRuntimeStartBeeIds`), so no attempt
+  is counted (D1), and
+- the daemon sets the bee's `resource_blocked` flag with detail `start_floor` plus
+  compact JSON `{role, path, metric, free, floor}`; the words a person reads are
+  rendered from that. The `flag.set` row carries `payload.startFloor`, and
+  snapshots carry it in optional `views[].flagDetails` (D2).
 
-When the floor clears, clear the flag and release the command. The spawn-failure
+At boot the daemon clears the flag when no start is pending. When the floor clears, clear the flag and release the command. The spawn-failure
 budget and `boot_exit` are untouched: the runtime never started, so there is no
 exit to count.
 
@@ -794,7 +812,7 @@ and by `disposeAll`. That stops the growth. Left to do:
 
 1. **The folder is still the shared temp folder.** `daemon.ts:914` takes `tmpdir()`
    and `placeDaemonSockets` (`daemon/src/socketPath.ts:35`) keeps it whenever the
-   path fits. A full `/tmp` therefore still stops every start. New default:
+   path fits. A full `/tmp` therefore still stops every start. New default, on Linux only in step 1:
    `<dataDir>/run`, mode 0700, when `join(dataDir, "run", RUNNER_SOCKET_SAMPLE)`
    fits the socket limit; else the `persistentSocketDir` fallback that exists.
    `~/.hive/v2/run/hb-rh-<16>/stdin.sock` is 52 bytes on Linux. Ruling D7: a
@@ -812,11 +830,15 @@ and by `disposeAll`. That stops the growth. Left to do:
    folder. At boot, after adoption: in the current socket folder **and** in the
    inherited `tmpdir()`, remove every `hb-rh-*` entry owned by this user that no
    live runner config names. Empty folders with `rmdir`, stale sockets with
-   `unlink`, nothing else, bounded to 20,000 entries per boot and logged as
+   `unlink`, nothing else, never a socket path of a runtime the driver holds after
+   adoption, never an empty folder younger than 60 s (D5), bounded to 20,000
+   entries per boot and logged as
    `runner.sockets.swept n=`. This is also what clears the 5,457 on metal-3 and the
    8,027 on metal-2. Several daemons can share a temp folder (lab daemons), so
    never remove a folder whose socket accepts a connection.
-4. **Tests.** About 50 `new RuntimeHost(` sites pass no `socketDir`. Give
+4. **Tests and the driver's own fallback.** With no `socketDir` passed, the driver
+   uses `<runners parent>/run`, not `tmpdir()` (D6). About 50 `new RuntimeHost(`
+   sites pass none. Also give
    `v2/driver-hsr/tests/helpers.ts` a default inside the test's own folder.
 
 ### A5. Red first
@@ -824,11 +846,11 @@ and by `disposeAll`. That stops the growth. Left to do:
 | # | Test that fails today | Passes when |
 |---|---|---|
 | R1 | Unit, fake `statfs` returning `ffree: 0` for `hostTmp`: `capacity.volumes` is undefined | the volume shows `below: "inodes"`, `reason: "start_floor"`, `newSessions: "refuse"` |
-| R2 | Daemon test, same fake: `spawn` of an in-place bee succeeds and the runtime dies | `spawn` throws `resource_blocked` with `data.reason === "start_floor"`; no runtime row is created |
-| R3 | Daemon test: `send` to a stopped bee under the floor burns boot attempts to `spawn_failed` | mail is accepted, the bee carries `resource_blocked` (owner `start_floor`), `spawnFailures` stays 0; lifting the floor starts it and clears the flag |
-| R4 | Linux lab, real: a daemon whose inherited `TMPDIR` is a tmpfs with `nr_inodes=64`, filled (the mount recipe is `.proof/session-scratch/linux/03-limits.sh`, no root). Today five `boot_exit`s | with A4.1 the bee boots, because its socket is under `<dataDir>/run`; and capacity reports `hostTmp` under its floor |
+| R2 | Daemon test, same fake: `spawn` of an in-place bee succeeds and the runtime dies | `spawn` throws `resource_blocked` with `details.reason === "start_floor"`; no runtime row is created |
+| R3 | Daemon test: `send` to a stopped bee under the floor burns boot attempts to `spawn_failed` | mail is accepted, the bee carries `resource_blocked` (detail `start_floor`), `spawnFailures` stays 0; lifting the floor starts it and clears the flag |
+| R4 | Linux lab, real, three runs on one filled tmpfs with `nr_inodes=64` as the daemon's inherited `TMPDIR` (the mount recipe is `.proof/session-scratch/linux/03-limits.sh`, no root): today's code gives five `boot_exit`s | with defaults the start is refused with `start_floor`; with `node.startFloor.enabled=false` the bee boots, the facts are published and nothing is refused (D3) |
 | R5 | Daemon restart test: start a runtime with the socket folder set to A, restart the daemon with the default set to B | the runtime is adopted with the same pid and generation, and mail is delivered |
-| R6 | Boot test: plant 3 empty `hb-rh-*` folders, 1 stale socket, and 1 live runner | after boot only the live one remains |
+| R6 | Boot test: plant 3 empty `hb-rh-*` folders, 1 stale socket, and 1 live runner | after boot only the live one remains; an empty folder younger than 60 s is kept |
 | R7 | Type test on `capacityOf`: `schema` is still `1` and a reader that knows only today's fields gets the same values | unchanged |
 
 ### A6. What Honeybee publishes for Apiary's half
@@ -840,14 +862,15 @@ The bee building Apiary's half needs these names:
   floorBytes, floorInodes, below}`. Absent means an older Honeybee; `null` inodes
   means the filesystem has no inode table.
 - **The computer cannot start sessions:** `capacity.resourceBlocked.{blocked: true,
-  reason: "start_floor", detail}` and `capacity.admission.newSessions: "refuse"`,
+  reason: "start_floor", detail}` and `capacity.admission.newSessions: "refuse"` (and `newCells`, reported separately),
   with one `node.capacity` audit event on entry and one on exit.
 - **Which Honeybee it is talking to:** capability `node.capacity.volumes.v1` in the
   hello.
 - **A start that was refused:** RPC error code `resource_blocked` with
-  `data.reason: "start_floor" | "disk_floor"`. Move the session without waiting.
+  `details.reason: "start_floor" | "disk_floor"`. Move the session without waiting.
 - **A session that cannot start, said by the session:** the bee's `resource_blocked`
-  flag with owner `start_floor` and the detail text, in `BeeView.flags`.
+  flag with detail `start_floor` and its JSON, in `BeeView.flags` and
+  `views[].flagDetails`.
 - **Failed starts, for the debit:** these exist already. The audit event
   `bee.spawn_failures` carries `{ beeId, spawnFailures, reason }` with reason
   `boot_exit` or `boot_exit_not_retryable` (`core/src/store.ts:3699`), and the
