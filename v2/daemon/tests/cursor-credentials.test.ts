@@ -23,6 +23,8 @@ import { CursorStoreUnavailableError, cursorIdentityVerdict, cursorTokenIdentity
 import { CredentialAuthorityError } from "../src/claudeCredentialAuthority.ts";
 import { RpcError } from "../src/protocol.ts";
 import { ProviderHttpError } from "../src/providerLimits.ts";
+import { cursorBundledAgentPaths } from "../src/login/runnableCommand.ts";
+import { dirname } from "node:path";
 
 const MIN = 60_000;
 const ISS = "https://fake-cursor-issuer.test";
@@ -823,13 +825,41 @@ test("cursor CLI version: a spawn that passes a token is refused, and says why, 
   const r = rig("cli-version");
   try {
     const svc = service(r, fakeCursorStore());
+    const env = { PATH: "/usr/bin:/bin", HOME: join(r.dir, "no-home") };
     const account = addCursor(r, "a", authDoc(fakeJwt("auth0|user_a", r.now() + 6 * HOUR, "a")));
-    await svc.activateForSpawn(account, { cwd: r.dir, command: cursorCli(r, "2026.06.02-8c11d9f") });
-    await svc.activateForSpawn(account, { cwd: r.dir, command: cursorCli(r, "2026.11.22-e9042b2") });
-    await assert.rejects(svc.activateForSpawn(account, { cwd: r.dir, command: cursorCli(r, "2026.05.20-0abc123") }), /reports version 2026\.05\.20-0abc123; Honeybee needs 2026\.06\.02 or newer/);
-    await assert.rejects(svc.activateForSpawn(account, { cwd: r.dir, command: cursorCli(r, "3.31.15") }), /did not report a Cursor agent version \("3\.31\.15"\)/);
-    await assert.rejects(svc.activateForSpawn(account, { cwd: r.dir, command: join(r.dir, "missing-cursor-agent") }), /did not report a Cursor agent version/);
+    await svc.activateForSpawn(account, { cwd: r.dir, command: cursorCli(r, "2026.06.02-8c11d9f"), env });
+    await svc.activateForSpawn(account, { cwd: r.dir, command: cursorCli(r, "2026.11.22-e9042b2"), env });
+    await assert.rejects(svc.activateForSpawn(account, { cwd: r.dir, command: cursorCli(r, "2026.05.20-0abc123"), env }), /reports version 2026\.05\.20-0abc123; Honeybee needs 2026\.06\.02 or newer/);
+    await assert.rejects(svc.activateForSpawn(account, { cwd: r.dir, command: cursorCli(r, "3.31.15"), env }), /is the Cursor app's launcher \(it printed "3\.31\.15"\)/);
+    await assert.rejects(svc.activateForSpawn(account, { cwd: r.dir, command: join(r.dir, "missing-cursor-agent"), env }), /No Cursor agent CLI was found/);
   } finally {
+    r.cleanup();
+  }
+});
+
+test("cursor spawn command: a spawn searches the same candidates as login, uses Cursor's agent when the configured command is the Cursor app's launcher, and says so when nothing qualifies", async () => {
+  const r = rig("spawn-candidates");
+  const savedHome = process.env.HOME;
+  try {
+    const home = join(r.dir, "user-home");
+    process.env.HOME = home;
+    const bin = join(r.dir, "bin");
+    mkdirSync(bin, { recursive: true });
+    writeFileSync(join(bin, "agent"), "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 3.31.15; exit 0; fi\nexit 9\n", { mode: 0o755 });
+    const env = { PATH: `${bin}:/usr/bin:/bin`, HOME: home };
+    const svc = service(r, fakeCursorStore());
+    const account = addCursor(r, "a", authDoc(fakeJwt("auth0|user_a", r.now() + 6 * HOUR, "a")));
+    await assert.rejects(svc.activateForSpawn(account, { cwd: r.dir, command: "agent", env }), (error: unknown) => error instanceof Error
+      && /agent is the Cursor app's launcher \(it printed "3\.31\.15"\), not Cursor's agent CLI/.test(error.message)
+      && !/Update Cursor's CLI/.test(error.message));
+    const bundled = cursorBundledAgentPaths(process.platform, home)[0]!;
+    mkdirSync(dirname(bundled), { recursive: true });
+    writeFileSync(bundled, "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 2026.11.22-e9042b2; exit 0; fi\nexit 9\n", { mode: 0o755 });
+    await svc.activateForSpawn(account, { cwd: r.dir, command: "agent", env });
+    assert.equal(svc.cursorAgentCommandFor("agent"), bundled, "the spawn runs Cursor's agent, not the launcher");
+    assert.ok(r.log.some((line) => line === `account.cursor.agent_command account=${account.id} configured=agent path=${bundled}`));
+  } finally {
+    process.env.HOME = savedHome;
     r.cleanup();
   }
 });

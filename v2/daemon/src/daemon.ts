@@ -1935,7 +1935,8 @@ export class HiveDaemon {
     // (PATH of the exact spawn env, then the fallback dirs). Nothing found
     // keeps the bare name — the OS ENOENT stays the honest diagnostic and
     // the driver's exit detail names the executable.
-    const { command, resolution } = resolveSpawnCommand(spec.command, { env });
+    const cursorAgent = adapterName === "cursor" && env.AGENT_CLI_CREDENTIAL_STORE === "memory" ? this.accounts?.cursorAgentCommandFor(spec.command) ?? null : null;
+    const { command, resolution } = resolveSpawnCommand(cursorAgent ?? spec.command, { env });
     if (resolution.source !== "configured_path") {
       this.log(`spawn.resolve bee=${beeId} executable=${resolution.executable} source=${resolution.source}${resolution.path ? ` path=${resolution.path}` : ""}`);
     }

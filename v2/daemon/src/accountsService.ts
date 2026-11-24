@@ -1,4 +1,4 @@
-import { cursorCliRefusal } from "./cursorCli.ts";
+import { cursorAgentForSpawn } from "./cursorCli.ts";
 import { LEASE_UNKNOWN_MESSAGE, accountLeaseUnknown, knownAccountLease, presentAccountLease } from "../../core/src/accountLease.ts";
 import { withoutRpcCaller } from "../../core/src/rpcAuditContext.ts";
 import { OBSERVATION_CODECS, OBSERVATION_HARNESSES, localObservationText } from "./limitsObservation.ts";
@@ -1007,6 +1007,7 @@ export class AccountsService {
   private readonly leaseMints = new Map<string, Promise<EphemeralCredential>>();
   /** At most one Cursor re-capture per account; concurrent callers join it. */
   private readonly cursorRecaptures = new Map<string, Promise<CursorRecapture>>();
+  private readonly cursorAgentCommands = new Map<string, string>();
   /** Per-account Cursor credential lock: re-capture and explicit capture never interleave. */
   private readonly cursorLocks = new Map<string, Promise<void>>();
   /** Accounts already logged as having a home Honeybee does not own (logged once each). */
@@ -2069,6 +2070,10 @@ export class AccountsService {
    * Cursor's config dir does not relocate its secret store, so the account
    * home's captured auth.json is lifted into the process environment here.
    */
+  cursorAgentCommandFor(configured: string): string | null {
+    return this.cursorAgentCommands.get(configured) ?? null;
+  }
+
   credentialEnvOf(account: AccountRow): Record<string, string> {
     if (account.harness !== "cursor") return {};
     // The same identity-checked selection the probe and the lease use.
@@ -4813,8 +4818,10 @@ export class AccountsService {
       const expired = this.refuseExpiredCursorSignIn(account);
       if (expired) throw new CredentialAuthorityError(expired, "login_required");
       if (bee.command && Object.keys(this.credentialEnvOf(this.store.getAccount(account.id) ?? account)).length > 0) {
-        const outdated = await cursorCliRefusal(bee.command, bee.env ?? process.env);
-        if (outdated) throw new Error(outdated);
+        const agent = await cursorAgentForSpawn(bee.command, bee.env ?? process.env);
+        if ("refusal" in agent) throw new Error(agent.refusal);
+        this.cursorAgentCommands.set(bee.command, agent.path);
+        this.log(`account.cursor.agent_command account=${account.id} configured=${bee.command} path=${agent.path}`);
       }
     }
     if (this.authorityFor(account)?.enabled(account)) {

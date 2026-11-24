@@ -1,19 +1,23 @@
-import { resolveExecutable } from "../../core/src/executables.ts";
-import { CURSOR_AGENT_VERSION, commandVersion } from "./login/runnableCommand.ts";
+import { homedir } from "node:os";
+import { CURSOR_AGENT_VERSION, cursorBundledAgentPaths, firstRunnableCommand } from "./login/runnableCommand.ts";
 
 export const CURSOR_CLI_MIN_VERSION = "2026.06.02";
+const INSTALL_AGENT = "Install Cursor's agent CLI (curl https://cursor.com/install -fsS | bash), or point this agent's configured command at it, then start again.";
 
 function releaseDay(version: string): string {
   return version.split("-")[0]!.split(".").map((part, index) => index === 0 ? part : part.padStart(2, "0")).join(".");
 }
 
-export async function cursorCliRefusal(command: string, env: Record<string, string | undefined>): Promise<string | null> {
-  const resolved = resolveExecutable(command, { env });
-  const version = resolved ? await commandVersion(resolved.path, env as Record<string, string>, 5_000) : null;
-  const why = `Honeybee needs ${CURSOR_CLI_MIN_VERSION} or newer, so a Honeybee token never rewrites or clears this computer's own Cursor login. Update Cursor's CLI, then start again.`;
-  if (version === null || !CURSOR_AGENT_VERSION.test(version)) {
-    return `Cursor CLI ${command} did not report a Cursor agent version${version === null ? " (it did not run)" : ` (${JSON.stringify(version.slice(0, 80))})`}; ${why}`;
+export async function cursorAgentForSpawn(command: string, env: Record<string, string | undefined>): Promise<{ path: string } | { refusal: string }> {
+  const candidates = [...new Set([command, "agent", "cursor-agent", ...cursorBundledAgentPaths(process.platform, env.HOME ?? homedir())])];
+  const search = await firstRunnableCommand(candidates, env as Record<string, string>, { versionPattern: CURSOR_AGENT_VERSION });
+  if (search.path && search.version) {
+    if (releaseDay(search.version) >= releaseDay(CURSOR_CLI_MIN_VERSION)) return { path: search.path };
+    return { refusal: `Cursor's agent CLI ${search.path} reports version ${search.version}; Honeybee needs ${CURSOR_CLI_MIN_VERSION} or newer, so a Honeybee token never rewrites or clears this computer's own Cursor login. Update Cursor's agent CLI (cursor-agent update), then start again.` };
   }
-  if (releaseDay(version) < releaseDay(CURSOR_CLI_MIN_VERSION)) return `Cursor CLI ${command} reports version ${version}; ${why}`;
-  return null;
+  const launcher = search.otherPrograms[0];
+  if (launcher) {
+    return { refusal: `${launcher.candidate} is the Cursor app's launcher (it printed ${JSON.stringify(launcher.version)}), not Cursor's agent CLI, and no Cursor agent CLI was found (tried ${search.tried.join(", ")}). ${INSTALL_AGENT}` };
+  }
+  return { refusal: `No Cursor agent CLI was found on this node (tried ${search.tried.join(", ")}). ${INSTALL_AGENT}` };
 }
