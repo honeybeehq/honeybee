@@ -76,11 +76,17 @@ function rig(policy: Partial<ResolvedCellRetention> = {}, volume: { totalBytes: 
   const tickOf = async (ticked: CellRetentionService): Promise<number | null> => {
     const before = logs.filter((l) => l.startsWith("cell.retention.pass")).length;
     const planned = plans().length;
-    ticked.tick();
-    for (let waited = 0; waited < 3_000; waited += 20) {
+    if (!ticked.tick().scheduledPass) {
+      assert.equal(plans().length, planned, "a tick that starts no pass plans nothing");
+      return null;
+    }
+    const deadline = Date.now() + 60_000;
+    while (Date.now() < deadline) {
       await new Promise((done) => setTimeout(done, 20));
-      if (logs.filter((l) => l.startsWith("cell.retention.pass")).length > before) return Number(/inspected=(\d+)/.exec(plans().at(-1)!)![1]);
-      if (waited >= 400 && plans().length === planned) return null;
+      if (logs.filter((l) => l.startsWith("cell.retention.pass")).length > before) {
+        assert.equal(plans().length, planned + 1, "the started pass logs exactly one plan");
+        return Number(/inspected=(\d+)/.exec(plans().at(-1)!)![1]);
+      }
     }
     throw new Error("the ticked pass did not finish");
   };

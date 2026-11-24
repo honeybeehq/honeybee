@@ -403,20 +403,21 @@ export class CellRetentionService {
     return this.deps.policy;
   }
 
-  /** Called every daemon tick: a free-space check every `diskCheckMs`, then at most one automatic pass per interval. */
-  tick(): void {
-    if (this.stopping) return;
+  /** Called every daemon tick: a free-space check every `diskCheckMs`, then at most one automatic pass per interval; reports whether this tick started that pass. */
+  tick(): { scheduledPass: boolean } {
+    if (this.stopping) return { scheduledPass: false };
     const now = this.deps.now();
     this.checkPressure(now);
     this.sweepWipRefsIfDue(now);
     const policy = this.deps.policy;
-    if (!policy.enabled || this.passInFlight) return;
-    if (now - this.bootedAt < (this.deps.initialDelayMs ?? DEFAULT_INITIAL_DELAY_MS)) return;
-    if (this.lastPassAt != null && now - this.lastPassAt < policy.intervalMs) return;
+    if (!policy.enabled || this.passInFlight) return { scheduledPass: false };
+    if (now - this.bootedAt < (this.deps.initialDelayMs ?? DEFAULT_INITIAL_DELAY_MS)) return { scheduledPass: false };
+    if (this.lastPassAt != null && now - this.lastPassAt < policy.intervalMs) return { scheduledPass: false };
     this.lastPassAt = now;
     void withoutRpcCaller(() => this.run({ dryRun: policy.mode === "plan", kind: "scheduled" })).catch((err) => {
       if (!this.stopping) this.deps.log(`cell.retention.error ${err instanceof Error ? err.stack ?? err.message : String(err)}`);
     });
+    return { scheduledPass: true };
   }
 
   private diskPath(): string {
