@@ -29,8 +29,15 @@ export type BuildArtifactContext = {
 const HARNESS_HOME_VARIABLES = new Set(Object.values(HARNESS_HOME_ENV));
 const RUNNER_HOST_SOCKET_SAMPLE = join("hc-XXXXXX", "s", `hb-rh-${"0".repeat(16)}`, "stdin.sock");
 
+const HOST_GIT_HARDENING_VARIABLES = new Set(Object.keys(hostGitEnv({})));
+
+function isInheritedGitConfig(key: string): boolean {
+  return HOST_GIT_HARDENING_VARIABLES.has(key) || /^GIT_CONFIG_(?:KEY|VALUE)_\d+$/u.test(key) || key === "GIT_CONFIG_PARAMETERS";
+}
+
 function keepsGateTestVariable(key: string): boolean {
   if (key.startsWith("HIVE_")) return key.startsWith("HIVE_TEST_");
+  if (isInheritedGitConfig(key)) return false;
   return !HARNESS_HOME_VARIABLES.has(key);
 }
 
@@ -38,11 +45,10 @@ async function gateTestEnv(workDir: string): Promise<{ env: NodeJS.ProcessEnv; d
   const bin = join(workDir, "gate-bin");
   await mkdir(bin, { recursive: true });
   await writeFile(join(bin, "security"), "#!/bin/sh\necho 'deploy gate: a test tried to run security; refused' >&2\nexit 1\n", { mode: 0o755 });
-  const base = hostGitEnv();
   const env: NodeJS.ProcessEnv = {};
-  for (const [key, value] of Object.entries(base)) if (keepsGateTestVariable(key)) env[key] = value;
+  for (const [key, value] of Object.entries(process.env)) if (value !== undefined && keepsGateTestVariable(key)) env[key] = value;
   env.HIVE_NO_KEYCHAIN = "1";
-  env.PATH = `${bin}${delimiter}${base.PATH ?? ""}`;
+  env.PATH = `${bin}${delimiter}${process.env.PATH ?? ""}`;
   const temp = socketPathFits(join(tmpdir(), RUNNER_HOST_SOCKET_SAMPLE)) ? null : await realpath(await mkdtemp(join("/tmp", "hive-gate-")));
   if (temp !== null) env.TMPDIR = temp;
   return { env, dispose: async () => { if (temp !== null) await rm(temp, { recursive: true, force: true }); } };
