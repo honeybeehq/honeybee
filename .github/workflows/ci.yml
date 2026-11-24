@@ -6,8 +6,8 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: honeybee-ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: honeybee-ci-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   peercred:
     strategy:
