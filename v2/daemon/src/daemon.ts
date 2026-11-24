@@ -8,6 +8,7 @@ import type { AutomationKind, HumanChatAdmission } from "../../core/src/types.ts
 import { isQuotaTextFallback } from "../../adapters/src/quota.ts";
 import { isFableModel, autoswapDisabled, isThreadWriterLockedDetail, beeFlagDetail, renderFlagDetail, startFloorFlagDetail, startFloorOfFlagDetail, START_FLOOR_FLAG_PREFIX } from "../../core/src/index.ts";
 import { StartFloor, hostTmpPath, type StartSubstrate, type StartVolumeRolePath, type StartVolumeStatfs } from "./startFloor.ts";
+import { sweepRunnerSockets } from "./runnerSocketSweep.ts";
 export { autoswapDisabled } from "../../core/src/index.ts";
 import {IdentityRecovery} from "./identityRecovery.ts";
 import {inspectProcess, sameProcess, type ProcessInspection} from "../../harness/src/processIdentity.ts";
@@ -912,6 +913,7 @@ export class HiveDaemon {
   private activeStartupPhase: PerformanceSpan | null = null;
   private readonly beeTmp: BeeTmpPolicy | null;
   private runnerSocketDir: string;
+  private readonly inheritedTmpDir: string;
   private readonly beeTmpNoticeLogged = new Set<string>();
 
   constructor(cfg: ResolvedNodeConfig, deps: HiveDaemonDeps = {}) {
@@ -920,7 +922,8 @@ export class HiveDaemon {
     this.cfg = cfg;
     this.deps = deps;
     this.beeTmp = resolveBeeTmpPolicy(cfg.nodeKind, cfg.beeTmpRoot, process.env, undefined, cfg.dataDir);
-    this.runnerSocketDir = tmpdir();
+    this.inheritedTmpDir = tmpdir();
+    this.runnerSocketDir = this.inheritedTmpDir;
     this.naming = cfg.naming;
     this.contextPolicy = cfg.contextPolicy;
     this.performance = createPerformanceProfiler({ log: (op) => this.log(op) });
@@ -1305,6 +1308,7 @@ export class HiveDaemon {
     this.identityRecoveryTimer = setInterval(() => this.retryProcessIdentities(), 1000);
     this.identityRecoveryTimer.unref();
     this.sweepBeeTmpAtBoot(store);
+    this.sweepRunnerSocketsAtBoot(driver);
     this.reconcileCellOpsAtBoot();
     // v31: wrappers parked by an earlier pass are already evicted; finish deleting them.
     void this.retention.sweep();
@@ -1653,6 +1657,16 @@ export class HiveDaemon {
       if (!flag || (flag.detail.startsWith("account_credentials_unusable:") || flag.detail.startsWith("runtime_start_held:")) && flag.detail !== detail) this.mustStore().setFlag(bee.id, kind, detail);
     }
     return true;
+  }
+
+  private sweepRunnerSocketsAtBoot(driver: RuntimeHost): void {
+    const uid = process.getuid?.();
+    if (uid === undefined) return;
+    void withoutRpcCaller(() => sweepRunnerSockets({ dirs: [this.runnerSocketDir, this.inheritedTmpDir], liveSocketPaths: new Set(driver.liveSocketPaths()), uid, now: Date.now() }))
+      .then((results) => {
+        for (const result of results) this.log(`runner.sockets.swept n=${result.removed} scanned=${result.scanned} dir=${result.dir}`);
+      })
+      .catch((err) => this.log(`runner.sockets.sweep_failed err=${JSON.stringify(err instanceof Error ? err.message : String(err))}`));
   }
 
   private startVolumeRoles(): StartVolumeRolePath[] {

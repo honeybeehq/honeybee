@@ -1337,6 +1337,10 @@ export class RuntimeHost implements RuntimeDriver {
     return this.pendingStarts.has(beeId) || this.procs.get(beeId)?.exited === false;
   }
 
+  liveSocketPaths(): string[] {
+    return [...this.procs.values()].flatMap((p) => (p.socketPath && !p.exited ? [p.socketPath] : []));
+  }
+
   snapshotLive(): LiveProcess[] {
     return [...this.procs.values()]
       .filter((p) => !p.exited && p.pid > 0 && processDisposition(p.processIdentity ?? null, inspectProcess(p.pid)) === "live")
