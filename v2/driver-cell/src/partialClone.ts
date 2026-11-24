@@ -41,8 +41,15 @@ function promisorRemotes(originRepo: string): string[] | null {
   return partial ? [...remotes] : null;
 }
 
-function remediation(originRepo: string, remote: string): string {
-  return `To fix, hydrate the source clone on the host and revive the bee: run \`git -C ${originRepo} backfill --no-sparse\` (Git 2.49+; plain backfill stays inside a sparse checkout), or \`git -C ${originRepo} fetch --refetch --no-filter ${remote}\`, or replace it with a full clone made without --filter. Honeybee does not fetch the objects itself: Cell checkout keeps lazy fetching off so it never contacts a remote with your credentials.`;
+export type CellSourceCheckpoint = "provision" | "spawn";
+
+const NEXT_STEP: Record<CellSourceCheckpoint, string> = {
+  provision: "hydrate the source clone on the host and revive the bee",
+  spawn: "hydrate the source clone on the host, then spawn again",
+};
+
+function remediation(originRepo: string, remote: string, checkpoint: CellSourceCheckpoint): string {
+  return `To fix, ${NEXT_STEP[checkpoint]}: run \`git -C ${originRepo} backfill --no-sparse\` (Git 2.49+; plain backfill stays inside a sparse checkout), or \`git -C ${originRepo} fetch --refetch --no-filter ${remote}\`, or replace it with a full clone made without --filter. Honeybee does not fetch the objects itself: Cell checkout keeps lazy fetching off so it never contacts a remote with your credentials.`;
 }
 
 function sparseCheckoutEnabled(originRepo: string): boolean {
@@ -95,28 +102,28 @@ function listCommitObjects(originRepo: string, sha: string): { listing: GitResul
   }
 }
 
-function refuseMissingCommitObjects(originRepo: string, sha: string, remotes: string[]): void {
+function refuseMissingCommitObjects(originRepo: string, sha: string, remotes: string[], checkpoint: CellSourceCheckpoint): void {
   const remote = remotes[0] ?? "origin";
   const { listing, missing } = listCommitObjects(originRepo, sha);
   if (listing.status !== 0) {
     throw new CellSourceRefusal(
-      `source ${originRepo} is a partial clone (promisor remote ${remote}) and commit ${sha} cannot be read locally: ${listing.stderr.trim().replace(/\s+/g, " ")}. ${remediation(originRepo, remote)}`,
+      `source ${originRepo} is a partial clone (promisor remote ${remote}) and commit ${sha} cannot be read locally: ${listing.stderr.trim().replace(/\s+/g, " ")}. ${remediation(originRepo, remote, checkpoint)}`,
     );
   }
   if (missing.count === 0) return;
   const more = missing.count > SHOWN_MISSING_OBJECTS ? ` and ${missing.count - SHOWN_MISSING_OBJECTS} more` : "";
   throw new CellSourceRefusal(
-    `source ${originRepo} is a partial clone (promisor remote ${remote}) and is missing ${missing.count} object(s) that commit ${sha} needs (${missing.shown.join(", ")}${more}). ${remediation(originRepo, remote)}`,
+    `source ${originRepo} is a partial clone (promisor remote ${remote}) and is missing ${missing.count} object(s) that commit ${sha} needs (${missing.shown.join(", ")}${more}). ${remediation(originRepo, remote, checkpoint)}`,
   );
 }
 
-export function assertSourceHasCommitObjects(originRepo: string, sha: string): void {
+export function assertSourceHasCommitObjects(originRepo: string, sha: string, checkpoint: CellSourceCheckpoint = "provision"): void {
   const remotes = promisorRemotes(originRepo);
   if (remotes == null || sparseCheckoutEnabled(originRepo)) return;
-  refuseMissingCommitObjects(originRepo, sha, remotes);
+  refuseMissingCommitObjects(originRepo, sha, remotes, checkpoint);
 }
 
 export function assertCloneFallbackHasCommitObjects(originRepo: string, sha: string): void {
   const remotes = promisorRemotes(originRepo);
-  if (remotes != null && sparseCheckoutEnabled(originRepo)) refuseMissingCommitObjects(originRepo, sha, remotes);
+  if (remotes != null && sparseCheckoutEnabled(originRepo)) refuseMissingCommitObjects(originRepo, sha, remotes, "provision");
 }

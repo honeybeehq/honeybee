@@ -208,6 +208,8 @@ import {
   reserveCell,
   revParse,
   resolveCellBase,
+  assertSourceHasCommitObjects,
+  CellSourceRefusal,
   DEFAULT_UPSTREAM_REFRESH,
   type CellBase,
   isAncestor,
@@ -4114,6 +4116,12 @@ export class HiveDaemon {
           ? `spawn: origin ${originRepo} has no HEAD commit`
           : `spawn: cell.sha '${cell.sha}' does not resolve to a commit in ${originRepo}`,
       );
+    }
+    try {
+      assertSourceHasCommitObjects(originRepo, sha, "spawn");
+    } catch (error) {
+      if (error instanceof CellSourceRefusal) throw new RpcError("invalid_request", `spawn: ${error.message}`);
+      throw error;
     }
     const cellId = createHash("sha1").update(id).digest("hex").slice(0, 12);
     const wrapper = `${sanitizeComponent(name)}-${cellId}`;

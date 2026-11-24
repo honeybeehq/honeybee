@@ -159,6 +159,7 @@ export {
   type GitImageRecord,
   type WarmRecord,
 } from "./ledger.ts";
+export { assertSourceHasCommitObjects, CellSourceRefusal } from "./partialClone.ts";
 export { cowCopy, cowPlatform, probeCow, probeCowWritable, type CowPlatform } from "./cow.ts";
 export { WORK_RECORD_VERSION, WORK_REFUSALS, WorkError, bundleWork, cellWorkRootForCells, checkWorkPrerequisites, dropWorkBundle, listStashes, listWorkBundles, measureWork, originBoundary, readWorkRecord, restoreWork, rewriteWorkBundle, verifyBundleAgainstOrigin, verifyRestoredWork, verifyWorkBundle, workBoundary, workBundlePaths, workNeeded, workRefusal, type WorkBoundaryOptions, type WorkBundleRecord, type WorkMeasure, type WorkRefusal, type WorkRestoreOutcome, type WorkRewriteOutcome, type WorkRewriteStatus, type WorkStage, type WorkVerifyRef, type WorkVerifyReport } from "./work.ts";
 export { WIP_MAX_FILE_BYTES, WipError, adoptWipRef, confirmWip, dropWipRef, listWipBranches, operationInProgress, pushWip, restoreWip, restoreWipBranches, snapshotWip, sweepWipRefs, wipBranchRefPrefix, wipNodeScope, wipRefFor, type WipRefSweep, type WipRestoreSkip, type WipSnapshot, type WipStage } from "./wip.ts";
