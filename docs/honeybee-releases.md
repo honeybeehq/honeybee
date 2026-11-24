@@ -179,6 +179,19 @@ queue the single shared evaluator to refresh supported Apiary combinations. This
 task adds the producer contract only; receiver rollout is a final integration check.
 Compatibility failure can block Apiary publication but does not retract Honeybee.
 
+## Codex CLI for the writer-lock gate
+
+A release build runs `npm run v2:codex:writer-lock` against a real Codex CLI, because Honeybee detects a held Codex thread by Codex's error wording. The release workflow installs exactly the version in `.github/codex-cli-version`.
+
+To raise it, test the new version without touching a global install or anyone's Codex login (the test uses its own temporary `CODEX_HOME` and a local stand-in model server):
+
+```sh
+npm install --prefix /tmp/codex-NEW @openai/codex@NEW
+CODEX_BIN=/tmp/codex-NEW/node_modules/.bin/codex npm run v2:codex:writer-lock
+```
+
+If it passes, put `NEW` in `.github/codex-cli-version` and land that change. If it fails because Codex changed its lock error, update `CODEX_ACTIVE_WRITER` in `v2/adapters/src/codex.ts` first.
+
 ## Local validation
 
 Use Node 24.15.0. `npm run check`, `npm run v2:check`, `npm run build`, and `npm test`
