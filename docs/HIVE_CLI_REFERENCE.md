@@ -378,9 +378,13 @@ one account until its 5h window hit 93%):
   wins).
 - **Admission.** An account that cannot authenticate on this node never wins:
   `auth_needed` status, no primary credential, an empty or malformed credential
-  document, or a Claude token past expiry with its refresh token blanked (a
-  stale satellite lease) are skipped (judged on the copy a runtime reads: the
-  home when populated, else the vault copy activation installs), and
+  document, a Claude token past expiry with its refresh token blanked (a
+  stale satellite lease), a local Cursor sign-in with an `exp` that cannot be
+  read, or one past its `exp` after a re-capture from Cursor's login on this
+  computer has failed (`account_credential_expired`) are skipped (judged on the copy a runtime reads: the
+  home when populated, else the vault copy activation installs; a Cursor token
+  that expired with no re-capture since is admitted, and activation re-captures
+  it and then starts or holds), and
   with no usable account the spawn is refused with a typed `account_auth_needed`
   instead of placing a bee that will crash at `/login`. Explicit `--account`,
   allocator claims, `bee swap-account` and every runtime start (revive, send to

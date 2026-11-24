@@ -70,6 +70,15 @@ replaced its refresh token, which is why that login had stopped refreshing.
 - **Expiry.** A spawn or probe with a token past its `exp`, or whose `exp` cannot be
   read, is refused, the account goes to `auth_needed`, and the message says to log
   in. The CLI treats an unreadable `exp` as expired.
+- **Admission (HON-40).** A spawn with a token whose `exp` cannot be read is refused
+  at admission: no re-capture can take a token for a user it cannot identify. A spawn
+  with a token past its `exp` is refused at admission only after a re-capture since
+  that `exp` has failed (no login, another user, an older token, or a locked
+  Keychain); the daemon remembers, in memory, when each account's last re-capture
+  ran and what it found. Until then the spawn is admitted, because a laptop that
+  slept past `exp` still has a fresh machine login: activation re-captures, then
+  starts or refuses. Admission never reads Cursor's login itself, so a locked
+  Keychain cannot stall the spawn RPC. `auto` follows the same rule.
 
 ## Threat model
 

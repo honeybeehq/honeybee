@@ -1009,6 +1009,7 @@ export class AccountsService {
   /** At most one Cursor re-capture per account; concurrent callers join it. */
   private readonly cursorRecaptures = new Map<string, Promise<CursorRecapture>>();
   private readonly cursorAgentCommands = new Map<string, string>();
+  private readonly lastCursorRecapture = new Map<string, { at: number; result: CursorRecapture }>();
   /** Per-account Cursor credential lock: re-capture and explicit capture never interleave. */
   private readonly cursorLocks = new Map<string, Promise<void>>();
   /** Accounts already logged as having a home Honeybee does not own (logged once each). */
@@ -2224,6 +2225,7 @@ export class AccountsService {
       : dirHasCredentials(this.vaultDirOf(account), recipe) ? this.vaultDirOf(account) : null;
     if (source === null) return this.nativeKeychainOwned(account) ? "present" : "absent";
     if (account.harness === "muse") return this.museDocumentState(readIfFile(join(source, primary)), this.isNative(account));
+    if (account.harness === "cursor") return this.cursorAdmissionRefusal(account) ? "expired" : "present";
     if (account.harness !== "claude") return "present";
     return this.claudeDocumentState(readIfFile(join(source, primary)));
   }
@@ -2307,7 +2309,7 @@ export class AccountsService {
       case "invalid":
         return { ready: false, code: "account_credential_invalid", message: `account ${account.id} has a credential file that is not a usable ${account.harness} credential; re-lease or log in with: hive account login ${account.id}` };
       case "expired":
-        return { ready: false, code: "account_credential_expired", message: `account ${account.id} has an expired credential with no refresh path on this node; ${account.source === "leased" ? "request a new lease from its authority" : `re-lease or ${authRecoveryHint(account.harness, account.id)}`}` };
+        return { ready: false, code: "account_credential_expired", message: this.cursorAdmissionRefusal(account) ?? `account ${account.id} has an expired credential with no refresh path on this node; ${account.source === "leased" ? "request a new lease from its authority" : `re-lease or ${authRecoveryHint(account.harness, account.id)}`}` };
       case "present":
         return { ready: true };
     }
@@ -3481,16 +3483,31 @@ export class AccountsService {
       : settled.result;
   }
 
-  private refuseExpiredCursorSignIn(account: AccountRow): string | null {
-    const current = this.store.getAccount(account.id) ?? account;
-    if (current.source !== "local" || this.isNative(current)) return null;
-    const selected = this.cursorSelection(current).selected;
+  private expiredCursorSignIn(account: AccountRow): string | null {
+    if (account.harness !== "cursor" || account.source !== "local" || this.isNative(account)) return null;
+    const selected = this.cursorSelection(account).selected;
     if (!selected) return null;
     const claims = selected.claims;
     if (claims && claims.expiresAt > this.now()) return null;
-    const message = claims
-      ? `Cursor sign-in for ${current.id} has expired; log in: hive account login ${current.id}`
-      : `Cursor sign-in for ${current.id} has a token whose expiry cannot be read; log in: hive account login ${current.id}`;
+    return claims
+      ? `Cursor sign-in for ${account.id} has expired; log in: hive account login ${account.id}`
+      : `Cursor sign-in for ${account.id} has a token whose expiry cannot be read; log in: hive account login ${account.id}`;
+  }
+
+  private cursorAdmissionRefusal(account: AccountRow): string | null {
+    const expired = this.expiredCursorSignIn(account);
+    if (!expired) return null;
+    const claims = this.cursorSelection(account).selected?.claims;
+    if (!claims) return expired;
+    const last = this.lastCursorRecapture.get(account.id);
+    if (!last || last.at < claims.expiresAt) return null;
+    return `Cursor sign-in for ${account.id} has expired and a re-capture from Cursor's login on this computer at ${new Date(last.at).toISOString()} found no newer one (${last.result}); log in: hive account login ${account.id}`;
+  }
+
+  private refuseExpiredCursorSignIn(account: AccountRow): string | null {
+    const current = this.store.getAccount(account.id) ?? account;
+    const message = this.expiredCursorSignIn(current);
+    if (!message) return null;
     this.store.setAccountStatus(current.id, "auth_needed", message);
     this.log(`account.cursor.expired_refused account=${current.id}`);
     return message;
@@ -4461,6 +4478,7 @@ export class AccountsService {
     if (joined) return joined;
     const pending = this.withCursorLock(account.id, () => this.recaptureCursorLocked(account.id, opts.force === true)).catch((error: unknown) => {
       this.log(`account.cursor.recapture_failed account=${account.id} err=${JSON.stringify(errorDetail(error).slice(0, 200))}`);
+      this.lastCursorRecapture.set(account.id, { at: this.now(), result: "absent" });
       return "absent" as const;
     });
     this.cursorRecaptures.set(account.id, pending);
@@ -4487,6 +4505,12 @@ export class AccountsService {
     this.repairCursorCopies(account);
     const gate = this.cursorRecaptureGate(account, force);
     if (gate) return gate;
+    const result = await this.readAndRecaptureCursor(account);
+    this.lastCursorRecapture.set(account.id, { at: this.now(), result });
+    return result;
+  }
+
+  private async readAndRecaptureCursor(account: AccountRow): Promise<CursorRecapture> {
     const identity = this.cursorSelection(account).identity;
     let live: CursorAuthSnapshot | null;
     try {

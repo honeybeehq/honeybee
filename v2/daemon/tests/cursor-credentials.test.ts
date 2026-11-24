@@ -882,6 +882,29 @@ test("cursor CLI refusal: a refused spawn carries login's cli_missing error with
   }
 });
 
+test("cursor admission: an expired stored token is admitted until a re-capture has run since it expired; then it is refused with what the re-capture found, and a re-capture that finds a newer token admits it again (HON-40)", async () => {
+  const r = rig("admission-recapture");
+  try {
+    const store = fakeCursorStore();
+    const svc = service(r, store);
+    const account = addCursor(r, "a", authDoc(fakeJwt("auth0|user_a", r.now() - HOUR, "old")));
+    assert.deepEqual(svc.readiness(account), { ready: true }, "no re-capture has run since expiry: activation gets to try one");
+    assert.equal(await svc.recaptureCursor(account), "absent");
+    const refused = svc.readiness(account);
+    assert.equal(refused.ready, false);
+    assert.equal(refused.ready === false && refused.code, "account_credential_expired");
+    assert.match(refused.ready === false ? refused.message : "", /Cursor sign-in for cursor-a has expired and a re-capture from Cursor's login on this computer at \S+ found no newer one \(absent\); log in: hive account login cursor-a/);
+    store.state.raw = authDoc(fakeJwt("auth0|user_a", r.now() + 6 * HOUR, "new"));
+    assert.equal(await svc.recaptureCursor(account), "recaptured");
+    assert.deepEqual(svc.readiness(account), { ready: true });
+    r.setNow(r.now() + 7 * HOUR);
+    assert.deepEqual(svc.readiness(account), { ready: true }, "the new token expired after the last re-capture, so admission passes to activation again");
+    assert.equal(r.store.getAccount(account.id)?.status, "ok", "admission and re-capture never change the account's status");
+  } finally {
+    r.cleanup();
+  }
+});
+
 test("cursor spawn command: a spawn searches the same candidates as login, uses Cursor's agent when the configured command is the Cursor app's launcher, and says so when nothing qualifies", async () => {
   const r = rig("spawn-candidates");
   const savedHome = process.env.HOME;

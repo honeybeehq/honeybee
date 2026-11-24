@@ -1562,7 +1562,10 @@ export class HiveDaemon {
         account = bee?.account ? store.getAccount(bee.account) : null;
         if (!bee || !account) continue;
       }
-      if (this.holdRuntimeStart(bee, account, command.commandId)) continue;
+      if (this.holdRuntimeStart(bee, account, command.commandId)) {
+        if (this.accountActivations.get(beeId)?.status === "failed") this.accountActivations.delete(beeId);
+        continue;
+      }
       const key = this.accountActivationKey(bee, account, command);
       const current = this.accountActivations.get(beeId);
       if (current?.key === key) continue;
