@@ -306,7 +306,7 @@ import {
   type PerformanceSpan,
 } from "./performance.ts";
 import { RpcServer, assertAutomationSend, assertLocalHandoffRpc, toRpcError, type RpcConn } from "./rpc.ts";
-import { applyDaemonTmpPolicy, beeTmpDir, beeTmpPaths, cellScratchEnv, describeBeeTmpPolicy, describeScratchSocketHeadroom, ensureBeeTmpEnv, removeBeeTmpDir, resolveBeeTmpPolicy, sweepBeeTmpDirs, type BeeTmpPolicy } from "./beeTmp.ts";
+import { applyDaemonTmpPolicy, beeTmpDir, beeTmpPaths, cellScratchEnv, CLAUDE_SOCKET_PATH_LIMIT, claudeSocketFitsScratch, claudeSocketPathSample, harnessTmpEnv, describeBeeTmpPolicy, describeScratchSocketHeadroom, ensureBeeTmpEnv, removeBeeTmpDir, resolveBeeTmpPolicy, sweepBeeTmpDirs, type BeeTmpPolicy } from "./beeTmp.ts";
 import { BEE_IMPORT_BUNDLE_BYTES_MAX,
   DAEMON_VERSION,
   BUILD_IDENTITY,
@@ -903,7 +903,7 @@ export class HiveDaemon {
   private activeStartupPhase: PerformanceSpan | null = null;
   private readonly beeTmp: BeeTmpPolicy | null;
   private runnerSocketDir: string;
-  private readonly beeTmpOverrideLogged = new Set<string>();
+  private readonly beeTmpNoticeLogged = new Set<string>();
 
   constructor(cfg: ResolvedNodeConfig, deps: HiveDaemonDeps = {}) {
     cfg.agents[RUNTIME_PROBE_AGENT] ??= { command: process.execPath, args: ["-e", RUNTIME_PROBE_STUB], adapter: "stub" };
@@ -2021,14 +2021,18 @@ export class HiveDaemon {
 
   private beeTmpEnv(bee: BeeRow, spec: AgentSpecConfig): Record<string, string> {
     if (!this.beeTmp) return {};
-    const env = this.verifiedBeeTmp(bee.id);
-    const overridden = (["TMPDIR", "NODE_COMPILE_CACHE"] as const)
+    const tmp = this.verifiedBeeTmp(bee.id);
+    const env: Record<string, string> = { ...tmp, ...harnessTmpEnv(tmp) };
+    const overridden = (["TMPDIR", "NODE_COMPILE_CACHE", "CLAUDE_CODE_TMPDIR"] as const)
       .filter((key) => (bee.env[key] ?? spec.env?.[key]) !== undefined && (bee.env[key] ?? spec.env?.[key]) !== env[key]);
-    if (overridden.length > 0 && !this.beeTmpOverrideLogged.has(bee.id)) {
-      this.beeTmpOverrideLogged.add(bee.id);
-      this.log(`tmp.env_overridden bee=${bee.id} keys=${overridden.join(",")} by=bees.tmpRoot`);
+    if (!this.beeTmpNoticeLogged.has(bee.id)) {
+      this.beeTmpNoticeLogged.add(bee.id);
+      if (overridden.length > 0) this.log(`tmp.env_overridden bee=${bee.id} keys=${overridden.join(",")} by=bees.tmpRoot`);
+      if (!claudeSocketFitsScratch(tmp.TMPDIR)) {
+        this.log(`tmp.claude_socket_shared bee=${bee.id} sample=${claudeSocketPathSample(tmp.TMPDIR)} limit=${CLAUDE_SOCKET_PATH_LIMIT} fallback=/tmp/cc-socks-<uid>`);
+      }
     }
-    return bee.substrate === "cell" ? { ...env, ...cellScratchEnv(env) } : env;
+    return bee.substrate === "cell" ? { ...env, ...cellScratchEnv(tmp) } : env;
   }
 
   private removeBeeTmp(beeId: string): boolean {

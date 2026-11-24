@@ -9,6 +9,9 @@ import {
   beeTmpDir,
   beeTmpName,
   cellScratchEnv,
+  CLAUDE_SOCKET_PATH_LIMIT,
+  claudeSocketFitsScratch,
+  claudeSocketPathSample,
   describeBeeTmpPolicy,
   ensureBeeTmpEnv,
   removeBeeTmpDir,
@@ -30,6 +33,7 @@ const PROBE = join(dirname(fileURLToPath(import.meta.url)), "fixtures", "tmp-pro
 interface ProbeReport {
   TMPDIR: string | null;
   HIVE_SCRATCH: string | null;
+  CLAUDE_CODE_TMPDIR: string | null;
   tmpdir: string;
   NODE_COMPILE_CACHE: string | null;
   cacheStatus: number;
@@ -201,6 +205,7 @@ async function runProbe(opts: { nodeKind?: "satellite"; bees?: { tmpRoot?: strin
   const view = await client.request<ViewResult>("view", { beeId: spawned.beeId });
   assert.equal(view.bee?.envKeys.includes("TMPDIR"), false, "daemon-set tmp env never lands in the stored bee env");
   assert.equal(view.bee?.envKeys.includes("NODE_COMPILE_CACHE"), false);
+  assert.equal(view.bee?.envKeys.includes("CLAUDE_CODE_TMPDIR"), false);
   client.close();
   return {
     report,
@@ -222,6 +227,7 @@ test("satellite daemon: per-bee TMPDIR, shared compile cache, removed on archive
     const compileCache = join(run.cache, "honeybee", "node-compile-cache");
     assert.equal(run.report.TMPDIR, beeTmp);
     assert.equal(run.report.tmpdir, beeTmp);
+    assert.equal(run.report.CLAUDE_CODE_TMPDIR, beeTmp, "Claude Code's own temp base is the bee's scratch");
     assert.equal(run.report.NODE_COMPILE_CACHE, compileCache);
     assert.ok(run.report.cacheDirectory?.startsWith(`${compileCache}/`), run.report.cacheDirectory ?? "no cache dir");
     assert.ok(run.report.cacheEntries > 0, "enableCompileCache wrote entries under the shared cache");
@@ -270,6 +276,7 @@ test("workstation daemon: bees get a Honeybee-owned tmp beside the Cells and a s
   try {
     const dataDir = realpathSync(run.daemon.dir);
     assert.equal(run.report.TMPDIR, join(dataDir, "tmp", run.beeId));
+    assert.equal(run.report.CLAUDE_CODE_TMPDIR, run.report.TMPDIR, "Claude Code's own temp base is the bee's scratch");
     assert.equal(run.report.HIVE_SCRATCH, null, "a non-Cell bee is announced no scratch");
     assert.equal(run.report.NODE_COMPILE_CACHE, join(dataDir, "node-compile-cache"));
     assert.equal(run.report.tmpWritable, true, "the per-bee tmp is writable");
@@ -287,6 +294,7 @@ test("workstation daemon: bees.tmpRoot null keeps the inherited TMPDIR and compi
   const run = await runProbe({ bees: { tmpRoot: null }, env: { NODE_COMPILE_CACHE: inheritedCache }, inheritedTmp: inherited.dir });
   try {
     assert.equal(run.report.TMPDIR, inherited.dir);
+    assert.equal(run.report.CLAUDE_CODE_TMPDIR, process.env.CLAUDE_CODE_TMPDIR ?? null, "policy off leaves Claude Code's temp base alone");
     assert.equal(run.report.NODE_COMPILE_CACHE, inheritedCache);
     assert.match(readFileSync(join(run.daemon.dir, "hived.log"), "utf8"), /tmp\.policy beeTmpRoot=off/);
   } finally {
@@ -401,6 +409,7 @@ test("satellite sandboxed Cell: the per-bee TMPDIR and compile cache are writabl
     const beeTmp = join(cache, "honeybee", "tmp", spawned.beeId);
     assert.equal(report.TMPDIR, beeTmp);
     assert.equal(report.HIVE_SCRATCH, beeTmp, "a Cell bee is told its scratch dir, and TMPDIR points inside it");
+    assert.equal(report.CLAUDE_CODE_TMPDIR, beeTmp);
     assert.equal(early.bee?.envKeys.includes("HIVE_SCRATCH"), false, "the scratch env never lands in the stored bee env");
     assert.equal(report.tmpWritable, true, "the per-bee TMPDIR is writable inside the sandbox");
     assert.equal(readFileSync(join(beeTmp, "probe-write"), "utf8"), "ok");
@@ -679,6 +688,7 @@ test("scratch: the env names the per-bee dir, and a unix socket under a producti
     const socketPath = join(beeTmpDir(policy, beeId), longestSocketName);
     assert.ok(socketPath.length <= unixSocketPathLimit(), `${socketPath} (${socketPath.length}) exceeds the ${unixSocketPathLimit()}-char unix socket path limit on ${process.platform}`);
     assert.ok(scratchSocketHeadroom(policy) >= 0, `${policy.root}: headroom ${scratchSocketHeadroom(policy)}`);
+    assert.ok(claudeSocketFitsScratch(beeTmpDir(policy, beeId)), `${claudeSocketPathSample(beeTmpDir(policy, beeId))} exceeds Claude Code's ${CLAUDE_SOCKET_PATH_LIMIT}-byte socket cap`);
   }
   assert.equal(unixSocketPathLimit("darwin"), 103);
   assert.equal(unixSocketPathLimit("linux"), 107);
@@ -707,5 +717,36 @@ test("scratch: the env names the per-bee dir, and a unix socket under a producti
     }
   } finally {
     rig.cleanup();
+  }
+});
+
+test("a scratch too long for Claude Code's socket still carries CLAUDE_CODE_TMPDIR and logs the shared-socket fallback once", { timeout: 90_000 }, async () => {
+  const inherited = makeDaemonDir();
+  const base = realpathSync(inherited.dir);
+  const root = join(base, "r".repeat(Math.max(1, CLAUDE_SOCKET_PATH_LIMIT - base.length - 37 - 21 + 8)));
+  assert.equal(claudeSocketFitsScratch(join(root, "86ace474-9a12-46ee-abcb-89e34b003a9e")), false, "the lab root is long enough to overflow");
+  const run = await runProbe({ bees: { tmpRoot: root }, inheritedTmp: inherited.dir });
+  try {
+    const scratch = join(root, run.beeId);
+    assert.equal(run.report.TMPDIR, scratch);
+    assert.equal(run.report.CLAUDE_CODE_TMPDIR, scratch, "files still land in scratch; only Claude Code's socket falls back");
+    const lines = readFileSync(join(run.daemon.dir, "hived.log"), "utf8").split("\n").filter((line) => line.includes("tmp.claude_socket_shared"));
+    assert.equal(lines.length, 1);
+    assert.ok(lines[0]!.includes(`bee=${run.beeId} sample=${claudeSocketPathSample(scratch)} limit=${CLAUDE_SOCKET_PATH_LIMIT}`), lines[0]);
+  } finally {
+    await run.cleanup();
+    inherited.cleanup();
+  }
+});
+
+test("a production-length scratch logs no shared-socket fallback", { timeout: 90_000 }, async () => {
+  const inherited = makeDaemonDir();
+  const run = await runProbe({ inheritedTmp: inherited.dir });
+  try {
+    assert.equal(claudeSocketFitsScratch(run.report.TMPDIR!), true);
+    assert.doesNotMatch(readFileSync(join(run.daemon.dir, "hived.log"), "utf8"), /tmp\.claude_socket_shared/);
+  } finally {
+    await run.cleanup();
+    inherited.cleanup();
   }
 });

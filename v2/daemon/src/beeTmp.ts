@@ -171,6 +171,22 @@ export function cellScratchEnv(tmp: { TMPDIR: string }): Record<string, string> 
   return { [SCRATCH_ENV_NAME]: tmp.TMPDIR };
 }
 
+export const CLAUDE_TMP_ENV_NAME = "CLAUDE_CODE_TMPDIR";
+export const CLAUDE_SOCKET_PATH_LIMIT = 103;
+const CLAUDE_SOCKET_SAMPLE = join("cc-socks", "4194304.sock");
+
+export function harnessTmpEnv(tmp: { TMPDIR: string }): Record<string, string> {
+  return { [CLAUDE_TMP_ENV_NAME]: tmp.TMPDIR };
+}
+
+export function claudeSocketPathSample(scratch: string): string {
+  return join(scratch, CLAUDE_SOCKET_SAMPLE);
+}
+
+export function claudeSocketFitsScratch(scratch: string): boolean {
+  return Buffer.byteLength(claudeSocketPathSample(scratch), "utf8") <= CLAUDE_SOCKET_PATH_LIMIT;
+}
+
 const BEE_ID_SEGMENT_LENGTH = 36;
 const SOCKET_NAME_RESERVE = 24;
 
