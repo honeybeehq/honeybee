@@ -277,6 +277,10 @@ export interface WorkerServerRequest {
   request: TranscriptCutRequest | TranscriptSweepRequest;
 }
 
+export interface WorkerServerStop {
+  stop: true;
+}
+
 export interface WorkerServerReply {
   id: number;
   result: TranscriptCutResult | TranscriptSweepResult;
@@ -297,7 +301,8 @@ async function serve(request: TranscriptCutRequest | TranscriptSweepRequest): Pr
 
 if (parentPort && workerData && (workerData as { kind?: unknown }).kind === "server") {
   const port = parentPort;
-  port.on("message", (message: WorkerServerRequest) => {
+  port.on("message", (message: WorkerServerRequest | WorkerServerStop) => {
+    if ("stop" in message) process.exit(0);
     void serve(message.request).then((result) => port.postMessage({ id: message.id, result } satisfies WorkerServerReply));
   });
 } else if (parentPort && workerData && (workerData as { kind?: unknown }).kind === "bundleResume") {

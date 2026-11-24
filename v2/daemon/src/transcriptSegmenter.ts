@@ -3,7 +3,7 @@ import { Worker } from "node:worker_threads";
 import type { CoreStore, TranscriptSegmentReadyReason } from "../../core/src/index.ts";
 import { SEGMENT_MAX_LINES, SEGMENT_MAX_RAW_BYTES } from "../../core/src/transcriptSegment.ts";
 import type { TranscriptObjectStore } from "./transcriptObjectStore.ts";
-import { transcriptSegmentWorkerUrl, type SegmentCursor, type TranscriptCutRequest, type TranscriptCutResult, type TranscriptSweepRequest, type TranscriptSweepResult, type WorkerServerReply, type WorkerServerRequest } from "./transcriptSegmentWorker.ts";
+import { transcriptSegmentWorkerUrl, type SegmentCursor, type TranscriptCutRequest, type TranscriptCutResult, type TranscriptSweepRequest, type TranscriptSweepResult, type WorkerServerReply, type WorkerServerRequest, type WorkerServerStop } from "./transcriptSegmentWorker.ts";
 
 export type TranscriptCutReason = TranscriptSegmentReadyReason;
 
@@ -44,6 +44,7 @@ const DEFAULT_MAX_CHUNK = 64 * 1024 * 1024;
 const DEFAULT_REPLAY_LIMIT = 64 * 1024 * 1024;
 const DEFAULT_PACING_MS = 25;
 const DEFAULT_ORPHAN_GRACE_MS = 60 * 60_000;
+const WORKER_STOP_GRACE_MS = 5_000;
 const ROW_BATCH = 100;
 
 function logSize(path: string): number | null {
@@ -87,7 +88,7 @@ export class TranscriptSegmenter {
 
   async stop(): Promise<void> {
     this.stopping = true;
-    const terminated = [...this.seats].map((seat) => this.retire(seat, new Error("transcript segmenter stopped")));
+    const terminated = [...this.seats].map((seat) => this.retire(seat, new Error("transcript segmenter stopped"), "ask"));
     for (const pending of [...this.queue, ...this.running.values()]) for (const settle of pending.settle) settle({ status: "nothing", segments: 0, lines: 0 });
     this.queue.length = 0;
     this.queued.clear();
@@ -247,7 +248,7 @@ export class TranscriptSegmenter {
     return seat;
   }
 
-  private retire(seat: Seat, err: Error): Promise<number> {
+  private retire(seat: Seat, err: Error, exit: "ask" | "terminate" = "terminate"): Promise<number> {
     const at = this.seats.indexOf(seat);
     if (at < 0) return Promise.resolve(0);
     this.seats.splice(at, 1);
@@ -255,7 +256,7 @@ export class TranscriptSegmenter {
     if (idleAt >= 0) this.idle.splice(idleAt, 1);
     seat.worker.removeAllListeners();
     seat.worker.on("error", ignoreErrorFromRetiredWorker);
-    const terminated = seat.worker.terminate();
+    const terminated = exit === "ask" ? this.askToExit(seat.worker) : seat.worker.terminate();
     const inFlight = seat.inFlight;
     seat.inFlight = null;
     inFlight?.reject(err);
@@ -263,6 +264,19 @@ export class TranscriptSegmenter {
     const next = this.waiting.shift();
     if (next) next(this.seat());
     return terminated;
+  }
+
+  private askToExit(worker: Worker): Promise<number> {
+    return new Promise((resolve) => {
+      const overdue = setTimeout(() => {
+        worker.terminate().then(resolve, () => resolve(1));
+      }, WORKER_STOP_GRACE_MS);
+      worker.once("exit", (code) => {
+        clearTimeout(overdue);
+        resolve(code);
+      });
+      worker.postMessage({ stop: true } satisfies WorkerServerStop);
+    });
   }
 
   private release(seat: Seat): void {
