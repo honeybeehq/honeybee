@@ -6,20 +6,34 @@ import { connect } from "node:net";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { CellExecResult, HealthResult, SpawnResult, ViewResult } from "../src/protocol.ts";
-import { socketPathFits } from "../src/socketPath.ts";
+import { RUNNER_SOCKET_SAMPLE, socketPathBytes } from "../src/socketPath.ts";
+import { unixSocketPathLimit } from "../src/beeTmp.ts";
 import { makeOrigin } from "../../driver-cell/tests/helpers.ts";
 import { AGENT_PATH, makeDaemonDir, startDaemon, waitFor } from "./helpers.ts";
 
 const PROBE = join(dirname(fileURLToPath(import.meta.url)), "fixtures", "socket-probe", "probe.mjs");
 const SANDBOX_PRIVATE = ["/tmp/", "/var/tmp/", "/dev/shm/"];
 
-function repositoryCacheBase(): { base: string } | { skip: string } {
+const LEGACY_RUNNER_DIR = "l";
+
+interface RunnerSocketLayout {
+  dir: string;
+  platform: string;
+}
+
+const RUN_DIR_LAYOUT: RunnerSocketLayout = { dir: "run", platform: process.platform };
+
+function repositoryCacheBase(layouts: RunnerSocketLayout[]): { base: string } | { skip: string } {
   const cache = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", ".cache");
   mkdirSync(cache, { recursive: true });
   const base = realpathSync(cache);
   if (SANDBOX_PRIVATE.some((prefix) => `${base}/`.startsWith(prefix))) return { skip: `the repository's .cache (${base}) is inside a sandbox-private mount` };
-  const probe = join(base, "hb-v2-daemon-XXXXXX", "l", `hb-rh-${"0".repeat(16)}`, "stdin.sock");
-  if (!socketPathFits(probe)) return { skip: `the repository's .cache is too deep for a unix socket path (${probe})` };
+  for (const { dir, platform } of layouts) {
+    const probe = join(base, "hb-v2-daemon-XXXXXX", dir, RUNNER_SOCKET_SAMPLE);
+    const bytes = socketPathBytes(probe);
+    const limit = unixSocketPathLimit(platform);
+    if (bytes > limit) return { skip: `the repository's .cache is too deep for a ${platform} runner socket under ${dir}/: ${probe} is ${bytes} bytes, over the ${limit}-byte limit` };
+  }
   return { base };
 }
 
@@ -58,7 +72,7 @@ function connectsFromOutside(path: string): Promise<boolean> {
 }
 
 test("D7 guard: a process inside a sandboxed Cell bee cannot reach its own runner socket or another bee's", { timeout: 180_000, skip: BWRAP ? false : "needs Linux with bwrap" }, async (t) => {
-  const placed = repositoryCacheBase();
+  const placed = repositoryCacheBase([RUN_DIR_LAYOUT]);
   if ("skip" in placed) {
     t.skip(placed.skip);
     return;
@@ -107,7 +121,7 @@ test("D7 guard: a process inside a sandboxed Cell bee cannot reach its own runne
 });
 
 test("D7 guard: a deleted runner socket folder never stops a sandboxed start or a cell exec", { timeout: 180_000, skip: BWRAP ? false : "needs Linux with bwrap" }, async (t) => {
-  const placed = repositoryCacheBase();
+  const placed = repositoryCacheBase([RUN_DIR_LAYOUT]);
   if ("skip" in placed) {
     t.skip(placed.skip);
     return;
@@ -141,13 +155,13 @@ test("D7 guard: a deleted runner socket folder never stops a sandboxed start or 
 });
 
 test("D7 guard: a runner that survived the upgrade with its socket outside run/ and outside /tmp is hidden from sandboxed bees", { timeout: 180_000, skip: BWRAP ? false : "needs Linux with bwrap" }, async (t) => {
-  const placed = repositoryCacheBase();
+  const placed = repositoryCacheBase([{ dir: LEGACY_RUNNER_DIR, platform: "darwin" }, RUN_DIR_LAYOUT]);
   if ("skip" in placed) {
     t.skip(placed.skip);
     return;
   }
   const rig = makeDaemonDir({ nodeKind: "satellite", agents: PROBE_AGENT, stubEnv: { STUB_SURVIVE_STDIN_CLOSE: "1" } }, { base: placed.base });
-  const legacy = join(rig.dir, "l");
+  const legacy = join(rig.dir, LEGACY_RUNNER_DIR);
   mkdirSync(legacy);
   const origin = makeOrigin(rig.dir);
   const cache = join(realpathSync(rig.dir), "xdg-cache");

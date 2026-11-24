@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { homedir } from "node:os";
+import { homedir, userInfo } from "node:os";
 import { realpathSync } from "node:fs";
 import {
   beeTmpDir,
@@ -19,6 +19,7 @@ import {
   scratchSocketHeadroom,
   sweepBeeTmpDirs,
   unixSocketPathLimit,
+  type BeeTmpPolicy,
 } from "../src/beeTmp.ts";
 import { createConnection, createServer } from "node:net";
 import { DatabaseSync } from "node:sqlite";
@@ -679,28 +680,46 @@ test("a bad bees.sandboxTmpBytes boots, logs why and spawns with the 1 GiB defau
   assert.deepEqual(run.flags, []);
 });
 
-test("scratch: the env names the per-bee dir, and a unix socket under a production-length scratch path listens on this platform", async () => {
-  assert.deepEqual(cellScratchEnv({ TMPDIR: "/d/v2/tmp/bee" }), { HIVE_SCRATCH: "/d/v2/tmp/bee" });
-  const home = homedir();
-  const beeId = "86ace474-9a12-46ee-abcb-89e34b003a9e";
-  const longestSocketName = "tmux-501/default";
-  for (const policy of [resolveBeeTmpPolicy("workstation", undefined, {}, home, join(home, ".hive", "v2"))!, resolveBeeTmpPolicy("satellite", undefined, {}, home)!]) {
-    const socketPath = join(beeTmpDir(policy, beeId), longestSocketName);
-    assert.ok(socketPath.length <= unixSocketPathLimit(), `${socketPath} (${socketPath.length}) exceeds the ${unixSocketPathLimit()}-char unix socket path limit on ${process.platform}`);
-    assert.ok(scratchSocketHeadroom(policy) >= 0, `${policy.root}: headroom ${scratchSocketHeadroom(policy)}`);
-    assert.ok(claudeSocketFitsScratch(beeTmpDir(policy, beeId)), `${claudeSocketPathSample(beeTmpDir(policy, beeId))} exceeds Claude Code's ${CLAUDE_SOCKET_PATH_LIMIT}-byte socket cap`);
+const PRODUCTION_BEE_ID = "86ace474-9a12-46ee-abcb-89e34b003a9e";
+const LONGEST_SCRATCH_SOCKET_NAME = "tmux-501/default";
+
+function workstationPolicy(home: string): BeeTmpPolicy {
+  return resolveBeeTmpPolicy("workstation", undefined, {}, home, join(home, ".hive", "v2"))!;
+}
+
+function productionScratchOverflows(home: string): string[] {
+  const overflows: string[] = [];
+  for (const policy of [workstationPolicy(home), resolveBeeTmpPolicy("satellite", undefined, {}, home)!]) {
+    const scratch = beeTmpDir(policy, PRODUCTION_BEE_ID);
+    const socketPath = join(scratch, LONGEST_SCRATCH_SOCKET_NAME);
+    if (socketPath.length > unixSocketPathLimit()) overflows.push(`${socketPath} (${socketPath.length}) exceeds the ${unixSocketPathLimit()}-char unix socket path limit on ${process.platform}`);
+    if (scratchSocketHeadroom(policy) < 0) overflows.push(`${policy.root}: headroom ${scratchSocketHeadroom(policy)}`);
+    if (!claudeSocketFitsScratch(scratch)) overflows.push(`${claudeSocketPathSample(scratch)} exceeds Claude Code's ${CLAUDE_SOCKET_PATH_LIMIT}-byte socket cap`);
   }
+  return overflows;
+}
+
+test("scratch: the env names the per-bee dir, and a unix socket under a production-length scratch path listens on this platform", async (t) => {
+  assert.deepEqual(cellScratchEnv({ TMPDIR: "/d/v2/tmp/bee" }), { HIVE_SCRATCH: "/d/v2/tmp/bee" });
   assert.equal(unixSocketPathLimit("darwin"), 103);
   assert.equal(unixSocketPathLimit("linux"), 107);
+  const home = homedir();
+  const accountHome = userInfo().homedir;
+  const overflows = productionScratchOverflows(home);
+  if (overflows.length > 0 && productionScratchOverflows(accountHome).length === 0) {
+    t.skip(`HOME ${home} is longer than this account's home ${accountHome}; the production scratch layout fits under the account's home but not under HOME: ${overflows.join("; ")}`);
+    return;
+  }
+  assert.deepEqual(overflows, []);
   const rig = makeDaemonDir();
   try {
-    const production = join(home, ".hive", "v2", "tmp", beeId);
+    const production = join(home, ".hive", "v2", "tmp", PRODUCTION_BEE_ID);
     const base = realpathSync(rig.dir);
     const pad = Math.max(1, production.length - base.length - 1);
     const scratch = join(base, "x".repeat(pad));
     assert.ok(scratch.length >= production.length, "the probe path is at least as long as the production layout");
     mkdirSync(join(scratch, "tmux-501"), { recursive: true });
-    const socketPath = join(scratch, longestSocketName);
+    const socketPath = join(scratch, LONGEST_SCRATCH_SOCKET_NAME);
     const server = createServer((socket) => socket.end("pong"));
     await new Promise<void>((resolve, reject) => server.once("error", reject).listen(socketPath, resolve));
     try {
@@ -739,11 +758,18 @@ test("a scratch too long for Claude Code's socket still carries CLAUDE_CODE_TMPD
   }
 });
 
-test("a production-length scratch logs no shared-socket fallback", { timeout: 90_000 }, async () => {
+test("a production-length scratch logs no shared-socket fallback", { timeout: 90_000 }, async (t) => {
   const inherited = makeDaemonDir();
   const run = await runProbe({ inheritedTmp: inherited.dir });
   try {
-    assert.equal(claudeSocketFitsScratch(run.report.TMPDIR!), true);
+    const scratch = run.report.TMPDIR!;
+    const production = beeTmpDir(workstationPolicy(userInfo().homedir), run.beeId);
+    if (!claudeSocketFitsScratch(scratch) && claudeSocketFitsScratch(production)) {
+      const sample = claudeSocketPathSample(scratch);
+      t.skip(`the lab scratch is deeper than production: ${sample} is ${Buffer.byteLength(sample, "utf8")} bytes, over Claude Code's ${CLAUDE_SOCKET_PATH_LIMIT}-byte socket cap, while ${claudeSocketPathSample(production)} fits`);
+      return;
+    }
+    assert.equal(claudeSocketFitsScratch(scratch), true);
     assert.doesNotMatch(readFileSync(join(run.daemon.dir, "hived.log"), "utf8"), /tmp\.claude_socket_shared/);
   } finally {
     await run.cleanup();
