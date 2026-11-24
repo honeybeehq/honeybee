@@ -44,7 +44,7 @@ so plainly in "macOS" below.
 
 | Guard that exists | Why it did not help on trmd-metal-3 |
 |---|---|
-| Per-bee `TMPDIR` (`v2/daemon/src/beeTmp.ts`) | Works for tools that read it. A typed `/tmp/...` ignores it. Claude Code itself ignores it for task files: this session's `TMPDIR` is my scratch, and its sub-agent outputs still went to `/private/tmp/claude-501/`. |
+| Per-bee `TMPDIR` (`v2/daemon/src/beeTmp.ts`) | Works for tools that read it. A typed `/tmp/...` ignores it. Claude Code itself ignores it for task files: this session's `TMPDIR` is my scratch, and its sub-agent outputs still went to `/private/tmp/claude-501/`. It has its own variable, which Honeybee does not set: see "macOS". |
 | `HIVE_SCRATCH` | Set for Cell bees only (`daemon.ts:2029`) and announced nowhere: no prompt, no doc, no skill mentions it (**read**). |
 | Private `/tmp` under bwrap (`driver-cell/src/sandbox.ts:45`) | On by default for satellites only (`sandbox.ts:23`). metal-3 is a workstation, so no session there ever had it. It is also a 1 GiB RAM tmpfs that is lost at exit, not the bee's scratch. |
 | Retention (`cellRetention.ts`) | Measures scratch bytes for `cell gc` output only. They are in no budget. Inodes are measured nowhere (**read**). |
@@ -346,6 +346,45 @@ floors see bytes. Honeybee should also say where scratch is, once, in
 the placement text it already injects: "Your scratch folder is `$HIVE_SCRATCH`; it
 is removed with the session." That is a fact, not a prohibition.
 
+**The harness's own files (added after review).** A harness writes temp and task
+files itself, before any agent types a path. Each has its own knobs, and Honeybee
+can set them at spawn. On macOS this moves the harness's own share of `/tmp` into
+the bee's scratch with no mount.
+
+| Harness | Honors `TMPDIR` for its own temp files | Own knobs | Honeybee should set | Source |
+|---|---|---|---|---|
+| claude | **no on macOS**: the base is `CLAUDE_CODE_TMPDIR`, else the literal `/tmp` | `CLAUDE_CODE_TMPDIR` | `CLAUDE_CODE_TMPDIR=<scratch>` | binary 2.1.319 read; **ran** |
+| codex | yes | `CODEX_HOME`; `sandbox_workspace_write.exclude_slash_tmp`, `exclude_tmpdir_env_var`, `writable_roots` | `TMPDIR` (set today). Never put `CODEX_HOME` under `TMPDIR`: release builds refuse to start helpers. | source read |
+| cursor-agent | yes; falls back to `/tmp/.cursor` when a path passes 84 characters | `CURSOR_CONFIG_DIR`, `CURSOR_DATA_DIR`; `disableTmpWrite` in its sandbox file | `TMPDIR`, and keep the scratch path short | docs and bundle strings |
+| grok | yes (`grok-goal-<id>` under the temp dir) | `GROK_HOME`, `GROK_SANDBOX` | `TMPDIR` | source read |
+| opencode | yes (`<tmp>/opencode`) | the four `XDG_*` homes, `OPENCODE_CONFIG_DIR` | `TMPDIR`; `XDG_CACHE_HOME` and `XDG_STATE_HOME` are not set today | source read |
+| kimi | yes; one hard-coded `/tmp/kimi-startup-trace.log` for a debug trace | `KIMI_CODE_HOME`, `KIMI_CODE_CACHE_DIR` | `TMPDIR` | docs and binary strings |
+| agy | likely (Go) | none; only `HOME` moves its data | `TMPDIR` | docs; closed source |
+| muse | likely (`${TMPDIR:-/tmp}` in its launcher) | `XDG_*`, `MUSE_PROJECTS_HOME` | `TMPDIR` | binary strings; closed source |
+
+Claude Code is the one that needs a change, and it is the most used. In its binary:
+`function Xf(){let e=i.CLAUDE_CODE_TMPDIR;if(e)return e;return"/tmp"}`, and on macOS
+it skips `TMPDIR` on purpose. Its sandboxed commands get
+`TMPDIR=${CLAUDE_CODE_TMPDIR||CLAUDE_TMPDIR||"/tmp/claude"}`.
+
+**Ran on this Mac** (`mac/06-claude-tmpdir.sh`: lab home and config folder, a dummy
+key, a dead local endpoint; the run ended in "Connection refused", so no login was
+read and no model was called):
+
+- `TMPDIR=<scratch>` alone, which is what Honeybee sets today: nothing of Claude's
+  appears in the scratch. Its sockets are in the shared `/tmp/cc-socks` (32 there
+  from his sessions) and its files under `/tmp/claude-501`.
+- With `CLAUDE_CODE_TMPDIR=<scratch>`: `<scratch>/claude-501/` and
+  `<scratch>/cc-socks/<pid>.sock` appear at start, before any model call.
+
+So one line in `beeTmpEnv` (`daemon.ts:2020`) moves Claude Code's task outputs,
+shell snapshots and sockets into the bee's scratch on every platform. Two cautions.
+The socket is `<scratch>/cc-socks/<pid>.sock`, 84 characters under
+`~/.hive/v2/tmp/<uuid>` on this Mac, inside the 104 limit; a longer data folder
+needs the short-path fallback `beeTmp.ts:174` already measures. And this moves the
+harness's files, not a path the agent types. That part is still an instruction on
+macOS.
+
 ## A path to it
 
 Each step helps alone. "Red first" is the test that fails today.
@@ -360,6 +399,10 @@ Each step helps alone. "Red first" is the test that fails today.
 | 6 | **Kernel limits:** `hive scratch pool install` for an XFS pool on Linux; the APFS pool volume on macOS. | root once on Linux | a session fills the data disk and the store fails to write |
 | 7 | **Our own runs** inside the wrapper. | both repositories | a killed test run leaves `hb-v2-daemon-*` |
 | 8 | **macOS census** at stop; the scratch sentence in the placement text. | none | `mac/03-processes.sh`: 1 survivor |
+
+Two things can ship before any of these, each a few lines: set
+`CLAUDE_CODE_TMPDIR` to the bee's scratch (section "macOS"), and set `HIVE_SCRATCH`
+for bees without a Cell too. Step 1 is specified in Appendix A.
 
 Step 1 would have turned today's outage into one blocked computer that placement
 avoided. Step 2 would have kept `/tmp` from filling. I did not read metal-3's logs,
@@ -433,3 +476,264 @@ Rejected:
 - I pulled `debian:13` into Docker on metal-2 and removed it.
 - Everything else lived in lab folders that were removed, on metal-2 and in my
   `$HIVE_SCRATCH` on this Mac. The 64 MB APFS volume and disk image were deleted.
+
+## Appendix A. Step 1 as a buildable spec: never a black hole
+
+Written against main at c7188458. Goal: a computer that cannot start a session says
+so as a fact, refuses the start with a typed reason, and is not chosen. No session
+is started only to die.
+
+### A1. The start set
+
+The folders a runtime needs in order to boot. Each is read with one `statfs`, and
+folders on the same device are reported once.
+
+| Role | Path | Why a start needs it |
+|---|---|---|
+| `data` | `cfg.dataDir` | store, runner config and status, session logs |
+| `sockets` | the runner socket folder (A4) | the runner host makes a folder and a socket there |
+| `scratch` | the bee tmp root (`resolveBeeTmpPolicy`), when on | per-bee `TMPDIR` |
+| `hostTmp` | `/tmp` on Linux; `/private/tmp` on macOS | harnesses and agents write here until capture (step 2) |
+| `cells` | the Cells root | already measured for `disk_floor` |
+
+New module `v2/daemon/src/startFloor.ts`, independent of `CellRetention` so it also
+runs on a node with retention off. It samples on the existing 60 s disk check
+(`DEFAULT_DISK_CHECK_MS`, `cellRetention.ts:208`) and once more, synchronously,
+inside admission (A3); a `statfs` is one system call per folder.
+
+Node's `statfsSync` already returns `files` and `ffree`. `defaultStatfs`
+(`cellRetention.ts:225`) keeps bytes only today. A filesystem that reports
+`files === 0` has no inode table to exhaust: publish `totalInodes: null,
+freeInodes: null` and skip the inode test.
+
+### A2. Facts: `NodeCapacity` grows, `schema` stays 1
+
+All additions are optional fields, the way `transcriptObjects?` was added
+(`v2/core/src/types.ts:1357`).
+
+```ts
+export type StartVolumeRole = "data" | "sockets" | "scratch" | "hostTmp" | "cells";
+export interface NodeVolumeFacts {
+  roles: StartVolumeRole[];          // every role that lives on this device
+  path: string;                      // the first role's path
+  totalBytes: number;  freeBytes: number;
+  totalInodes: number | null;  freeInodes: number | null;
+  floorBytes: number;  floorInodes: number | null;
+  below: "bytes" | "inodes" | null;  // which floor it is under, if any
+}
+export interface NodeCapacity {
+  // ...existing fields unchanged...
+  volumes?: NodeVolumeFacts[];
+  resourceBlocked: {
+    blocked: boolean; since: number | null;
+    reason: "start_floor" | "disk_floor" | "wip_unconfirmed" | null;   // "start_floor" is new and wins
+    detail?: { role: StartVolumeRole; path: string; metric: "bytes" | "inodes"; free: number; floor: number } | null;
+  };
+  admission: { newCells: "accept" | "refuse"; enforce: boolean; newSessions?: "accept" | "refuse" };
+}
+```
+
+- `cells.freeInodes?: number | null` is also added beside `cells.freeBytes`, so a
+  reader that only knows `cells` gets inodes without learning `volumes`.
+- `admission.newSessions` is `refuse` exactly when `reason === "start_floor"`. It
+  ignores `enforce`: `disk_floor` is advice on a workstation (`budgetEnforce:
+  false`, `config.ts:710`), but under the start floor a start cannot work on any
+  kind of node. `newCells` is also `refuse` then.
+- Carried where capacity already rides: `deployInfo`, `health`, the snapshot, and
+  the `node.capacity` audit event. `announceCapacity` (`cellRetention.ts:604`) fires
+  on a change of `blocked` or `newCells`; add `reason` and `newSessions` to that
+  comparison so entering and leaving `start_floor` each write one event.
+- New daemon capability `node.capacity.volumes.v1` in `DAEMON_CAPABILITIES`
+  (`protocol.ts:102`).
+- No store change: no table, no column, `SCHEMA_VERSION` and `MIN_READER_SCHEMA`
+  stay. The facts are sampled, never persisted.
+
+**Versions meeting each other.** Read from Apiary's `capacityFacts`
+(`services/kernel/src/fleet/facts.ts:37`) and `verdictOf`
+(`workspaces.placement.ts:190`):
+
+| Pair | What happens |
+|---|---|
+| New Honeybee, old Apiary | Old Apiary reads keys by name and ignores `volumes`, `detail`, `newSessions`. It sees `blocked: true, reason: "start_floor"`; the reason is not `disk_floor`, so the warn-only exception does not apply and it refuses the computer with "blocked: start_floor". **The black hole closes with no Apiary change.** |
+| Old Honeybee, new Apiary | The fields are absent. Apiary must read absent as "unknown", never as zero free, and place as it does today. The capability string tells it which it has. |
+| New both | Apiary shows the volume, the metric and the numbers, and its own debit covers computers running old Honeybee. |
+
+### A3. Floors and admission
+
+Defaults, in a new config block `node.startFloor`, read in `config.ts` beside
+`cellRetentionOf` and settable through `hive config` (widen the key check at
+`cli/src/main.ts:3741` and add a `START_FLOOR_CONFIG_KEYS` list beside
+`RETENTION_CONFIG_KEYS`, `config.ts:1056`):
+
+| Key | Default | Meaning |
+|---|---|---|
+| `node.startFloor.minFreeBytes` | 536,870,912 (512 MiB) | per start-set device |
+| `node.startFloor.minFreeInodes` | 20,000 | per start-set device that reports inodes |
+| `node.startFloor.enabled` | `true` | `false` publishes the facts and refuses nothing |
+
+The numbers are small on purpose: this floor means "a session cannot boot here",
+not "this disk is getting full". The `disk_floor` (5% and 20 GiB) keeps that job.
+On metal-3 today `hostTmp` had 0 free inodes; the floor would have tripped at
+20,000.
+
+Admission, replacing `assertCellAdmission` (`daemon.ts:4342`) with
+`assertStartAdmission(verb, substrate)`, called for **every** substrate at `spawn`
+(`daemon.ts:3932`) and `bee.import` (`:6747`):
+
+- Under the start floor: `RpcError("resource_blocked", message, data)`. The code
+  exists. Message: `spawn: this computer cannot start sessions: /tmp has 0 free
+  inodes (floor 20000)`. Data: `{ reason: "start_floor", role, path, metric, free,
+  floor }`.
+- Otherwise, for Cells only, the existing `disk_floor` check and message, with
+  data `{ reason: "disk_floor" }` added.
+
+A start for a bee that already exists (a wake after `send`, a revive) must not be
+refused at the RPC: mail is accepted whatever the process health. In the command
+loop, before `driver.start`, when the start floor is tripped:
+
+- defer the command without counting an attempt, the way `deferReconnect` is used
+  in `loops.ts`, and
+- set the bee's `resource_blocked` flag with owner `start_floor` (add it beside
+  `"sandbox_tmp"` in `FlagEvidence.owner`, `driver-hsr/src/driver.ts`) and detail
+  `start_floor: /tmp has 0 free inodes (floor 20000)`.
+
+When the floor clears, clear the flag and release the command. The spawn-failure
+budget and `boot_exit` are untouched: the runtime never started, so there is no
+exit to count.
+
+### A4. Runner sockets: what HON-35 did and what is left
+
+HON-35 (a03ab4f9) removes a runner's `hb-rh-<digest>/` folder when its host exits:
+`removeRunnerSocket` is called by both host exit paths, by the driver's `onExit`,
+and by `disposeAll`. That stops the growth. Left to do:
+
+1. **The folder is still the shared temp folder.** `daemon.ts:914` takes `tmpdir()`
+   and `placeDaemonSockets` (`daemon/src/socketPath.ts:35`) keeps it whenever the
+   path fits. A full `/tmp` therefore still stops every start. New default:
+   `<dataDir>/run`, mode 0700, when `join(dataDir, "run", RUNNER_SOCKET_SAMPLE)`
+   fits the socket limit; else the `persistentSocketDir` fallback that exists.
+   `~/.hive/v2/run/hb-rh-<16>/stdin.sock` is 52 bytes on Linux.
+2. **Survivors must still reconnect.** `adopt` computes the socket from the
+   current folder (`runnerPaths`, `driver.ts:347`, used at `:1371`), so changing
+   the default would strand every runtime that lives through the upgrade. The
+   runner's own config file `<runners>/<bee>.<generation>.json` holds the
+   `socketPath` it was started with (the driver already reads that file at
+   `:1026`). `adopt` and `removeRunnerSocket` callers must use the recorded path
+   when the file exists, and compute only for new generations.
+3. **A boot sweep.** A host that dies while no daemon is watching still leaves its
+   folder. At boot, after adoption: in the current socket folder **and** in the
+   inherited `tmpdir()`, remove every `hb-rh-*` entry owned by this user that no
+   live runner config names. Empty folders with `rmdir`, stale sockets with
+   `unlink`, nothing else, bounded to 20,000 entries per boot and logged as
+   `runner.sockets.swept n=`. This is also what clears the 5,457 on metal-3 and the
+   8,027 on metal-2. Several daemons can share a temp folder (lab daemons), so
+   never remove a folder whose socket accepts a connection.
+4. **Tests.** About 50 `new RuntimeHost(` sites pass no `socketDir`. Give
+   `v2/driver-hsr/tests/helpers.ts` a default inside the test's own folder.
+
+### A5. Red first
+
+| # | Test that fails today | Passes when |
+|---|---|---|
+| R1 | Unit, fake `statfs` returning `ffree: 0` for `hostTmp`: `capacity.volumes` is undefined | the volume shows `below: "inodes"`, `reason: "start_floor"`, `newSessions: "refuse"` |
+| R2 | Daemon test, same fake: `spawn` of an in-place bee succeeds and the runtime dies | `spawn` throws `resource_blocked` with `data.reason === "start_floor"`; no runtime row is created |
+| R3 | Daemon test: `send` to a stopped bee under the floor burns boot attempts to `spawn_failed` | mail is accepted, the bee carries `resource_blocked` (owner `start_floor`), `spawnFailures` stays 0; lifting the floor starts it and clears the flag |
+| R4 | Linux lab, real: a daemon whose inherited `TMPDIR` is a tmpfs with `nr_inodes=64`, filled (the mount recipe is `.proof/session-scratch/linux/03-limits.sh`, no root). Today five `boot_exit`s | with A4.1 the bee boots, because its socket is under `<dataDir>/run`; and capacity reports `hostTmp` under its floor |
+| R5 | Daemon restart test: start a runtime with the socket folder set to A, restart the daemon with the default set to B | the runtime is adopted with the same pid and generation, and mail is delivered |
+| R6 | Boot test: plant 3 empty `hb-rh-*` folders, 1 stale socket, and 1 live runner | after boot only the live one remains |
+| R7 | Type test on `capacityOf`: `schema` is still `1` and a reader that knows only today's fields gets the same values | unchanged |
+
+### A6. What Honeybee publishes for Apiary's half
+
+The bee building Apiary's half needs these names:
+
+- **Free inodes beside free bytes:** `capacity.cells.freeInodes`, and per device
+  `capacity.volumes[].{roles, path, freeBytes, totalBytes, freeInodes, totalInodes,
+  floorBytes, floorInodes, below}`. Absent means an older Honeybee; `null` inodes
+  means the filesystem has no inode table.
+- **The computer cannot start sessions:** `capacity.resourceBlocked.{blocked: true,
+  reason: "start_floor", detail}` and `capacity.admission.newSessions: "refuse"`,
+  with one `node.capacity` audit event on entry and one on exit.
+- **Which Honeybee it is talking to:** capability `node.capacity.volumes.v1` in the
+  hello.
+- **A start that was refused:** RPC error code `resource_blocked` with
+  `data.reason: "start_floor" | "disk_floor"`. Move the session without waiting.
+- **A session that cannot start, said by the session:** the bee's `resource_blocked`
+  flag with owner `start_floor` and the detail text, in `BeeView.flags`.
+- **Failed starts, for the debit:** these exist already. The audit event
+  `bee.spawn_failures` carries `{ beeId, spawnFailures, reason }` with reason
+  `boot_exit` or `boot_exit_not_retryable` (`core/src/store.ts:3699`), and the
+  bee's `spawn_failed` flag is set when the budget is spent. Step 1 adds nothing
+  here; the debit is still needed for failures the floor cannot see.
+
+## Appendix B. Two read-only checks on his computers
+
+Both print counts only. Neither reads a transcript's text or a credential. Run each
+on trmd-metal-1, -2 and -3 and paste the output.
+
+### B1. Do sessions use `sudo` on workstations? ("Most likely wrong" 1)
+
+`sudo` logs every call with its working folder and terminal. A harness's shell has
+no terminal.
+
+```sh
+sudo journalctl -q _COMM=sudo --since "-30 days" -o cat | grep 'COMMAND=' | awk '
+  { tty = ($0 ~ /TTY=unknown/) ? "no-terminal" : "terminal"
+    where = ($0 ~ /PWD=[^ ;]*\/\.hive\/v2\/cells\//) ? "in-a-Cell" : ($0 ~ /PWD=\/(var\/)?tmp/) ? "in-/tmp" : "elsewhere"
+    cmd = $0; sub(/.*COMMAND=/, "", cmd); split(cmd, a, " "); n = split(a[1], b, "/")
+    count[tty " " where " " b[n]]++ }
+  END { for (k in count) print count[k], k }' | sort -rn | head -25
+```
+
+A second count, for setuid tools that leave no log, over Claude transcripts by file
+name only:
+
+```sh
+cd ~/.hive/homes && for w in sudo ping pkexec fusermount 'su -' mount; do
+  printf '%-10s %s of %s session files\n' "$w" \
+    "$(find . -name '*.jsonl' -mtime -30 -print0 | xargs -0 grep -lE "\"command\":\"([^\"]*[ ;&|(])?$w " 2>/dev/null | wc -l)" \
+    "$(find . -name '*.jsonl' -mtime -30 | wc -l)"; done
+```
+
+| Result | Design |
+|---|---|
+| No `no-terminal` rows, and `sudo` in under 1% of session files | stands as written |
+| A few rows, all package installs or service restarts | stands; those become a `run.command` on the host, outside the namespace, and the draft says so |
+| `no-terminal` calls on most days, or `sudo` in over 5% of session files | build the root-installed unit (no user namespace, `sudo` works) before step 2 reaches workstations; satellites keep bwrap |
+
+### B2. How often does a runtime change under a live task, and with what running? ("Most likely wrong" 2)
+
+From the store, read-only. Per day: how many runtimes followed an earlier one of
+the same bee within 30 minutes, by how the earlier one ended.
+
+```sh
+sqlite3 -readonly ~/.hive/v2/core.sqlite3 "
+WITH pairs AS (
+  SELECT a.bee_id, a.exit_cause, b.started_at AS next_start, (b.started_at - a.updated_at) / 1000 AS gap_s
+  FROM runtimes a JOIN runtimes b ON b.bee_id = a.bee_id AND b.generation = a.generation + 1
+  WHERE a.state = 'stopped' AND b.started_at > (strftime('%s','now') - 30*86400) * 1000)
+SELECT date(next_start / 1000, 'unixepoch') AS day, exit_cause,
+       count(*) AS changes, sum(gap_s < 1800) AS within_30_min, count(DISTINCT bee_id) AS bees
+FROM pairs GROUP BY day, exit_cause ORDER BY day DESC, changes DESC LIMIT 60;"
+```
+
+The store does not record child processes, so the second half is a snapshot of
+now (Linux): per bee, processes that left the harness's own session and are older
+than 10 minutes. These are what a runtime change would kill.
+
+```sh
+for p in /proc/[0-9]*; do
+  bee=$(tr '\0' '\n' < $p/environ 2>/dev/null | sed -n 's/^HIVE_BEE_ID=//p' | head -1); [ -n "$bee" ] || continue
+  echo "$bee $(ps -o sid=,etimes=,comm= -p ${p#/proc/})"
+done | awk '{ n[$1]++; if (!root[$1] || $2 < root[$1]) root[$1] = $2; row[NR] = $0 }
+  END { for (i in row) { split(row[i], f, " "); if (f[2] != root[f[1]] && f[3] > 600) { away[f[1]]++; kind[f[4]]++ } }
+        for (b in n) { bees++; if (away[b]) withbg++ }
+        print bees " bees with live processes; " withbg " have long-lived processes outside the harness session"
+        for (k in kind) print "  " kind[k], k }'
+```
+
+| Result | Design |
+|---|---|
+| `within_30_min` changes are rare (under about 1 per bee per week), or few bees have long-lived outside processes | stands: processes end with the runtime |
+| Changes within 30 minutes are common **and** many bees have such processes | hold the namespace per bee with a small holder process, so a revive or account swap keeps the agent's servers; processes end at stop by a person, archive and delete |
+| Changes are common but they are `crashed` | fix the crashes first; the count says nothing about the design |
