@@ -282,7 +282,8 @@ before any schema DDL. Backup or receipt failure refuses migration/deployment.
 
 Backups and manifests live next to the store in `core.sqlite3.backups/`, with
 private permissions, checksums, schema/DDL identity, integrity result, source build
-and time. Retention keeps ten recent snapshots plus the newest for every schema.
+and time. Retention keeps the two newest completed backups, at every daemon start and
+after each verified backup ([daemon-starting-contract](design/daemon-starting-contract.md#retention-hon-46-2026-11-25)).
 Legacy stores without recorded build provenance say so explicitly in migration
 receipts; deploy receipts use the running or previously installed build identity.
 

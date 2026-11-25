@@ -176,6 +176,25 @@ capacity: {
 
 `cellBytes` is the last census's measured `du` sum (null until a census ran). Each flip of `blocked` or `admission.newCells` writes one informational `node.capacity { capacity }` audit row, so the watch stream carries the change as a delta and Apiary can mirror the fact from the snapshot field plus that delta; the row is informational in replay. `hive health` and `hive deploy-info` print one `capacity:` line. Rollback: `budgetEnforce: false` (warn only); `minFreePercent: null, minFreeBytes: null` removes the floor entirely.
 
+## Start floor (HON-34, 2026-11-24, capability `node.capacity.volumes.v1`)
+
+A session start needs room on more than the Cells volume. The daemon samples five start folders with one `statfs` each: `data` (the data dir), `sockets` (the runner socket folder), `scratch` (`bees.tmpRoot`, when set), `hostTmp` (`/tmp`, `/private/tmp` on macOS) and `cells` (the Cells root). Each device is reported once. A device is below the floor when its free bytes or free inodes are under `node.startFloor`; a device no bigger than the bytes floor is judged on inodes alone. The `cells` folder counts only for Cell starts.
+
+| key | default |
+|---|---|
+| `node.startFloor.enabled` | `true` |
+| `node.startFloor.minFreeBytes` | `536870912` (512 MiB) |
+| `node.startFloor.minFreeInodes` | `20000` |
+
+Set them with `hive config set node.startFloor.<key> <value>` and read them with `hive config get node.startFloor [--effective]`; the daemon reads them at boot. `enabled: false` reports the floor but refuses nothing (rollback).
+
+Below the floor:
+
+- `spawn` and `bee.import` fail with `resource_blocked` and `details: { reason: "start_floor", role, path, metric, free, floor }`. The Cells disk floor refusal now carries `details: { reason: "disk_floor" }`.
+- A wake or revive stays queued and counts no attempt. The bee carries the `resource_blocked` flag with a start floor detail (`hive view` prints it, e.g. `start_floor: /tmp has 1200 free inodes (floor 20000)`). When the floor lifts (re-sampled every 5 s while below), the start is released and the flag cleared.
+
+The capacity fact gains optional fields, schema stays 1: `volumes`, `cells.freeInodes`, `resourceBlocked.reason: "start_floor"` with `resourceBlocked.detail`, and `admission.newSessions: "accept" | "refuse"`. The `capacity:` line of `hive health` shows `new sessions …` and the reason. The daemon logs `node.start_floor.below role= path= metric= free= floor=` when the floor is crossed.
+
 ## H3 — WIP push with read-back, parked-first eviction (2026-10-30)
 
 A Cell's WIP is everything `git status` shows: modified and deleted tracked files, untracked files, staged changes. Ignored paths are reproducible and are never WIP; untracked agent leftovers (`leftoverPatterns`) are not WIP either. Two flags under `cells.retention`, both default `false`:
