@@ -1,6 +1,6 @@
 # Daemon start and store upgrade — Honeybee contract (HON-34, 2026-11-24)
 
-Protocol stays `v2/2`. Additive: `health` gains a `boot` field, the hello frame gains an optional `boot` field, and the closed error list gains `daemon_starting`.
+Protocol stays `v2/2`. Additive: `health` gains a `boot` field, the hello frame gains an optional `boot` field, and the closed error list gains `daemon_starting` (daemon) and `daemon_busy` (CLI, HON-47).
 
 A daemon that is still starting answers. It takes the store lock, binds its socket, and only then backs up, verifies and migrates the store and re-adopts sessions. Before this contract the socket appeared only after all of that, so the first start after a schema bump looked dead (ENOENT, "not running") for as long as the backup took.
 
@@ -8,13 +8,38 @@ A daemon that is still starting answers. It takes the store lock, binds its sock
 
 1. Open the store and take its SQLite exclusive lock. This is the single-daemon lock (B9): a second daemon stops here with `SecondWriterError`. The socket is bound only after the lock, so only the lock holder ever unlinks a stale socket.
 2. Remove abandoned backup partials, then apply retention: keep the two newest completed backups (see below).
-3. Bind the socket and write the endpoint record. From here on, `health` answers.
+3. Bind the socket and write the endpoint record. From here on, `health` answers, within the limits in [Staying responsive](#staying-responsive-hon-47).
 4. If the stored schema is older than this build's, take the pre-migration backup: an async page copy (`store_backup`, with byte progress), then a full `integrity_check` plus sha256 of the copy in a worker thread (`store_backup_verify`), then publish the receipt and apply retention again.
-5. Migrate (`store_migrate`). This runs on the main thread; a long migration blocks `health` until it ends.
-6. Start services and re-adopt surviving runtimes (`boot_reconcile`).
+5. Migrate (`store_migrate`). This runs on the main thread in one transaction and yields to the event loop between migration steps.
+6. Start services and re-adopt surviving runtimes (`boot_reconcile`). The per-session passes yield to the event loop between sessions.
 7. Ready: every verb answers.
 
 Runner hosts are detached and keep running throughout; the ready daemon re-adopts them by stored pid and birth identity, with the same generation.
+
+## Staying responsive (HON-47)
+
+`store_migrate` and `boot_reconcile` run on the main thread, but they yield to the event loop at least every 20 ms of work (`setImmediate`). Between slices the daemon accepts connections, sends the hello and answers `health`. Before HON-47 both phases ran in one synchronous stretch. With 3,680 sessions on 4 busy Linux cores, `boot_reconcile` lasted 3.7–3.8 s, the socket answered nothing, and the CLI timed out after 3 s.
+
+Where the yields are:
+
+- `boot_reconcile`: the passes over every session yield between sessions and read sessions in pages of 256. These passes are the Cell registry backfill, the scan for surviving runtimes, the mailbox wake sweep, the start-attention flag pass and the scratch-directory sweep. The Cell retention history (last passes, daily cap, evictions) is read in one backward scan of the newest 500,000 audit rows, 20,000 rows per chunk, with a yield between chunks. Before, it took five unchunked scans of that window.
+- Adoption is not split. Adopting the surviving runtimes, the store reconcile, reaping orphans and the handover census run in one event-loop turn, as before. Their cost grows with the number of live runtimes, not with the number of sessions.
+- `store_migrate`: the migration transaction yields between migration steps and between sessions in the per-session backfills. It stays one transaction, so a failed migration still rolls back completely.
+
+Limits:
+
+- One SQL statement cannot yield. A migration step that is one long statement (a table rewrite, an index build) blocks `health` for as long as that statement runs. Write a long migration as batches with a yield between them; `CoreStoreOptions.testMigrationSteps` is the lab hook that holds `store_migrate` with batched work.
+- Start steps outside these passes (opening services, building drivers, single store reads) do not yield. They are not per-session loops.
+- During a yield nothing else can change sessions: every verb except `health` is refused with `daemon_starting`, and the tick loop and the identity-recovery timer start only after ready. Driver events from adopted runtimes may arrive during the mailbox sweep; they are buffered for the first tick, as they were before.
+
+Measured (HON-47 lab, `scripts/lab/hon47-starting-yield.mjs`, idle 64-core Linux, `hive health` every 0.5 s plus an in-process `health` every 100 ms):
+
+| case | before | after |
+|---|---|---|
+| 60,000 sessions, `boot_reconcile` 8.5–10.6 s | 3 of 3 `hive health` runs exit 1, "not reachable … start it" | 18 of 18 exit 75 with `boot_reconcile`; in-process `health` p50 10 ms, max 142 ms |
+| `store_migrate` held 10 s by batched lab work | 3 runs time out without a hello | 20 of 20 exit 75 with `store_migrate`; max 25 ms |
+
+Busy small hosts were not measured; expect every slice there to be several times longer.
 
 ## Wire shape
 
@@ -58,16 +83,45 @@ The hello frame the daemon writes on connect carries the same object while start
 
 ## Clients
 
-A starting window exists on every start, not only on upgrades: `boot_reconcile` usually lasts tens of milliseconds to about a second. A client that treats "the socket accepts" as ready sees `daemon_starting` in that window.
+A starting window exists on every start, not only on upgrades. `boot_reconcile` grows with the number of sessions: 3.7–3.8 s for 3,680 sessions on 4 busy Linux cores, 3.5 s for 20,000 lab sessions on an idle 64-core host. A client that treats "the socket accepts" as ready sees `daemon_starting` in that window.
 
 - Read `boot` in the hello frame, or retry on `daemon_starting`.
 - The `hive` CLI holds up to 15 s while the hello says `starting`, printing the boot sentence every 5 s, then sends the request and prints the refusal (exit 1, `error.code` `daemon_starting` with `--json`). `hive health`, `hive daemon status` and `hive daemon stop` never hold; they show the starting state.
 - `hive health` exits 75 while starting and 0 when ready, so a script that loops `until hive health` still waits for ready. `hive health --json` prints the starting result either way.
 - Old CLIs (a runtime older than this contract, such as an Apiary-pinned runtime) do not hold: they fail at once on `daemon_starting`.
 
+### A socket that does not answer (HON-47)
+
+The CLI tells "no daemon" apart from "a daemon that is starting or busy":
+
+| what the CLI sees within its 3 s connect timeout | meaning | exit | `--json` `error.code` |
+|---|---|---|---|
+| `ENOENT` (no socket file) or `ECONNREFUSED` (nothing listening) | no daemon | 1 | `socket_unreachable` |
+| the connection is accepted but no hello arrives | starting or busy | 75 | `daemon_busy` |
+| the socket file exists but the connection is not accepted | starting or busy | 75 | `daemon_busy` |
+| `EAGAIN` (the listen queue is full) | starting or busy | 75 | `daemon_busy` |
+
+Only the first row advises starting a daemon:
+
+```
+hive: daemon not reachable at /run/hive/hived.sock (ENOENT) — start it with: hive daemon run (or daemon start)
+```
+
+A live socket that does not answer prints this instead, for every command, `hive health` included:
+
+```
+hive: daemon at /run/hive/hived.sock is starting or busy: it accepted the connection but sent no hello within 3 s. It is running: do not start another. Retry shortly; hive health shows its state.
+```
+
+With `--json`, stdout carries `{"error":{"code":"daemon_busy","message":…,"details":{"socketPath":…,"socketSource":…,"cause":…}},"daemonTarget":…}`. Commands that hold while starting also keep retrying a busy socket until their 15 s hold runs out. Reads never fall back to the read-only store on `daemon_busy`, since the running daemon holds the store's lock.
+
+A daemon with this change answers within its 20 ms slices, so `daemon_busy` now means a non-yielding step longer than 3 s or a host too loaded to schedule the daemon. CLIs older than HON-47 still print "not reachable … start it" in that case.
+
 ## The estimate
 
-`etaMs` is an estimate. It can be off by a factor of two under load, in either direction. Show it as "about N minutes", never as a deadline.
+`etaMs` is an estimate. It can be off by a factor of two to six under load: the 29912b6e release lab showed 25 s with 6 s left. Show it as "about N minutes", never as a deadline.
+
+A better estimate is not cheap. `integrity_check` reports no progress through `node:sqlite`, so the verify phase can only be projected from the copy time. What would help is refitting the verify-to-copy ratios below from measured upgrades: the `boot.phase` lines in `hived.log` time each phase. That is a data change in `bootStatus.ts`, but it needs a measured population that has not been collected yet.
 
 - `store_backup`: `null` until 2 s and 2% of the copy have passed. Then the copy's remaining time from the measured page rate, plus the projected copy time × a verify-to-copy ratio.
 - `store_backup_verify`: ratio × the measured copy time, minus the time already spent verifying; `null` once that is used up, never negative.

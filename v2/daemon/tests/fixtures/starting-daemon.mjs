@@ -29,6 +29,20 @@ if (mode === "gated") {
     writeFileSync(join(dir, "start.failed"), String(error?.message ?? error));
     process.exitCode = 0;
   }
+} else if (mode === "migrate-held") {
+  const holdMs = Number(process.env.HON47_MIGRATE_HOLD_MS ?? 10_000);
+  const storeMigrateSteps = function* () {
+    const until = Date.now() + holdMs;
+    while (Date.now() < until) {
+      const batchEnd = Date.now() + 25;
+      while (Date.now() < batchEnd);
+      yield;
+    }
+  };
+  const daemon = new HiveDaemon(loadNodeConfig(dir), { storeMigrateSteps });
+  process.once("SIGTERM", () => void daemon.shutdown());
+  await daemon.start();
+  writeFileSync(join(dir, "daemon.ready"), String(process.pid));
 } else {
   process.exitCode = await runDaemon(["--data-dir", dir]);
 }

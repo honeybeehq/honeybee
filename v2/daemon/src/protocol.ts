@@ -387,6 +387,7 @@ export const RPC_ERROR_CODES = [
   "rpc_effect_fenced", "rpc_effect_history_unknown", "rpc_effect_resolve_unsupported",
   "socket_mismatch",
   "socket_unreachable",
+  "daemon_busy",
   "socket_in_use",
   "socket_path_too_long",
   "foreign_daemon_spawn",

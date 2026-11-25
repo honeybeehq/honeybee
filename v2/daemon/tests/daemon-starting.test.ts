@@ -171,3 +171,50 @@ test("first start after a schema bump answers health while it backs up, refuses 
     rig.cleanup();
   }
 });
+
+test("a long migration written as batches keeps health answering store_migrate the whole time, with bounded latency", { timeout: 120_000 }, async () => {
+  const rig = makeDaemonDir();
+  const home = join(rig.dir, "throwaway-home");
+  const env = { ...process.env, HOME: home, XDG_CONFIG_HOME: join(home, "config"), XDG_DATA_HOME: join(home, "data"), XDG_CACHE_HOME: join(home, "cache"), XDG_STATE_HOME: join(home, "state"), HIVE_GATEWAYS_DISABLE: "1", HIVE_NO_KEYCHAIN: "1", HIVE_TEST_REAP_RUNTIMES_ON_SHUTDOWN: "0", HON47_MIGRATE_HOLD_MS: "3000" };
+  for (const path of [home, env.XDG_CONFIG_HOME, env.XDG_DATA_HOME, env.XDG_CACHE_HOME, env.XDG_STATE_HOME]) mkdirSync(path, { recursive: true });
+  const socketPath = join(rig.dir, "hived.sock");
+  const children: ChildProcess[] = [];
+  const exited = (child: ChildProcess) => child.exitCode !== null || child.signalCode !== null;
+  const launch = (mode: "natural" | "migrate-held") => {
+    const child = spawn(process.execPath, [fixture, rig.dir, mode], { env, stdio: ["ignore", "ignore", "ignore"] });
+    children.push(child);
+    return child;
+  };
+  let client: RpcClient | null = null;
+  try {
+    const first = launch("natural");
+    client = await waitFor(async () => { try { const c = await RpcClient.connect(socketPath); if (c.boot === null) return c; c.close(); } catch {} return null; }, "first daemon ready", 30_000);
+    client.close(); client = null;
+    first.kill("SIGTERM");
+    await waitFor(() => exited(first), "first daemon exits", 10_000);
+    stampPreviousSchema(join(rig.dir, "core.sqlite3"));
+
+    launch("migrate-held");
+    client = await waitFor(async () => { try { return await RpcClient.connect(socketPath); } catch { return null; } }, "held daemon socket", 30_000);
+    const answers: Array<{ phase: string; ms: number; at: number }> = [];
+    for (;;) {
+      const started = performance.now();
+      const health = await client.request<HealthResponse>("health", {}, 3000);
+      const phase = health.boot?.state === "starting" ? (health as StartingHealthResult).boot.phase : "ready";
+      answers.push({ phase, ms: performance.now() - started, at: Date.now() });
+      if (phase === "ready") break;
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+    const migrating = answers.filter(answer => answer.phase === "store_migrate");
+    assert.ok(migrating.length >= 20, `health answered during the migration: ${JSON.stringify(answers.map(a => a.phase))}`);
+    assert.ok(migrating.at(-1)!.at - migrating[0]!.at >= 2_000, "the migrate phase was observed for most of its 3 s hold");
+    const slowest = Math.max(...answers.map(answer => answer.ms));
+    assert.ok(slowest < 1_000, `health answered within a second throughout the start; slowest ${Math.round(slowest)} ms`);
+    assert.equal(answers.at(-1)!.phase, "ready");
+  } finally {
+    client?.close();
+    for (const child of children) if (!exited(child)) child.kill("SIGTERM");
+    await waitFor(() => children.every(exited), "fixture daemons exit", 10_000).catch(() => { for (const child of children) if (!exited(child)) child.kill("SIGKILL"); });
+    rig.cleanup();
+  }
+});

@@ -4,6 +4,7 @@ import type { EffectCoverage, EffectResolution, EffectVerb } from "../../core/sr
  * Mutations and watch ALWAYS go through here; reads fall back to the
  * read-only store (readonly.ts) only when the daemon is down.
  */
+import { existsSync } from "node:fs";
 import { createConnection, type Socket } from "node:net";
 import { dirname } from "node:path";
 import { HANDOVER_HOLD_MS, readHandoverMarker, runtimeRootOf } from "../../daemon/src/handoverMarker.ts";
@@ -31,6 +32,18 @@ export class DaemonDownError extends Error {
   }
 }
 
+export class DaemonBusyError extends Error {
+  readonly code = "daemon_busy";
+  readonly socketPath: string;
+  readonly reason: string;
+  constructor(socketPath: string, reason: string) {
+    super(`daemon at ${socketPath} is starting or busy: ${reason}`);
+    this.name = "DaemonBusyError";
+    this.socketPath = socketPath;
+    this.reason = reason;
+  }
+}
+
 export class HandoverStalledError extends Error {
   readonly code = "hived_handover_stalled";
   readonly socketPath: string;
@@ -48,6 +61,7 @@ export class HandoverStalledError extends Error {
 const HANDOVER_RETRY_MS = 100;
 const STARTING_RETRY_MS = 250;
 const REFUSED_CODES = new Set(["ECONNREFUSED", "ENOENT"]);
+const BUSY_CODES = new Set(["EAGAIN", "EWOULDBLOCK"]);
 const sleep = (ms: number): Promise<void> => new Promise((resolveSleep) => setTimeout(resolveSleep, ms));
 
 /** The protocol the previously deployed daemon speaks; see legacyProtocolVerbs. */
@@ -108,6 +122,10 @@ export class RpcClient {
         options.waitWhileStarting!.onWaiting?.(client.boot);
         await sleep(STARTING_RETRY_MS);
       } catch (err) {
+        if (err instanceof DaemonBusyError && Date.now() < holdUntil) {
+          await sleep(STARTING_RETRY_MS);
+          continue;
+        }
         if (!(err instanceof DaemonDownError)) throw err;
         const marker = await readHandoverMarker(root);
         if (marker === null) {
@@ -126,20 +144,28 @@ export class RpcClient {
   private static connectOnce(socketPath: string, timeoutMs: number, clientLane: "node_relay" | "remote" | undefined, options: ConnectOptions): Promise<RpcClient> {
     return new Promise((resolve, reject) => {
       const socket = createConnection(socketPath);
+      let connected = false;
       const timer = setTimeout(() => {
         socket.destroy();
-        reject(new DaemonDownError(socketPath, "connect timeout"));
+        reject(connected
+          ? new DaemonBusyError(socketPath, `it accepted the connection but sent no hello within ${timeoutMs / 1000} s`)
+          : existsSync(socketPath)
+            ? new DaemonBusyError(socketPath, `the socket exists but did not accept the connection within ${timeoutMs / 1000} s`)
+            : new DaemonDownError(socketPath, "connect timeout"));
       }, timeoutMs);
       timer.unref();
       socket.once("error", (err: NodeJS.ErrnoException) => {
         clearTimeout(timer);
-        reject(new DaemonDownError(socketPath, err.code ?? err.message));
+        reject(BUSY_CODES.has(err.code ?? "")
+          ? new DaemonBusyError(socketPath, "its connection queue is full")
+          : new DaemonDownError(socketPath, err.code ?? err.message));
       });
       const closedBeforeHello = (): void => {
         clearTimeout(timer);
         reject(new DaemonDownError(socketPath, "closed before hello"));
       };
       socket.once("connect", () => {
+        connected = true;
         const client = new RpcClient(socket);
         socket.setEncoding("utf8");
         socket.once("close", closedBeforeHello);

@@ -1,4 +1,5 @@
 import { DatabaseSync } from "node:sqlite";
+import type { LoopPacer } from "./loopPacer.ts";
 import { SCHEMA_VERSION } from "./schema.ts";
 import { CoreStore, storeSourceBuild, type CoreStoreOptions } from "./store.ts";
 import { backupStoreOnline, pruneStoreBackups, removeAbandonedBackupPartials, verifyStoreBackupFile, type AbandonedBackupCleanup, type StoreBackupRetention, type StoreBackupVerification } from "./storeBackup.ts";
@@ -26,6 +27,7 @@ export interface StoreUpgradeHooks {
   progress?: (progress: StoreUpgradeProgress) => void;
   verify?: (path: string) => Promise<StoreBackupVerification>;
   signal?: AbortSignal;
+  pacer?: LoopPacer;
 }
 
 function storedSchemaValue(db: DatabaseSync, key: string): number | null | "invalid" {
@@ -76,7 +78,8 @@ export async function openCoreStoreUpgrading(path: string, opts: CoreStoreOption
       report("store_migrate");
     }
     handedOver = true;
-    return new CoreStore(path, { ...opts, connection: db, upgradeBackupTaken: upgrade !== null });
+    const storeOptions = { ...opts, connection: db, upgradeBackupTaken: upgrade !== null };
+    return hooks.pacer ? await CoreStore.openPaced(path, storeOptions, hooks.pacer) : new CoreStore(path, storeOptions);
   } finally {
     if (!handedOver) db.close();
   }

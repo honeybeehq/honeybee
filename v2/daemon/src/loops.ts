@@ -1,4 +1,5 @@
 import { automationDeliveryClass } from "../../core/src/types.ts";
+import { runSteps, type Steps } from "../../core/src/loopPacer.ts";
 import { renderMailBatch } from "./mailBatch.ts";
 import type { QuotaBoundary } from "../../core/src/quota.ts";
 import { deliveryConfirmationIntentFits } from "../../core/src/deliveryConfirmationTypes.ts";
@@ -145,6 +146,8 @@ export interface BootReport {
   orphansReaped: number;
   wakesEnqueued: number;
 }
+
+export type BootReconciled = Omit<BootReport, "wakesEnqueued">;
 
 /** Condition-flag evidence, structurally matching RuntimeHost's FlagEvidence. */
 export interface FlagEvidenceLike {
@@ -512,6 +515,10 @@ export class DaemonCore {
 
   /** Boot: reconcile, reap orphans, sweep the mailbox for needed wakes (spec 04 behavior 2). */
   boot(unresolved: ReadonlyArray<{beeId: string; generation: number}> = []): BootReport {
+    return runSteps(this.wakeSweepAtBoot(this.reconcileBoot(unresolved)));
+  }
+
+  reconcileBoot(unresolved: ReadonlyArray<{beeId: string; generation: number}> = []): BootReconciled {
     for (const row of unresolved) this.unresolvedIdentity.set(row.beeId, row.generation);
     this.store.recoverInFlightMultilineFallbacks();
     const live = this.driver.snapshotLive();
@@ -547,24 +554,23 @@ export class DaemonCore {
     // outcome; hold it as uncertain and let the scheduler reconcile it.
     const uncertain = this.store.markInFlightCaptureActionsUncertain("daemon restarted while the capture was in flight; reconciling with the Cell owner");
     for (const id of uncertain) this.log(`action.boot_uncertain action=${id}`);
+    return { adopted: rec.adopted.length, stoppedByReconcile: rec.stopped.length, requeuedCommands: rec.requeuedCommandIds.length, orphansReaped };
+  }
+
+  *wakeSweepAtBoot(reconciled: BootReconciled): Steps<BootReport> {
     let wakesEnqueued = 0;
-    for (const bee of this.store.listBees()) {
+    for (const bee of this.store.eachBee()) {
       if (this.ensureWake(bee.id)) wakesEnqueued += 1;
       // A settled stop can outlive the driver that would have reported its
       // exit. Reconciliation supplies the stopped fact; honor its durable
       // restart intent even when no mailbox message needs a wake.
       const rt = this.store.currentRuntime(bee.id);
       if (rt?.state === "stopped") this.reviveAfterStopIfRequested(bee.id, rt.generation);
+      yield;
     }
-    const report: BootReport = {
-      adopted: rec.adopted.length,
-      stoppedByReconcile: rec.stopped.length,
-      requeuedCommands: rec.requeuedCommandIds.length,
-      orphansReaped,
-      wakesEnqueued,
-    };
+    const report: BootReport = { ...reconciled, wakesEnqueued };
     this.log(
-      `boot adopted=${report.adopted} stopped=${report.stoppedByReconcile} requeued=${report.requeuedCommands} reaped=${orphansReaped} wakes=${wakesEnqueued}`,
+      `boot adopted=${report.adopted} stopped=${report.stoppedByReconcile} requeued=${report.requeuedCommands} reaped=${report.orphansReaped} wakes=${wakesEnqueued}`,
     );
     return report;
   }

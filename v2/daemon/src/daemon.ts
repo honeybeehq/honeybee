@@ -130,6 +130,7 @@ import {
   type BeeHandoffStopAt,
   type BeeMoveRow,
   type BeeRow,
+  type RuntimeRow,
   type MessageRow,
   type HandoffContext,
   type HandoffContextTurn,
@@ -472,6 +473,7 @@ import { BEE_IMPORT_BUNDLE_BYTES_MAX,
 import { archivedCursor, archivedCursorText, snapshotLifecycle } from "./rosterRead.ts";
 import { verifyStoreBackupOffLoop } from "./storeBackupWorker.ts";
 import { BootStatus } from "./bootStatus.ts";
+import { LoopPacer, type Steps } from "../../core/src/loopPacer.ts";
 
 export const RUNTIME_PROBE_AGENT = "runtime-probe";
 const RUNTIME_PROBE_IDLE_MS = 60_000;
@@ -726,6 +728,7 @@ export interface HiveDaemonDeps {
   /** v31 tests: substitute the retention inspection worker entrypoint. */
   retentionWorkerUrl?: URL;
   storeUpgradeGate?: (signal: AbortSignal) => Promise<void>;
+  storeMigrateSteps?: () => Steps<void>;
   transcriptSweepDelayMs?: number;
   transcriptMaxWorkers?: number;
   championHomeMinIntervalMs?: number;
@@ -751,6 +754,8 @@ export interface HiveDaemonDeps {
    */
   forwardMailboxOnlyMail?: MailboxOnlyForwarder;
 }
+
+type AdoptionCandidate = {bee: BeeRow; rt: RuntimeRow & {pid: number; pidStartedAt: number}};
 
 export type MailboxOnlyForwarder = (input: { bee: BeeRow; message: MessageRow }) => void | Promise<void>;
 
@@ -1062,12 +1067,15 @@ export class HiveDaemon {
     this.telemetry = new TelemetryStore(this.cfg.telemetryPath);
     // Opening the store IS the single-daemon lock (B9): a second daemon on
     // this node dies right here with SecondWriterError.
+    const pacer = new LoopPacer();
     const store = await openCoreStoreUpgrading(this.cfg.storePath, {
       buildIdentity: JSON.stringify(BUILD_IDENTITY),
       maxAttempts: this.cfg.maxAttempts,
       backoffBaseMs: this.cfg.backoffBaseMs,
       threadWriterLockRetryWindowMs: this.cfg.threadLockWindowMs,
+      ...(this.deps.storeMigrateSteps ? { testMigrationSteps: this.deps.storeMigrateSteps } : {}),
     }, {
+      pacer,
       signal: this.startAbort.signal,
       locked: async (upgrade) => {
         this.log(`boot.store_locked upgrade=${upgrade ? `${upgrade.schemaFrom}->${upgrade.schemaTo}` : "none"}`);
@@ -1220,6 +1228,7 @@ export class HiveDaemon {
       ...(this.deps.startFloorSampleMs !== undefined ? { sampleMs: this.deps.startFloorSampleMs } : {}),
       ...(this.deps.startFloorBelowSampleMs !== undefined ? { belowSampleMs: this.deps.startFloorBelowSampleMs } : {}),
     });
+    const retentionHistory = await pacer.run(store.cellRetentionHistorySteps());
     this.retention = new CellRetentionService({
       cellsRoot: this.cfg.cellsRoot,
       policy: this.cfg.cellRetention,
@@ -1249,11 +1258,11 @@ export class HiveDaemon {
       startFloor: () => this.startFloor?.current() ?? null,
       wipNode: () => this.wipNode(),
       wipNodeScopes: () => this.mustStore().wipNodeScopes(this.wipNode()),
-      lastRecordedPass: (kind) => this.mustStore().latestCellRetentionPass(kind ?? null),
+      lastRecordedPass: (kind) => retentionHistory.passes[kind ?? "any"],
       loadJudgments: () => this.mustStore().cellRetentionJudgments(),
       saveJudgments: (encoded) => this.mustStore().putCellRetentionJudgments(encoded),
-      recentEvictionTimes: (sinceTs) => this.mustStore().cellRetentionEvictionTimes(sinceTs),
-      lastDailyCapAt: () => this.mustStore().lastCellRetentionDailyCapAt(),
+      recentEvictionTimes: (sinceTs) => retentionHistory.evictions.filter(eviction => eviction.ts >= sinceTs).map(eviction => eviction.ts),
+      lastDailyCapAt: () => retentionHistory.dailyCapAt,
     });
     for (const warning of this.cfg.cellRetention.warnings) this.log(`config.retention.invalid ${warning}`);
     for (const warning of this.cfg.transcriptSegments.warnings) this.log(`config.transcripts.invalid ${warning}`);
@@ -1376,27 +1385,27 @@ export class HiveDaemon {
     const reconcile = this.performance.startSpan("daemon.start.reconcile");
     this.activeStartupPhase = reconcile;
     // Behavior 2: re-adopt surviving runtimes by the identities core recorded
-    // at spawn, so DaemonCore.boot()'s snapshotLive() sees them and
+    // at spawn, so DaemonCore.reconcileBoot()'s snapshotLive() sees them and
     // reconcileAtBoot keeps their rows live instead of stopping them.
-    this.backfillCellRegistry(store);
-    const unresolved = this.adoptSurvivors(store, driver);
+    await this.backfillCellRegistry(store, pacer);
+    const unresolved = this.adoptSurvivors(store, driver, await this.adoptionCandidates(store, pacer));
     for (const row of unresolved) this.identityRecovery.retain({...row, since: store.runtimeIdentityUnresolvedSince(row.beeId, row.generation)});
-    this.lastBoot = this.core.boot(unresolved);
+    const reconciled = this.core.reconcileBoot(unresolved);
     this.recordHandoverAtBoot(store, driver);
-    for (const { view } of store.listBeeViewRows()) {
-      const flags = store.activeFlags(view.beeId).filter(row => row.detail.startsWith("account_credentials_unusable:") || row.detail.startsWith("runtime_start_held:") || row.detail.startsWith(START_FLOOR_FLAG_PREFIX));
+    this.lastBoot = await pacer.run(this.core.wakeSweepAtBoot(reconciled));
+    for (const bee of store.eachBee()) {
+      await pacer.pace();
+      const flags = store.activeFlags(bee.id).filter(row => row.detail.startsWith("account_credentials_unusable:") || row.detail.startsWith("runtime_start_held:") || row.detail.startsWith(START_FLOOR_FLAG_PREFIX));
       if (flags.length === 0) continue;
-      const pending = store.listCommands({ beeId: view.beeId }).some(command => command.status === "queued" && ["spawn", "revive", "send_wake"].includes(command.verb));
+      const pending = store.listCommands({ beeId: bee.id }).some(command => command.status === "queued" && ["spawn", "revive", "send_wake"].includes(command.verb));
       if (!pending) {
-        this.clearRuntimeStartAttention(view.beeId);
-        this.clearStartFloorFlag(view.beeId, "No runtime start is pending");
+        this.clearRuntimeStartAttention(bee.id);
+        this.clearStartFloorFlag(bee.id, "No runtime start is pending");
       } else if (flags.some(row => row.detail.startsWith(START_FLOOR_FLAG_PREFIX))) {
-        this.startFloorFlagged.add(view.beeId);
+        this.startFloorFlagged.add(bee.id);
       }
     }
-    this.identityRecoveryTimer = setInterval(() => this.retryProcessIdentities(), 1000);
-    this.identityRecoveryTimer.unref();
-    this.sweepBeeTmpAtBoot(store);
+    await this.sweepBeeTmpAtBoot(store, pacer);
     this.sweepRunnerSocketsAtBoot(driver);
     this.reconcileCellOpsAtBoot();
     // v31: wrappers parked by an earlier pass are already evicted; finish deleting them.
@@ -1418,6 +1427,9 @@ export class HiveDaemon {
     this.activeStartupPhase = rpc;
     this.bootStatus.ready();
     this.log("boot.phase phase=ready");
+    this.log(`boot.paced yields=${pacer.yields} longest_slice_ms=${pacer.longestSlice}`);
+    this.identityRecoveryTimer = setInterval(() => this.retryProcessIdentities(), 1000);
+    this.identityRecoveryTimer.unref();
     if (await removeHandoverMarker(this.runtimeUpdate().root)) this.log(`boot.handover_marker_removed root=${this.runtimeUpdate().root}`);
     cells.trackOrigins(this.recentCellOrigins(store));
     void this.accounts?.credentialHandoff.reconcileStartup().catch(() => this.log("account.credentials.handoff_reconcile_failed"));
@@ -2239,10 +2251,11 @@ export class HiveDaemon {
     return removed;
   }
 
-  private sweepBeeTmpAtBoot(store: CoreStore): void {
+  private async sweepBeeTmpAtBoot(store: CoreStore, pacer: LoopPacer): Promise<void> {
     if (!this.beeTmp) return;
     const released: string[] = [];
-    for (const bee of store.listBees()) {
+    for (const bee of store.eachBee()) {
+      await pacer.pace();
       const rt = store.currentRuntime(bee.id);
       if (bee.lifecycle === "archived" && (!rt || rt.state === "stopped")) released.push(bee.id);
     }
@@ -2298,16 +2311,24 @@ export class HiveDaemon {
     if (counts.overdue && Date.now() - this.identityWarningAt >= 60000) { this.identityWarningAt = Date.now(); this.log(`doctor.process_identity_unresolved count=${counts.overdue}`); }
   }
 
-  private adoptSurvivors(store: CoreStore, driver: RuntimeHost): Array<{beeId: string; generation: number}> {
-    const unresolved: Array<{beeId: string; generation: number}> = [];
+  private async adoptionCandidates(store: CoreStore, pacer: LoopPacer): Promise<AdoptionCandidate[]> {
     for (const retired of store.retireTmuxSubstrate()) {
       this.log(`boot.tmux_retired bee=${retired.beeId}${retired.generation != null ? ` gen=${retired.generation} pid=${retired.pid ?? "-"} pane_left_running=true` : ""}`);
     }
-    for (const bee of store.listBees()) {
+    const candidates: AdoptionCandidate[] = [];
+    for (const bee of store.eachBee()) {
+      await pacer.pace();
       const rt = store.currentRuntime(bee.id);
       if (!rt || rt.pid == null || rt.pidStartedAt == null) continue;
-      const pendingMove = bee.activeMoveId != null;
-      if (rt.state === "stopped" && !pendingMove) continue;
+      if (rt.state === "stopped" && bee.activeMoveId == null) continue;
+      candidates.push({bee, rt: {...rt, pid: rt.pid, pidStartedAt: rt.pidStartedAt}});
+    }
+    return candidates;
+  }
+
+  private adoptSurvivors(store: CoreStore, driver: RuntimeHost, candidates: readonly AdoptionCandidate[]): Array<{beeId: string; generation: number}> {
+    const unresolved: Array<{beeId: string; generation: number}> = [];
+    for (const {bee, rt} of candidates) {
       const lastKnownState =
         rt.state === "booting" || rt.state === "running" || rt.state === "idle" ? rt.state : undefined;
       const observationCursor = store.runtimeObservationCursor(bee.id, rt.generation);
@@ -4823,8 +4844,9 @@ export class HiveDaemon {
     }
   }
 
-  private backfillCellRegistry(store: CoreStore): void {
-    for (const bee of store.listBees()) {
+  private async backfillCellRegistry(store: CoreStore, pacer: LoopPacer): Promise<void> {
+    for (const bee of store.eachBee()) {
+      await pacer.pace();
       if (bee.substrate !== "cell" || bee.cellId) continue;
       try {
         const wrapperDir = dirname(bee.cwd);

@@ -43,6 +43,7 @@ import { THREAD_OPERATIONS_TABLE_SQL } from "./schema.ts";
 import type { CredentialHandoffIdentity } from "./types.ts";
 import { DatabaseSync } from "node:sqlite";
 import { hostname } from "node:os";
+import { LoopPacer, runSteps, type Steps } from "./loopPacer.ts";
 import { generateKeyPairSync, randomUUID } from "node:crypto";
 import { humanRefAuthorityId, signHumanRefReceipt, verifyHumanRefReceipt, type HumanRefIssuer, type HumanRefReceipt, type HumanRefRegistry } from "./humanRefs.ts";
 import { TextDecoder, isDeepStrictEqual } from "node:util";
@@ -316,6 +317,13 @@ export interface CoreStoreOptions {
   buildIdentity?: string;
   connection?: DatabaseSync;
   upgradeBackupTaken?: boolean;
+  testMigrationSteps?: () => Steps<void>;
+}
+
+export interface CellRetentionHistory {
+  passes: Record<"any" | "scheduled" | "pressure" | "manual", Record<string, unknown> | null>;
+  dailyCapAt: number | null;
+  evictions: Array<{ seq: number; ts: number }>;
 }
 
 export interface CreateBeeInput {
@@ -1844,6 +1852,8 @@ export class CoreStore {
   private readonly stmts = new Map<string, ReturnType<DatabaseSync["prepare"]>>();
   private readonly pendingStartBoundAtCache = new Map<string, {generation: number; at: number | null}>();
   private txDepth = 0;
+  private pendingOpen: Steps<void> | null = null;
+  private readonly testMigrationSteps: (() => Steps<void>) | null;
   private commitCallbacks: Array<() => void> = [];
   private readonly changeListeners = new Set<(change: StoreChange) => void>();
   private cachedAuditSeq: number | null = null;
@@ -1855,8 +1865,9 @@ export class CoreStore {
   /** Commands requeued running→queued by open() (B5 boot replay); reported by reconcileAtBoot. */
   private bootRequeuedCommandIds: number[] = [];
 
-  constructor(path: string, opts: CoreStoreOptions = {}) {
+  constructor(path: string, opts: CoreStoreOptions = {}, open: "now" | "paced" = "now") {
     this.path = path;
+    this.testMigrationSteps = opts.testMigrationSteps ?? null;
     this.now = opts.now ?? Date.now;
     this.random = opts.random ?? Math.random;
     this.maxAttempts = opts.maxAttempts ?? 5;
@@ -1867,6 +1878,20 @@ export class CoreStore {
     this.effectLedger = new EffectLedger(this.db, this.now);
     this.executionLedger = new ExecutionLedger(this.db, this.now, () => this.effectCoverage(), (kind, beeId, data) => { this.audit(kind, beeId, data); }, claim => this.executionStarts.assertAdvance(claim));
     this.executionStarts = new ExecutionStarts(this.db, claim => this.executionLedger.validateCurrent(claim), (kind,beeId,data) => { this.audit(kind,beeId,data); }, key => this.executionLedger.spawnStarted(key), key => this.executionLedger.spawnUnknown(key));
+    const opening = this.openSteps(path, opts);
+    if (open === "paced") this.pendingOpen = opening;
+    else runSteps(opening);
+  }
+
+  static async openPaced(path: string, opts: CoreStoreOptions, pacer: LoopPacer): Promise<CoreStore> {
+    const store = new CoreStore(path, opts, "paced");
+    const opening = store.pendingOpen!;
+    store.pendingOpen = null;
+    await pacer.run(opening);
+    return store;
+  }
+
+  private *openSteps(path: string, opts: CoreStoreOptions): Steps<void> {
     try {
       // Fail immediately (no waiting) if another writer holds the lock.
       this.db.exec("PRAGMA busy_timeout = 0");
@@ -1892,23 +1917,7 @@ export class CoreStore {
       const questionsDdl = String((this.db.prepare("SELECT sql FROM sqlite_master WHERE name = 'questions'").get() as Row).sql);
       const rebuildQuestions = !questionsDdl.includes("'dismissed'") && /CHECK\s*\(\s*status\s+IN/i.test(questionsDdl);
       if (rebuildQuestions) this.db.exec("PRAGMA foreign_keys = OFF");
-      try { this.tx(() => {
-        // Version gate + explicit migrations FIRST (before any other write
-        // touches possibly-old tables), atomically with the stamp.
-        this.ensureSchemaVersion();
-        if (opts.buildIdentity) this.db.prepare("INSERT INTO meta(key,value) VALUES('store_build_identity',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(opts.buildIdentity);
-        try { this.effectLedger.open(); this.executionLedger.open(); this.executionStarts.open(); }
-        catch (error) {
-          if (error instanceof CoreError) throw error;
-          throw new CoreError("Effect ledger initialization failed; store recovery required");
-        }
-        // Guaranteed write on open: takes the exclusive lock now, not lazily.
-        this.stmt(
-          "INSERT INTO meta(key, value) VALUES('opened_at', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-        ).run(String(this.now()));
-        this.bootRequeueRunningCommands();
-        if (rebuildQuestions) this.assertQuestionMigrationForeignKeys();
-      }); } finally { if (rebuildQuestions) this.db.exec("PRAGMA foreign_keys = ON"); }
+      try { yield* this.txSteps(this.openTransactionSteps(opts, rebuildQuestions)); } finally { if (rebuildQuestions) this.db.exec("PRAGMA foreign_keys = ON"); }
     } catch (err) {
       this.stmts.clear();
       try {
@@ -1919,6 +1928,24 @@ export class CoreStore {
       if (err instanceof CoreError) throw err;
       throw new SecondWriterError(path, err);
     }
+  }
+
+  private *openTransactionSteps(opts: CoreStoreOptions, rebuildQuestions: boolean): Steps<void> {
+    // Version gate + explicit migrations FIRST (before any other write
+    // touches possibly-old tables), atomically with the stamp.
+    yield* this.schemaVersionSteps();
+    if (opts.buildIdentity) this.db.prepare("INSERT INTO meta(key,value) VALUES('store_build_identity',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(opts.buildIdentity);
+    try { this.effectLedger.open(); this.executionLedger.open(); this.executionStarts.open(); }
+    catch (error) {
+      if (error instanceof CoreError) throw error;
+      throw new CoreError("Effect ledger initialization failed; store recovery required");
+    }
+    // Guaranteed write on open: takes the exclusive lock now, not lazily.
+    this.stmt(
+      "INSERT INTO meta(key, value) VALUES('opened_at', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+    ).run(String(this.now()));
+    this.bootRequeueRunningCommands();
+    if (rebuildQuestions) this.assertQuestionMigrationForeignKeys();
   }
 
   backup(sourceBuild: string): StoreBackupResult {
@@ -2059,6 +2086,28 @@ export class CoreStore {
   // -------------------------------------------------------------------------
 
   /** Serialize every write into one IMMEDIATE transaction; nested calls join the outer tx. */
+  private *txSteps<T>(steps: Steps<T>): Steps<T> {
+    if (this.txDepth > 0) throw new CoreError("txSteps cannot nest inside a transaction");
+    this.db.exec("BEGIN IMMEDIATE");
+    this.txDepth = 1;
+    try {
+      const result = yield* steps;
+      this.db.exec("COMMIT");
+      const callbacks = this.commitCallbacks;
+      this.commitCallbacks = [];
+      for (const callback of callbacks) queueMicrotask(callback);
+      return result;
+    } catch (err) {
+      this.commitCallbacks = [];
+      this.cachedAuditSeq = null;
+      this.mailHistoryProjectionSeq = null;
+      try { this.db.exec("ROLLBACK"); } catch { /* rollback after failed commit */ }
+      throw err;
+    } finally {
+      this.txDepth = 0;
+    }
+  }
+
   private tx<T>(fn: () => T): T {
     if (this.txDepth > 0) {
       this.txDepth += 1;
@@ -2139,7 +2188,7 @@ export class CoreStore {
    * explicit code — no silent bumps. Runs inside the open() transaction so
    * migration + stamp commit atomically.
    */
-  private ensureSchemaVersion(): void {
+  private *schemaVersionSteps(): Steps<void> {
     const { stored, minReader } = this.readableStoredSchema();
     this.db.exec(HUMAN_OUTPUT_SQL);
     const ddl = String((this.db.prepare("SELECT sql FROM sqlite_master WHERE name = 'questions'").get() as Row).sql);
@@ -2190,6 +2239,7 @@ export class CoreStore {
         this.db.prepare("UPDATE sqlite_sequence SET seq = MAX(seq, ?) WHERE name = 'commands'").run(sequence);
         this.db.exec(SCHEMA_SQL); // restore the command indexes removed with the old table
       }
+      yield;
       // v2 → v3: additive bee columns (provider_session_id, env, imported_from);
       // v3 → v4: spawn_failures; v4 → v5: args. Same discipline: add iff
       // missing, so fresh and v1 stores (whose bees table was just created in
@@ -2314,6 +2364,7 @@ export class CoreStore {
         this.db.exec("DROP TABLE account_limits_v18");
       }
       if (needsHumanRefMigration) this.reserveLegacyBeeReferences();
+      yield;
       // v9 → v10: mint display handles for existing bees. An imported bee
       // whose old id already IS a pretty handle (CL.7920-style) keeps it —
       // the operator's known references survive the cutover.
@@ -2327,8 +2378,10 @@ export class CoreStore {
         this.stmt("UPDATE bees SET handle = ? WHERE id = ?").run(handle, id);
         this.stmt("UPDATE bee_reference_claims SET handle = ? WHERE bee_id = ?").run(handle, id);
         this.stmt("INSERT OR IGNORE INTO bee_handle_reservations(handle) VALUES(?)").run(handle);
+        yield;
       }
     }
+    yield;
     // These indexes need their columns, so they are created here
     // — after the migration — not in SCHEMA_SQL.
     this.db.exec(FLAGS_EXPIRY_INDEX_SQL);
@@ -2419,6 +2472,7 @@ export class CoreStore {
           handoffId: null,
           createdAt: Number(b.created_at),
         });
+        yield;
       }
     }
     // v22 → v23 → v24: the mail-history origin CHECK gains 'handoff.seed'
@@ -2493,7 +2547,10 @@ export class CoreStore {
       const watermark = Number((this.stmt("SELECT value FROM meta WHERE key = 'confirmation_legacy_max_message_id'").get() as Row).value);
       this.stmt("INSERT INTO meta(key,value) VALUES('confirmation_legacy_heads', ?)").run(JSON.stringify(cohorts.map(row => ({ ...row, messageIds: this.legacyConfirmationHeads(row.bee_id, watermark) }))));
     }
+    yield;
     if (stored < 40) this.redactRpcIdempotencyEnv();
+    yield;
+    if (stored < SCHEMA_VERSION && this.testMigrationSteps) yield* this.testMigrationSteps();
     this.db.exec(ACCOUNT_CREDENTIAL_ATTENTION_TABLE_SQL);
     installRuntimeProcessIdentity(this.db);
     const upsertMeta = this.db.prepare("INSERT INTO meta(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value");
@@ -2840,6 +2897,39 @@ export class CoreStore {
     } catch {
       return null;
     }
+  }
+
+  *cellRetentionHistorySteps(scanRows = 500_000, chunkRows = 20_000): Steps<CellRetentionHistory> {
+    const history: CellRetentionHistory = { passes: { any: null, scheduled: null, pressure: null, manual: null }, dailyCapAt: null, evictions: [] };
+    const newest = Number((this.stmt("SELECT COALESCE(MAX(seq), 0) AS seq FROM audit").get() as Row).seq);
+    const floor = newest - scanRows;
+    const seen = { any: false, scheduled: false, pressure: false, manual: false };
+    const parse = (payload: unknown): Record<string, unknown> | null => {
+      try { return JSON.parse(String(payload)) as Record<string, unknown>; } catch { return null; }
+    };
+    for (let upper = newest; upper > floor; upper -= chunkRows) {
+      const lower = Math.max(floor, upper - chunkRows);
+      const rows = this.stmt(
+        "SELECT seq, ts, kind, payload FROM audit WHERE seq > ? AND seq <= ? AND kind IN ('cell.retention.pass', 'cell.retention.daily_cap', 'cell.evicted') ORDER BY seq DESC",
+      ).all(lower, upper) as Row[];
+      for (const row of rows) {
+        if (row.kind === "cell.retention.daily_cap") {
+          history.dailyCapAt ??= Number(row.ts);
+        } else if (row.kind === "cell.evicted") {
+          const reason = parse(row.payload)?.reason;
+          if ((reason ?? "") !== "operator") history.evictions.push({ seq: Number(row.seq), ts: Number(row.ts) });
+        } else {
+          const payload = parse(row.payload);
+          if (!seen.any) { seen.any = true; history.passes.any = payload; }
+          for (const kind of ["scheduled", "pressure", "manual"] as const) {
+            if (!seen[kind] && payload?.kind === kind) { seen[kind] = true; history.passes[kind] = payload; }
+          }
+        }
+      }
+      yield;
+    }
+    history.evictions.reverse();
+    return history;
   }
 
   private assertDeliveryAuditSize(payload: Record<string, unknown>, reserve = 0): void {
@@ -3280,6 +3370,18 @@ export class CoreStore {
   listBees(): BeeRow[] {
     const rows = this.stmt(`${BEE_ROW_SELECT} ORDER BY bees.id`).all() as Row[];
     return rows.map(row => this.mapPhoneBee(row));
+  }
+
+  *eachBee(pageSize = 256): Generator<BeeRow, void, void> {
+    let after: string | null = null;
+    for (;;) {
+      const rows = (after === null
+        ? this.stmt(`${BEE_ROW_SELECT} ORDER BY bees.id LIMIT ?`).all(pageSize)
+        : this.stmt(`${BEE_ROW_SELECT} WHERE bees.id > ? ORDER BY bees.id LIMIT ?`).all(after, pageSize)) as Row[];
+      for (const row of rows) yield this.mapPhoneBee(row);
+      if (rows.length < pageSize) return;
+      after = String(rows[rows.length - 1]!.id);
+    }
   }
 
   /** Naming needs only eligible identities, never process env or archived history. */
