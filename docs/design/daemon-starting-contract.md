@@ -7,9 +7,9 @@ A daemon that is still starting answers. It takes the store lock, binds its sock
 ## Boot order
 
 1. Open the store and take its SQLite exclusive lock. This is the single-daemon lock (B9): a second daemon stops here with `SecondWriterError`. The socket is bound only after the lock, so only the lock holder ever unlinks a stale socket.
-2. Remove abandoned backup partials (see below).
+2. Remove abandoned backup partials, then apply retention: keep the two newest completed backups (see below).
 3. Bind the socket and write the endpoint record. From here on, `health` answers.
-4. If the stored schema is older than this build's, take the pre-migration backup: an async page copy (`store_backup`, with byte progress), then a full `integrity_check` plus sha256 of the copy in a worker thread (`store_backup_verify`), then publish the receipt.
+4. If the stored schema is older than this build's, take the pre-migration backup: an async page copy (`store_backup`, with byte progress), then a full `integrity_check` plus sha256 of the copy in a worker thread (`store_backup_verify`), then publish the receipt and apply retention again.
 5. Migrate (`store_migrate`). This runs on the main thread; a long migration blocks `health` until it ends.
 6. Start services and re-adopt surviving runtimes (`boot_reconcile`).
 7. Ready: every verb answers.
@@ -77,12 +77,34 @@ The ratio grows with store size because `integrity_check` is superlinear. It was
 
 ## Abandoned partials
 
-A daemon killed during the backup leaves `<store>.backups/<ts>-<uuid>.partial`, as large as the store. At step 2, while holding the store lock, the daemon removes files named `<ts>-<uuid>.partial`, `<ts>-<uuid>.json.partial` and their `-journal`, `-wal`, `-shm` siblings, and logs `store.backup.partial_removed name=… bytes=…`. Completed backups (`.sqlite3` with its `.json` receipt) are never touched here.
+A daemon killed during the backup leaves `<store>.backups/<ts>-<uuid>.partial`, as large as the store. At step 2, while holding the store lock, the daemon removes files named `<ts>-<uuid>.partial`, `<ts>-<uuid>.json.partial` and their `-journal`, `-wal`, `-shm` siblings, and logs `store.backup.partial_removed name=… bytes=…`. Completed backups (`.sqlite3` with its `.json` receipt) are never touched by this cleanup.
 
 Cleanup never stops a start. An entry that is not a regular file, or that cannot be removed (permissions, read-only or immutable, any filesystem error), is skipped and logged as `store.backup.partial_skipped name=… reason=…`. The same best-effort rule applies to retention after a backup publishes.
 
 Why every partial found at step 2 is an orphan: only a process holding the store's exclusive lock writes partials. The daemon writes them during the upgrade and during `store.backup`. `hive store backup` goes through the daemon when one answers, and otherwise uses the offline backup, which holds the exclusive lock for the whole copy. `hive store restore` holds the lock and writes its temporary file next to the store, not in `.backups`. So while the daemon holds the lock, no other writer of partials can be running.
 
-## Retention
+## Retention (HON-46, 2026-11-25)
 
-Unchanged here, and the owner's decision: retention keeps the newest 10 backups, plus the newest backup of every schema version ever seen. It has no age or size bound, and runs only when a new backup publishes.
+The owner's decision: keep the two newest completed backups and delete the rest. No schema-version exemption, no age or size bound.
+
+A completed backup is a `<ts>-<uuid>.sqlite3` with its `<ts>-<uuid>.json` receipt, where the receipt names itself and that copy. Backups are ordered by the receipt's `createdAt`.
+
+Retention runs:
+
+1. At every daemon start, at step 2, under the store lock.
+2. After a new backup is published: its copy has passed `integrity_check` and its receipt is in place. A copy still being written or verified is a `.partial` and is never counted, so nothing is pruned on its account before it is verified. A daemon killed during the backup leaves the old backups as they were.
+
+The daemon logs `store.backup.removed name=… bytes=… kind=…` for each deletion and `store.backup.retention kept=… newest=… removed=… removed_bytes=… skipped=…` once per pass. `hive store backup` prints one line after the receipt, e.g. `kept 2 backups (newest 2026-11-25T04:55:07.188Z); removed 3 older (3.0 MB)`; `--json` carries the same facts as `retention`.
+
+| entry | treatment | `kind` |
+|---|---|---|
+| completed backup beyond the two newest | `.sqlite3` deleted, then the receipt | `older_backup` |
+| `.sqlite3` with no receipt | deleted | `orphan_copy` |
+| recognized receipt whose `.sqlite3` is gone | receipt deleted | `dangling_receipt` |
+| receipt that is unreadable or names another path (moved data dir) | left alone, logged `unrecognized_receipt` | — |
+| `.partial` and its siblings | never touched; the abandoned-partial cleanup owns them | — |
+| any other file name | ignored | — |
+
+A `.sqlite3` with no receipt is an orphan, not a backup. Publishing renames the verified copy into place and then writes the receipt, so the only ways to get a copy without a receipt are a crash between those two steps or a receipt deleted by hand. `hive store restore` takes a receipt and checks the copy against its sha256, schema and DDL digest; a copy without one cannot be restored, so it is not one of the two kept.
+
+Retention never stops a start or fails a backup. An entry that is not a regular file, or that cannot be removed (permissions, an immutable file, any filesystem error), is skipped and logged as `store.backup.retention_skipped name=… reason=…`. A backup whose copy cannot be removed keeps its receipt, so the next pass retries it.

@@ -25,6 +25,8 @@ export interface StoreBackupReceipt {
   receiptPath: string;
 }
 
+export type StoreBackupResult = StoreBackupReceipt & { retention: StoreBackupRetention };
+
 const digest = (bytes: string | Buffer) => createHash("sha256").update(bytes).digest("hex");
 const FILE_DIGEST_CHUNK_BYTES = 1024 * 1024;
 function fileDigest(path: string): string {
@@ -71,7 +73,7 @@ function backupTarget(storePath: string): BackupTarget {
   return { directory, backupPath: `${base}.sqlite3`, temporary: `${base}.partial`, receiptPath: `${base}.json` };
 }
 
-function publishBackup(target: BackupTarget, storePath: string, sourceBuild: string, verified: StoreBackupVerification): StoreBackupReceipt {
+function publishBackup(target: BackupTarget, storePath: string, sourceBuild: string, verified: StoreBackupVerification): StoreBackupResult {
   renameSync(target.temporary, target.backupPath);
   sync(target.directory);
   const receipt: StoreBackupReceipt = { format: 1, sourceBuild, storePath: resolve(storePath), schemaVersion: verified.schemaVersion, ddlDigest: verified.ddlDigest,
@@ -80,8 +82,7 @@ function publishBackup(target: BackupTarget, storePath: string, sourceBuild: str
   sync(`${target.receiptPath}.partial`);
   renameSync(`${target.receiptPath}.partial`, target.receiptPath);
   sync(target.directory);
-  prune(target.directory);
-  return receipt;
+  return { ...receipt, retention: pruneStoreBackups(storePath) };
 }
 
 function discardBackup(target: BackupTarget | undefined): void {
@@ -95,7 +96,7 @@ function refusedBackup(error: unknown): StoreBackupError {
   return error instanceof StoreBackupError ? error : new StoreBackupError(`Backup refused: ${error instanceof Error ? error.message : String(error)}`);
 }
 
-export function backupStore(db: DatabaseSync, storePath: string, sourceBuild: string): StoreBackupReceipt {
+export function backupStore(db: DatabaseSync, storePath: string, sourceBuild: string): StoreBackupResult {
   let target: BackupTarget | undefined;
   try {
     target = backupTarget(storePath);
@@ -159,7 +160,7 @@ async function copyStoreOnline(db: DatabaseSync, temporary: string, restarts: ()
   }
 }
 
-export async function backupStoreOnline(db: DatabaseSync, storePath: string, sourceBuild: string, options: OnlineBackupOptions = {}): Promise<StoreBackupReceipt> {
+export async function backupStoreOnline(db: DatabaseSync, storePath: string, sourceBuild: string, options: OnlineBackupOptions = {}): Promise<StoreBackupResult> {
   let target: BackupTarget | undefined;
   try {
     target = backupTarget(storePath);
@@ -239,49 +240,122 @@ function unlinkIfPresent(path: string): void {
   catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
 }
 
-function prune(directory: string): void {
-  const receipts: Array<{ path: string; receipt: StoreBackupReceipt }> = [];
-  for (const name of readdirSync(directory).filter(name => name.endsWith(".json"))) {
-    const path = join(directory, name);
-    try {
-      const receipt = JSON.parse(readFileSync(path, "utf8")) as StoreBackupReceipt;
-      if (receipt.format !== 1 || receipt.receiptPath !== path || receipt.backupPath !== path.replace(/\.json$/, ".sqlite3")
-        || !Number.isSafeInteger(receipt.schemaVersion) || typeof receipt.createdAt !== "string") throw new Error("Foreign or moved receipt");
-      receipts.push({ path, receipt });
-    } catch {
-      process.emitWarning(`Store backup retention skipped unrecognized receipt ${path}`);
-    }
-  }
-  receipts.sort((a, b) => b.receipt.createdAt.localeCompare(a.receipt.createdAt) || b.path.localeCompare(a.path));
-  const schemas = new Set<number>();
-  for (const [index, item] of receipts.entries()) {
-    const newest = !schemas.has(item.receipt.schemaVersion);
-    schemas.add(item.receipt.schemaVersion);
-    if (index < 10 || newest) continue;
-    retireBackupFile(item.path);
-    retireBackupFile(item.receipt.backupPath);
-  }
-  for (const name of readdirSync(directory)) {
-    if (!/^\d+-[0-9a-f-]{36}\.(sqlite3|partial|json\.partial)$/.test(name)) continue;
-    const base = name.replace(/\.(sqlite3|partial|json\.partial)$/, "");
-    if (!existsSync(join(directory, `${base}.json`))) retireBackupFile(join(directory, name));
-  }
-  sync(directory);
+export const STORE_BACKUPS_KEPT = 2;
+
+export interface KeptStoreBackup {
+  name: string;
+  createdAt: string;
+  bytes: number;
 }
 
-function retireBackupFile(path: string): void {
+export interface RemovedStoreBackup {
+  name: string;
+  bytes: number;
+  kind: "older_backup" | "orphan_copy" | "dangling_receipt";
+}
+
+export interface StoreBackupRetention {
+  kept: KeptStoreBackup[];
+  removed: RemovedStoreBackup[];
+  skipped: SkippedBackupPartial[];
+}
+
+const BACKUP_FILE = /^(\d+-[0-9a-f-]{36})\.(sqlite3|json)$/;
+
+function recognizedReceipt(path: string): StoreBackupReceipt | null {
   try {
-    if (!lstatSync(path).isFile()) {
-      process.emitWarning(`Store backup retention skipped ${path}: not_a_file`);
-      return;
-    }
-    unlinkSync(path);
+    const receipt = JSON.parse(readFileSync(path, "utf8")) as StoreBackupReceipt;
+    const recognized = receipt.format === 1 && receipt.receiptPath === path && receipt.backupPath === path.replace(/\.json$/, ".sqlite3")
+      && Number.isSafeInteger(receipt.schemaVersion) && typeof receipt.createdAt === "string";
+    return recognized ? receipt : null;
+  } catch { return null; }
+}
+
+function regularFileBytes(path: string): number | "missing" | "not_a_file" {
+  try {
+    const entry = lstatSync(path);
+    return entry.isFile() ? entry.size : "not_a_file";
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") process.emitWarning(`Store backup retention skipped ${path}: ${failureReason(error)}`);
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return "missing";
+    throw error;
   }
 }
 
-export function backupStoreOffline(storePath: string, sourceBuild: string): StoreBackupReceipt {
+export function pruneStoreBackups(storePath: string): StoreBackupRetention {
+  const retention: StoreBackupRetention = { kept: [], removed: [], skipped: [] };
+  if (storePath === ":memory:") return retention;
+  const directory = `${resolve(storePath)}.backups`;
+  let names: string[];
+  try { names = readdirSync(directory); }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") retention.skipped.push({ name: ".", reason: failureReason(error) });
+    return retention;
+  }
+  const present = new Set(names);
+  const completed: Array<{ base: string; createdAt: string; bytes: number }> = [];
+  const remove = (base: string, files: string[], bytes: number, kind: RemovedStoreBackup["kind"]) => {
+    for (const name of files) {
+      try { unlinkSync(join(directory, name)); }
+      catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
+        retention.skipped.push({ name, reason: failureReason(error) });
+        return;
+      }
+    }
+    retention.removed.push({ name: `${base}.sqlite3`, bytes, kind });
+  };
+  for (const name of names) {
+    const match = BACKUP_FILE.exec(name);
+    if (!match) continue;
+    const [, base, extension] = match as unknown as [string, string, "sqlite3" | "json"];
+    try {
+      if (extension === "sqlite3") {
+        if (present.has(`${base}.json`)) continue;
+        const bytes = regularFileBytes(join(directory, name));
+        if (bytes === "not_a_file") retention.skipped.push({ name, reason: "not_a_file" });
+        else if (bytes !== "missing") remove(base, [name], bytes, "orphan_copy");
+        continue;
+      }
+      const receiptBytes = regularFileBytes(join(directory, name));
+      if (receiptBytes === "missing") continue;
+      if (receiptBytes === "not_a_file") { retention.skipped.push({ name, reason: "not_a_file" }); continue; }
+      const receipt = recognizedReceipt(join(directory, name));
+      if (!receipt) { retention.skipped.push({ name, reason: "unrecognized_receipt" }); continue; }
+      const copyBytes = regularFileBytes(receipt.backupPath);
+      if (copyBytes === "not_a_file") retention.skipped.push({ name: `${base}.sqlite3`, reason: "not_a_file" });
+      else if (copyBytes === "missing") remove(base, [name], receiptBytes, "dangling_receipt");
+      else completed.push({ base, createdAt: receipt.createdAt, bytes: copyBytes + receiptBytes });
+    } catch (error) {
+      retention.skipped.push({ name, reason: failureReason(error) });
+    }
+  }
+  completed.sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.base.localeCompare(a.base));
+  for (const [index, backup] of completed.entries()) {
+    if (index < STORE_BACKUPS_KEPT) retention.kept.push({ name: `${backup.base}.sqlite3`, createdAt: backup.createdAt, bytes: backup.bytes });
+    else remove(backup.base, [`${backup.base}.sqlite3`, `${backup.base}.json`], backup.bytes, "older_backup");
+  }
+  if (retention.removed.length) {
+    try { sync(directory); } catch {}
+  }
+  return retention;
+}
+
+function readableBytes(bytes: number): string {
+  if (bytes >= 1e9) return `${(bytes / 1e9).toFixed(1)} GB`;
+  if (bytes >= 1e6) return `${(bytes / 1e6).toFixed(1)} MB`;
+  return `${Math.round(bytes / 1e3)} KB`;
+}
+
+export function describeBackupRetention(retention: StoreBackupRetention): string {
+  const newest = retention.kept[0];
+  const kept = `kept ${retention.kept.length} backup${retention.kept.length === 1 ? "" : "s"}${newest ? ` (newest ${newest.createdAt})` : ""}`;
+  const removedBytes = retention.removed.reduce((total, entry) => total + entry.bytes, 0);
+  const removed = `removed ${retention.removed.length} older (${readableBytes(removedBytes)})`;
+  const skipped = retention.skipped.length ? `; could not remove ${retention.skipped.map(entry => `${entry.name} (${entry.reason})`).join(", ")}` : "";
+  return `${kept}; ${removed}${skipped}`;
+}
+
+export function backupStoreOffline(storePath: string, sourceBuild: string): StoreBackupResult {
   let db: DatabaseSync | undefined;
   try {
     if (!existsSync(storePath)) throw new StoreBackupError(`No store at ${storePath}`);

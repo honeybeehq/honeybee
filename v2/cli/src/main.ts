@@ -5475,7 +5475,7 @@ export async function runV2Cli(argv: string[], io: CliIo = defaultIo): Promise<n
       case "store": {
         const operation = parsed.positional[1];
         if (parsed.positional.length !== 2 || !["backup", "restore"].includes(operation ?? "")) throw new Error("Usage: hive v2 store backup [--timeout ms] | restore --from <receipt> --data-dir <dir>");
-        const { backupStoreOffline, restoreStoreOffline, StoreBackupError, StoreRestoreError } = await import("../../core/src/storeBackup.ts");
+        const { backupStoreOffline, describeBackupRetention, restoreStoreOffline, StoreBackupError, StoreRestoreError } = await import("../../core/src/storeBackup.ts");
         if (operation === "restore") {
           const from = parsed.flags.get("--from");
           if (typeof from !== "string") throw new Error("store restore requires --from <receipt>");
@@ -5488,17 +5488,18 @@ export async function runV2Cli(argv: string[], io: CliIo = defaultIo): Promise<n
         let daemon: RpcClient | null = null;
         try { daemon = await connectDaemon(ctx, { legacyProtocolVerbs: ["store.backup"] }); }
         catch (error) { if (!(error instanceof DaemonDownError) || socketConfigured(ctx.target)) throw error; }
-        let result;
+        let result: Partial<import("../../core/src/storeBackup.ts").StoreBackupResult>;
         if (daemon === null) result = backupStoreOffline(ctx.cfg.storePath, String(parsed.flags.get("--source-build") ?? "unknown: offline store; supply --source-build with the previous build identity"));
         else {
-          try { result = await daemon.request("store.backup", {}, timeoutMs); }
+          try { result = await daemon.request<Partial<import("../../core/src/storeBackup.ts").StoreBackupResult>>("store.backup", {}, timeoutMs); }
           catch (error) {
             if (!(error instanceof DaemonDownError)) throw error;
             throw new StoreBackupError(`The running daemon did not return the store backup within ${timeoutMs} ms (${error.reason}). It owns the store, so no offline backup was attempted; it may still finish and write its receipt.`);
           }
           finally { daemon.close(); }
         }
-        emit(ctx, [JSON.stringify(result)], result, false);
+        const { retention, ...receipt } = result;
+        emit(ctx, [JSON.stringify(receipt), ...(retention ? [describeBackupRetention(retention)] : [])], result, false);
         return 0;
       }
       case "config":

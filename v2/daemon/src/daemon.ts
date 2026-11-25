@@ -99,6 +99,7 @@ import {
   hashCellOpRequest,
   openCoreStoreUpgrading,
   type StoreUpgradeProgress,
+  type StoreBackupRetention,
   STORE_RETENTION,
   placementContextText,
   toBeeHandoffView,
@@ -1037,6 +1038,12 @@ export class HiveDaemon {
     if (previous !== progress.phase) this.log(`boot.phase phase=${progress.phase} schema=${progress.schemaFrom}->${progress.schemaTo}${progress.bytesTotal !== null ? ` bytes=${progress.bytesTotal}` : ""}`);
   }
 
+  private logBackupRetention(retention: StoreBackupRetention): void {
+    for (const backup of retention.removed) this.log(`store.backup.removed name=${backup.name} bytes=${backup.bytes} kind=${backup.kind}`);
+    for (const entry of retention.skipped) this.log(`store.backup.retention_skipped name=${entry.name} reason=${JSON.stringify(entry.reason)}`);
+    this.log(`store.backup.retention kept=${retention.kept.length} newest=${retention.kept[0]?.createdAt ?? "none"} removed=${retention.removed.length} removed_bytes=${retention.removed.reduce((total, backup) => total + backup.bytes, 0)} skipped=${retention.skipped.length}`);
+  }
+
   abortStart(): void {
     this.startAbort.abort();
   }
@@ -1069,6 +1076,7 @@ export class HiveDaemon {
         for (const partial of cleanup.removed) this.log(`store.backup.partial_removed name=${partial.name} bytes=${partial.bytes}`);
         for (const partial of cleanup.skipped) this.log(`store.backup.partial_skipped name=${partial.name} reason=${JSON.stringify(partial.reason)}`);
       },
+      backupRetention: (retention) => this.logBackupRetention(retention),
       progress: (progress) => this.noteStoreUpgrade(progress),
       verify: async (path) => {
         await this.deps.storeUpgradeGate?.(this.startAbort.signal);
@@ -3025,6 +3033,9 @@ export class HiveDaemon {
         return this.mustStore().backupOnline(JSON.stringify(BUILD_IDENTITY), {
           verify: (path) => verifyStoreBackupOffLoop(path),
           blocking: (reason) => this.log(`store.backup.blocking ${reason}`),
+        }).then((published) => {
+          this.logBackupRetention(published.retention);
+          return published;
         });
       case "runtime.status":
         return this.runtimeUpdate().status();

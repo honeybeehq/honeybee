@@ -1,4 +1,4 @@
-import { StoreBackupError, backupStore, backupStoreOnline, type OnlineBackupOptions, type StoreBackupReceipt } from "./storeBackup.ts";
+import { StoreBackupError, backupStore, backupStoreOnline, type OnlineBackupOptions, type StoreBackupResult } from "./storeBackup.ts";
 import { STORE_RETENTION, auditRetention, type StoreRetentionSlice } from "./storeRetention.ts";
 import { HUMAN_OUTPUT_SQL, HUMAN_OUTPUT_FACT_COLUMNS, HUMAN_OUTPUT_FACT_JOIN, HumanOutputLedger, humanOutputFacts, type BeeTellParams, type BeeReactParams, type HumanOutputMode, type BeeTellRow, type BeeReactionRow } from "./humanOutput.ts";
 import { readMailBatchPage, renderMailBatch } from "./mailBatch.ts";
@@ -1838,7 +1838,7 @@ export class CoreStore {
   private cachedAuditSeq: number | null = null;
   private mailHistoryProjectionSeq: number | null = null;
   private closed = false;
-  private onlineBackup: Promise<StoreBackupReceipt> | null = null;
+  private onlineBackup: Promise<StoreBackupResult> | null = null;
   private onlineBackupRestarts = 0;
   private rpcIdempotencyRedaction: RpcIdempotencyRedactionReceipt | null = null;
   /** Commands requeued running→queued by open() (B5 boot replay); reported by reconcileAtBoot. */
@@ -1910,7 +1910,7 @@ export class CoreStore {
     }
   }
 
-  backup(sourceBuild: string): StoreBackupReceipt {
+  backup(sourceBuild: string): StoreBackupResult {
     return backupStore(this.db, this.path, sourceBuild);
   }
 
@@ -2001,7 +2001,7 @@ export class CoreStore {
     return row === undefined || row.delivered_at !== null;
   }
 
-  backupOnline(sourceBuild: string, options: Omit<OnlineBackupOptions, "restarts"> = {}): Promise<StoreBackupReceipt> {
+  backupOnline(sourceBuild: string, options: Omit<OnlineBackupOptions, "restarts"> = {}): Promise<StoreBackupResult> {
     if (this.onlineBackup) return Promise.reject(new StoreBackupError("A store backup is already running"));
     this.onlineBackupRestarts = 0;
     const run = backupStoreOnline(this.db, this.path, sourceBuild, { ...options, restarts: () => this.onlineBackupRestarts }).finally(() => { this.onlineBackup = null; });

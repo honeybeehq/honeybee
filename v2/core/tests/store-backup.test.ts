@@ -96,7 +96,7 @@ test("migration fails closed before DDL when backup cannot finalize", () => {
   check.close();
 });
 
-test("migration receipt captures old DDL before schema creation; retention keeps each schema", () => {
+test("migration receipt captures old DDL before schema creation; retention keeps the two newest backups", () => {
   const dir = mkdtempSync(join(tmpdir(), "hb-backup-migrate-"));
   const path = join(dir, "core.sqlite3");
   openCoreStore(path).close();
@@ -110,10 +110,6 @@ test("migration receipt captures old DDL before schema creation; retention keeps
   const backup = new DatabaseSync(before.backupPath);
   assert.equal(backup.prepare("SELECT 1 FROM sqlite_master WHERE name='bee_human_outputs'").get(), undefined);
   backup.close();
-  for (let i = 0; i < 12; i++) backupStoreOffline(path, "same-schema");
-  const retained = readdirSync(`${path}.backups`).filter(name => name.endsWith(".json"));
-  assert.equal(retained.length, 11);
-  assert.ok(retained.includes(receipts[0]!));
   restoreStoreOffline(path, before.receiptPath);
   const restored = new DatabaseSync(path);
   assert.equal(restored.prepare("SELECT value FROM meta WHERE key='schema_version'").get()?.value, "44");
@@ -158,17 +154,34 @@ test("restore installs by atomic replacement while current path still names the 
   assert.equal(observed, true);
 });
 
-test("foreign receipts are reported and skipped without blocking a later backup", (t) => {
+test("retention keeps the two newest backups, removes receipt-less copies and leaves partials and unrecognized receipts", () => {
   const { path } = fixture();
+  const backups = `${path}.backups`;
   const first = backupStoreOffline(path, "fixture");
-  writeFileSync(join(`${path}.backups`, "foreign.json"), "broken");
-  writeFileSync(join(`${path}.backups`, "moved.json"), JSON.stringify({ ...first, receiptPath: "/old/moved.json" }));
-  const warnings: string[] = [];
-  t.mock.method(process, "emitWarning", (warning: string) => { warnings.push(String(warning)); });
+  const stash = `${path}.stash`;
+  mkdirSync(stash);
+  const park = () => { for (const name of readdirSync(backups)) fs.renameSync(join(backups, name), join(stash, name)); };
+  park();
+  for (let i = 0; i < 3; i++) { backupStoreOffline(path, "fixture"); park(); }
+  for (const name of readdirSync(stash)) fs.renameSync(join(stash, name), join(backups, name));
+  const orphan = "1000000000001-00000000-0000-0000-0000-000000000001.sqlite3";
+  const moved = "1000000000002-00000000-0000-0000-0000-000000000002.json";
+  const partial = "1000000000003-00000000-0000-0000-0000-000000000003.partial";
+  writeFileSync(join(backups, orphan), "x".repeat(1000));
+  writeFileSync(join(backups, moved), JSON.stringify({ ...first, receiptPath: "/old/moved.json" }));
+  writeFileSync(join(backups, partial), "p");
+  writeFileSync(join(backups, "foreign.json"), "broken");
   const next = backupStoreOffline(path, "fixture");
-  assert.ok(fs.existsSync(next.receiptPath));
-  assert.equal(warnings.length, 2);
-  assert.ok(warnings.every(warning => warning.includes("retention skipped")));
+  const receipts = readdirSync(backups).filter(name => /^\d+-.*\.json$/.test(name) && name !== moved).sort();
+  assert.deepEqual(receipts.length, 2);
+  assert.ok(receipts.includes(next.receiptPath.split("/").pop()!));
+  assert.equal(next.retention.kept.length, 2);
+  assert.equal(next.retention.kept[0]!.createdAt, next.createdAt);
+  assert.equal(next.retention.removed.filter(entry => entry.kind === "older_backup").length, 3);
+  assert.deepEqual(next.retention.removed.filter(entry => entry.kind === "orphan_copy"), [{ name: orphan, bytes: 1000, kind: "orphan_copy" }]);
+  assert.deepEqual(next.retention.skipped, [{ name: moved, reason: "unrecognized_receipt" }]);
+  for (const name of [moved, partial, "foreign.json"]) assert.ok(fs.existsSync(join(backups, name)), `${name} is left alone`);
+  assert.equal(fs.existsSync(join(backups, orphan)), false);
 });
 
 test("VACUUM failure removes its partial snapshot and returns a typed backup failure", (t) => {
