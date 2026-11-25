@@ -4111,7 +4111,7 @@ export class CoreStore {
    * one, and returning to the args the live runtime started with cancels the
    * restart. Only a restart that is already executing refuses.
    */
-  reconfigureBee(beeId: string, args: string[] | null):
+  reconfigureBee(beeId: string, args: string[] | null, env?: Record<string, string>):
     | { outcome: "queued"; commandId: number }
     | { outcome: "recorded" | "unchanged"; bee: BeeRow } {
     const next = normalizeBeeArgs(args, "reconfigureBee");
@@ -4138,12 +4138,16 @@ export class CoreStore {
         ? (pending.args.previousArgs as string[] | null)
         : bee.args;
       const live = rt !== null && rt.state !== "stopped";
-      if (!live || sameArgs(runningArgs, next)) {
+      const envChanged = env !== undefined && this.setBeeEnv(beeId, env).applied;
+      const pendingEnv = pending?.args.envApplied === true;
+      if (live && pending && pendingEnv && !envChanged && sameArgs(bee.args, next)) return { outcome: "queued", commandId: pending.id };
+      if (!live || (sameArgs(runningArgs, next) && !envChanged && !pendingEnv)) {
         if (pending) this.mootModelChange(pending, "superseded_by_model_change");
         const changed = this.applyArgs(beeId, next);
-        return { outcome: changed ? "recorded" : "unchanged", bee: this.mustGetBee(beeId) };
+        return { outcome: changed || envChanged ? "recorded" : "unchanged", bee: this.mustGetBee(beeId) };
       }
       if (pending?.args.argsApplied === true && sameArgs(bee.args, next)) {
+        if (envChanged && !pendingEnv) this.stmt("UPDATE commands SET args = json_set(args, '$.envApplied', json('true')) WHERE id = ?").run(pending.id);
         return { outcome: "queued", commandId: pending.id };
       }
       this.applyArgs(beeId, next);
@@ -4153,6 +4157,7 @@ export class CoreStore {
         replacementArgs: next,
         previousArgs: runningArgs,
         argsApplied: true,
+        ...(envChanged || pendingEnv ? { envApplied: true } : {}),
         thenRevive: true,
       });
       return { outcome: "queued", commandId: command.id };

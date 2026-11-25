@@ -65,6 +65,7 @@ export const RPC_ACCESS = {
   "template.import": "mutate",
   "packages.importLocalConfig": "mutate",
   "bee.setArgs": "mutate",
+  "bee.setEnv": "mutate",
   "bee.reconfigure": "mutate",
   "cell.capture": "mutate",
   "cell.remove": "mutate",

@@ -350,6 +350,7 @@ export const DAEMON_CAPABILITIES = [
   "transcript.segments.v3",
   "roster.read.refs_limit.v1",
   "mail.delivery_id.v1",
+  "bee.setEnv.v1",
 ] as const;
 export type DaemonCapability = (typeof DAEMON_CAPABILITIES)[number];
 
@@ -647,6 +648,7 @@ export const RPC_VERBS = [
   "packages.importLocalConfig",
   // schema v5: replace a bee's per-bee spawn args (takes effect on the next runtime)
   "bee.setArgs",
+  "bee.setEnv",
   "bee.reconfigure",
   // WP6 §5 cell exit path (spec 05 points 4 + 6): the WP5 driver primitives as verbs
   "cell.capture",
@@ -2046,6 +2048,11 @@ export interface SpawnCellParams {
  * owner node still holds it; release it there via `account.admission.release`).
  */
 export interface SetArgsResult extends DedupMarkers {
+  bee: PublicBeeRow;
+  applied: boolean;
+}
+
+export interface SetEnvResult extends DedupMarkers {
   bee: PublicBeeRow;
   applied: boolean;
 }

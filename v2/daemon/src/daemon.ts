@@ -448,6 +448,7 @@ import { BEE_IMPORT_BUNDLE_BYTES_MAX,
   type TaskSupplySetResult,
   type TaskTransitionResult,
   type SetArgsResult,
+  type SetEnvResult,
   type TagResult,
   type ImportLocalConfigResult,
   type SendRpcResult,
@@ -2461,7 +2462,7 @@ export class HiveDaemon {
     }
     assertLocalHandoffRpc(verb, params, conn);
     this.assertNotForeignHarnessStart(verb, params, conn);
-    if (typeof params.beeId === "string" && ["stop", "revive", "archive", "bee.swapAccount", "bee.setArgs", "bee.reconfigure", "bee.move", "bee.handoff", "bee.fork", "bee.interrupt"].includes(verb)) {
+    if (typeof params.beeId === "string" && ["stop", "revive", "archive", "bee.swapAccount", "bee.setArgs", "bee.setEnv", "bee.reconfigure", "bee.move", "bee.handoff", "bee.fork", "bee.interrupt"].includes(verb)) {
       const operation = this.mustStore().threadOperationForSuccessor(params.beeId);
       if (operation && operation.phase !== "ready") throw new RpcError("thread_busy", "Successor execution is owned by its thread operation; recover it with thread.operation.retry");
     }
@@ -2794,6 +2795,8 @@ export class HiveDaemon {
       }
       case "bee.setArgs":
         return this.withIdempotency(verb, params, () => this.rpcSetArgs(params));
+      case "bee.setEnv":
+        return this.withIdempotency(verb, params, () => this.rpcSetEnv(params));
       case "bee.reconfigure":
         // Observation drain must commit outside the idempotency transaction:
         // a refusal must not roll back facts already consumed from the driver.
@@ -2801,7 +2804,7 @@ export class HiveDaemon {
         return this.withIdempotency(verb, params, () => {
           const beeId = this.requireBee(params);
           const args = this.argsParam(params, "bee.reconfigure", true);
-          return this.mustStore().reconfigureBee(beeId, args);
+          return this.mustStore().reconfigureBee(beeId, args, this.envSetParam(params, "bee.reconfigure", beeId));
         });
       case "cell.capture":
         return this.withIdempotency(verb, params, () => this.rpcCellCapture(params));
@@ -3258,6 +3261,31 @@ export class HiveDaemon {
     const res = this.mustStore().updateBeeArgs(beeId, args);
     this.log(`bee.setArgs bee=${beeId} applied=${res.applied} args=${JSON.stringify(args)}`);
     return { bee: toPublicBee(res.bee), applied: res.applied };
+  }
+
+  private rpcSetEnv(params: Record<string, unknown>): SetEnvResult {
+    for (const key of Object.keys(params)) if (!["beeId", "set", "idempotencyKey"].includes(key)) throw new RpcError("invalid_request", `bee.setEnv does not accept '${key}'`);
+    const beeId = this.requireBee(params);
+    if (params.set === undefined) throw new RpcError("invalid_request", "bee.setEnv: set must be a non-empty object of environment variables");
+    const res = this.mustStore().setBeeEnv(beeId, this.envSetParam(params, "bee.setEnv", beeId)!);
+    return { bee: toPublicBee(res.bee), applied: res.applied };
+  }
+
+  private envSetParam(params: Record<string, unknown>, verb: string, beeId: string): Record<string, string> | undefined {
+    const set = params.set;
+    if (set === undefined) return undefined;
+    if (set === null || typeof set !== "object" || Array.isArray(set) || Object.keys(set).length === 0) throw new RpcError("invalid_request", `${verb}: set must be a non-empty object of environment variables`);
+    for (const [name, value] of Object.entries(set)) {
+      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) throw new RpcError("invalid_request", `${verb}: ${JSON.stringify(name)} is not an environment variable name`);
+      if (value !== null && typeof value !== "string") throw new RpcError("invalid_request", `${verb}: ${name} must be a string, or null to remove it`);
+    }
+    const env: Record<string, string> = { ...this.mustStore().getBee(beeId)!.env };
+    for (const [name, value] of Object.entries(set as Record<string, string | null>)) {
+      if (value === null) delete env[name];
+      else env[name] = value;
+    }
+    this.log(`${verb} bee=${beeId} env.keys=${JSON.stringify(Object.keys(set).sort())}`);
+    return env;
   }
 
   private requireBee(params: Record<string, unknown>): string {

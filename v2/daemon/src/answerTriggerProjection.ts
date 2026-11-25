@@ -10,6 +10,7 @@ export const ANSWER_TRIGGER_RESULTS = {
   ForkResult: { verbs: ["bee.fork"], triggers: ["bee.lastTurnTrigger", "bee.unansweredHumanMessage"], audits: [] },
   ChildrenResult: { verbs: ["bee.children"], triggers: ["children[].bee.lastTurnTrigger", "children[].bee.unansweredHumanMessage", "children[].view.unansweredHumanMessage"], audits: [] },
   SetArgsResult: { verbs: ["bee.setArgs"], triggers: ["bee.lastTurnTrigger", "bee.unansweredHumanMessage"], audits: [] },
+  SetEnvResult: { verbs: ["bee.setEnv"], triggers: ["bee.lastTurnTrigger", "bee.unansweredHumanMessage"], audits: [] },
   ReconfigureResult: { verbs: ["bee.reconfigure"], triggers: ["bee.lastTurnTrigger", "bee.unansweredHumanMessage"], audits: [] },
   ViewResult: { verbs: ["view"], triggers: ["bee.lastTurnTrigger", "bee.unansweredHumanMessage", "view.unansweredHumanMessage"], audits: [] },
   ChampionGetResult: { verbs: ["champion.get"], triggers: ["bee.bee.lastTurnTrigger", "bee.bee.unansweredHumanMessage", "bee.view.unansweredHumanMessage"], audits: [] },
