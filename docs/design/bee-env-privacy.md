@@ -12,15 +12,22 @@ and registered service identity cannot enable arbitrary value reveal.
 
 | Surface | Boundary |
 | --- | --- |
-| view, list, children, fork, rename, tag, setArgs | Typed `PublicBeeRow` / `toPublicBee`; RPC egress projection |
+| view, list, children, fork, rename, tag, setArgs, setEnv | Typed `PublicBeeRow` / `toPublicBee`; RPC egress projection |
 | spawn, reconfigure, cached results, dedup replay and in-flight joins | Default RPC result projection, including legacy persisted raw results |
 | commands, audit.tail, move/handoff payloads | Shared projection of `env`, `previousEnv`, `targetEnv` and env-set `previous` |
 | snapshot/watch and deltas | Public projection; stored evidence stays unchanged |
 | CLI JSON/human view/list/children/events, daemon-down reads | Same typed bee projection and audit projection before rendering |
 | transcript/tail/last headers, including raw/follow | Audited runner-host session-log writer: only harness stdin/stdout evidence, no generated launch env/header. Preserve evidence bytes |
+| daemon log | `bee.setEnv` and `bee.reconfigure` with `set` log the variable names, never the values |
 | status/show | No separate bee env serializer; daemon status contains health/service facts, account/template show belongs to those contracts |
 | launch/resume specs and harness args | Runner launch env is internal; no generated launch-env command strings in public bee metadata. User-supplied args/body text are not secret scanners |
 | MCP | Honeybee RPC boundary applies; Apiary must independently strip service-only paths from agent MCP responses |
+
+`bee.setEnv { beeId, set: { NAME: value | null }, idempotencyKey? }` (capability
+`bee.setEnv.v1`) merges per-bee env overrides; `null` removes a name. The next
+runtime reads them. `bee.reconfigure` takes the same `set`: an env change restarts
+a live runtime even when the args are unchanged. Apiary uses this to hand a Codex
+session its tool token through env instead of its args.
 
 Template configuration responses (including export/import) and template audit
 events retain their intentional configuration env. Track/package receipts have

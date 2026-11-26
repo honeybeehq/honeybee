@@ -56,6 +56,12 @@ CLI: `hive transcript <bee> --segments` lists the pointers; `hive transcript <be
 
 **v3 (`transcript.segments.v3`).** `last` (1 to 10000) returns the newest rows in ascending ordinal order without listing the rest; `beforeOrdinal` (requires `last`) limits them to ordinals below it, so a reader pages backwards by passing the lowest ordinal it holds. `last` does not combine with `afterOrdinal` or `limit`. Every reply carries `historyStartLine`: the `firstLine` of the bee's oldest segment row, whatever rows the reply holds, or `null` when the bee has none. A reader holding only the newest rows compares it with its own first row to know whether older history exists. A daemon without the tag ignores `last` and answers the first rows.
 
+## Token totals
+
+Capability `bee.token_totals.v1`, schema **v63** (additive: `bees.token_totals`, `transcript_segment_cursors.token_tally`). Bee rows (list, get, snapshot, watch) carry `tokens: { input, output, cacheRead, cacheWrite }`, `turns` and `lastModel`, summed from the `token_usage` and `turn_end` events each cut already projects. No log is read for them alone. The tally rides the segment cursor and commits in the cut's transaction, so each line counts once across restarts and totals never go backwards. Sub-agent turns (Claude sidechains, Codex threads other than the root) add tokens but not turns.
+
+The fields are absent until known: a bee starts a tally only when it is cut from its first byte, so a bee cut before v63 stays unknown instead of showing a partial count or zeros. Watchers get the new values on the `transcript.segment.ready` row, which carries the same three fields; no delta is added.
+
 ## Config
 
 ```
