@@ -565,7 +565,6 @@ function withDaemonTarget(ctx: CliContext, value: unknown): unknown {
 
 const STARTING_HOLD_MS = 15_000;
 const HEALTH_EXIT_STARTING = 75;
-const EXIT_DAEMON_BUSY = 75;
 const STARTING_NOTICE_EVERY_MS = 5_000;
 
 interface DaemonConnectOptions extends Pick<ConnectOptions, "legacyProtocolVerbs"> {
@@ -5294,7 +5293,7 @@ function versionDaemonTarget(): unknown {
 }
 
 function jsonErrorLine(err: unknown, ctx: CliContext | undefined): Record<string, unknown> {
-  const error = err instanceof DaemonDownError || err instanceof DaemonBusyError
+  const error = err instanceof DaemonDownError
     ? { code: err.code, message: err.message, details: { socketPath: err.socketPath, socketSource: ctx?.target.socketSource ?? null, cause: err.reason } }
     : err instanceof HandoverStalledError
       ? { code: err.code, message: err.message, details: { socketPath: err.socketPath, marker: err.marker, ageMs: err.ageMs } }
@@ -5545,13 +5544,9 @@ export async function runV2Cli(argv: string[], io: CliIo = defaultIo): Promise<n
       io.err(errorLine(`${err.message} — start it with: hive daemon run (or daemon start)`));
       return 1;
     }
-    if (err instanceof DaemonBusyError) {
-      io.err(errorLine(`${err.message}. It is running: do not start another. Retry shortly; hive health shows its state.`));
-      return EXIT_DAEMON_BUSY;
-    }
     if (err instanceof RpcError || err instanceof ServiceScopeError || err instanceof HandoverStalledError) {
       io.err(errorLine(`error (${err.code}): ${err.message}`));
-      return 1;
+      return err instanceof DaemonBusyError && command === "health" ? HEALTH_EXIT_STARTING : 1;
     }
     io.err(errorLine(err instanceof Error ? err.message : String(err)));
     return 1;

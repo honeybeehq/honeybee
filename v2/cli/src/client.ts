@@ -32,15 +32,10 @@ export class DaemonDownError extends Error {
   }
 }
 
-export class DaemonBusyError extends Error {
-  readonly code = "daemon_busy";
-  readonly socketPath: string;
-  readonly reason: string;
+export class DaemonBusyError extends RpcError {
   constructor(socketPath: string, reason: string) {
-    super(`daemon at ${socketPath} is starting or busy: ${reason}`);
+    super("daemon_starting", `Honeybee is starting or busy: the daemon at ${socketPath} ${reason}. It is running, so do not start another; retry shortly (hive health shows its state).`, { socketPath, cause: reason, boot: null });
     this.name = "DaemonBusyError";
-    this.socketPath = socketPath;
-    this.reason = reason;
   }
 }
 
@@ -148,16 +143,16 @@ export class RpcClient {
       const timer = setTimeout(() => {
         socket.destroy();
         reject(connected
-          ? new DaemonBusyError(socketPath, `it accepted the connection but sent no hello within ${timeoutMs / 1000} s`)
+          ? new DaemonBusyError(socketPath, `accepted the connection but sent no hello within ${timeoutMs / 1000} s`)
           : existsSync(socketPath)
-            ? new DaemonBusyError(socketPath, `the socket exists but did not accept the connection within ${timeoutMs / 1000} s`)
+            ? new DaemonBusyError(socketPath, `did not accept the connection within ${timeoutMs / 1000} s`)
             : new DaemonDownError(socketPath, "connect timeout"));
       }, timeoutMs);
       timer.unref();
       socket.once("error", (err: NodeJS.ErrnoException) => {
         clearTimeout(timer);
         reject(BUSY_CODES.has(err.code ?? "")
-          ? new DaemonBusyError(socketPath, "its connection queue is full")
+          ? new DaemonBusyError(socketPath, "has a full connection queue")
           : new DaemonDownError(socketPath, err.code ?? err.message));
       });
       const closedBeforeHello = (): void => {

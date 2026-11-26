@@ -14,7 +14,7 @@ async function cli(args: string[]): Promise<{ exit: number; err: string[]; json:
   return { exit, err, json: out.flatMap(line => { try { return [JSON.parse(line)]; } catch { return []; } }) };
 }
 
-test("a live socket that never says hello is 'starting or busy' (exit 75), never 'start the daemon'; a missing socket is still unreachable (exit 1)", { timeout: 30_000 }, async () => {
+test("a live socket that never says hello is reported as daemon_starting (health exits 75; other verbs hold, then refuse), never 'start the daemon'; a missing socket is still unreachable", { timeout: 60_000 }, async () => {
   const dir = shortSocketDir("hb-busy-", "hived.sock", [tmpdir()]);
   const socketPath = join(dir, "hived.sock");
   const held: Socket[] = [];
@@ -23,10 +23,14 @@ test("a live socket that never says hello is 'starting or busy' (exit 75), never
   try {
     const busy = await cli(["health", "--json", "--socket", socketPath]);
     assert.equal(busy.exit, 75);
-    assert.equal(busy.json[0]?.error.code, "daemon_busy");
+    assert.equal(busy.json[0]?.error.code, "daemon_starting");
     assert.equal(busy.json[0]?.error.details.socketPath, socketPath);
-    assert.match(busy.err.join("\n"), /is starting or busy: it accepted the connection but sent no hello within 3 s\. It is running: do not start another\./);
+    assert.match(busy.err.join("\n"), /error \(daemon_starting\): Honeybee is starting or busy: the daemon at .* accepted the connection but sent no hello within 3 s\. It is running, so do not start another/);
     assert.doesNotMatch(busy.err.join("\n"), /start it with|not reachable/);
+    const send = await cli(["send", "some-bee", "hello", "--socket", socketPath]);
+    assert.equal(send.exit, 1);
+    assert.match(send.err.join("\n"), /\berror \(daemon_starting\): Honeybee is starting or busy/);
+    assert.doesNotMatch(send.err.join("\n"), /start it with|not reachable/);
   } finally {
     for (const socket of held) socket.destroy();
     await new Promise<void>(resolve => silent.close(() => resolve()));

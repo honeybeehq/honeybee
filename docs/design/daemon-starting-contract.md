@@ -1,6 +1,6 @@
 # Daemon start and store upgrade — Honeybee contract (HON-34, 2026-11-24)
 
-Protocol stays `v2/2`. Additive: `health` gains a `boot` field, the hello frame gains an optional `boot` field, and the closed error list gains `daemon_starting` (daemon) and `daemon_busy` (CLI, HON-47).
+Protocol stays `v2/2`. Additive: `health` gains a `boot` field, the hello frame gains an optional `boot` field, and the closed error list gains `daemon_starting`.
 
 A daemon that is still starting answers. It takes the store lock, binds its socket, and only then backs up, verifies and migrates the store and re-adopts sessions. Before this contract the socket appeared only after all of that, so the first start after a schema bump looked dead (ENOENT, "not running") for as long as the backup took.
 
@@ -92,14 +92,14 @@ A starting window exists on every start, not only on upgrades. `boot_reconcile` 
 
 ### A socket that does not answer (HON-47)
 
-The CLI tells "no daemon" apart from "a daemon that is starting or busy":
+The CLI tells "no daemon" apart from "a daemon that is starting or busy". A live socket that does not answer is treated exactly like a starting daemon, so every client that already retries `daemon_starting` or `hive health` exit 75 retries it too.
 
-| what the CLI sees within its 3 s connect timeout | meaning | exit | `--json` `error.code` |
-|---|---|---|---|
-| `ENOENT` (no socket file) or `ECONNREFUSED` (nothing listening) | no daemon | 1 | `socket_unreachable` |
-| the connection is accepted but no hello arrives | starting or busy | 75 | `daemon_busy` |
-| the socket file exists but the connection is not accepted | starting or busy | 75 | `daemon_busy` |
-| `EAGAIN` (the listen queue is full) | starting or busy | 75 | `daemon_busy` |
+| what the CLI sees within its 3 s connect timeout | meaning | `hive health` | other commands | `error.code` |
+|---|---|---|---|---|
+| `ENOENT` (no socket file) or `ECONNREFUSED` (nothing listening) | no daemon | exit 1 | exit 1 | `socket_unreachable` |
+| the connection is accepted but no hello arrives | starting or busy | exit 75 | hold up to 15 s, then exit 1 | `daemon_starting` |
+| the socket file exists but the connection is not accepted | starting or busy | exit 75 | hold up to 15 s, then exit 1 | `daemon_starting` |
+| `EAGAIN` (the listen queue is full) | starting or busy | exit 75 | hold up to 15 s, then exit 1 | `daemon_starting` |
 
 Only the first row advises starting a daemon:
 
@@ -107,15 +107,17 @@ Only the first row advises starting a daemon:
 hive: daemon not reachable at /run/hive/hived.sock (ENOENT) — start it with: hive daemon run (or daemon start)
 ```
 
-A live socket that does not answer prints this instead, for every command, `hive health` included:
+A live socket that does not answer prints this on stderr instead, for every command:
 
 ```
-hive: daemon at /run/hive/hived.sock is starting or busy: it accepted the connection but sent no hello within 3 s. It is running: do not start another. Retry shortly; hive health shows its state.
+hive: error (daemon_starting): Honeybee is starting or busy: the daemon at /run/hive/hived.sock accepted the connection but sent no hello within 3 s. It is running, so do not start another; retry shortly (hive health shows its state).
 ```
 
-With `--json`, stdout carries `{"error":{"code":"daemon_busy","message":…,"details":{"socketPath":…,"socketSource":…,"cause":…}},"daemonTarget":…}`. Commands that hold while starting also keep retrying a busy socket until their 15 s hold runs out. Reads never fall back to the read-only store on `daemon_busy`, since the running daemon holds the store's lock.
+With `--json`, stdout carries `{"error":{"code":"daemon_starting","message":…,"details":{"socketPath":…,"cause":…,"boot":null}},"daemonTarget":…}`. `details.boot` is `null` because the daemon said nothing; a real refusal carries the boot object. Commands that hold while starting keep retrying a silent socket until their 15 s hold runs out. Reads never fall back to the read-only store here, since the running daemon holds the store's lock.
 
-A daemon with this change answers within its 20 ms slices, so `daemon_busy` now means a non-yielding step longer than 3 s or a host too loaded to schedule the daemon. CLIs older than HON-47 still print "not reachable … start it" in that case.
+Pollinate (f594322c and later) retries a hive call while `hive health` exits 75, the `--json` error code is `daemon_starting`, or stderr contains `error (daemon_starting): `. A Pollinate job that fires while the socket is silent therefore waits and runs once after the daemon is ready; it needs no Pollinate change.
+
+A daemon with this change answers within its 20 ms slices, so a silent socket now means a non-yielding step longer than 3 s, or a host too loaded to schedule the daemon. CLIs older than HON-47 still print "not reachable … start it" in that case.
 
 ## The estimate
 
