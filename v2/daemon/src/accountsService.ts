@@ -2409,11 +2409,12 @@ export class AccountsService {
     const recipe = recipeFor(account.harness);
     const primary = recipe?.credentialFiles[0];
     if (!recipe || !primary) return AUTH_CREDENTIAL_UNREADABLE;
-    const revised = account.harness === "agy" ? recipe.credentialFiles : [primary];
     for (const dir of [account.homePath, this.vaultDirOf(account)]) {
-      if (readIfFile(join(dir, primary)) === null) continue;
+      const raw = readIfFile(join(dir, primary));
+      if (raw === null) continue;
+      if (account.harness !== "agy") return createHash("sha256").update(raw).digest("hex").slice(0, 16);
       const hash = createHash("sha256");
-      for (const rel of revised) hash.update(`${rel}\0${readIfFile(join(dir, rel)) ?? ""}\0`);
+      for (const rel of recipe.credentialFiles) hash.update(`${rel}\0${readIfFile(join(dir, rel)) ?? ""}\0`);
       return hash.digest("hex").slice(0, 16);
     }
     return AUTH_CREDENTIAL_UNREADABLE;

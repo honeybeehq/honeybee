@@ -21,7 +21,10 @@ function capture(): { io: CliIo; out: string[]; err: string[] } {
 }
 
 test("cli.accounts.1: account verbs over RPC + spawn --account + bee swap-account (stub) + import --dry-run against a fixture root", async () => {
-  const { dir, cleanup } = makeDaemonDir();
+  const fakeAgyDir = mkdtempSync(join(tmpdir(), "hb-fake-agy-"));
+  const fakeAgy = join(fakeAgyDir, "agy");
+  writeFileSync(fakeAgy, "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+  const { dir, cleanup } = makeDaemonDir({ agents: { agy: { command: fakeAgy, args: [], adapter: "agy" } } });
   let daemon: DaemonHandle | null = null;
   try {
     daemon = await startDaemon(dir);
@@ -140,6 +143,7 @@ test("cli.accounts.1: account verbs over RPC + spawn --account + bee swap-accoun
     assert.match(usage.err[0] ?? "", /usage: hive account/);
   } finally {
     await daemon?.stop().catch(() => {});
+    rmSync(fakeAgyDir, { recursive: true, force: true });
     cleanup();
   }
 });
