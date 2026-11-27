@@ -2084,6 +2084,34 @@ echo, and the command exits 0 once the credential is validated and captured.
 them on the flow), `--remote` asks for methods that do not need a browser on
 this node (device codes, API keys), `--no-wait` just starts the flow.
 
+agy (Google Antigravity CLI) accounts each keep their sign-in in their own
+home: Honeybee runs agy with `HOME=<account home>` and
+`AGY_CLI_FORCE_FILE_TOKEN_STORAGE=1`, so agy writes its login to
+`.gemini/antigravity-cli/` in that home instead of the one macOS Keychain item
+it otherwise shares across every sign-in. The four methods are agy's own ACP
+auth methods:
+
+- `oauth-personal` (default, "Sign in with Google") and `oauth-business`
+  ("Sign in with Gemini Enterprise") run `agy acp --login`; paste the code
+  Google shows. Both work from a remote browser.
+- `gemini-api-key` takes a Gemini Developer API key, checked against the
+  Gemini API before it is saved.
+- `agent-platform` takes a Google Cloud project, a location and a service
+  account key (Vertex AI / Application Default Credentials).
+
+`.gemini/antigravity-cli/honeybee-auth.json` names the account's method. An API
+key or Agent Platform account reaches agy only as runtime env
+(`HIVE_AGY_AUTH_METHOD`, `GEMINI_API_KEY`, `GOOGLE_CLOUD_PROJECT`,
+`GOOGLE_CLOUD_LOCATION`, `GOOGLE_APPLICATION_CREDENTIALS`), never through
+`bee.env`. The daemon's own Google keys are blanked for agy bees. The
+credential probe runs `agy models` in the account home, which also lets agy
+refresh its Google token. Leases ship the sign-in with its refresh token
+blanked, plus the API key or the service account key. A Google sign-in under
+10 minutes from expiry is refreshed first by agy itself, in a scratch home.
+Each new credential raises the generation that `account credentials status`
+reports, so satellites renew. Agent Platform accounts that use user ADC (a
+refresh grant) are not leased.
+
 The opt-in `hive account credentials status|enable|refresh|disable <account>`
 commands support Claude, Codex and first-party Grok OIDC accounts. Grok requires
 one `https://auth.x.ai::<client-id>` entry; API keys and mixed scopes are refused.

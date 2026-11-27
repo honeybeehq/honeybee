@@ -49,6 +49,13 @@ import {
   measureWindowVelocity,
   parseClaudeCredentials,
   parseMuseCredentials,
+  parseAgyAuthDocument,
+  resolveExecutable,
+  agyAuthUsesOauth,
+  AGY_ADC_FILE,
+  AGY_AUTH_FILE,
+  AGY_OAUTH_TOKEN_FILE,
+  type AgyAuthDocument,
   museQuotaLimits,
   pauseLabel,
   pauseOf,
@@ -106,6 +113,8 @@ import type { ResolvedNodeConfig } from "./config.ts";
 import { readClaudeKeychain, readClaudeKeychainState, writeClaudeKeychainEntry, claudeKeychainService, removeClaudeKeychainEntry, type KeychainRemover, type KeychainState, type KeychainStateReader, type KeychainReader, type KeychainWriter } from "./keychain.ts";
 import { atomicWriteFileSync } from "./homeDefaults.ts";
 import { withClaudeRefreshLock } from "./claudeRefreshLock.ts";
+import { AGY_LEGACY_MARKER, AGY_MIN_SHIP_TTL_MS, advanceAgyGeneration, repairAgyMarker, parseAgyOauthToken, refreshAgyOauthToken, type AgyGeneration } from "./agyCredentials.ts";
+import { serviceAccountKey } from "./login/agyKey.ts";
 import { createLeaseMaterialCodecs, hasRefreshGrant, type LeaseMaterialCodec } from "./leaseMaterial.ts";
 import { LEASE_FENCE_FIELDS, RpcError, type AccountLeaseExportResult, type AccountLeaseInstallParams, type AccountLeaseInstallResult, type AccountLeaseLimits, type AccountLeaseTokenCheck, type AccountLeaseRemoveResult, type AccountLeaseRemoveParams } from "./protocol.ts";
 import { checkClaudeAccessToken, fetchClaudeIdentity, type ClaudeIdentity } from "./login/transports.ts";
@@ -209,6 +218,7 @@ export interface AccountsServiceOptions {
    */
   museKeyMint?: import("./claudeRefreshTransport.ts").CredentialRefreshTransport;
   codexLeaseRefresh?: (homePath: string) => Promise<void>;
+  agySignInCheck?: AgySignInCheck;
   /** Common native MCP reconciler; injected so activation tests stay hermetic. */
   gatewayMcpSeeder?: (homePath: string, harness: string) => Promise<GatewayMcpSeedResult>;
   /** The gateways a home is seeded with: registered HTTP endpoints plus the stdio shim files. Default: the files only. */
@@ -653,6 +663,23 @@ function defaultCodexLeaseRefresh(command: string): (homePath: string) => Promis
   };
 }
 
+export type AgySignInResult = "signed_in" | "signed_out" | "unavailable";
+export type AgySignInCheck = (env: Record<string, string>) => Promise<AgySignInResult>;
+
+export function defaultAgySignInCheck(command: string, timeoutMs: number): AgySignInCheck {
+  return async (env) => {
+    const childEnv = { ...(process.env as Record<string, string>), ...env, AGY_CLI_DISABLE_AUTO_UPDATE: "1" };
+    const resolved = resolveExecutable(command, { env: childEnv })?.path ?? command;
+    try {
+      await execFileP(resolved, ["models"], { cwd: tmpdir(), env: childEnv, timeout: Math.max(timeoutMs, 30_000), maxBuffer: 1 << 20 });
+      return "signed_in";
+    } catch (error) {
+      const output = `${(error as { stdout?: unknown }).stdout ?? ""}\n${(error as { stderr?: unknown }).stderr ?? ""}`;
+      return /\bsign in\b|not logged in|not signed in|unauthenticated|invalid_grant/i.test(output) ? "signed_out" : "unavailable";
+    }
+  };
+}
+
 // ---------------------------------------------------------------------------
 // default transports
 // ---------------------------------------------------------------------------
@@ -1016,6 +1043,7 @@ export class AccountsService {
   private readonly cursorForeignHomeLogged = new Set<string>();
   private readonly nativeKeychainSeeds = new Map<string, Set<Promise<unknown>>>();
   private readonly codexLeaseRefresh: (homePath: string) => Promise<void>;
+  private readonly agySignInCheck: AgySignInCheck;
   private readonly gatewayMcpSeeder: (homePath: string, harness: string) => Promise<GatewayMcpSeedResult>;
   private readonly gateways: () => LiveGateway[];
   private readonly skillsSync: (homePath: string, harness: string) => { status: "installed" | "unchanged" | "none"; digest?: string; dir?: string };
@@ -1283,6 +1311,12 @@ export class AccountsService {
       ...opts.providerHttp,
     };
     this.codexLeaseRefresh = opts.codexLeaseRefresh ?? defaultCodexLeaseRefresh(this.cfg.agents.codex?.command ?? "codex");
+    this.agySignInCheck = opts.agySignInCheck ?? defaultAgySignInCheck(this.cfg.agents.agy?.command ?? "agy", this.cfg.accounts.limitsFetchTimeoutMs);
+    for (const account of this.store.listAccounts()) {
+      if (account.harness !== "agy" || account.source !== "local" || account.native === true) continue;
+      const owned = this.ownedHomeRefusal(account, "writes into") === null;
+      if ((owned && repairAgyMarker(account.homePath)) || repairAgyMarker(this.vaultDirOf(account))) this.log(`account.agy.marker_repaired account=${account.id}`);
+    }
     this.gateways = opts.gateways ?? (() => liveGateways());
     this.skillsSync = opts.skillsSync ?? (() => ({ status: "none" }));
     this.gatewayMcpSeeder = opts.gatewayMcpSeeder
@@ -2062,6 +2096,7 @@ export class AccountsService {
     const key = homeEnvFor(account.harness);
     return {
       ...(account.harness === "claude" ? CLAUDE_COMPETING_AUTH_ENV_SCRUB : {}),
+      ...(account.harness === "agy" ? AGY_COMPETING_AUTH_ENV_SCRUB : {}),
       ...(key ? { [key]: account.homePath } : {}),
       ...recipeEnvFor(account.harness, account.homePath),
     };
@@ -2077,12 +2112,46 @@ export class AccountsService {
   }
 
   credentialEnvOf(account: AccountRow): Record<string, string> {
+    if (account.harness === "agy") return this.agyCredentialEnv(account);
     if (account.harness !== "cursor") return {};
     // The same identity-checked selection the probe and the lease use.
     const selected = this.cursorSelection(account).selected?.auth;
     if (selected?.apiKey) return { CURSOR_API_KEY: selected.apiKey, AGENT_CLI_CREDENTIAL_STORE: "memory" };
     if (selected?.accessToken) return { CURSOR_AUTH_TOKEN: selected.accessToken, AGENT_CLI_CREDENTIAL_STORE: "memory" };
     return {};
+  }
+
+  agyAuthDocument(dir: string): AgyAuthDocument | null {
+    return parseAgyAuthDocument(readIfFile(join(dir, AGY_AUTH_FILE)));
+  }
+
+  agyMissingMaterial(dir: string): string | null {
+    const doc = this.agyAuthDocument(dir);
+    if (!doc) return "agy auth file";
+    if (agyAuthUsesOauth(doc) && readIfFile(join(dir, AGY_OAUTH_TOKEN_FILE)) === null) return "agy OAuth token file";
+    if (doc.method === "agent-platform" && readIfFile(join(dir, AGY_ADC_FILE)) === null) return "Application Default Credentials file";
+    return null;
+  }
+
+  private agyDocumentState(dir: string): CredentialState {
+    if (this.agyMissingMaterial(dir) !== null) return "invalid";
+    const doc = this.agyAuthDocument(dir)!;
+    if (!agyAuthUsesOauth(doc)) return "present";
+    const token = parseAgyOauthToken(readIfFile(join(dir, AGY_OAUTH_TOKEN_FILE)));
+    return token && !token.refreshToken && token.expiresAt <= this.now() ? "expired" : "present";
+  }
+
+  private agyCredentialEnv(account: AccountRow): Record<string, string> {
+    if (this.isNative(account)) return {};
+    const doc = this.agyAuthDocument(account.homePath);
+    switch (doc?.method) {
+      case "gemini-api-key":
+        return { HIVE_AGY_AUTH_METHOD: doc.method, GEMINI_API_KEY: doc.apiKey };
+      case "agent-platform":
+        return { HIVE_AGY_AUTH_METHOD: doc.method, GOOGLE_CLOUD_PROJECT: doc.project, GOOGLE_CLOUD_LOCATION: doc.location, GOOGLE_APPLICATION_CREDENTIALS: join(account.homePath, AGY_ADC_FILE) };
+      default:
+        return {};
+    }
   }
 
   /**
@@ -2226,6 +2295,7 @@ export class AccountsService {
     if (source === null) return this.nativeKeychainOwned(account) ? "present" : "absent";
     if (account.harness === "muse") return this.museDocumentState(readIfFile(join(source, primary)), this.isNative(account));
     if (account.harness === "cursor") return this.cursorAdmissionRefusal(account) ? "expired" : "present";
+    if (account.harness === "agy") return this.agyDocumentState(source);
     if (account.harness !== "claude") return "present";
     return this.claudeDocumentState(readIfFile(join(source, primary)));
   }
@@ -2336,11 +2406,15 @@ export class AccountsService {
    * vault): it changes exactly when those bytes do, and reveals none of them.
    */
   credentialRevision(account: Pick<AccountRow, "harness" | "id" | "homePath">): string {
-    const primary = recipeFor(account.harness)?.credentialFiles[0];
-    if (!primary) return AUTH_CREDENTIAL_UNREADABLE;
+    const recipe = recipeFor(account.harness);
+    const primary = recipe?.credentialFiles[0];
+    if (!recipe || !primary) return AUTH_CREDENTIAL_UNREADABLE;
+    const revised = account.harness === "agy" ? recipe.credentialFiles : [primary];
     for (const dir of [account.homePath, this.vaultDirOf(account)]) {
-      const raw = readIfFile(join(dir, primary));
-      if (raw !== null) return createHash("sha256").update(raw).digest("hex").slice(0, 16);
+      if (readIfFile(join(dir, primary)) === null) continue;
+      const hash = createHash("sha256");
+      for (const rel of revised) hash.update(`${rel}\0${readIfFile(join(dir, rel)) ?? ""}\0`);
+      return hash.digest("hex").slice(0, 16);
     }
     return AUTH_CREDENTIAL_UNREADABLE;
   }
@@ -3446,9 +3520,7 @@ export class AccountsService {
       case "opencode":
         return this.fetchSecondaryProvider(account);
       case "agy":
-        return this.credentialed(account)
-          ? { readable: false, unreadableReason: "unsupported", error: "agy has no limits source" }
-          : { readable: false, unreadableReason: "auth_failed", error: "agy OAuth token file is missing from the account home and vault" };
+        return this.fetchAgyCredentialProbe(account);
       case "muse": {
         // Muse has no usage probe: MSP usage/read reports only what one
         // process observed on its own model calls.
@@ -3523,6 +3595,20 @@ export class AccountsService {
       const timedOut = error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
       return { result: { readable: false, unreadableReason: timedOut ? "timeout" : "provider_error", error: timedOut ? "Cursor usage probe: timed out" : "Cursor usage probe: request failed" }, status: null };
     }
+  }
+
+  private async fetchAgyCredentialProbe(account: AccountRow): Promise<PutAccountLimitsInput> {
+    const dir = this.agyAuthDocument(account.homePath) ? account.homePath : this.vaultDirOf(account);
+    const missing = this.agyMissingMaterial(dir);
+    if (missing) return { readable: false, unreadableReason: "auth_failed", error: `${missing} is missing from the account home and vault` };
+    const doc = this.agyAuthDocument(dir)!;
+    if (!agyAuthUsesOauth(doc) || this.isNative(account)) return { readable: false, unreadableReason: "unsupported", error: "agy has no limits source" };
+    if (dir !== account.homePath) return { readable: false, unreadableReason: "unsupported", error: "agy has no limits source" };
+    const result = await this.agySignInCheck({ ...this.homeEnvOf(account), ...this.credentialEnvOf(account) });
+    if (result === "signed_out") return { readable: false, unreadableReason: "auth_failed", error: "agy reports this account is signed out; sign in again" };
+    if (result === "unavailable") return { readable: false, unreadableReason: "provider_error", error: "agy could not check the sign-in on this node" };
+    this.agyGeneration(account);
+    return { readable: false, unreadableReason: "unsupported", error: "agy has no limits source" };
   }
 
   private async fetchSecondaryProvider(account: AccountRow): Promise<PutAccountLimitsInput> {
@@ -4068,11 +4154,13 @@ export class AccountsService {
         return this.mintMuseLease(account, opts);
       case "cursor":
         return this.mintCursorLease(account);
+      case "agy":
+        return this.mintAgyLease(account);
       default:
         // Every unmodeled harness has no defensible lease artifact — a durable, typed refusal.
         throw new LeaseRefusal(
           "lease_unsupported",
-          `harness "${account.harness}" has no credential-lease strategy (supported: claude, codex, cursor, grok, kimi, muse, opencode)`,
+          `harness "${account.harness}" has no credential-lease strategy (supported: agy, claude, codex, cursor, grok, kimi, muse, opencode)`,
         );
     }
   }
@@ -4576,6 +4664,77 @@ export class AccountsService {
    * missing anywhere → `lease_unavailable`; unparseable → `lease_unavailable`
    * with a re-login hint. Never reads any other account's files.
    */
+  agyGeneration(account: AccountRow): AgyGeneration | null {
+    if (account.harness !== "agy" || account.source !== "local" || this.isNative(account)) return null;
+    if (this.agyAuthDocument(account.homePath) === null) return null;
+    const advanced = advanceAgyGeneration(this.vaultDirOf(account), this.credentialRevision(account));
+    if (advanced.changed) {
+      this.log(`account.agy.generation account=${account.id} generation=${advanced.generation}`);
+      this.store.touchAccount(account.id, `agy credential generation ${advanced.generation}`);
+    }
+    return advanced;
+  }
+
+  agyCredentialExpiresAt(account: AccountRow): number | null {
+    const doc = this.agyAuthDocument(account.homePath);
+    if (!doc || !agyAuthUsesOauth(doc)) return null;
+    return parseAgyOauthToken(readIfFile(join(account.homePath, AGY_OAUTH_TOKEN_FILE)))?.expiresAt ?? null;
+  }
+
+  private async mintAgyLease(account: AccountRow): Promise<EphemeralCredential> {
+    const login = `log in: hive account login ${account.id}`;
+    const authRaw = readIfFile(join(account.homePath, AGY_AUTH_FILE));
+    const doc = parseAgyAuthDocument(authRaw);
+    if (!doc || authRaw === null) throw new LeaseRefusal("lease_unavailable", `no agy sign-in in the home of ${account.id}; ${login}`);
+    const file = (rel: string, raw: string): EphemeralCredentialFile => ({ homeRelPath: rel, contentB64: Buffer.from(raw, "utf8").toString("base64"), mode: 0o600 });
+    const auth = file(AGY_AUTH_FILE, authRaw);
+    if (doc.method === "gemini-api-key") {
+      return { files: [auth], generation: this.agyGeneration(account)?.generation, kindNote: "agy: shipped the account's Gemini API key auth file" };
+    }
+    if (doc.method === "agent-platform") {
+      const key = serviceAccountKey(readIfFile(join(account.homePath, AGY_ADC_FILE)) ?? "");
+      if (!key) throw new LeaseRefusal("lease_unsupported", `agy account ${account.id} has no service account key; Agent Platform accounts lease only with a service account key`);
+      return { files: [auth, file(AGY_ADC_FILE, `${JSON.stringify(key, null, 2)}\n`)], generation: this.agyGeneration(account)?.generation, kindNote: "agy: shipped the Agent Platform project settings and service account key" };
+    }
+    const tokenRaw = await this.freshAgyOauthToken(account);
+    const token = parseAgyOauthToken(tokenRaw)!;
+    const shipped = `${JSON.stringify(blankRefreshTokens(JSON.parse(tokenRaw)))}\n`;
+    return {
+      files: [auth, file(AGY_OAUTH_TOKEN_FILE, shipped)],
+      expiresAt: Math.floor(token.expiresAt / 1000),
+      generation: this.agyGeneration(account)?.generation,
+      kindNote: "agy: shipped the Google sign-in with its refresh token blanked",
+    };
+  }
+
+  private async freshAgyOauthToken(account: AccountRow): Promise<string> {
+    const path = join(account.homePath, AGY_OAUTH_TOKEN_FILE);
+    const raw = readIfFile(path);
+    const token = parseAgyOauthToken(raw);
+    if (raw === null) throw new LeaseRefusal("lease_unavailable", `agy account ${account.id} has no Google sign-in; log in: hive account login ${account.id}`);
+    if (!token) throw new LeaseRefusal("lease_unsupported", `agy account ${account.id} keeps its sign-in in a form Honeybee cannot lease`);
+    if (token.expiresAt - this.now() >= AGY_MIN_SHIP_TTL_MS) return raw;
+    if (!token.refreshToken) throw new LeaseRefusal("lease_unavailable", `agy account ${account.id}'s sign-in is near expiry and has no refresh path on this node`);
+    const result = await refreshAgyOauthToken(raw, this.agySignInCheck, (home) => recipeEnvFor("agy", home), this.now);
+    if (result.outcome === "signed_out") {
+      const current = this.store.getAccount(account.id) ?? account;
+      this.store.setAccountStatus(account.id, current.status === "paused" ? "paused" : "auth_needed", "agy refresh: Google refused the sign-in");
+      throw new LeaseRefusal("credential_login_required", `agy account ${account.id} is signed out; log in: hive account login ${account.id}`);
+    }
+    if (result.outcome !== "refreshed") throw new LeaseRefusal("lease_unavailable", `agy could not refresh the sign-in of ${account.id}; retry shortly`);
+    if (readIfFile(path) !== raw) {
+      const landed = readIfFile(path);
+      const current = parseAgyOauthToken(landed);
+      if (landed !== null && current && current.expiresAt - this.now() >= AGY_MIN_SHIP_TTL_MS) return landed;
+      throw new LeaseRefusal("lease_unavailable", `agy account ${account.id}'s sign-in changed during refresh; retry shortly`);
+    }
+    mkdirSync(dirname(join(this.vaultDirOf(account), AGY_OAUTH_TOKEN_FILE)), { recursive: true, mode: 0o700 });
+    atomicWriteFileSync(join(this.vaultDirOf(account), AGY_OAUTH_TOKEN_FILE), result.raw, 0o600);
+    atomicWriteFileSync(path, result.raw, 0o600);
+    this.log(`account.agy.refreshed account=${account.id}`);
+    return result.raw;
+  }
+
   private leasePrimaryJson(account: AccountRow, rel: string): unknown {
     for (const path of [join(account.homePath, rel), join(this.vaultDirOf(account), rel)]) {
       const raw = readIfFile(path);
@@ -4612,6 +4771,10 @@ export class AccountsService {
     if (!recipe) return { ok: false, checked };
     const primaryFile = primaryCredentialFile(recipe);
     const vaultDir = this.vaultDirOf(account);
+    if (account.harness === "agy") {
+      repairAgyMarker(account.homePath);
+      repairAgyMarker(vaultDir);
+    }
     const check = (path: string, raw: string | null): ImportCheck["state"] =>
       raw === null ? "missing" : this.validPrimaryCredential(account.harness, primaryFile, raw) ? "present" : "invalid";
 
@@ -4641,6 +4804,10 @@ export class AccountsService {
       const raw = readIfFile(file.path);
       if (file.role === "credential" && file.rel === primaryFile) checked.push({ path: file.path, state: check(file.path, raw) });
       if (raw !== null) contents.set(file.rel, raw);
+    }
+    if (account.harness === "agy" && !contents.has(primaryFile) && contents.has(AGY_OAUTH_TOKEN_FILE)) {
+      contents.set(primaryFile, AGY_LEGACY_MARKER);
+      checked.push({ path: join(vendor.vendorHome, primaryFile), state: "present" });
     }
     let source: "vendor_home" | "external" = "vendor_home";
     let from = vendor.vendorHome;
@@ -4898,6 +5065,7 @@ export class AccountsService {
     if (raw === null || raw.trim().length === 0) return false;
     if (harness === "claude") return parseClaudeCredentials(raw) !== null;
     if (harness === "cursor") return parseCursorAuth(raw) !== null;
+    if (harness === "agy") return parseAgyAuthDocument(raw) !== null;
     // A keychain pointer is a login, but not one that can be captured or copied.
     if (harness === "muse" && parseMuseCredentials(raw)?.mechanism === "keychain") return false;
     if (!primaryFile.endsWith(".json")) return true;
@@ -5222,6 +5390,18 @@ export const CLAUDE_COMPETING_AUTH_ENV_SCRUB: Readonly<Record<string, string>> =
   CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR: "",
   ANTHROPIC_AUTH_TOKEN: "",
   ANTHROPIC_API_KEY: "",
+});
+
+export const AGY_COMPETING_AUTH_ENV_SCRUB: Readonly<Record<string, string>> = Object.freeze({
+  HIVE_AGY_AUTH_METHOD: "",
+  GEMINI_API_KEY: "",
+  GOOGLE_API_KEY: "",
+  GOOGLE_GENAI_USE_VERTEXAI: "",
+  GOOGLE_GENAI_USE_ENTERPRISE: "",
+  GOOGLE_CLOUD_PROJECT: "",
+  GOOGLE_CLOUD_LOCATION: "",
+  GOOGLE_APPLICATION_CREDENTIALS: "",
+  AGY_ADC_AUTH: "",
 });
 
 function hasRefreshToken(credential: { refreshToken?: string }): boolean {

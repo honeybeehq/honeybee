@@ -12,13 +12,13 @@
 import { homedir } from "node:os";
 import { CURSOR_AGENT_VERSION, cursorBundledAgentPaths, firstRunnableCommand } from "./runnableCommand.ts";
 import { CURSOR_CLI_MIN_VERSION, cursorCliFacts } from "../cursorCli.ts";
-import { mkdirSync, readFileSync } from "node:fs";
+import { mkdirSync, readFileSync, statSync } from "node:fs";
 import { basename, join, sep } from "node:path";
-import { executableCandidatePaths, recipeFor, resolveExecutable, safeAuthorizationUrl, type LoginCliSpec, type LoginFieldDescriptor, type LoginFlowRow } from "../../../core/src/index.ts";
+import { executableCandidatePaths, recipeFor, resolveExecutable, safeAuthorizationUrl, type IdentityRecipe, type LoginCliSpec, type LoginFieldDescriptor, type LoginFlowRow } from "../../../core/src/index.ts";
 import { primaryCredentialFile, primaryCredentialMtime } from "../activation.ts";
 import { credentialDigest } from "../keychain.ts";
 import { LoginWorker, pipeSpawner, type LoginWorkerEvent, type LoginWorkerStatus, type PtySpawner } from "../loginWorker.ts";
-import { STATIC_DETAIL, err } from "./common.ts";
+import { STATIC_DETAIL, err, writePrivateRaw } from "./common.ts";
 import type { LoginRunner, LoginRunnerHost } from "./runner.ts";
 
 /** How often a CLI flow's credential landing is probed (keychain / global-store reads are not free). */
@@ -92,7 +92,7 @@ export class CliRunner implements LoginRunner {
       TERM: "xterm-256color",
     };
     mkdirSync(account.homePath, { recursive: true, mode: 0o700 });
-    this.baselineMtime = primaryCredentialMtime(account.homePath, recipe);
+    this.baselineMtime = this.landingMtime(account.homePath, recipe);
     const externalRaw = this.spec.landing === "external_digest" ? await host.accounts.externalLoginCredential(account) : null;
     this.baselineDigest = externalRaw ? credentialDigest(externalRaw) : null;
     // A cancel / switch that landed during the awaits wins: never spawn a
@@ -244,6 +244,16 @@ export class CliRunner implements LoginRunner {
     }
   }
 
+  private landingMtime(homePath: string, recipe: IdentityRecipe): number | null {
+    if (!this.spec.landsAt) return primaryCredentialMtime(homePath, recipe);
+    try {
+      const stat = statSync(join(homePath, this.spec.landsAt));
+      return stat.isFile() ? stat.mtimeMs : null;
+    } catch {
+      return null;
+    }
+  }
+
   /** Credential landing: mtime past baseline / external-store digest drift → validate → capture → succeeded. */
   private async checkLanding(final = false, existingLogin = false): Promise<boolean> {
     if (this.checking && !final) return false;
@@ -275,9 +285,10 @@ export class CliRunner implements LoginRunner {
       if (digest !== null && digest !== this.baselineDigest) detectedBy = "digest";
       else if (digest !== null && existingLogin) detectedBy = "already_signed_in";
     }
-    const mtime = primaryCredentialMtime(account.homePath, recipe);
+    const mtime = this.landingMtime(account.homePath, recipe);
     if (!detectedBy && externalRaw === null && mtime !== null && (this.baselineMtime === null || mtime > this.baselineMtime)) detectedBy = "mtime";
     if (!detectedBy) return false;
+    if (this.spec.marker && detectedBy === "mtime") writePrivateRaw(join(account.homePath, primaryFile), `${JSON.stringify(this.spec.marker, null, 2)}\n`);
     const overrides: Record<string, string> = externalRaw ? { [primaryFile]: externalRaw } : {};
     let primaryRaw = overrides[primaryFile] ?? null;
     if (primaryRaw === null) {

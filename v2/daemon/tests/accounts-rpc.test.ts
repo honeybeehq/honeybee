@@ -990,7 +990,7 @@ test("rpc.accounts.ceiling: past its weekly ceiling an account refuses explicit 
 test("rpc.accounts.f2: add refuses pre-existing credentials by default; importExisting adopts as unverified; health is validation evidence, never file-existence; a fresh add is auth_needed, never ok", async () => {
   // v18: the daemon's Codex probe must never reach a real `codex`; point it
   // at nothing so the scheduled verification fails typed (provider_error).
-  const { dir, cleanup } = makeDaemonDir({ agents: { codex: { command: join("/nonexistent", "hive-test-codex") } } });
+  const { dir, cleanup } = makeDaemonDir({ agents: { codex: { command: join("/nonexistent", "hive-test-codex") }, agy: { command: join("/nonexistent", "hive-test-agy"), args: [], adapter: "agy" } } });
   let daemon: DaemonHandle | null = null;
   try {
     daemon = await startDaemon(dir, { env: { HOME: join(dir, "machine-home") } });
@@ -1072,7 +1072,7 @@ test("rpc.accounts.f2: add refuses pre-existing credentials by default; importEx
     const agyHome = join(dir, "machine-agy-home");
     const agyToken = ".gemini/antigravity-cli/antigravity-oauth-token";
     mkdirSync(join(agyHome, ".gemini", "antigravity-cli"), { recursive: true });
-    writeFileSync(join(agyHome, agyToken), "agy-oauth-token");
+    writeFileSync(join(agyHome, agyToken), JSON.stringify({ access_token: "agy-access", refresh_token: "agy-refresh", expiry: new Date(Date.now() + 3_600_000).toISOString() }));
     const agy = await client.request<AccountAddResult>("account.add", {
       harness: "agy",
       label: "personal",

@@ -162,7 +162,7 @@ export interface VendorHomeResolution {
  *    typed progress. Provider-specific parsing lives HERE, not in clients.
  */
 export type LoginMethodRun =
-  | { mode: "direct"; runner: "claude_oauth" | "codex_api_key" | "opencode_api_key" | "muse_api_key" | "muse_oauth" }
+  | { mode: "direct"; runner: "claude_oauth" | "codex_api_key" | "opencode_api_key" | "muse_api_key" | "muse_oauth" | "agy_api_key" | "agy_agent_platform" }
   | { mode: "cli"; cli: LoginCliSpec };
 
 export type LoginRecipeMethod = LoginMethodDescriptor & {
@@ -201,6 +201,8 @@ export interface LoginCliSpec {
    * provider store's digest (macOS Keychain for Claude, Cursor's global store).
    */
   landing: "home_mtime" | "external_digest";
+  landsAt?: string;
+  marker?: Record<string, string>;
 }
 
 export interface LoginRecipe {
@@ -308,12 +310,85 @@ const GENERIC_PROMPTS: LoginCliCue[] = [
 ];
 const GENERIC_USER_CODE = "\\b(?:code|enter)[^\\n]{0,40}?\\b([A-Z0-9]{4,6}-[A-Z0-9]{4,6})\\b";
 const GENERIC_FAILURE = ["\\b(login|authentication|authorization) (failed|error|denied)\\b", "\\binvalid (code|token|api key)\\b"];
-const AGY_AUTH_URL = `(?:Authentication required\\. Please visit the URL to log in:\\s*)?${GENERIC_URL}`;
+const AGY_AUTH_URL = GENERIC_URL;
 const AGY_CODE_PROMPT: LoginCliCue = {
-  match: "(?:Or,\\s*)?paste the authorization code here and press Enter:\\s*$",
+  match: "paste the authorization code(?:, or the full URL of the page you land on,)? (?:here )?and press Enter:\\s*$",
   field: LOGIN_FIELD_CODE,
 };
-const AGY_FAILURE = ["\\bauthentication (?:failed or )?timed out\\b"];
+const AGY_FAILURE = ["\\bauthentication (?:failed or )?timed out\\b", "\\blogin (?:failed|cancelled)\\b", "\\btoken exchange failed\\b"];
+const AGY_AUTHORIZATION_URL: LoginAuthorizationPolicy = {
+  hosts: ["accounts.google.com"],
+  paths: ["/o/oauth2/auth"],
+  parameters: ["access_type", "client_id", "code_challenge", "code_challenge_method", "prompt", "redirect_uri", "response_type", "scope", "state"],
+};
+
+export const AGY_AUTH_FILE = ".gemini/antigravity-cli/honeybee-auth.json";
+export const AGY_OAUTH_TOKEN_FILE = ".gemini/antigravity-cli/antigravity-oauth-token";
+export const AGY_ADC_FILE = ".config/gcloud/application_default_credentials.json";
+export const AGY_AUTH_METHODS = ["oauth-personal", "oauth-business", "gemini-api-key", "agent-platform"] as const;
+export type AgyAuthMethod = (typeof AGY_AUTH_METHODS)[number];
+
+export type AgyAuthDocument =
+  | { method: "oauth-personal" | "oauth-business" }
+  | { method: "gemini-api-key"; apiKey: string }
+  | { method: "agent-platform"; project: string; location: string };
+
+export function parseAgyAuthDocument(raw: string | null): AgyAuthDocument | null {
+  if (raw === null) return null;
+  let value: unknown;
+  try {
+    value = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return null;
+  const doc = value as Record<string, unknown>;
+  const text = (key: string): string | null => (typeof doc[key] === "string" && (doc[key] as string).length > 0 ? (doc[key] as string) : null);
+  switch (doc.method) {
+    case "oauth-personal":
+    case "oauth-business":
+      return { method: doc.method };
+    case "gemini-api-key": {
+      const apiKey = text("apiKey");
+      return apiKey ? { method: "gemini-api-key", apiKey } : null;
+    }
+    case "agent-platform": {
+      const project = text("project");
+      const location = text("location");
+      return project && location ? { method: "agent-platform", project, location } : null;
+    }
+    default:
+      return null;
+  }
+}
+
+export function agyAuthUsesOauth(doc: AgyAuthDocument): boolean {
+  return doc.method === "oauth-personal" || doc.method === "oauth-business";
+}
+
+function agyTerminalLogin(method: "oauth-personal" | "oauth-business"): LoginCliSpec {
+  return {
+    tty: false,
+    env: { BROWSER: "true", AGY_CLI_DISABLE_AUTO_UPDATE: "1" },
+    cues: { url: AGY_AUTH_URL, prompts: [AGY_CODE_PROMPT], failure: AGY_FAILURE },
+    landing: "home_mtime",
+    landsAt: AGY_OAUTH_TOKEN_FILE,
+    marker: { method },
+  };
+}
+
+const AGY_AGENT_PLATFORM_FIELDS: LoginFieldDescriptor[] = [
+  field({ id: "project", label: "Google Cloud project ID", help: "The project agy bills and runs models in.", placeholder: "my-project-id", pattern: "^[a-z][a-z0-9-]{4,61}[a-z0-9]$" }),
+  field({ id: "location", label: "Location", help: "The Agent Platform region, for example global or us-central1.", placeholder: "global", pattern: "^[a-z0-9-]{2,40}$" }),
+  field({
+    id: "credentials",
+    label: "Service account key (JSON)",
+    help: "Paste the service account key file's JSON. Stored only in this account's home as its Application Default Credentials.",
+    secret: true,
+    inputType: "password",
+    placeholder: "{\"type\": \"service_account\", …}",
+  }),
+];
 // Captured from `muse login` 1.4.7 without a TTY: the sign-in URL already
 // carries the code, then "confirm this code matches:" (or "and enter this
 // code:") and the code on its own line, then it polls.
@@ -711,42 +786,62 @@ export const ACCOUNT_RECIPES: Readonly<Record<string, IdentityRecipe>> = {
   },
   agy: {
     skillsDir: "skills",
-    credentialFiles: [".gemini/antigravity-cli/antigravity-oauth-token"],
+    credentialFiles: [AGY_AUTH_FILE, AGY_OAUTH_TOKEN_FILE, AGY_ADC_FILE],
     configFiles: [".gemini/antigravity/antigravity_state.pbtxt"],
-    // Local agy uses the OS keyring independently of HOME. Its supported SSH
-    // mode bypasses the keyring and persists the OAuth token below HOME, so
-    // every managed login and spawn gets the same file-backed identity.
     extraEnv: {
       HOME: "{home}",
-      SSH_CONNECTION: "127.0.0.1 1 127.0.0.1 1",
+      AGY_CLI_FORCE_FILE_TOKEN_STORAGE: "1",
     },
     vendorHome: {
       dir: ".gemini",
       relocated: {
-        ".gemini/antigravity-cli/antigravity-oauth-token": { path: "{HOME}/.gemini/antigravity-cli/antigravity-oauth-token" },
+        [AGY_AUTH_FILE]: { path: `{HOME}/${AGY_AUTH_FILE}` },
+        [AGY_OAUTH_TOKEN_FILE]: { path: `{HOME}/${AGY_OAUTH_TOKEN_FILE}` },
+        [AGY_ADC_FILE]: { path: `{HOME}/${AGY_ADC_FILE}` },
         ".gemini/antigravity/antigravity_state.pbtxt": { path: "{HOME}/.gemini/antigravity/antigravity_state.pbtxt" },
       },
     },
-    login: { command: "agy", args: [] },
+    login: { command: "agy", args: ["acp", "--login"], unrunnableHint: "Install Google's Antigravity CLI (agy) on this node, then start the sign-in again.", install: "curl -fsSL https://antigravity.google/cli/install.sh | bash" },
     loginFlow: {
-      defaultMethodId: "agy-cli",
+      defaultMethodId: "oauth-personal",
       methods: [
         {
-          id: "agy-cli",
+          id: "oauth-personal",
           kind: "browser_code",
-          label: "Sign in with agy",
-          description: "Approve access in your browser, then paste the authorization code.",
+          label: "Sign in with Google",
+          description: "Approve access in your browser, then paste the authorization code Google shows you.",
           remoteCapable: true,
           fields: [],
-          run: {
-            mode: "cli",
-            cli: {
-              tty: true,
-              env: { BROWSER: "true" },
-              cues: { url: AGY_AUTH_URL, prompts: [AGY_CODE_PROMPT], failure: AGY_FAILURE },
-              landing: "home_mtime",
-            },
-          },
+          authorizationUrl: AGY_AUTHORIZATION_URL,
+          run: { mode: "cli", cli: agyTerminalLogin("oauth-personal") },
+        },
+        {
+          id: "oauth-business",
+          kind: "browser_code",
+          label: "Sign in with Gemini Enterprise",
+          description: "Sign in with your organization's Google account, then paste the authorization code Google shows you.",
+          remoteCapable: true,
+          fields: [],
+          authorizationUrl: AGY_AUTHORIZATION_URL,
+          run: { mode: "cli", cli: agyTerminalLogin("oauth-business") },
+        },
+        {
+          id: "gemini-api-key",
+          kind: "api_key",
+          label: "Use a Gemini API key",
+          description: "Paste a Gemini Developer API key from Google AI Studio. It is billed to the key's project.",
+          remoteCapable: true,
+          fields: [{ ...LOGIN_FIELD_API_KEY, placeholder: "AIza…", help: "Stored only in this account's agy auth file." }],
+          run: { mode: "direct", runner: "agy_api_key" },
+        },
+        {
+          id: "agent-platform",
+          kind: "credential_fields",
+          label: "Use Gemini Enterprise Agent Platform (Vertex AI)",
+          description: "Run agy on your Google Cloud project with a service account key (Application Default Credentials).",
+          remoteCapable: true,
+          fields: AGY_AGENT_PLATFORM_FIELDS,
+          run: { mode: "direct", runner: "agy_agent_platform" },
         },
       ],
     },

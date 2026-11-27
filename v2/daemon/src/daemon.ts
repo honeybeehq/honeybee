@@ -2660,7 +2660,10 @@ export class HiveDaemon {
       case "account.credentials.status": {
         const account = this.requireAccount(params);
         const authority = this.mustAccounts().authorityFor(account);
-        if (!authority) return { supported: false };
+        if (!authority) {
+          const agy = this.mustAccounts().agyGeneration(account);
+          return agy ? { supported: true, phase: "ready", generation: agy.generation, expiresAt: this.mustAccounts().agyCredentialExpiresAt(account) } : { supported: false };
+        }
         const state = authority.status(account);
         return state && state.phase !== "disabled" ? { ...state, supported: true }
           : { supported: true, phase: "native", generation: null, expiresAt: null };

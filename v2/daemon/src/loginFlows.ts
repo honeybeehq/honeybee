@@ -47,6 +47,7 @@ import { ClaudeOauthRunner } from "./login/claudeOauth.ts";
 import { CliRunner } from "./login/cliRunner.ts";
 import { STATIC_DETAIL, err, isTerminal } from "./login/common.ts";
 import { LoginRedactor } from "./login/redaction.ts";
+import { AgyKeyRunner } from "./login/agyKey.ts";
 import { DirectKeyRunner } from "./login/directKey.ts";
 import { MuseApiKeyRunner } from "./login/museApiKey.ts";
 import { MuseOauthRunner } from "./login/museOauth.ts";
@@ -512,6 +513,9 @@ export class LoginFlowService {
         return new MuseApiKeyRunner(host);
       case "muse_oauth":
         return new MuseOauthRunner(host);
+      case "agy_api_key":
+      case "agy_agent_platform":
+        return new AgyKeyRunner(host, run.runner);
       default:
         return null;
     }

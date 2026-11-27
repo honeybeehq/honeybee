@@ -15,6 +15,12 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  AGY_ADC_FILE,
+  AGY_AUTH_FILE,
+  AGY_AUTH_METHODS,
+  AGY_OAUTH_TOKEN_FILE,
+  agyAuthUsesOauth,
+  parseAgyAuthDocument,
   AccountNotFoundError,
   AccountReferencedError,
   CoreError,
@@ -57,39 +63,65 @@ test("configuration onboarding has an explicit recipe only for the supported har
   assert.equal(accountConfigImportRecipeFor("stub"), undefined);
 });
 
-test("v7.recipes: the agy recipe conforms to the HOME-based Antigravity OAuth layout and captured login cues", () => {
+test("v7.recipes: the agy recipe keeps every account's sign-in in its own home and offers agy's four ACP auth methods", () => {
   const recipe = recipeFor("agy");
   assert.ok(recipe);
-  assert.deepEqual(recipe.credentialFiles, [".gemini/antigravity-cli/antigravity-oauth-token"]);
+  assert.deepEqual(recipe.credentialFiles, [AGY_AUTH_FILE, AGY_OAUTH_TOKEN_FILE, AGY_ADC_FILE]);
   assert.deepEqual(recipe.configFiles, [".gemini/antigravity/antigravity_state.pbtxt"]);
-  assert.deepEqual(recipe.extraEnv, {
-    HOME: "{home}",
-    SSH_CONNECTION: "127.0.0.1 1 127.0.0.1 1",
-  });
+  assert.deepEqual(recipe.extraEnv, { HOME: "{home}", AGY_CLI_FORCE_FILE_TOKEN_STORAGE: "1" });
   assert.equal(recipe.vendorHome.dir, ".gemini");
-  assert.deepEqual(recipe.login, { command: "agy", args: [] });
-  assert.equal(recipe.loginFlow.defaultMethodId, "agy-cli");
-  assert.equal(recipe.loginFlow.methods.length, 1);
-  const method = recipe.loginFlow.methods[0]!;
-  assert.deepEqual(
-    { id: method.id, kind: method.kind, remoteCapable: method.remoteCapable, fields: method.fields },
-    { id: "agy-cli", kind: "browser_code", remoteCapable: true, fields: [] },
-  );
-  assert.equal(method.run.mode, "cli");
-  if (method.run.mode !== "cli") return;
-  assert.equal(method.run.cli.tty, true);
-  assert.equal(method.run.cli.landing, "home_mtime");
+  assert.deepEqual(recipe.login.args, ["acp", "--login"]);
+  assert.equal(recipe.loginFlow.defaultMethodId, "oauth-personal");
+  assert.deepEqual(recipe.loginFlow.methods.map((m) => [m.id, m.kind, m.remoteCapable]), [
+    ["oauth-personal", "browser_code", true],
+    ["oauth-business", "browser_code", true],
+    ["gemini-api-key", "api_key", true],
+    ["agent-platform", "credential_fields", true],
+  ]);
+  assert.deepEqual([...AGY_AUTH_METHODS], recipe.loginFlow.methods.map((m) => m.id));
+  const personal = recipe.loginFlow.methods[0]!;
+  assert.equal(personal.label, "Sign in with Google");
+  assert.equal(personal.run.mode, "cli");
+  if (personal.run.mode !== "cli") return;
+  assert.equal(personal.run.cli.tty, false);
+  assert.equal(personal.run.cli.landing, "home_mtime");
+  assert.equal(personal.run.cli.landsAt, AGY_OAUTH_TOKEN_FILE);
+  assert.deepEqual(personal.run.cli.marker, { method: "oauth-personal" });
+  const business = recipe.loginFlow.methods[1]!;
+  assert.ok(business.run.mode === "cli" && business.run.cli.marker?.method === "oauth-business");
   const authOutput = [
-    "Authentication required. Please visit the URL to log in:",
-    "  https://accounts.google.com/o/oauth2/auth?client_id=test",
+    "Open this link in a browser to log in with Google:",
     "",
-    "Waiting for authentication (timeout 60s)...",
-    "Or, paste the authorization code here and press Enter:",
+    "  https://accounts.google.com/o/oauth2/auth?access_type=offline&client_id=test&code_challenge=X&code_challenge_method=S256&prompt=consent&redirect_uri=https%3A%2F%2Fantigravity.google%2Foauth-callback&response_type=code&scope=openid&state=Y",
+    "",
+    "Then paste the authorization code, or the full URL of the page you land on, and press Enter:",
   ].join("\n");
-  const url = new RegExp(method.run.cli.cues.url ?? "", "i").exec(authOutput);
-  assert.equal(url?.[1], "https://accounts.google.com/o/oauth2/auth?client_id=test");
-  assert.ok(method.run.cli.cues.prompts.some((cue) => new RegExp(cue.match, "i").test(authOutput.split("\n").at(-1) ?? "")));
-  assert.ok(method.run.cli.cues.failure?.some((cue) => new RegExp(cue, "i").test('{"error":"authentication failed or timed out"}')));
+  const url = new RegExp(personal.run.cli.cues.url ?? "", "i").exec(authOutput);
+  assert.ok(url?.[1]?.startsWith("https://accounts.google.com/o/oauth2/auth?access_type=offline"));
+  assert.ok(url?.[1]?.endsWith("state=Y"));
+  assert.ok(personal.run.cli.cues.prompts.some((cue) => new RegExp(cue.match, "i").test(authOutput.split("\n").at(-1) ?? "")));
+  assert.ok(personal.run.cli.cues.failure?.some((cue) => new RegExp(cue, "i").test("login cancelled: no authorization code was entered")));
+  assert.deepEqual(personal.authorizationUrl?.hosts, ["accounts.google.com"]);
+  const apiKey = recipe.loginFlow.methods[2]!;
+  assert.deepEqual(apiKey.run, { mode: "direct", runner: "agy_api_key" });
+  assert.deepEqual(apiKey.fields.map((f) => [f.id, f.secret]), [["apiKey", true]]);
+  const platform = recipe.loginFlow.methods[3]!;
+  assert.deepEqual(platform.run, { mode: "direct", runner: "agy_agent_platform" });
+  assert.deepEqual(platform.fields.map((f) => [f.id, f.secret]), [["project", false], ["location", false], ["credentials", true]]);
+});
+
+test("v7.recipes: the agy auth file names one of agy's auth methods and only what that method needs", () => {
+  assert.deepEqual(parseAgyAuthDocument('{"method":"oauth-personal"}'), { method: "oauth-personal" });
+  assert.deepEqual(parseAgyAuthDocument('{"method":"oauth-business","extra":1}'), { method: "oauth-business" });
+  assert.deepEqual(parseAgyAuthDocument('{"method":"gemini-api-key","apiKey":"k"}'), { method: "gemini-api-key", apiKey: "k" });
+  assert.equal(parseAgyAuthDocument('{"method":"gemini-api-key"}'), null);
+  assert.deepEqual(parseAgyAuthDocument('{"method":"agent-platform","project":"p","location":"global"}'), { method: "agent-platform", project: "p", location: "global" });
+  assert.equal(parseAgyAuthDocument('{"method":"agent-platform","project":"p"}'), null);
+  assert.equal(parseAgyAuthDocument('{"method":"keychain"}'), null);
+  assert.equal(parseAgyAuthDocument("not json"), null);
+  assert.equal(parseAgyAuthDocument(null), null);
+  assert.equal(agyAuthUsesOauth({ method: "oauth-business" }), true);
+  assert.equal(agyAuthUsesOauth({ method: "gemini-api-key", apiKey: "k" }), false);
 });
 
 test("v7.recipes: the muse recipe isolates through the XDG pair and matches the captured `muse login` device output", () => {
@@ -742,10 +774,7 @@ test("v7.ids: accountIdFor follows the old registry rule (safeName, lower-case) 
   assert.equal(accountIdFor("kimi", "default"), "kimi-default");
   assert.equal(safeName("..."), "---");
   assert.deepEqual(recipeEnvFor("opencode", "/h"), { XDG_DATA_HOME: "/h/xdg-data" });
-  assert.deepEqual(recipeEnvFor("agy", "/h"), {
-    HOME: "/h",
-    SSH_CONNECTION: "127.0.0.1 1 127.0.0.1 1",
-  });
+  assert.deepEqual(recipeEnvFor("agy", "/h"), { HOME: "/h", AGY_CLI_FORCE_FILE_TOKEN_STORAGE: "1" });
   assert.deepEqual(recipeEnvFor("muse", "/h"), { XDG_DATA_HOME: "/h/xdg-data" });
   assert.deepEqual(recipeEnvFor("claude", "/h"), {});
 });
@@ -874,7 +903,9 @@ test("v18.vendorHome: the machine's real harness home — the home env var when 
   assert.equal(agy?.fromEnv, false);
   assert.equal(agy?.vendorHome, "/Users/op/.gemini");
   assert.deepEqual(agy?.files, [
-    { rel: ".gemini/antigravity-cli/antigravity-oauth-token", path: "/Users/op/.gemini/antigravity-cli/antigravity-oauth-token", role: "credential" },
+    { rel: AGY_AUTH_FILE, path: `/Users/op/${AGY_AUTH_FILE}`, role: "credential" },
+    { rel: AGY_OAUTH_TOKEN_FILE, path: `/Users/op/${AGY_OAUTH_TOKEN_FILE}`, role: "credential" },
+    { rel: AGY_ADC_FILE, path: `/Users/op/${AGY_ADC_FILE}`, role: "credential" },
     { rel: ".gemini/antigravity/antigravity_state.pbtxt", path: "/Users/op/.gemini/antigravity/antigravity_state.pbtxt", role: "config" },
   ]);
   // muse: the config root is $XDG_CONFIG_HOME/muse, else ~/.config/muse.

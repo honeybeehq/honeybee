@@ -53,6 +53,7 @@ export interface LoginTransports {
   openaiKeyCheck: (apiKey: string, baseUrl?: string) => Promise<KeyCheck>;
   /** Anthropic API key check (`GET /v1/models`). */
   anthropicKeyCheck: (apiKey: string, baseUrl?: string) => Promise<KeyCheck>;
+  geminiKeyCheck: (apiKey: string) => Promise<KeyCheck>;
 }
 
 // Claude Code's public OAuth client id (the one the CLI itself uses).
@@ -270,6 +271,14 @@ export function defaultLoginTransports(timeoutMs: number): LoginTransports {
         headers: { Authorization: `Bearer ${apiKey}` },
         signal: AbortSignal.timeout(timeoutMs),
       });
+      return keyCheckFromStatus(response.status);
+    },
+    geminiKeyCheck: async (apiKey) => {
+      const response = await fetch(`${(process.env.HIVE_GEMINI_API_URL ?? "https://generativelanguage.googleapis.com/v1beta").replace(/\/+$/, "")}/models?pageSize=1`, {
+        headers: { "x-goog-api-key": apiKey },
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      if (response.status === 400) return "invalid";
       return keyCheckFromStatus(response.status);
     },
     anthropicKeyCheck: async (apiKey, baseUrl) => {

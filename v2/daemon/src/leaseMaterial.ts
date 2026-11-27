@@ -1,4 +1,6 @@
-import { recipeFor, parseClaudeCredentials, parseMuseCredentials, type AccountRow } from "../../core/src/index.ts";
+import { recipeFor, parseAgyAuthDocument, parseClaudeCredentials, parseMuseCredentials, type AccountRow } from "../../core/src/index.ts";
+import { parseAgyOauthDocument } from "./agyCredentials.ts";
+import { serviceAccountKey } from "./login/agyKey.ts";
 import { CODEX_CREDENTIAL_CODEC } from "./codexCredentialAuthority.ts";
 import { cursorTokenClaims } from "./cursorAuth.ts";
 import { grokAccessOnly, grokCredentialEntry } from "./grokCredentialAuthority.ts";
@@ -34,6 +36,7 @@ export function createLeaseMaterialCodecs(claude: LeaseKeychainCodec): ReadonlyM
     ["opencode", document => Object.values(document).length > 0 && Object.values(document).every(value => value !== null && typeof value === "object" && !Array.isArray(value) && ((value as Record<string, unknown>).type === "oauth" && nonempty((value as Record<string, unknown>).access) || (value as Record<string, unknown>).type === "api" && nonempty((value as Record<string, unknown>).key)))],
     // Cursor: exactly {accessToken}, an identity-bearing token; no refresh token, no API key, no other field.
     ["cursor", document => Object.keys(document).length === 1 && typeof document.accessToken === "string" && cursorTokenClaims(document.accessToken) !== null],
+    ["agy", document => parseAgyAuthDocument(JSON.stringify(document)) !== null || parseAgyOauthDocument(document) !== null && !hasRefreshGrant(document) || serviceAccountKey(JSON.stringify(document)) !== null],
     ["muse", document => { const credential = parseMuseCredentials(JSON.stringify(document)); return credential !== null && credential.mechanism === "api_key"; }],
   ]);
   return new Map([...proofs.keys()].map(harness => {

@@ -28,8 +28,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { join } from "node:path";
-import { openCoreStore, type CoreStore } from "../../core/src/index.ts";
+import { dirname, join } from "node:path";
+import { openCoreStore, type AccountRow, type CoreStore } from "../../core/src/index.ts";
 import type { ClaudeRefreshResult, RefreshedClaudeToken } from "../src/claudeRefreshTransport.ts";
 const granted = (token: RefreshedClaudeToken): ClaudeRefreshResult => ({ kind: "success", token });
 const refused: ClaudeRefreshResult = { kind: "rejected", httpStatus: 400, error: "invalid_grant", description: "Refresh token not found or invalid" };
@@ -891,46 +891,160 @@ test("limits.1: fetch writes the table (claude via the home token + injected usa
   }
 });
 
-test("limits.agy: an imported HOME-scoped token clears auth_needed while provider limits remain unsupported", async () => {
+const AGY_AUTH = ".gemini/antigravity-cli/honeybee-auth.json";
+const AGY_TOKEN = ".gemini/antigravity-cli/antigravity-oauth-token";
+const AGY_ADC = ".config/gcloud/application_default_credentials.json";
+
+function agyToken(expiresAt: number, refresh = "agy-refresh-SENTINEL"): string {
+  return JSON.stringify({ access_token: `agy-access-${expiresAt}`, token_type: "Bearer", refresh_token: refresh, expiry: new Date(expiresAt).toISOString() });
+}
+
+function agyHome(account: AccountRow, files: Record<string, string>): void {
+  for (const [rel, raw] of Object.entries(files)) {
+    mkdirSync(dirname(join(account.homePath, rel)), { recursive: true });
+    writeFileSync(join(account.homePath, rel), raw, { mode: 0o600 });
+  }
+}
+
+test("limits.agy: agy's own sign-in check verifies an OAuth account; a signed-out answer sets auth_needed; a missing token is absent", async () => {
+  const r = rig();
+  try {
+    let answer: "signed_in" | "signed_out" | "unavailable" = "signed_in";
+    const checks: Array<Record<string, string>> = [];
+    const svc = service(r, { agySignInCheck: async (env) => { checks.push(env); return answer; } });
+    const account = addAccount(r, "agy", "personal", { status: "auth_needed", vault: { [AGY_AUTH]: '{"method":"oauth-personal"}', [AGY_TOKEN]: agyToken(r.now() + 3_600_000) } });
+    assert.equal(svc.homeEnvOf(account).HOME, account.homePath);
+    assert.equal(svc.homeEnvOf(account).AGY_CLI_FORCE_FILE_TOKEN_STORAGE, "1");
+    assert.equal(svc.homeEnvOf(account).GEMINI_API_KEY, "");
+    assert.equal(svc.homeEnvOf(account).SSH_CONNECTION, undefined);
+    assert.deepEqual(svc.credentialEnvOf(account), {});
+    assert.equal(svc.credentialProbeOf("agy"), "credential_file");
+    assert.equal(svc.credentialed(account), true);
+
+    const [fromVault] = await svc.refreshLimits([account.id]);
+    assert.equal(fromVault?.unreadableReason, "unsupported");
+    assert.equal(checks.length, 0, "a vault-only account is not run");
+    assert.equal(r.store.getAccount(account.id)?.status, "ok");
+
+    agyHome(account, { [AGY_AUTH]: '{"method":"oauth-personal"}', [AGY_TOKEN]: agyToken(r.now() + 3_600_000) });
+    const [signedIn] = await svc.refreshLimits([account.id]);
+    assert.equal(signedIn?.unreadableReason, "unsupported");
+    assert.equal(checks.at(-1)?.HOME, account.homePath);
+    assert.equal(checks.at(-1)?.AGY_CLI_FORCE_FILE_TOKEN_STORAGE, "1");
+
+    answer = "signed_out";
+    const [signedOut] = await svc.refreshLimits([account.id]);
+    assert.equal(signedOut?.unreadableReason, "auth_failed");
+    assert.equal(r.store.getAccount(account.id)?.status, "auth_needed");
+    assert.match(r.store.getAccount(account.id)?.statusReason ?? "", /signed out/);
+
+    answer = "signed_in";
+    rmSync(join(account.homePath, AGY_TOKEN));
+    rmSync(join(r.vault, "agy", account.id, AGY_TOKEN));
+    const missing = await svc.verifyCredentials(r.store.getAccount(account.id)!);
+    assert.equal(missing.account.status, "auth_needed");
+    assert.equal(svc.credentialState(r.store.getAccount(account.id)!), "invalid");
+  } finally {
+    r.cleanup();
+  }
+});
+
+test("accounts.agy: API-key and Agent Platform accounts reach the spawn only as runtime env, never in the home env", () => {
   const r = rig();
   try {
     const svc = service(r);
-    const tokenFile = ".gemini/antigravity-cli/antigravity-oauth-token";
-    const account = addAccount(r, "agy", "personal", { status: "auth_needed", vault: { [tokenFile]: "agy-oauth-token" } });
-    assert.deepEqual(svc.homeEnvOf(account), {
-      HOME: account.homePath,
-      SSH_CONNECTION: "127.0.0.1 1 127.0.0.1 1",
+    const key = addAccount(r, "agy", "key", { vault: { [AGY_AUTH]: "{}" } });
+    agyHome(key, { [AGY_AUTH]: JSON.stringify({ method: "gemini-api-key", apiKey: "AIza-SENTINEL" }) });
+    assert.deepEqual(svc.credentialEnvOf(key), { HIVE_AGY_AUTH_METHOD: "gemini-api-key", GEMINI_API_KEY: "AIza-SENTINEL" });
+    assert.equal(svc.homeEnvOf(key).GEMINI_API_KEY, "");
+    const vertex = addAccount(r, "agy", "vertex", { vault: { [AGY_AUTH]: "{}" } });
+    agyHome(vertex, { [AGY_AUTH]: JSON.stringify({ method: "agent-platform", project: "my-proj-1", location: "global" }), [AGY_ADC]: "{}" });
+    assert.deepEqual(svc.credentialEnvOf(vertex), {
+      HIVE_AGY_AUTH_METHOD: "agent-platform",
+      GOOGLE_CLOUD_PROJECT: "my-proj-1",
+      GOOGLE_CLOUD_LOCATION: "global",
+      GOOGLE_APPLICATION_CREDENTIALS: join(vertex.homePath, AGY_ADC),
     });
-    assert.equal(svc.hasCredentialProbe("agy"), true);
-    assert.equal(svc.credentialProbeOf("agy"), "credential_file");
-    assert.equal(svc.credentialed(account), true);
-    assert.equal(svc.credentialHealthOf(account), "unverified");
-    assert.equal(r.store.getAccount(account.id)?.status, "auth_needed");
+    assert.equal(svc.credentialState(vertex), "present");
+    rmSync(join(vertex.homePath, AGY_ADC));
+    rmSync(join(r.vault, "agy", vertex.id, AGY_AUTH));
+    assert.equal(svc.credentialState(vertex), "invalid");
+  } finally {
+    r.cleanup();
+  }
+});
 
-    const [unsupported] = await svc.refreshLimits([account.id]);
-    assert.equal(unsupported?.readable, false);
-    assert.equal(unsupported?.unreadableReason, "unsupported");
-    assert.equal(unsupported?.error, "agy has no limits source");
-    assert.equal(r.store.getAccount(account.id)?.status, "ok");
-    const refreshedAccount = r.store.getAccount(account.id);
-    assert.ok(refreshedAccount);
-    assert.equal(svc.credentialHealthOf(refreshedAccount), "unverified");
-    assert.ok(r.log.some((line) => line === `account.auth_ok account=${account.id} by=credential_probe`));
+test("lease.agy: OAuth leases ship the sign-in access-only; a near-expiry token is refreshed by agy itself; each new credential is a new generation", async () => {
+  const r = rig();
+  try {
+    let refreshedTo = 0;
+    const svc = service(r, {
+      agySignInCheck: async (env) => {
+        const path = join(env.HOME!, AGY_TOKEN);
+        const stale = JSON.parse(readFileSync(path, "utf8")) as { expiry: string };
+        assert.ok(Date.parse(stale.expiry) < r.now(), "the refresh copy is expired so agy refreshes it");
+        assert.equal(env.AGY_CLI_FORCE_FILE_TOKEN_STORAGE, "1");
+        refreshedTo = r.now() + 3_600_000;
+        writeFileSync(path, agyToken(refreshedTo));
+        return "signed_in";
+      },
+    });
+    const account = addAccount(r, "agy", "personal", { vault: { [AGY_AUTH]: '{"method":"oauth-personal"}' } });
+    agyHome(account, { [AGY_AUTH]: '{"method":"oauth-personal"}', [AGY_TOKEN]: agyToken(r.now() + 3_000_000) });
 
-    const present = await svc.verifyCredentials(refreshedAccount);
-    assert.equal(present.outcome, "unverified");
-    assert.equal(present.probe, "credential_file");
-    assert.equal(present.limits, null, "a credential-file check does not return provider limits");
-    assert.equal(r.store.getAccountLimits(account.id)?.unreadableReason, "unsupported", "usage keeps the accepted unsupported-limits row");
+    const first = await svc.mintLease(account);
+    assert.deepEqual(first.files.map((f) => f.homeRelPath), [AGY_AUTH, AGY_TOKEN]);
+    const shipped = JSON.parse(Buffer.from(first.files[1]!.contentB64, "base64").toString("utf8")) as Record<string, unknown>;
+    assert.equal(shipped.refresh_token, "");
+    assert.equal(shipped.access_token, `agy-access-${r.now() + 3_000_000}`);
+    assert.equal(first.expiresAt, Math.floor((r.now() + 3_000_000) / 1000));
+    assert.equal(first.generation, 1);
+    assert.equal(refreshedTo, 0, "a fresh token is shipped as is");
+    assert.equal((await svc.mintLease(account)).generation, 1, "an unchanged credential keeps its generation");
 
-    rmSync(join(r.vault, "agy", account.id, tokenFile));
-    const missing = await svc.verifyCredentials(present.account);
-    assert.equal(missing.outcome, "absent");
-    assert.equal(missing.probe, "credential_file");
-    assert.equal(missing.limits, null);
-    assert.equal(svc.credentialed(account), false);
-    assert.equal(missing.account.status, "auth_needed");
-    assert.equal(r.store.getAccount(account.id)?.status, "auth_needed");
+    agyHome(account, { [AGY_TOKEN]: agyToken(r.now() + 60_000) });
+    const renewed = await svc.mintLease(account);
+    assert.ok(refreshedTo > 0);
+    assert.equal(renewed.expiresAt, Math.floor(refreshedTo / 1000));
+    assert.equal(renewed.generation, 2);
+    assert.equal(JSON.parse(readFileSync(join(account.homePath, AGY_TOKEN), "utf8")).refresh_token, "agy-refresh-SENTINEL", "the home keeps its refresh grant");
+    assert.equal(readFileSync(join(r.vault, "agy", account.id, AGY_TOKEN), "utf8"), readFileSync(join(account.homePath, AGY_TOKEN), "utf8"));
+    assert.ok(r.log.some((line) => line === `account.agy.refreshed account=${account.id}`));
+    assert.doesNotMatch(r.log.join("\n"), /SENTINEL|agy-access/);
+  } finally {
+    r.cleanup();
+  }
+});
+
+test("lease.agy: a signed-out refresh sets auth_needed and refuses the lease; API-key and service-account leases ship their files; user ADC is refused", async () => {
+  const r = rig();
+  try {
+    const svc = service(r, { agySignInCheck: async () => "signed_out" });
+    const oauth = addAccount(r, "agy", "revoked", { vault: { [AGY_AUTH]: '{"method":"oauth-personal"}' } });
+    agyHome(oauth, { [AGY_AUTH]: '{"method":"oauth-personal"}', [AGY_TOKEN]: agyToken(r.now() + 30_000) });
+    await assert.rejects(() => svc.mintLease(oauth), (error: Error & { code?: string }) => error.code === "credential_login_required");
+    assert.equal(r.store.getAccount(oauth.id)?.status, "auth_needed");
+
+    const leased = addAccount(r, "agy", "nogrant", { vault: { [AGY_AUTH]: '{"method":"oauth-personal"}' } });
+    agyHome(leased, { [AGY_AUTH]: '{"method":"oauth-personal"}', [AGY_TOKEN]: agyToken(r.now() - 1000, "") });
+    assert.equal(svc.credentialState(leased), "expired");
+
+    const key = addAccount(r, "agy", "key", { vault: { [AGY_AUTH]: "{}" } });
+    agyHome(key, { [AGY_AUTH]: JSON.stringify({ method: "gemini-api-key", apiKey: "AIza-SENTINEL" }) });
+    const keyLease = await svc.mintLease(key);
+    assert.deepEqual(keyLease.files.map((f) => f.homeRelPath), [AGY_AUTH]);
+    assert.equal(keyLease.expiresAt, undefined);
+    assert.equal(keyLease.generation, 1);
+
+    const sa = addAccount(r, "agy", "sa", { vault: { [AGY_AUTH]: "{}" } });
+    const serviceAccount = { type: "service_account", client_email: "x@p.iam.gserviceaccount.com", private_key: "-----BEGIN PRIVATE KEY-----SENTINEL", token_uri: "https://oauth2.googleapis.com/token" };
+    agyHome(sa, { [AGY_AUTH]: JSON.stringify({ method: "agent-platform", project: "my-proj-1", location: "global" }), [AGY_ADC]: JSON.stringify(serviceAccount) });
+    assert.deepEqual((await svc.mintLease(sa)).files.map((f) => f.homeRelPath), [AGY_AUTH, AGY_ADC]);
+
+    const user = addAccount(r, "agy", "user-adc", { vault: { [AGY_AUTH]: "{}" } });
+    agyHome(user, { [AGY_AUTH]: JSON.stringify({ method: "agent-platform", project: "my-proj-1", location: "global" }), [AGY_ADC]: JSON.stringify({ type: "authorized_user", refresh_token: "r" }) });
+    await assert.rejects(() => svc.mintLease(user), (error: Error & { code?: string }) => error.code === "lease_unsupported");
+    assert.doesNotMatch(r.log.join("\n"), /SENTINEL/);
   } finally {
     r.cleanup();
   }

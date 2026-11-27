@@ -182,6 +182,7 @@ export const DAEMON_CAPABILITIES = [
    * refuses it with `credential_login_required`.
    */
   "account.credentials.login_required.v1",
+  "account.agy.v1",
   /** Durable, weighted-fair automatic allocation with hard completion reserve and typed waits. */
   "account.allocation.v1",
   /** Cross-node single-owner acquire/confirm/release claims. */
