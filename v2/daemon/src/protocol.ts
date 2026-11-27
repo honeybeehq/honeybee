@@ -138,6 +138,7 @@ export const DAEMON_CAPABILITIES = [
   "node.harnesses.v1",
   /** `node.harnesses` facts carry `nativeLogin`, computed with the check `account.import` uses. */
   "node.harnesses.native_login.v1",
+  "agy.acp.v1",
   "daemon.instance.v1",
   /**
    * v18 (2026-09-02): honest credentials — mirror account rows (snapshot +

@@ -242,8 +242,12 @@ import { REMOTE_SENDER_RE, isPeerSender } from "./envelope.ts";
 import { claudeProjectKey } from "../../adapters/src/claude.ts";
 import { renderTranscriptLines } from "../../adapters/src/transcripts.ts";
 import {
+  agyAcpAdapter,
   agyAdapter,
   agyArgGrammar,
+  agySpawnPlan,
+  AGY_ACP_SUBCOMMAND,
+  AGY_AUTH_METHOD_ENV,
   claudeAdapter,
   claudeArgGrammar,
   codexAdapter,
@@ -577,6 +581,7 @@ export function composeSpawn(
   bee: { cwd: string; args: string[] | null; providerSessionId: string | null; forkSeed?: string | null },
   grokMcpServers: readonly GrokMcpServerStdio[] = [],
   placementInstruction?: string | null,
+  spawnEnv: Readonly<Record<string, string>> = {},
 ): { adapter: HarnessAdapter | null; args: string[]; model: string | undefined } {
   const grammar = grammarFor(adapterName);
   // v6 fork: a fork with no session of its own yet forks the SOURCE's
@@ -594,6 +599,24 @@ export function composeSpawn(
     ? ["--append-system-prompt", placementInstruction]
     : [];
   const composed = composeArgv(grammar, [spec.args, spec.defaultArgs, bee.args, resume, startup]);
+  if (adapterName === "agy") {
+    const ownArgs = spec.args?.includes(AGY_ACP_SUBCOMMAND) ? composed : composeArgv(grammar, [spec.defaultArgs, bee.args]);
+    const plan = agySpawnPlan(composed, ownArgs);
+    if (plan.acp) {
+      const authMethodId = spawnEnv[AGY_AUTH_METHOD_ENV];
+      return {
+        adapter: agyAcpAdapter({
+          cwd: bee.cwd, allowPermissions: plan.allowPermissions, mcpServers: grokMcpServers,
+          ...(plan.model ? { model: plan.model } : {}),
+          ...(plan.effort ? { effort: plan.effort } : {}),
+          ...(plan.mode ? { mode: plan.mode } : {}),
+          ...(authMethodId ? { authMethodId } : {}),
+          ...(bee.providerSessionId ? { resumeSessionId: bee.providerSessionId } : {}),
+        }),
+        args: plan.argv, model: plan.model,
+      };
+    }
+  }
   if (adapterName === "kimi") {
     const plan = kimiSpawnPlan(composed);
     return {
@@ -2097,7 +2120,7 @@ export class HiveDaemon {
     const fence = store.beeEpoch(beeId);
     if (fence.fencedAt != null) throw new Error(`resolve: bee ${beeId} is fenced at epoch ${fence.epoch}; another executor owns it`);
     const adapterName = spec.adapter ?? bee.agent;
-    const grokMcpServers: GrokMcpServerStdio[] = adapterName === "grok" || adapterName === "kimi" || adapterName === "muse"
+    const grokMcpServers: GrokMcpServerStdio[] = adapterName === "grok" || adapterName === "kimi" || adapterName === "muse" || adapterName === "agy"
       ? this.gateways().flatMap((gateway) => gateway.kind === "stdio" ? [{
         name: gateway.name,
         command: gateway.shim.command,
@@ -2113,17 +2136,17 @@ export class HiveDaemon {
         cellId: instructionMove.retainedCellId,
       })
       : null;
-    const composed = composeSpawn(spec, adapterName, bee, grokMcpServers, placementInstruction);
+    // v7 (spec 08): a bound bee runs in its account's home. The env is derived
+    // from the account row. The tracked pre-claim readiness gate has already
+    // activated the home and reconciled its native MCP config.
+    const env = { ...this.runtimeEnvOf(bee, spec, "resolve"), ...this.beeTmpEnv(bee, spec) };
+    const composed = composeSpawn(spec, adapterName, bee, grokMcpServers, placementInstruction, env);
     const operation = store.threadOperationForSuccessor(beeId);
     let adapter = operation && bee.providerSessionId === operation.successorProviderSessionId && adapterName === "codex"
       ? codexAdapter({ cwd: bee.cwd, model: composed.model, modelProvider: operation.source.modelProvider, resumeThreadId: bee.providerSessionId ?? undefined, resumePath: operation.sessionPath })
       : composed.adapter;
     let args = composed.args;
     if (!adapter) throw new Error(`resolve: no adapter for agent '${bee.agent}'`);
-    // v7 (spec 08): a bound bee runs in its account's home. The env is derived
-    // from the account row. The tracked pre-claim readiness gate has already
-    // activated the home and reconciled its native MCP config.
-    const env = { ...this.runtimeEnvOf(bee, spec, "resolve"), ...this.beeTmpEnv(bee, spec) };
     if (adapterName === "codex" && bee.providerSessionId && env.CODEX_HOME) {
       const path = codexSwapHistoryPath(env.CODEX_HOME, bee.id, bee.providerSessionId);
       if (existsSync(path)) {
