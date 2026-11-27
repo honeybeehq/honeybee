@@ -974,6 +974,35 @@ test("accounts.agy: API-key and Agent Platform accounts reach the spawn only as 
   }
 });
 
+test("placement.agy: automatic placement picks a usable agy account, skips one needing a login or missing its sign-in, and round-robin rotates", () => {
+  const r = rig();
+  try {
+    const svc = service(r);
+    const oauth = { [AGY_AUTH]: '{"method":"oauth-personal"}', [AGY_TOKEN]: agyToken(r.now() + 3_600_000) };
+    const a = addAccount(r, "agy", "a", { vault: oauth });
+    const b = addAccount(r, "agy", "b", { vault: { [AGY_AUTH]: JSON.stringify({ method: "gemini-api-key", apiKey: "AIza-SENTINEL" }) } });
+    const broken = addAccount(r, "agy", "c", { vault: { [AGY_AUTH]: '{"method":"oauth-personal"}' } });
+    const signedOut = addAccount(r, "agy", "d", { status: "auth_needed", vault: oauth });
+    const picked = svc.pick("agy");
+    assert.ok(picked.ok);
+    assert.ok([a.id, b.id].includes(picked.account.id));
+    const seen = new Set<string>();
+    for (let i = 0; i < 4; i++) {
+      const next = svc.pickRoundRobin("agy");
+      assert.ok(next.ok);
+      seen.add(next.account.id);
+    }
+    assert.deepEqual([...seen].sort(), [a.id, b.id].sort());
+    assert.ok(!seen.has(broken.id) && !seen.has(signedOut.id));
+    assert.equal(svc.pick("agy", { onlyAccountIds: new Set([signedOut.id]) }).ok, false);
+    const rotated = svc.pick("agy", { excludeAccountIds: new Set([picked.account.id]) });
+    assert.ok(rotated.ok);
+    assert.notEqual(rotated.account.id, picked.account.id);
+  } finally {
+    r.cleanup();
+  }
+});
+
 test("lease.agy: OAuth leases ship the sign-in access-only; a near-expiry token is refreshed by agy itself; each new credential is a new generation", async () => {
   const r = rig();
   try {
