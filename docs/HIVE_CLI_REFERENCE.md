@@ -1151,88 +1151,7 @@ Resolution prefers `$TMUX_PANE` (matching a bee by `agentPaneId`) and falls back
 to the current session name (matching `tmuxTarget`, for solo combs and legacy
 bees). Errors cleanly when not inside tmux or when no bee matches.
 
-### `hive handoff`
-
-Hand the **same bee** to a fresh provider thread — a same-family context reset
-or a cross-family model change (Codex → Claude). Where `fork` creates another
-bee, `handoff` keeps the bee id, handle, name, tags, parent, mailbox, Cell and
-history and only moves execution ownership. The daemon owns the whole
-operation (v2 `bee.handoff`, capability `bee.handoff.v1`); see
-`docs/design/handoff-contract.md` for the wire contract.
-
-```sh
-hive handoff <bee> --to <agent> [--model <m> | --args -- <args…>]
-             [--account <a>|auto|rr|none] [-p <instruction>] [--now]
-             [--idempotency-key <k>] [--wait [--timeout <ms>]]
-hive handoff get <handoffId>
-hive handoff status <bee>
-```
-
-- `--to <agent>` — the target harness (any configured agent). Same agent = a
-  context reset on a new thread.
-- `--model <m>` — target per-bee args via the harness's model flag; `--args --`
-  passes them verbatim. Omitted: same-family keeps the bee's args, cross-family
-  drops them (they name another CLI's flags).
-- `--account` — target-harness account selector; default `auto` (or the bee's
-  own account for a same-family handoff); `none` = unbound.
-- `-p <instruction>` — an operator note carried into the persisted context and
-  the seed the new thread opens with.
-- `--now` — stop the source immediately; default waits for its current turn to
-  end (a working bee is not cut short).
-- `--wait` — block until `complete` (exit 0) or `failed` (exit 1).
-
-Phases: `stopping → summarizing → starting → complete | failed`. Queued mail
-is preserved and delivered after the context seed, in order. Before the switch
-a failure leaves the bee on its old harness (a live source is revived
-automatically); after the switch it stays on the target with the seed queued.
-`hive stop`, `archive`, `delete` or `revive` during a handoff cancel it
-(`failed` + `superseded`).
-
-### `hive action`
-
-The per-bee **action queue** (v2 `action.*`, capability `bee.actions.v1`; wire
-contract in `docs/design/action-queue-contract.md`). An action is one unit of
-work — an agent instruction (`commit`, `fix`, `name_branch`, `instruction`), a
-Cell landing (`land`, the `cell.capture` receipt), a lifecycle `archive`, or an
-external operation Apiary executes (`push`, `open_pr`). Actions run one at a
-time per bee, each released only after its predecessor **succeeded**; a
-finished turn never completes an action — only a report or a receipt does.
-
-```sh
-hive action enqueue <bee> <kind> [--input k=v|k:=json]... [--title t] [--idempotency-key k]
-hive action enqueue <bee> --items-json '[{"kind":"commit"},{"kind":"land","inputs":{"targetBranch":"main","commit":{"$ref":{"item":0,"output":"commitSha"}}}},{"kind":"archive"}]'
-hive action list [--bee b] [--status s] | action get <id> | action definitions
-hive action cancel <id> [--force] | action retry <id> [--force]
-hive action complete <id> [--output k=v]... [--detail d] [--idempotency-key k]
-hive action pause <bee> | action resume <bee> | action reorder <bee> <id>...
-hive action report <id> --attempt n --token t (--succeeded [--output k=v]... | --failed [--code c] [--detail d] | --uncertain [--detail d] | --ask "q" [--option o]... | --progress "note") [--bee b]
-hive action claim --executor <name> [--kind k] [--bee b] [--action id]
-```
-
-- `report` is the bee-side verb: the delivered instruction names the exact
-  command (id, attempt, token); the bee is `HIVE_BEE_ID` unless `--bee` is
-  given. `--ask` opens an ordinary question and holds the queue until it is
-  answered; `--uncertain` holds it until the same attempt is reconciled.
-- `cancel` withdraws pending work (an undelivered instruction is removed from
-  the mailbox); `--force` stops tracking an in-flight attempt without undoing
-  its effects. `retry` starts a **new** attempt of a failed action; `--force`
-  is required when the last attempt's outcome is uncertain.
-- `complete` is the operator's way out when an agent never reports: it
-  settles the open agent attempt (running, or waiting on its question) as
-  `succeeded` with `receipt: {completedBy: "operator"}`, so the queue moves
-  on. For `commit`, an omitted `commitSha` is read from the bee's checkout
-  HEAD (the Cell space for Cell bees), plus `branch` when HEAD is on one;
-  pass `--output commitSha=<sha>` when there is no readable HEAD. Needs
-  capability `bee.actions.complete.v1`.
-- A delivered `commit` attempt that stays silent (no report, no progress) for
-  30 minutes gets one reminder mail (`[Hive action] Reminder …`, urgency `idle`;
-  never for an archived bee)
-  that restates the report command. The reminder never completes anything.
-- `pause` stops new releases only; the active attempt continues. `reorder`
-  takes exactly the queued ids and refuses an order that would point an output
-  reference forward.
-- `claim` is for external executors (Apiary): it takes an offered attempt and
-  returns the token to report with.
+Current v2 handoff and action-queue docs: [handoff-contract.md](design/handoff-contract.md) and [action-queue-contract.md](design/action-queue-contract.md).
 
 ## Keybindings and In-tmux Affordances
 
@@ -1907,18 +1826,15 @@ next-tool,queue,passive
 
 Interrupts require explicit opt-in per bee.
 
-In v2, CLI sends use `HIVE_BEE_ID` or `HIVE_SESSION_ID` from the calling
-process; the daemon also attributes known runtime descendants to their bee.
-Without a session identity, a CLI send retains operator attribution; automation
-callers must pass `--sender-kind automation` to request the automation envelope.
-Authenticated Apiary human-chat admission controls human-first scheduling; an
-operator label or `--sender-kind human` alone does not grant that admission.
-The legacy `--sender-human` flag is refused. Bee-sent
+When `--sender`/`--sender-human` are omitted, the sender defaults to the bee
+owning the current session (`$HIVE_BEE`, else the current tmux pane). Bee-sent
 messages are delivered to the recipient wrapped in a sender-attribution
 envelope — a stable marker line plus one JSON metadata line
 (`{version, from, tier, id, sentAt, subject?}`) ahead of the body — so the
 recipient (and Apiary's transcript UI) can see who sent it. Human sends are
 delivered verbatim.
+
+Current v2 send attribution: [README.md](README.md#messages).
 
 ### `hive buz`
 

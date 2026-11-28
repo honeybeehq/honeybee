@@ -51,6 +51,8 @@ hive x fixer "Fix the failing test in ids.ts" --agent codex
 - `next`: at the next accept point (default).
 - `idle`: after the turn ends.
 
+A send is attributed to its caller. A CLI send from inside a bee uses `HIVE_BEE_ID` (or `HIVE_SESSION_ID`), and the daemon attributes any process a bee's runtime started to that bee, whatever `--sender` says. Without a session identity, a CLI send is attributed to the operator; scripted notices pass `--sender-kind automation` to get the automation envelope. Only authenticated Apiary human chat counts as human input for human-first scheduling: an operator label or `--sender-kind human` alone does not, and `hive buz send --sender-human` is refused.
+
 `hive mailbox <bee>` shows queued and delivered mail. `hive buz send` and `hive buz inbox` remain as v1 compatibility aliases onto the same mailbox.
 
 ## Bee IDs

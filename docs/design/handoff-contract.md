@@ -57,7 +57,7 @@ type BeeHandoffParams = {
   target: {
     agent: string                        // a configured agent (node.harnesses)
     args?: string[] | null               // omitted: keep the bee's args for same-family, none for cross-family
-    account?: string | null              // selector for the TARGET harness: id | "auto" (default) | "rr" | null = unbound
+    account?: string | null              // selector for the TARGET harness: id | "auto" | "rr" | null = unbound; omitted: the bee's own account for same-family, else "auto"
   }
   instruction?: string                   // operator note carried into the context + seed
   stopAt?: BeeHandoffStopAt              // default "idle": quiesce at the next turn end; "now": stop immediately
@@ -286,3 +286,12 @@ The CLI infers `expected.generation`/`expected.agent` from the current view; a
 replayed CLI key after the generation moved is therefore `idempotency_conflict`
 (use `handoff get` to read the receipt). `--wait` exits 0 on `complete`, 1 on
 `failed`/timeout.
+
+- `--to <agent>`: the target harness. The same agent is a context reset on a new
+  thread.
+- `--model <m>` sets the target's args through the harness's model flag; `--args --`
+  passes them verbatim.
+- `--account` omitted: a same-family handoff keeps the bee's own account (still
+  admission-checked); a cross-family one picks `auto`. `none` leaves it unbound.
+- `-p` is `instruction`; `--now` is `stopAt: "now"` (default: wait for the current
+  turn to end).
