@@ -32,6 +32,8 @@ hive delete reviewer      # remove the bee and its owned data
 
 `hive spawn <name> [agent]` takes a name first, then the agent. `--account <selector|auto|rr|none>` picks an account; `agent-auto` and `agent-rr` are shorthands. Run `hive --help` for the full command list.
 
+Accounts (adding, signing in, per-harness notes, leasing, refusals) are covered in [accounts.md](./accounts.md).
+
 One-shot:
 
 ```sh

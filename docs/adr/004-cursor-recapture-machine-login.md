@@ -140,3 +140,5 @@ brittle, and a wrong guess could invalidate the account's only refresh token.
 Re-reading the store works only on the computer where `cursor-agent` keeps the login
 fresh, and only while Honeybee's runtimes are kept off that login. That computer is the account's authority node. Other nodes depend on its
 leases.
+
+The current guide to Cursor accounts is [accounts.md](../accounts.md#cursor).

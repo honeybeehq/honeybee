@@ -376,21 +376,6 @@ one account until its 5h window hit 93%):
   class for the cool-off. Near-ties (within 3 points) rotate.
 - Accounts whose limits cannot be read are a last resort (oldest registration
   wins).
-- **Admission.** An account that cannot authenticate on this node never wins:
-  `auth_needed` status, no primary credential, an empty or malformed credential
-  document, a Claude token past expiry with its refresh token blanked (a
-  stale satellite lease), a local Cursor sign-in with an `exp` that cannot be
-  read, or one past its `exp` after a re-capture from Cursor's login on this
-  computer has failed (`account_credential_expired`) are skipped (judged on the copy a runtime reads: the
-  home when populated, else the vault copy activation installs; a Cursor token
-  that expired with no re-capture since is admitted, and activation re-captures
-  it and then starts or holds), and
-  with no usable account the spawn is refused with a typed `account_auth_needed`
-  instead of placing a bee that will crash at `/login`. Explicit `--account`,
-  allocator claims, `bee swap-account` and every runtime start (revive, send to
-  a stopped bee, reconfigure) apply the same check: a start whose account has
-  gone unusable is held (mail stays queued) until a login or lease restores it.
-  `--only-account <id>` (repeatable) binds `auto`/`rr` to an allowlist.
 
 The pick is printed to stderr, e.g.
 `account auto → claude-thto (weekly 66%, 5h 12% +9/h) — least effective weekly load (18% behind pace — surplus expires at reset); +8 in-flight`.
@@ -2028,99 +2013,7 @@ The sync manifest explicitly excludes the vault.
 
 ### `hive account`
 
-Honeybee v2 uses the daemon-owned forms below. `login` runs the account's
-typed login FLOW (2026-08-28: tmux-independent — the daemon owns a native
-worker or talks to the provider directly; nothing to attach to). `capture` is
-the recovery path when provider authentication already completed outside a
-flow (validate the current credential, snapshot it into the vault, mark ok):
-
-```sh
-hive account add <harness> <label> [--import-existing]
-hive account login <selector> [--method <id>] [--remote] [--no-wait]
-hive account login-status <selector>
-hive account login-cancel <selector>
-hive account capture <selector>
-hive account verify <selector>
-hive account restored <selector>
-hive account interruptions [<selector>]
-```
-
-A turn that an authentication failure cut off ("Not logged in · Please run
-/login") continues on its own once the account's credential works again on
-the node: a completed login, a capture, the daemon's own token refresh or a
-readable limits probe clears `auth_needed` on the account's bees and sends
-each interrupted bee exactly one continuation. The original message is
-delivered again when none of its turn ran; otherwise the bee gets one short
-continue message from `hive:auth-resume`. A bee you stopped or archived is
-left alone, and a credential on which a bee's continuation already failed
-does not resume that bee a second time. `restored` is for a credential
-written into the account home outside the daemon (a leased credential on a
-satellite): it checks the credential is present and unexpired, then does the
-same. `interruptions` lists the interrupted turns and what became of them.
-A readable limits probe clears `auth_needed` on every bee of the account,
-including bees with no interrupted turn; a bee that still cannot authenticate
-sets it again on its next turn. After `hive account credentials disable`, a
-login or capture does not resume the account's bees: `credentials enable`
-(or the next readable limits probe) does, so the bees are not woken on the
-native refresh chain while it is being handed back.
-
-`add` creates a LOGGED-OUT account (`status auth_needed`, `creds=absent`);
-`ok` is never claimed without a credential. `--import-existing` imports the
-machine's existing sign-in instead: the account home or a leftover vault
-entry when populated, else the harness's vendor home (`CODEX_HOME` /
-`CLAUDE_CONFIG_DIR` … when set, else `~/.codex`, `~/.claude`, …; Claude on
-macOS reads the Keychain item) copied into the account's vault. Nothing
-importable anywhere is the typed refusal `no_credentials_to_import` (naming
-every path checked) and no account is created. An imported credential is
-`unverified` until something proves it: the daemon schedules the harness's
-real probe right away, and `verify` runs it on demand (exit 0 only when the
-provider answered an authenticated read; `auth_needed` means log in again).
-`account list` shows the derived `creds=absent|unverified|verified`.
-
-`login` prints the flow (method, sign-in URL, device code, requested fields)
-and, on a TTY, drives it: URLs are for your browser, secrets are typed without
-echo, and the command exits 0 once the credential is validated and captured.
-`--method` picks an advertised method (`hive account get <selector>` lists
-them on the flow), `--remote` asks for methods that do not need a browser on
-this node (device codes, API keys), `--no-wait` just starts the flow.
-
-agy (Google Antigravity CLI) accounts each keep their sign-in in their own
-home: Honeybee runs agy with `HOME=<account home>` and
-`AGY_CLI_FORCE_FILE_TOKEN_STORAGE=1`, so agy writes its login to
-`.gemini/antigravity-cli/` in that home instead of the one macOS Keychain item
-it otherwise shares across every sign-in. The four methods are agy's own ACP
-auth methods:
-
-- `oauth-personal` (default, "Sign in with Google") and `oauth-business`
-  ("Sign in with Gemini Enterprise") run `agy acp --login`; paste the code
-  Google shows. Both work from a remote browser.
-- `gemini-api-key` takes a Gemini Developer API key, checked against the
-  Gemini API before it is saved.
-- `agent-platform` takes a Google Cloud project, a location and a service
-  account key (Vertex AI / Application Default Credentials).
-
-`.gemini/antigravity-cli/honeybee-auth.json` names the account's method. An API
-key or Agent Platform account reaches agy only as runtime env
-(`HIVE_AGY_AUTH_METHOD`, `GEMINI_API_KEY`, `GOOGLE_CLOUD_PROJECT`,
-`GOOGLE_CLOUD_LOCATION`, `GOOGLE_APPLICATION_CREDENTIALS`), never through
-`bee.env`. The daemon's own Google keys are blanked for agy bees. The
-credential probe runs `agy models` in the account home, which also lets agy
-refresh its Google token. Leases ship the sign-in with its refresh token
-blanked, plus the API key or the service account key. A Google sign-in under
-10 minutes from expiry is refreshed first by agy itself, in a scratch home.
-Each new credential raises the generation that `account credentials status`
-reports, so satellites renew. Agent Platform accounts that use user ADC (a
-refresh grant) are not leased.
-
-The opt-in `hive account credentials status|enable|refresh|disable <account>`
-commands support Claude, Codex and first-party Grok OIDC accounts. Grok requires
-one `https://auth.x.ai::<client-id>` entry; API keys and mixed scopes are refused.
-Stop local bees before enabling or disabling. Codex and Grok recovery requires
-disable, native login, then enable; Claude supports in-place central login.
-See [central credentials](claude-central-credentials-pilot.md) for ownership,
-recovery and acceptance checks.
-
-The broader command list that follows documents the legacy CLI surface.
+Current v2 account docs: [accounts.md](accounts.md).
 
 ```sh
 hive account list [--json]
@@ -2160,27 +2053,15 @@ skips the question, and a non-interactive caller gets a hard error instead.
 `account resume` puts it back in rotation. Paused accounts show `paused` in
 `account list`, and the autoswap daemon never rotates a bee onto one.
 
-A pause has an owner. `hive account pause <account> [--by operator|quota|lease]
-[--owner <id>]` records who holds it (`operator` by default; `lease`/`quota`
-require `--owner`, e.g. the Apiary lease id), `account list` shows it as
-`paused(lease:<id>)`, and the account row carries `pausedBy` / `pausedOwner` /
-`pausedAt`. `hive account unpause` lifts only the caller's own pause: a
-different holder is refused with `account_pause_owned` naming the holder, and
-`--force` takes a pause over or lifts it regardless.
-
-`account login` (legacy form) created or reused an account and opened a scratch
-tmux login seat. The v2 daemon no longer runs tmux seats: the login is a
-daemon-owned flow (`account.login.start` / `.submit` / `.retry` / `.cancel`)
-mirrored to clients; boot removes any `hive-login-*` seat a previous daemon
-created for a known account.
+`account login` creates or reuses an account and opens a scratch tmux login
+seat. When fresh credentials appear, they are captured into the vault and the
+seat is torn down. Use `--no-wait` to leave the seat running and capture later.
 
 Credential rotation notes:
 
 - Claude credentials may live in macOS Keychain.
-- Claude, Codex and first-party Grok OIDC refreshes can rotate OAuth chains.
-  Opt-in central ownership keeps their refresh chains in the private authority
-  and publishes access-only copies; native accounts retain their harness refresh
-  behavior. OpenCode, Kimi and Cursor can rewrite file-backed credentials in-place.
+- Claude refreshes can rotate OAuth chains; Codex, OpenCode, Grok, Kimi, and
+  Cursor can rewrite their file-backed credentials in-place.
 - Activation rescues and syncs rotated/refreshed credentials before stamping a
   home.
 - `hive account sync` pulls rotated/refreshed credentials from attributed homes
@@ -2203,23 +2084,24 @@ hive activate codex-work --home 2
 
 ### `hive login`
 
-Interactive login by existing account — an alias of `hive account login`.
+Interactive login by existing account.
 
 ```sh
-hive login <account> [--method <id>] [--remote] [--no-wait]
+hive login <account> [--no-wait] [--popup]
 ```
 
 Examples:
 
 ```sh
 hive login claude-work
-hive login codex-work --method codex-api-key
-hive login codex-work --remote        # device code instead of the localhost callback
+hive login claude-work --popup
 ```
 
-There is no tmux popup or attach target: the daemon runs the vendor's login
-itself (direct provider OAuth / API-key validation, or its own native PTY
-worker for CLIs that need a terminal) and publishes typed progress.
+`--popup` prints a tmux popup command:
+
+```sh
+tmux display-popup -E "hive login <account-id>"
+```
 
 ### `hive swap-account`
 
@@ -2237,15 +2119,6 @@ hive swap-account CO.a3f codex-backup
 
 The target must resolve to a single bee. The account must match the bee's
 agent/tool.
-
-Claude bees resume under a NEW session id (`--resume <seed> --fork-session`)
-in the destination account's home. The CLI only resolves that seed inside its
-own config dir, so the swap first carries the conversation over —
-`projects/<cwd-key>/<seed>.jsonl` plus its sibling `<seed>/` dir — from the
-source home into the destination home (never overwriting an existing copy).
-If no transcript exists for the seed the swap is refused with
-`transcript_unavailable` and the bee stays on its current account, instead of
-crash-looping every wake on "No conversation found with session ID".
 
 ### `hive usage` / `hive limits`
 

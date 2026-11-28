@@ -14,3 +14,4 @@ architecture and reliability contract and applies to every task.
   build output into it.
 - Typecheck, test, and build every change. Add tests for logic and state-machine behavior.
 - Preserve unrelated user/agent changes in a dirty worktree.
+- Document v2 account behaviour in `docs/accounts.md`, never in `docs/HIVE_CLI_REFERENCE.md` (that file is the historical v1 reference).
